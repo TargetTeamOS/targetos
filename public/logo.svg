@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Navy left stroke of the A -->
+  <polygon points="10,90 35,10 48,10 28,90" fill="#1B2B4B"/>
+  <!-- Red right stroke of the A -->
+  <polygon points="52,10 65,10 90,90 72,90" fill="#CC2200"/>
+</svg>
