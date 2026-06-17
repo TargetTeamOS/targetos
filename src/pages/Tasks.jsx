@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { Card, CardHeader, Btn, Modal, ModalTitle, Input, Select, Grid2, StatCard, Grid4 } from '../components/UI'
+import { useConfirm } from '../components/ConfirmDialog'
 
 export function Tasks() {
   const { state, toast, log } = useApp()
   const [tasks, setTasks] = useState([])
+  const { confirm, ConfirmDialog } = useConfirm()
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [filter, setFilter] = useState('open')
@@ -26,9 +28,17 @@ export function Tasks() {
   }
 
   async function del(id) {
-    await supabase.from('tasks').delete().eq('id',id)
-    setTasks(prev => prev.filter(t => t.id!==id))
-    toast('Task deleted')
+    const t = tasks.find(x=>x.id===id)
+    confirm({
+      title: 'Delete Task?',
+      message: t ? '"'+t.title+'" will be permanently deleted.' : 'This task will be permanently deleted.',
+      confirmLabel: 'Delete Task',
+      onConfirm: async () => {
+        await supabase.from('tasks').delete().eq('id',id)
+        setTasks(prev => prev.filter(t => t.id!==id))
+        toast('Task deleted')
+      }
+    })
   }
 
   const open   = tasks.filter(t => t.status !== 'done')
@@ -61,6 +71,7 @@ export function Tasks() {
         <Btn size="sm" onClick={()=>setShowAdd(true)}>+ New Task</Btn>
       </div>
 
+      <ConfirmDialog/>
       <Card>
         <CardHeader>{filter.charAt(0).toUpperCase()+filter.slice(1)} Tasks ({shown.length})</CardHeader>
         {loading ? (

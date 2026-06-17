@@ -1,8 +1,10 @@
 import React, { useState } from 'react'
 import { Card, Btn, Modal, ModalTitle, Input } from '../components/UI'
+import { useConfirm } from '../components/ConfirmDialog'
 
 export function Notes() {
   const [notes, setNotes] = useState([{id:1,title:'Team Goals Q3',body:'Focus on closing all UC deals before end of July. Push for new listings in Monsey and Spring Valley.',time:'Jun 14, 2026'},{id:2,title:'Vendor Contacts',body:'Photography: Mike 845-555-0101\nSign company: ABC Signs 845-555-0202\nStager: Rachel 845-555-0303',time:'Jun 10, 2026'}])
+  const { confirm, ConfirmDialog } = useConfirm()
   const [showAdd, setShowAdd] = useState(false)
   const [editIdx, setEditIdx] = useState(null)
   const [form, setForm] = useState({title:'',body:''})
@@ -20,6 +22,7 @@ export function Notes() {
 
   return (
     <div>
+      <ConfirmDialog/>
       <div style={{display:'flex',justifyContent:'space-between',marginBottom:'14px'}}>
         <span style={{color:'var(--muted)',fontSize:'12px'}}>Personal scratchpad — private to you</span>
         <Btn size="sm" onClick={()=>{setEditIdx(null);setForm({title:'',body:''});setShowAdd(true)}}>+ New Note</Btn>
@@ -34,7 +37,7 @@ export function Notes() {
             <div style={{fontSize:'14px',fontWeight:800}}>{n.title}</div>
             <div style={{display:'flex',gap:'5px'}}>
               <button onClick={()=>{setForm({title:n.title,body:n.body});setEditIdx(i);setShowAdd(true)}} style={{background:'none',border:'none',cursor:'pointer',fontSize:'14px',opacity:.6}}>✏️</button>
-              <button onClick={()=>setNotes(prev=>prev.filter((_,j)=>j!==i))} style={{background:'none',border:'none',cursor:'pointer',fontSize:'14px',opacity:.6}}>🗑</button>
+              <button onClick={()=>confirm({title:'Delete Note?',message:'"'+n.title+'" will be permanently deleted.',confirmLabel:'Delete Note',onConfirm:()=>setNotes(prev=>prev.filter((_,j)=>j!==i))})} style={{background:'none',border:'none',cursor:'pointer',fontSize:'14px',opacity:.6}}>🗑</button>
             </div>
           </div>
           <div style={{fontSize:'13px',color:'var(--text)',lineHeight:1.7,whiteSpace:'pre-wrap',marginBottom:'8px'}}>{n.body}</div>

@@ -4,12 +4,14 @@ import { useApp } from '../context/AppContext'
 import { AGENTS, SOURCES, PROPERTY_TYPES, CONTACT_TYPES } from '../lib/constants'
 import { Card, CardHeader, Badge, Avatar, Btn, Modal, ModalTitle, Input, Select, Grid2, Grid3, SkeletonTable } from '../components/UI'
 import { ContactDetail } from './ContactDetail'
+import { useConfirm } from '../components/ConfirmDialog'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
 const roleColor = r => ({ buyer:'#0EA5E9', seller:'#10B981', investor:'#7C3AED', tenant:'#F59E0B' }[r] || '#64748B')
 
 export function Contacts() {
   const { state, dispatch, toast, log } = useApp()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [contacts, setContacts] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -40,10 +42,17 @@ export function Contacts() {
   })
 
   async function deleteContact(id) {
-    if(!window.confirm('Delete this contact?')) return
-    await supabase.from('contacts').delete().eq('id', id)
-    setContacts(c => c.filter(x => x.id !== id))
-    toast('Contact deleted')
+    confirm({
+      title: 'Delete Contact?',
+      message: 'This will permanently remove the contact and all their data. This cannot be undone.',
+      confirmLabel: 'Yes, Delete',
+      onConfirm: async () => {
+        await supabase.from('contacts').delete().eq('id', id)
+        setContacts(c => c.filter(x => x.id !== id))
+        toast('Contact deleted')
+        log({ cat:'contact', action:'Deleted', subject:'Contact', detail:'Permanently removed' })
+      }
+    })
   }
 
   async function saveContact(id, updates) {
@@ -95,12 +104,13 @@ export function Contacts() {
           </div>
         ) : filtered.map(c => (
           <ContactTableRow key={c.id} contact={c}
-            onSelect={c=>{setSelected(c);setEditMode(false)}}
+            onSelect={id=>setFullPageId(id)}
             onDelete={deleteContact}
             onOpenFull={id=>setFullPageId(id)}/>
         ))}
       </Card>
 
+      <ConfirmDialog/>
       {/* Add modal */}
       {showAdd && (
         <ContactFormModal

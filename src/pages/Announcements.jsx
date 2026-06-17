@@ -1,11 +1,13 @@
 import React, { useState } from 'react'
 import { Card, CardHeader, Btn, Modal, ModalTitle, Input } from '../components/UI'
+import { useConfirm } from '../components/ConfirmDialog'
 
 export function Announcements() {
   const [items, setItems] = useState([
     {id:1,title:'Team Meeting — Monday 9AM Zoom',body:'Weekly team meeting. Come prepared with your weekly numbers and listing updates. Zoom: zoom.us/j/82511980702',author:'Avraham W.',time:'Jun 14',pinned:true},
     {id:2,title:'New Listings Active on MLS',body:'Multiple new listings now active. Check the Target Listings board for details and share with your buyers.',author:'Avraham W.',time:'Jun 12',pinned:false},
   ])
+  const { confirm, ConfirmDialog } = useConfirm()
   const [showAdd, setShowAdd] = useState(false)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -16,13 +18,14 @@ export function Announcements() {
     setItems(prev=>[{id:Date.now(),title,body,author:'Admin',time:'Just now',pinned},...prev])
     setTitle(''); setBody(''); setPinned(false); setShowAdd(false)
   }
-  function del(id) { setItems(prev=>prev.filter(x=>x.id!==id)) }
+  function del(id) { const item=items.find(x=>x.id===id); confirm({title:'Delete Announcement?',message:item?'"'+item.title+'" will be removed for all agents.':'This announcement will be deleted.',confirmLabel:'Delete',onConfirm:()=>setItems(prev=>prev.filter(x=>x.id!==id))}) }
   function togglePin(id) { setItems(prev=>prev.map(x=>x.id===id?{...x,pinned:!x.pinned}:x)) }
 
   const sorted = [...items].sort((a,b)=>b.pinned-a.pinned)
 
   return (
     <div>
+      <ConfirmDialog/>
       <div style={{display:'flex',justifyContent:'space-between',marginBottom:'14px'}}>
         <span style={{color:'var(--muted)',fontSize:'12px'}}>Team-wide messages · All agents see these</span>
         <Btn size="sm" onClick={()=>setShowAdd(true)}>Post Announcement</Btn>

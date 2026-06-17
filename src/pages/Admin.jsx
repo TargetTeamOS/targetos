@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { Card, CardHeader, Btn, Modal, ModalTitle, Input, Select, Grid2, Grid3, StatCard, Grid4, Avatar } from '../components/UI'
+import { useConfirm } from '../components/ConfirmDialog'
 import { AGENTS } from '../lib/constants'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
@@ -19,7 +20,8 @@ const AUTOMATIONS = [
 
 export function Admin() {
   const { state } = useApp()
-  const [agents, setAgents] = useState(AGENTS)
+  const { confirm, ConfirmDialog } = useConfirm()
+  const [agents, setAgents] = useState(AGENTS.map(a=>({...a,photo:null})))
   const [autos, setAutos] = useState(AUTOMATIONS)
   const [tab, setTab] = useState('agents')
   const [showAddAgent, setShowAddAgent] = useState(false)
@@ -41,6 +43,7 @@ export function Admin() {
 
   return (
     <div>
+      <ConfirmDialog/>
       {/* Tab bar */}
       <div style={{display:'flex',gap:'2px',background:'var(--dim)',borderRadius:'12px',padding:'4px',marginBottom:'18px'}}>
         {[['agents','Agent Management'],['perms','Permissions'],['autos','Automations'],['commission','Commission']].map(([k,l])=>(
@@ -59,7 +62,21 @@ export function Admin() {
           {agents.map((a,i) => (
             <div key={a.id} style={{display:'flex',alignItems:'center',gap:'12px',padding:'12px 16px',borderBottom:'1px solid var(--border)'}}
               onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <Avatar name={a.name} color={a.color} size={36}/>
+              <div style={{position:'relative',flexShrink:0}}>
+                {a.photo
+                  ? <img src={a.photo} alt={a.name} style={{width:36,height:36,borderRadius:'10px',objectFit:'cover'}}/>
+                  : <Avatar name={a.name} color={a.color} size={36}/>
+                }
+                <label title="Upload photo" style={{position:'absolute',bottom:-4,right:-4,width:16,height:16,borderRadius:'50%',background:'var(--red)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:'9px',color:'#fff'}}>
+                  +
+                  <input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{
+                    const file=e.target.files[0]; if(!file) return
+                    const reader=new FileReader()
+                    reader.onload=ev=>setAgents(prev=>prev.map(ag=>ag.id===a.id?{...ag,photo:ev.target.result}:ag))
+                    reader.readAsDataURL(file)
+                  }}/>
+                </label>
+              </div>
               <div style={{flex:1}}>
                 <div style={{fontSize:'12px',fontWeight:700}}>{a.name}</div>
                 <div style={{fontSize:'11px',color:'var(--muted)'}}>{a.email} · Ext {a.ext}</div>
