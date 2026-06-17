@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { AGENTS } from '../lib/constants'
 import { logChange, logFieldChanges } from '../lib/activityLog'
+import { BulkUpload } from '../components/BulkUpload'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { Card, CardHeader, Badge, Btn, Modal, ModalTitle, Input, Select, Grid2, Grid3, Grid4, StatCard } from '../components/UI'
 
@@ -34,6 +35,7 @@ export function Listings() {
   const [listings, setListings] = useState(INIT_LISTINGS)
   const [selected, setSelected] = useState(null)
   const [editListing, setEditListing] = useState(null)
+  const [showBulkUpload, setShowBulkUpload] = useState(false)
 
   function updateListing(id, changes) {
     setListings(prev => prev.map(l => l.id===id ? {...l,...changes} : l))
@@ -55,6 +57,7 @@ export function Listings() {
               <button key={v} onClick={()=>setView(v)} style={{padding:'5px 12px',borderRadius:'6px',border:'none',cursor:'pointer',fontSize:'12px',fontWeight:600,fontFamily:'Inter,system-ui,sans-serif',background:view===v?'var(--panel)':'transparent',color:view===v?'var(--text)':'var(--muted)',boxShadow:view===v?'0 1px 3px rgba(0,0,0,.08)':'none'}}>{l}</button>
             ))}
           </div>
+          <Btn variant="ghost" size="sm" onClick={()=>setShowBulkUpload(true)}>⬆ Bulk Import</Btn>
           <Btn size="sm" onClick={()=>setEditListing({id:'new',addr:'',city:'',state:'NY',zip:'',price:'',type:'Condo',beds:'',baths:'',sqft:'',tax:'',status:'Active',agents:[],days:0,lock:'',mls:'',budget:2000,sellerName:'',spend:[],showings:[]})}>+ New Listing</Btn>
         </div>
       </div>
@@ -85,6 +88,27 @@ export function Listings() {
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(265px,1fr))',gap:'14px'}}>
           {listings.map(l=><ListingCard key={l.id} listing={l} onSelect={setSelected}/>)}
         </div>
+      )}
+
+      {showBulkUpload && (
+        <BulkUpload
+          board="listings"
+          onClose={()=>setShowBulkUpload(false)}
+          onImport={async rows => {
+            let imported = 0, errors = 0
+            const newListings = rows.map(row => ({
+              ...row,
+              id: 'l'+Date.now()+Math.random().toString(36).slice(2,6),
+              price: row.price ? parseFloat(row.price.replace(/[^0-9.]/g,'')) : 0,
+              days: 0, budget: 2000, spend: [], showings: [],
+              agents: row.agents ? [row.agents] : [],
+              state: row.state || 'NY',
+            }))
+            setListings(prev => [...newListings, ...prev])
+            imported = newListings.length
+            return { imported, errors:0, updated:0, errorDetails:[] }
+          }}
+        />
       )}
 
       {/* Detail modal */}

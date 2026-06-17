@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { Card, CardHeader, Btn, Modal, ModalTitle, Input, Select, Grid2, StatCard, Grid4 } from '../components/UI'
 import { useConfirm } from '../components/ConfirmDialog'
 import { logChange } from '../lib/activityLog'
+import { BulkUpload } from '../components/BulkUpload'
 
 export function Tasks() {
   const { state, toast, log } = useApp()
@@ -11,6 +12,7 @@ export function Tasks() {
   const { confirm, ConfirmDialog } = useConfirm()
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [showBulk, setShowBulk] = useState(false)
   const [filter, setFilter] = useState('open')
 
   useEffect(() => { loadTasks() }, [])
@@ -70,6 +72,7 @@ export function Tasks() {
             </button>
           ))}
         </div>
+        <Btn variant="ghost" size="sm" onClick={()=>setShowBulk(true)}>⬆ Bulk Import</Btn>
         <Btn size="sm" onClick={()=>setShowAdd(true)}>+ New Task</Btn>
       </div>
 
@@ -108,6 +111,17 @@ export function Tasks() {
         ))}
       </Card>
 
+      {showBulk && (
+        <BulkUpload board="tasks" onClose={()=>setShowBulk(false)} onImport={async rows => {
+          let imported = 0, errors = 0
+          for(const row of rows) {
+            const { error } = await supabase.from('tasks').insert([{ title:row.title, due_date:row.due_date||null, priority:row.priority||'normal', status:'pending', assigned_to:state.user?.id, created_by:state.user?.id }])
+            if(error) errors++; else imported++
+          }
+          await loadTasks()
+          return { imported, errors, updated:0, errorDetails:[] }
+        }}/>
+      )}
       {showAdd && <AddTaskModal onClose={()=>setShowAdd(false)} onSaved={t=>{setTasks(prev=>[t,...prev]);setShowAdd(false);toast('Task saved')}}/>}
     </div>
   )

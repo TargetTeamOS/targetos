@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { AGENTS, SOURCES, PROPERTY_TYPES, CONTACT_TYPES } from '../lib/constants'
 import { Card, CardHeader, Badge, Avatar, Btn, Modal, ModalTitle, Input, Select, Grid2, Grid3, SkeletonTable } from '../components/UI'
 import { ContactDetail } from './ContactDetail'
+import { BulkUpload } from '../components/BulkUpload'
 import { useConfirm } from '../components/ConfirmDialog'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
@@ -22,6 +23,7 @@ export function Contacts() {
   const [selected, setSelected] = useState(null)
   const [editMode, setEditMode] = useState(false)
   const [fullPageId, setFullPageId] = useState(null)
+  const [showBulkUpload, setShowBulkUpload] = useState(false)
 
   useEffect(() => { loadContacts() }, [])
 
@@ -89,6 +91,7 @@ export function Contacts() {
         </div>
         <div style={{display:'flex',gap:'7px'}}>
           <Btn variant="ghost" size="sm" onClick={()=>exportCSV(contacts)}>Export CSV</Btn>
+          <Btn variant="ghost" size="sm" onClick={()=>setShowBulkUpload(true)}>⬆ Bulk Import</Btn>
           <Btn size="sm" onClick={()=>setShowAdd(true)}>+ New Contact</Btn>
         </div>
       </div>
@@ -111,6 +114,32 @@ export function Contacts() {
       </Card>
 
       <ConfirmDialog/>
+      {/* Bulk Upload modal */}
+      {showBulkUpload && (
+        <BulkUpload
+          board="contacts"
+          onClose={()=>setShowBulkUpload(false)}
+          onImport={async rows => {
+            let imported = 0, errors = 0, errorDetails = []
+            for(const row of rows) {
+              try {
+                const { error } = await supabase.from('contacts').insert([{
+                  ...row,
+                  agent_id: state.user?.id,
+                  budget_max: row.budget_max ? parseFloat(row.budget_max.replace(/[^0-9.]/g,'')) : null,
+                  budget_min: row.budget_min ? parseFloat(row.budget_min.replace(/[^0-9.]/g,'')) : null,
+                }])
+                if(error) { errors++; errorDetails.push({row:imported+errors, error:error.message}) }
+                else imported++
+              } catch(e) { errors++ }
+            }
+            await loadContacts()
+            toast(imported + ' contacts imported!')
+            return { imported, errors, updated:0, errorDetails }
+          }}
+        />
+      )}
+
       {/* Add modal */}
       {showAdd && (
         <ContactFormModal

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Card, CardHeader, Badge, Btn, StatCard, Grid4 } from '../components/UI'
 import { AGENTS, SOURCES, PROPERTY_TYPES, DEAL_STAGES, SALE_TYPES } from '../lib/constants'
+import { BulkUpload } from '../components/BulkUpload'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
 
@@ -34,6 +35,7 @@ export function Production() {
   const [filterStage, setFilterStage] = useState('')
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
+  const [showBulk, setShowBulk] = useState(false)
 
   const filtered = deals.filter(d => {
     if(search && !d.addr.toLowerCase().includes(search.toLowerCase()) && !d.agent.toLowerCase().includes(search.toLowerCase())) return false
@@ -80,6 +82,7 @@ export function Production() {
         </div>
         <div style={{display:'flex',gap:'7px'}}>
           <Btn variant="ghost" size="sm" onClick={()=>exportProd(filtered)}>Export CSV</Btn>
+          <Btn variant="ghost" size="sm" onClick={()=>setShowBulk(true)}>⬆ Bulk Import</Btn>
           <Btn size="sm" onClick={()=>setShowAdd(true)}>+ Add Deal</Btn>
         </div>
       </div>
@@ -131,6 +134,13 @@ export function Production() {
       })}
 
       {/* Add deal modal */}
+      {showBulk && (
+        <BulkUpload board="deals" onClose={()=>setShowBulk(false)} onImport={async rows => {
+          const newDeals = rows.map(row => ({ ...row, id:'d'+Date.now()+Math.random().toString(36).slice(2,5), prod:parseFloat((row.prod||'0').replace(/[^0-9.]/g,''))||0, gci:parseFloat((row.gci||'0').replace(/[^0-9.]/g,''))||0, contractDate:'', closeDate:'', expectedClose:'' }))
+          setDeals(prev => [...newDeals,...prev])
+          return { imported:newDeals.length, errors:0, updated:0, errorDetails:[] }
+        }}/>
+      )}
       {showAdd && <AddDealModal onClose={()=>setShowAdd(false)} onSaved={d=>{setDeals(prev=>[d,...prev]);setShowAdd(false)}}/>}
     </div>
   )
