@@ -1,0 +1,51 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --red: #CC2200; --orange: #E8650A; --gold: #F5A623;
+  --green: #10B981; --teal: #0EA5E9; --purple: #7C3AED;
+  --navy: #1B2B4B; --navy2: #243860;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* Light theme (default) */
+body, body.light {
+  --bg: #F4F5F7; --panel: #FFFFFF; --border: #E1E5EA;
+  --dim: #F0F2F5; --inp: #F8F9FA; --hov: #F4F5F7;
+  --text: #1A202C; --muted: #64748B;
+  background: var(--bg); color: var(--text);
+}
+body.dark {
+  --bg: #0F1520; --panel: #141C2A; --border: #243044;
+  --dim: #1E2D42; --inp: #1E2D42; --hov: #1E2D42;
+  --text: #E8EDF3; --muted: #6B7E96;
+  background: var(--bg); color: var(--text);
+}
+body.slate {
+  --bg: #1A2332; --panel: #212D3E; --border: #2E3F55;
+  --dim: #1A2332; --inp: #1A2332; --hov: #1A2332;
+  --text: #E2E8F0; --muted: #7A9CC0;
+  background: var(--bg); color: var(--text);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+/* Skeleton animation */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--dim) 25%, var(--border) 50%, var(--dim) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
