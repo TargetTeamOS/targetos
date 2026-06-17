@@ -88,12 +88,8 @@ export function Layout({ page, setPage, children }) {
       <aside style={{width:sbStyle.width,background:'#1B2B4B',display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden',transition:'width .2s'}}>
 
         {/* Logo */}
-        <div style={{padding:'16px 14px 14px',borderBottom:'1px solid rgba(255,255,255,.1)',display:'flex',alignItems:'center',gap:'10px',flexShrink:0}}>
-          <svg width="26" height="30" viewBox="0 0 60 70">
-            <rect x="8" y="0" width="14" height="70" rx="3" fill="#fff"/>
-            <rect x="38" y="0" width="5" height="70" rx="2" fill="#CC2200"/>
-            <rect x="8" y="60" width="35" height="4" rx="2" fill="#CC2200"/>
-          </svg>
+        <div style={{padding:'14px 14px 12px',borderBottom:'1px solid rgba(255,255,255,.1)',display:'flex',alignItems:'center',gap:'10px',flexShrink:0}}>
+          <img src="/logo.png" alt="Target Team" style={{width:'36px',height:'36px',objectFit:'contain',flexShrink:0}}/>
           <div>
             <div style={{color:'#fff',fontSize:'16px',fontWeight:900,letterSpacing:'-.3px',lineHeight:1}}>
               Target<span style={{color:'#F5A623'}}>OS</span>
