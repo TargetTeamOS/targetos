@@ -255,20 +255,44 @@ function ListingDetail({ listing:l, onClose, onEdit, onChange }) {
   const pct = Math.min(spent/listing.budget*100,100)
   const [newSpend, setNewSpend] = useState({c:ADSPEND[0],a:'',d:new Date().toISOString().split('T')[0]})
   const [newShowing, setNewShowing] = useState({buyer:'',date:'',agent:'',interest:'Hot',feedback:''})
+  const [localActivity, setLocalActivity] = useState([
+    { action:'Created', field_name:'Listing', agent_name:'System', new_value:l.addr+', '+l.city, created_at: new Date(Date.now()-l.days*86400000).toISOString() }
+  ])
+
+  function addLocalActivity(action, fieldName, oldVal, newVal) {
+    setLocalActivity(prev => [{
+      action, field_name: fieldName,
+      old_value: oldVal ? String(oldVal) : null,
+      new_value: newVal ? String(newVal) : null,
+      agent_name: 'Admin',
+      created_at: new Date().toISOString()
+    }, ...prev])
+  }
 
   function addSpend(){
     if(!newSpend.a) return
     const updated={...listing,spend:[...listing.spend,{c:newSpend.c,a:parseFloat(newSpend.a),d:newSpend.d}]}
     setListing(updated); onChange(updated)
+    addLocalActivity('Spend Added', newSpend.c, null, '$'+newSpend.a)
+    logChange({ recordType:'listing', recordId:listing.id, recordName:listing.addr+', '+listing.city, action:'Spend Added', field:'spend', oldValue:null, newValue:newSpend.c+' $'+newSpend.a, agentName:'Admin' })
     setNewSpend({c:ADSPEND[0],a:'',d:new Date().toISOString().split('T')[0]})
   }
   function addShowing(){
     if(!newShowing.buyer) return
     const updated={...listing,showings:[...(listing.showings||[]),{...newShowing}]}
     setListing(updated); onChange(updated)
+    addLocalActivity('Showing Added', 'Showing', null, newShowing.buyer+' — '+newShowing.interest+' interest')
+    logChange({ recordType:'listing', recordId:listing.id, recordName:listing.addr+', '+listing.city, action:'Showing Added', field:'showing', oldValue:null, newValue:newShowing.buyer+' on '+newShowing.date, agentName:'Admin' })
     setNewShowing({buyer:'',date:'',agent:'',interest:'Hot',feedback:''})
   }
-  function changeStatus(s){const updated={...listing,status:s};setListing(updated);onChange(updated)}
+  function changeStatus(s){
+    const oldStatus = listing.status
+    const updated={...listing,status:s}
+    setListing(updated)
+    onChange(updated)
+    addLocalActivity('Status Changed', 'Status', oldStatus, s)
+    logChange({ recordType:'listing', recordId:listing.id, recordName:listing.addr+', '+listing.city, action:'Status Changed', field:'status', oldValue:oldStatus, newValue:s, agentName:'Admin' })
+  }
 
   return (
     <Modal onClose={onClose} maxWidth={660}>
@@ -346,7 +370,7 @@ function ListingDetail({ listing:l, onClose, onEdit, onChange }) {
 
         {tab==='activity' && (
           <div style={{padding:'8px 0'}}>
-            <RecordActivityFeed recordType="listing" recordId={listing.id}/>
+            <RecordActivityFeed recordType="listing" recordId={listing.id} localEntries={localActivity}/>
           </div>
         )}
 

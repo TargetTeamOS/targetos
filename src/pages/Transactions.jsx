@@ -20,6 +20,11 @@ const INIT_TX = [
 export function Transactions() {
   const [txs, setTxs] = useState(INIT_TX)
   const [showAdd, setShowAdd] = useState(false)
+  const [txActivity, setTxActivity] = useState({}) // {txId: [entries]}
+
+  function addTxActivity(txId, action, fieldName, oldVal, newVal) {
+    setTxActivity(prev => ({...prev, [txId]: [{ action, field_name:fieldName, old_value:oldVal?String(oldVal):null, new_value:newVal?String(newVal):null, agent_name:'Admin', created_at:new Date().toISOString() }, ...(prev[txId]||[])] }))
+  }
   const [expanded, setExpanded] = useState(null)
 
   const totalGCI = txs.reduce((s,t) => s+t.gci, 0)
@@ -30,11 +35,18 @@ export function Transactions() {
     setTxs(prev => prev.map(t => t.id===id ? {...t,...changes} : t))
   }
   function toggleTask(txId, taskIdx) {
+    const tx = txs.find(t=>t.id===txId)
+    const task = tx?.tasks[taskIdx]
     setTxs(prev => prev.map(t => {
       if(t.id !== txId) return t
       const tasks = t.tasks.map((tk,i) => i===taskIdx ? {...tk,done:!tk.done} : tk)
       return {...t, tasks}
     }))
+    if(task) {
+      const newDone = !task.done
+      addTxActivity(txId, newDone?'Task Completed':'Task Reopened', 'Punch List', task.t, newDone?'Done':'Pending')
+      logChange({recordType:'transaction',recordId:txId,recordName:tx?.addr||'',action:newDone?'Task Completed':'Task Reopened',field:'task',oldValue:task.t,newValue:newDone?'Done':'Pending',agentName:'Admin'})
+    }
   }
   function addTask(txId, text) {
     if(!text.trim()) return
@@ -166,7 +178,7 @@ export function Transactions() {
                     <span>Activity Log</span>
                     <span style={{fontSize:'10px',color:'var(--muted)',fontWeight:400}}>Every change tracked</span>
                   </div>
-                  <RecordActivityFeed recordType="transaction" recordId={tx.id} compact/>
+                  <RecordActivityFeed recordType="transaction" recordId={tx.id} localEntries={txActivity[tx.id]||[]} compact/>
                 </div>
 
                 {/* Actions */}
