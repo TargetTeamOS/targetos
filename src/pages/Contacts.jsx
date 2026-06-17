@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { AGENTS, SOURCES, PROPERTY_TYPES, CONTACT_TYPES } from '../lib/constants'
 import { Card, CardHeader, Badge, Avatar, Btn, Modal, ModalTitle, Input, Select, Grid2, Grid3, SkeletonTable } from '../components/UI'
+import { ContactDetail } from './ContactDetail'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
 const roleColor = r => ({ buyer:'#0EA5E9', seller:'#10B981', investor:'#7C3AED', tenant:'#F59E0B' }[r] || '#64748B')
@@ -18,6 +19,7 @@ export function Contacts() {
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
   const [editMode, setEditMode] = useState(false)
+  const [fullPageId, setFullPageId] = useState(null)
 
   useEffect(() => { loadContacts() }, [])
 
@@ -54,6 +56,11 @@ export function Contacts() {
     return true
   }
 
+  // Show full page contact detail
+  if(fullPageId) return (
+    <ContactDetail contactId={fullPageId} onBack={()=>setFullPageId(null)}/>
+  )
+
   return (
     <div>
       {/* Header */}
@@ -89,7 +96,8 @@ export function Contacts() {
         ) : filtered.map(c => (
           <ContactTableRow key={c.id} contact={c}
             onSelect={c=>{setSelected(c);setEditMode(false)}}
-            onDelete={deleteContact}/>
+            onDelete={deleteContact}
+            onOpenFull={id=>setFullPageId(id)}/>
         ))}
       </Card>
 
@@ -137,7 +145,7 @@ function FilterSelect({ value, onChange, options, placeholder }) {
   )
 }
 
-function ContactTableRow({ contact: c, onSelect, onDelete }) {
+function ContactTableRow({ contact: c, onSelect, onDelete, onOpenFull }) {
   const ag = AGENTS.find(a => a.name === c.assigned_agent)
   return (
     <div onClick={()=>onSelect(c)}
@@ -146,7 +154,7 @@ function ContactTableRow({ contact: c, onSelect, onDelete }) {
       <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
         <Avatar name={c.first_name+' '+(c.last_name||'')} color={roleColor(c.role)} size={36}/>
         <div>
-          <div style={{fontSize:'13px',fontWeight:600}}>{c.first_name} {c.last_name||''}</div>
+          <div onClick={e=>{e.stopPropagation();onOpenFull(c.id)}} style={{fontSize:'13px',fontWeight:700,color:'var(--red)',cursor:'pointer',textDecoration:'none',display:'inline'}} onMouseEnter={e=>e.currentTarget.style.textDecoration='underline'} onMouseLeave={e=>e.currentTarget.style.textDecoration='none'}>{c.first_name} {c.last_name||''}</div>
           <div style={{fontSize:'11px',color:'var(--muted)'}}>{c.phone||c.email||'No contact info'}</div>
         </div>
       </div>
@@ -257,248 +265,3 @@ function ContactFormModal({ title, initial={}, onClose, onSave }) {
 // ─── CONTACT DETAIL with inline edit ───────────────────────────────
 const TABS = ['Overview','Activity','Tasks','Appointments','Documents','Listing Alert','Deals']
 
-function ContactDetail({ contact, editMode, onEdit, onClose, onDelete, onSave }) {
-  const [tab, setTab] = useState('Overview')
-  const [notes, setNotes] = useState([])
-  const [newNote, setNewNote] = useState('')
-
-  // If edit mode open the full form modal
-  if(editMode) {
-    return (
-      <ContactFormModal
-        title={'Edit — ' + contact.first_name + ' ' + (contact.last_name||'')}
-        initial={contact}
-        onClose={onClose}
-        onSave={onSave}
-      />
-    )
-  }
-
-  function addNote() {
-    if(!newNote.trim()) return
-    setNotes(n=>[{text:newNote.trim(),time:new Date().toLocaleString()},...n])
-    setNewNote('')
-  }
-
-  return (
-    <Modal onClose={onClose} maxWidth={700}>
-      {/* Header */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingBottom:'16px',borderBottom:'1px solid var(--border)'}}>
-        <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
-          <Avatar name={contact.first_name+' '+(contact.last_name||'')} color={roleColor(contact.role)} size={48}/>
-          <div>
-            <div style={{fontSize:'20px',fontWeight:900}}>{contact.first_name} {contact.last_name||''}</div>
-            <div style={{display:'flex',alignItems:'center',gap:'8px',marginTop:'4px'}}>
-              <Badge label={contact.status||'New'}/>
-              <span style={{fontSize:'12px',color:'var(--muted)',textTransform:'capitalize'}}>{contact.role||'contact'}</span>
-              {contact.tag && <span style={{fontSize:'11px',background:'rgba(204,34,0,.1)',color:'#CC2200',padding:'2px 9px',borderRadius:'20px'}}>{contact.tag}</span>}
-            </div>
-          </div>
-        </div>
-        <div style={{display:'flex',gap:'8px'}}>
-          {/* EDIT BUTTON */}
-          <Btn size="sm" variant="ghost" onClick={onEdit}>✏️ Edit</Btn>
-          {contact.phone && <Btn size="sm" onClick={()=>window.location.href='tel:'+contact.phone.replace(/\D/g,'')}>Call</Btn>}
-          {contact.phone && <Btn size="sm" variant="secondary" onClick={()=>window.location.href='sms:'+contact.phone.replace(/\D/g,'')}>Text</Btn>}
-          {contact.email && <Btn size="sm" variant="purple" onClick={()=>window.location.href='mailto:'+contact.email}>Email</Btn>}
-          <button onClick={onClose} style={{background:'none',border:'none',fontSize:'20px',cursor:'pointer',color:'var(--muted)'}}>✕</button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:'16px',overflowX:'auto'}}>
-        {TABS.map(t=>(
-          <button key={t} onClick={()=>setTab(t)}
-            style={{padding:'10px 14px',background:'transparent',border:'none',fontFamily:'Inter,system-ui,sans-serif',fontSize:'12px',fontWeight:600,cursor:'pointer',color:tab===t?'#CC2200':'var(--muted)',borderBottom:tab===t?'2px solid #CC2200':'2px solid transparent',whiteSpace:'nowrap'}}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      <div style={{maxHeight:'460px',overflowY:'auto'}}>
-        {tab==='Overview' && <ContactOverviewTab c={contact}/>}
-        {tab==='Activity' && (
-          <>
-            <div style={{display:'flex',gap:'7px',marginBottom:'14px'}}>
-              <input value={newNote} onChange={e=>setNewNote(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addNote()}
-                placeholder="Add a note..." style={{flex:1,background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',padding:'10px 13px',outline:'none',fontFamily:'Inter,system-ui,sans-serif'}}
-                onFocus={e=>e.target.style.borderColor='#CC2200'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
-              <Btn onClick={addNote}>Save Note</Btn>
-            </div>
-            {notes.length===0
-              ? <div style={{color:'var(--muted)',fontSize:'12px',textAlign:'center',padding:'20px'}}>No activity yet — add a note above</div>
-              : notes.map((n,i)=>(
-                <div key={i} style={{display:'flex',gap:'10px',padding:'9px 0',borderBottom:'1px solid var(--border)'}}>
-                  <span style={{fontSize:'18px'}}>📝</span>
-                  <div><div style={{fontSize:'12px'}}>{n.text}</div><div style={{fontSize:'10px',color:'var(--muted)'}}>{n.time}</div></div>
-                </div>
-              ))
-            }
-          </>
-        )}
-        {tab==='Tasks'        && <ContactTasksTab contact={contact}/>}
-        {tab==='Appointments' && <ContactApptsTab contact={contact}/>}
-        {tab==='Documents'    && <ContactDocsTab  contact={contact}/>}
-        {tab==='Listing Alert'&& <ContactAlertsTab contact={contact}/>}
-        {tab==='Deals'        && <ContactDealsTab  contact={contact}/>}
-      </div>
-
-      {/* Footer */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'16px',paddingTop:'14px',borderTop:'1px solid var(--border)'}}>
-        <button onClick={()=>onDelete(contact.id)} style={{background:'none',border:'1px solid #FECACA',borderRadius:'8px',color:'#DC2626',fontSize:'12px',padding:'7px 14px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>Delete Contact</button>
-        <Btn onClick={onEdit}>✏️ Edit Contact</Btn>
-      </div>
-    </Modal>
-  )
-}
-
-function Field({ label, value }) {
-  return (
-    <div style={{background:'var(--dim)',borderRadius:'9px',padding:'11px'}}>
-      <div style={{color:'var(--muted)',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'3px'}}>{label}</div>
-      <div style={{fontSize:'13px',fontWeight:600,wordBreak:'break-word'}}>{value||'—'}</div>
-    </div>
-  )
-}
-
-function ContactOverviewTab({ c }) {
-  const ag = AGENTS.find(a=>a.name===c.assigned_agent)
-  return (
-    <>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px',marginBottom:'14px'}}>
-        <Field label="Phone"       value={c.phone}/>
-        <Field label="Phone 2"     value={c.phone2}/>
-        <Field label="Email"       value={c.email}/>
-        <Field label="Email 2"     value={c.email2}/>
-        <Field label="Source"      value={c.source}/>
-        <Field label="Agent"       value={ag?ag.name:'Unassigned'}/>
-        <Field label="Budget"      value={c.budget_min&&c.budget_max?fmt$(c.budget_min)+' – '+fmt$(c.budget_max):c.budget_max?fmt$(c.budget_max):null}/>
-        <Field label="Areas"       value={c.preferred_areas}/>
-        <Field label="Prop. Type"  value={c.property_type_interest||'Any'}/>
-        <Field label="Min Beds"    value={c.min_beds}/>
-        <Field label="Birthday"    value={c.birthday}/>
-        <Field label="Anniversary" value={c.closing_anniversary}/>
-        <Field label="Tax Info"    value={c.tax_info}/>
-        <Field label="Tag"         value={c.tag||'None'}/>
-        <Field label="City"        value={c.city}/>
-      </div>
-      {c.notes && (
-        <div style={{background:'var(--dim)',borderRadius:'9px',padding:'12px'}}>
-          <div style={{color:'var(--muted)',fontSize:'10px',fontWeight:700,textTransform:'uppercase',marginBottom:'5px'}}>Notes</div>
-          <div style={{fontSize:'13px',lineHeight:1.7}}>{c.notes}</div>
-        </div>
-      )}
-    </>
-  )
-}
-
-function ContactTasksTab({ contact }) {
-  const [tasks, setTasks] = useState([])
-  const [val, setVal] = useState('')
-  return (
-    <>
-      <div style={{display:'flex',gap:'7px',marginBottom:'14px'}}>
-        <input value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>e.key==='Enter'&&val.trim()&&(setTasks(t=>[{title:val.trim(),done:false},...t]),setVal(''))}
-          placeholder="Add a task..." style={{flex:1,background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',padding:'10px 13px',outline:'none',fontFamily:'Inter,system-ui,sans-serif'}}/>
-        <Btn onClick={()=>val.trim()&&(setTasks(t=>[{title:val.trim(),done:false},...t]),setVal(''))}>Add</Btn>
-      </div>
-      {tasks.map((t,i)=>(
-        <div key={i} style={{display:'flex',alignItems:'center',gap:'9px',padding:'9px 0',borderBottom:'1px solid var(--border)'}}>
-          <div onClick={()=>setTasks(prev=>prev.map((x,j)=>j===i?{...x,done:!x.done}:x))} style={{width:18,height:18,borderRadius:'5px',border:'2px solid '+(t.done?'#16A34A':'var(--border)'),background:t.done?'#16A34A':'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#fff',fontSize:'10px'}}>{t.done&&'✓'}</div>
-          <span style={{fontSize:'13px',textDecoration:t.done?'line-through':'none',opacity:t.done?.5:1}}>{t.title}</span>
-        </div>
-      ))}
-      {tasks.length===0&&<div style={{color:'var(--muted)',fontSize:'12px',textAlign:'center',padding:'20px'}}>No tasks yet</div>}
-    </>
-  )
-}
-
-function ContactApptsTab({ contact }) {
-  const [appts, setAppts] = useState([])
-  const [form, setForm] = useState({title:'',date:'',time:'10:00',location:''})
-  const [showForm, setShowForm] = useState(false)
-  return (
-    <>
-      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'12px'}}>
-        <span style={{fontSize:'12px',fontWeight:600}}>{appts.length} appointments</span>
-        <Btn size="sm" onClick={()=>setShowForm(true)}>+ Schedule</Btn>
-      </div>
-      {showForm&&(
-        <div style={{background:'var(--dim)',borderRadius:'10px',padding:'13px',marginBottom:'13px'}}>
-          <Input label="Title" value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} placeholder="Property showing..."/>
-          <Grid2 gap={10}><Input label="Date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} type="date"/><Input label="Time" value={form.time} onChange={e=>setForm(f=>({...f,time:e.target.value}))} type="time"/></Grid2>
-          <Input label="Location" value={form.location} onChange={e=>setForm(f=>({...f,location:e.target.value}))} placeholder="Address or office"/>
-          <div style={{display:'flex',gap:'7px',justifyContent:'flex-end'}}><Btn variant="ghost" size="sm" onClick={()=>setShowForm(false)}>Cancel</Btn><Btn size="sm" onClick={()=>{if(form.title){setAppts(a=>[{...form},...a]);setShowForm(false);setForm({title:'',date:'',time:'10:00',location:''})}}}>Schedule</Btn></div>
-        </div>
-      )}
-      {appts.map((a,i)=>(
-        <div key={i} style={{background:'var(--dim)',borderRadius:'9px',padding:'11px',marginBottom:'8px'}}>
-          <div style={{fontSize:'13px',fontWeight:700,marginBottom:'3px'}}>{a.title}</div>
-          <div style={{fontSize:'11px',color:'var(--muted)'}}>{a.date} at {a.time}{a.location?' · '+a.location:''}</div>
-          <div style={{display:'flex',gap:'6px',marginTop:'8px'}}>
-            {contact.email&&<Btn size="xs" variant="ghost" onClick={()=>window.location.href='mailto:'+contact.email+'?subject=Appointment+Reminder'}>Send Invite</Btn>}
-            <Btn size="xs" variant="ghost" onClick={()=>window.open('https://calendar.google.com/calendar/r/eventedit?text='+encodeURIComponent(a.title),'_blank')}>Google Cal</Btn>
-          </div>
-        </div>
-      ))}
-      {appts.length===0&&!showForm&&<div style={{color:'var(--muted)',fontSize:'12px',textAlign:'center',padding:'20px'}}>No appointments scheduled</div>}
-    </>
-  )
-}
-
-function ContactDocsTab({ contact }) {
-  const [docs, setDocs] = useState([])
-  const [name, setName] = useState(''); const [type, setType] = useState('Pre-Approval Letter')
-  return (
-    <>
-      <div style={{display:'flex',gap:'7px',marginBottom:'13px',flexWrap:'wrap'}}>
-        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Document name..." style={{flex:1,background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',padding:'8px',outline:'none',fontFamily:'Inter,system-ui,sans-serif',minWidth:'120px'}}/>
-        <select value={type} onChange={e=>setType(e.target.value)} style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'11px',padding:'8px',outline:'none'}}>
-          {['Pre-Approval Letter','Proof of Funds','ID','Contract','Offer Sheet','Inspection Report','Other'].map(t=><option key={t}>{t}</option>)}
-        </select>
-        <Btn size="sm" onClick={()=>{if(name.trim()){setDocs(d=>[{name:name.trim(),type,date:new Date().toLocaleDateString()},...d]);setName('')}}}>Upload</Btn>
-      </div>
-      {docs.map((d,i)=>(
-        <div key={i} style={{background:'var(--dim)',borderRadius:'9px',padding:'10px',marginBottom:'7px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div><div style={{fontSize:'13px',fontWeight:600}}>📄 {d.name}</div><div style={{fontSize:'10px',color:'var(--muted)'}}>{d.date} · {d.type}</div></div>
-          <button onClick={()=>setDocs(prev=>prev.filter((_,j)=>j!==i))} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'16px'}}>🗑</button>
-        </div>
-      ))}
-      {docs.length===0&&<div style={{color:'var(--muted)',fontSize:'12px',textAlign:'center',padding:'20px'}}>No documents uploaded</div>}
-    </>
-  )
-}
-
-function ContactAlertsTab({ contact }) {
-  const [alerts, setAlerts] = useState([])
-  const [form, setForm] = useState({minp:contact.budget_min||'',maxp:contact.budget_max||'',area:contact.preferred_areas||'',type:'',freq:'Instant'})
-  return (
-    <>
-      <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'10px',padding:'14px',marginBottom:'14px'}}>
-        <div style={{fontSize:'13px',fontWeight:700,marginBottom:'4px'}}>Listing Alert</div>
-        <div style={{fontSize:'11px',color:'var(--muted)',marginBottom:'12px'}}>Client gets emailed when a matching listing hits the market.</div>
-        <Grid2 gap={10}><Input label="Min Price ($)" value={form.minp} onChange={e=>setForm(f=>({...f,minp:e.target.value}))} type="number"/><Input label="Max Price ($)" value={form.maxp} onChange={e=>setForm(f=>({...f,maxp:e.target.value}))} type="number"/></Grid2>
-        <Grid2 gap={10}><Input label="Area" value={form.area} onChange={e=>setForm(f=>({...f,area:e.target.value}))} placeholder="Suffern, Monsey..."/><Select label="Frequency" value={form.freq} onChange={e=>setForm(f=>({...f,freq:e.target.value}))} options={['Instant','Daily Digest','Weekly']}/></Grid2>
-        <Btn style={{width:'100%'}} onClick={()=>{setAlerts(a=>[{...form,minp:parseFloat(form.minp)||0,maxp:parseFloat(form.maxp)||0},...a]);alert('Listing alert set!')}}>Set Alert</Btn>
-      </div>
-      {alerts.map((a,i)=>(
-        <div key={i} style={{background:'var(--dim)',borderRadius:'9px',padding:'10px',marginBottom:'7px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div><div style={{fontSize:'12px',fontWeight:600}}>${a.minp.toLocaleString()} – ${a.maxp.toLocaleString()} · {a.area}</div><div style={{fontSize:'11px',color:'var(--muted)'}}>{a.freq}</div></div>
-          <Badge label="Active"/>
-        </div>
-      ))}
-    </>
-  )
-}
-
-function ContactDealsTab({ contact }) {
-  return <div style={{color:'var(--muted)',fontSize:'12px',textAlign:'center',padding:'30px'}}>No deals linked yet.<br/><span style={{fontSize:'11px'}}>Deals link automatically once connected in Production board.</span></div>
-}
-
-function exportCSV(contacts) {
-  const h = 'Name,Email,Phone,Role,Status,Source,Budget\n'
-  const r = contacts.map(c=>`"${c.first_name} ${c.last_name||''}","${c.email||''}","${c.phone||''}","${c.role||''}","${c.status||''}","${c.source||''}","${c.budget_max||''}"`)
-  const b = new Blob([h+r.join('\n')],{type:'text/csv'})
-  const a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='contacts.csv'; a.click()
-}
