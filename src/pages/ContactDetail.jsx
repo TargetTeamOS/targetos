@@ -4,6 +4,8 @@ import { useApp } from '../context/AppContext'
 import { AGENTS, SOURCES, PROPERTY_TYPES, CONTACT_TYPES } from '../lib/constants'
 import { Badge, Btn, Input, Select, Grid2, Grid3 } from '../components/UI'
 import { useConfirm } from '../components/ConfirmDialog'
+import { logChange, logFieldChanges } from '../lib/activityLog'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
 const roleColor = r => ({buyer:'#0EA5E9',seller:'#10B981',investor:'#7C3AED',tenant:'#F59E0B'}[r]||'#64748B')
@@ -22,6 +24,7 @@ export function ContactDetail({ contactId, onBack }) {
   const [editVal, setEditVal] = useState('')
   const [saving, setSaving] = useState(false)
   const [editingAll, setEditingAll] = useState(false)
+  const [localActivity, setLocalActivity] = useState([])
   const [form, setForm] = useState({})
 
   useEffect(() => {
@@ -35,12 +38,25 @@ export function ContactDetail({ contactId, onBack }) {
   }, [contactId])
 
   async function saveField(key, val) {
+    const oldVal = contact[key]
     const { data, error } = await supabase.from('contacts').update({[key]: val}).eq('id', contactId).select()
     if(error) { toast('Error: '+error.message, '#DC2626'); return }
     setContact(prev => ({...prev, [key]: val}))
     setEditField(null)
     toast('Saved!')
-    log({ cat:'contact', action:'Updated', subject: contact.first_name+' '+(contact.last_name||''), detail: key+' updated' })
+    // Log the change with before/after
+    const agentName = state.currentAgent?.name || 'Admin'
+    await logChange({
+      recordType: 'contact',
+      recordId: contactId,
+      recordName: contact.first_name+' '+(contact.last_name||''),
+      action: 'Updated',
+      field: key,
+      oldValue: oldVal,
+      newValue: val,
+      agentName,
+      userId: state.user?.id,
+    })
   }
 
   async function saveAll() {
@@ -49,12 +65,27 @@ export function ContactDetail({ contactId, onBack }) {
     const { data, error } = await supabase.from('contacts').update(updates).eq('id', contactId).select()
     setSaving(false)
     if(error) { toast('Error: '+error.message, '#DC2626'); return }
+    const agentName = state.currentAgent?.name || 'Admin'
+    await logFieldChanges({
+      recordType: 'contact',
+      recordId: contactId,
+      recordName: contact.first_name+' '+(contact.last_name||''),
+      before: contact,
+      after: updates,
+      agentName,
+      userId: state.user?.id,
+    })
     setContact(data[0]); setForm(data[0]); setEditingAll(false)
     toast('Contact saved!')
   }
 
   function addActivity(type, icon, color, title, detail='') {
-    setActivities(prev => [{ type, icon, color, title, detail, time: new Date().toLocaleString() }, ...prev])
+    const entry = { type, icon, color, title, detail, time: new Date().toLocaleString(), action: title.split(':')[0]||'Note Added', agent_name: state.currentAgent?.name||'Admin', created_at: new Date().toISOString() }
+    setActivities(prev => [entry, ...prev])
+    setLocalActivity(prev => [entry, ...prev])
+    // Log to DB
+    const agentName = state.currentAgent?.name || 'Admin'
+    logChange({ recordType:'contact', recordId:contactId, recordName:contact?.first_name+' '+(contact?.last_name||''), action:title.split(':')[0]||'Note Added', field:null, agentName, userId:state.user?.id, extra:title })
   }
 
   function saveNote() {
@@ -301,20 +332,13 @@ export function ContactDetail({ contactId, onBack }) {
               ))}
             </div>
 
-            {/* Activity list */}
+            {/* Activity Feed — full audit trail */}
             <div style={{overflowY:'auto',flex:1,padding:'14px'}}>
-              {activities.length===0 ? (
-                <div style={{textAlign:'center',padding:'32px',color:'var(--muted)'}}>No activity yet — add a note above</div>
-              ) : activities.map((a,i)=>(
-                <div key={i} style={{display:'flex',gap:'12px',marginBottom:'16px',alignItems:'flex-start'}}>
-                  <div style={{width:36,height:36,borderRadius:'50%',background:a.color+'18',border:'2px solid '+a.color+'44',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px',flexShrink:0}}>{a.icon}</div>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:'13px',fontWeight:600,lineHeight:1.5,marginBottom:'2px'}}>{a.title}</div>
-                    {a.detail && <div style={{fontSize:'12px',color:'var(--muted)'}}>{a.detail}</div>}
-                    <div style={{fontSize:'10px',color:'var(--muted)',marginTop:'4px'}}>{a.time}</div>
-                  </div>
-                </div>
-              ))}
+              <RecordActivityFeed
+                recordType="contact"
+                recordId={contactId}
+                localEntries={localActivity}
+              />
             </div>
           </div>
         </div>

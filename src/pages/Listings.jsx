@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { AGENTS } from '../lib/constants'
+import { logChange, logFieldChanges } from '../lib/activityLog'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { Card, CardHeader, Badge, Btn, Modal, ModalTitle, Input, Select, Grid2, Grid3, Grid4, StatCard } from '../components/UI'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
@@ -104,7 +106,10 @@ export function Listings() {
             if(updated.id==='new'){
               const newL = {...updated, id:'l'+Date.now(), days:0, spend:[], showings:[]}
               setListings(prev=>[newL,...prev])
+              logChange({ recordType:'listing', recordId:newL.id, recordName:newL.addr+', '+newL.city, action:'Created', agentName:'Admin' })
             } else {
+              const original = listings.find(l=>l.id===updated.id)
+              logFieldChanges({ recordType:'listing', recordId:updated.id, recordName:updated.addr+', '+updated.city, before:original, after:updated, agentName:'Admin' })
               updateListing(updated.id, updated)
             }
             setEditListing(null)
@@ -285,7 +290,7 @@ function ListingDetail({ listing:l, onClose, onEdit, onChange }) {
 
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:'16px'}}>
-        {[['details','Details'],['spend','Ad Spend'],['showings','Showings']].map(([k,v])=>(
+        {[['details','Details'],['spend','Ad Spend'],['showings','Showings'],['activity','Activity Log']].map(([k,v])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:'10px 14px',background:'transparent',border:'none',fontFamily:'Inter,system-ui,sans-serif',fontSize:'12px',fontWeight:600,cursor:'pointer',color:tab===k?'#CC2200':'var(--muted)',borderBottom:tab===k?'2px solid #CC2200':'2px solid transparent'}}>
             {v}
           </button>
@@ -337,6 +342,12 @@ function ListingDetail({ listing:l, onClose, onEdit, onChange }) {
               </div>
             ))}
           </>
+        )}
+
+        {tab==='activity' && (
+          <div style={{padding:'8px 0'}}>
+            <RecordActivityFeed recordType="listing" recordId={listing.id}/>
+          </div>
         )}
 
         {tab==='showings' && (

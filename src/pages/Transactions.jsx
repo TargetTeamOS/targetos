@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { Card, CardHeader, Badge, Btn, Modal, ModalTitle, Input, Select, Grid2, Grid3, Grid4, StatCard } from '../components/UI'
+import { logChange } from '../lib/activityLog'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { AGENTS, SOURCES, PROPERTY_TYPES, CTC_STAGES } from '../lib/constants'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
@@ -157,6 +159,15 @@ export function Transactions() {
 
                 {/* Notes */}
                 {tx.notes && <div style={{background:'var(--dim)',borderRadius:'9px',padding:'11px',marginBottom:'13px',fontSize:'12px'}}>{tx.notes}</div>}
+
+                {/* Activity Log */}
+                <div style={{marginBottom:'14px'}}>
+                  <div style={{fontSize:'12px',fontWeight:700,marginBottom:'10px',display:'flex',alignItems:'center',gap:'7px'}}>
+                    <span>Activity Log</span>
+                    <span style={{fontSize:'10px',color:'var(--muted)',fontWeight:400}}>Every change tracked</span>
+                  </div>
+                  <RecordActivityFeed recordType="transaction" recordId={tx.id} compact/>
+                </div>
 
                 {/* Actions */}
                 <div style={{display:'flex',gap:'7px',flexWrap:'wrap'}}>

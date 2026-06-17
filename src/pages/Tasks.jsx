@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { Card, CardHeader, Btn, Modal, ModalTitle, Input, Select, Grid2, StatCard, Grid4 } from '../components/UI'
 import { useConfirm } from '../components/ConfirmDialog'
+import { logChange } from '../lib/activityLog'
 
 export function Tasks() {
   const { state, toast, log } = useApp()
@@ -25,6 +26,7 @@ export function Tasks() {
     setTasks(prev => prev.map(t => t.id===task.id ? {...t,status:ns} : t))
     toast(ns==='done' ? 'Task completed!' : 'Task reopened')
     log({cat:'task',action:ns==='done'?'Completed':'Reopened',subject:task.title})
+    logChange({ recordType:'task', recordId:task.id, recordName:task.title, action:ns==='done'?'Completed':'Reopened', field:'status', oldValue:task.status, newValue:ns, agentName:state.currentAgent?.name||'Admin', userId:state.user?.id })
   }
 
   async function del(id) {
