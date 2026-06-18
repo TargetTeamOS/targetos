@@ -39,6 +39,7 @@ const DEFAULT_NAV = [
   { id:'settings',     label:'Settings',        icon:'⚙'  },
 ]
 
+const NAV_VERSION = 'v5' // bump this to force sidebar reset for all users
 const PAGE_TITLES = Object.fromEntries(DEFAULT_NAV.filter(n=>n.id).map(n=>[n.id,n.label]))
 
 const FONT_SIZES = ['11px','12px','13px','14px','15px']
@@ -59,17 +60,24 @@ export function Layout({ page, setPage, children }) {
   const [showEditor, setShowEditor] = useState(false)
   const [nav, setNav] = useState(() => {
     try {
+      const savedVersion = localStorage.getItem('targetos_nav_version')
       const saved = localStorage.getItem('targetos_nav')
-      if(!saved) return DEFAULT_NAV
+      // Force reset if version changed or new items missing
+      if(savedVersion !== NAV_VERSION || !saved) {
+        localStorage.setItem('targetos_nav_version', NAV_VERSION)
+        localStorage.removeItem('targetos_nav')
+        return DEFAULT_NAV
+      }
       const savedNav = JSON.parse(saved)
-      // Merge: add any new items from DEFAULT_NAV that aren't in saved version
+      // Also merge any new items not in saved version
       const savedIds = new Set(savedNav.filter(n=>n.id).map(n=>n.id))
       const newItems = DEFAULT_NAV.filter(n => n.id && !savedIds.has(n.id))
-      if(newItems.length === 0) return savedNav
-      // Insert new items before Settings (last item)
-      const withoutSettings = savedNav.filter(n=>n.id!=='settings')
-      const settings = savedNav.filter(n=>n.id==='settings')
-      return [...withoutSettings, ...newItems, ...settings]
+      if(newItems.length > 0) {
+        const withoutLast = savedNav.filter(n=>n.id!=='settings')
+        const last = savedNav.filter(n=>n.id==='settings')
+        return [...withoutLast, ...newItems, ...last]
+      }
+      return savedNav
     } catch { return DEFAULT_NAV }
   })
 
