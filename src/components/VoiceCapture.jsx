@@ -228,8 +228,18 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
     }
 
     if(actions.includes('task') && form.taskTitle.trim()) {
-      await supabase.from('tasks').insert([{ title:form.taskTitle.trim(), priority:'high', status:'pending', due_date:form.taskDue||null, assigned_to:state.user?.id, created_by:state.user?.id }])
-      saved.push({ type:'task', label:form.taskTitle.slice(0,50) })
+      // Include address/contact in task title for full context
+      const taskCtx = form.address ? ` — ${form.address}` : (actions.includes('contact')&&form.first ? ` — ${form.first} ${form.last}`.trim() : '')
+      const fullTitle = form.taskTitle.trim() + taskCtx
+      await supabase.from('tasks').insert([{
+        title:       fullTitle.slice(0,200),
+        priority:    'high',
+        status:      'pending',
+        due_date:    form.taskDue || null,
+        assigned_to: state.user?.id,
+        created_by:  state.user?.id,
+      }])
+      saved.push({ type:'task', label:fullTitle.slice(0,60), linkedType: form.address?'listing':'contact' })
     }
 
     if(actions.includes('schedule')) {
@@ -434,9 +444,14 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
           <div style={{fontSize:'15px',fontWeight:800,marginBottom:'12px'}}>{done.message}</div>
           <div style={{background:'var(--dim)',borderRadius:'12px',padding:'12px',marginBottom:'12px',textAlign:'left'}}>
             {done.saved.map((s,i)=>(
-              <div key={i} style={{display:'flex',alignItems:'center',gap:'8px',padding:'6px 0',borderBottom:i<done.saved.length-1?'1px solid var(--border)':'none',fontSize:'12px',fontWeight:600}}>
-                <span>{s.type==='contact'?'👤':s.type==='task'?'✓':s.type==='schedule'?'📅':s.type==='reminder'?'⏰':'📝'}</span>
-                <span>{s.label}</span>
+              <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 0',borderBottom:i<done.saved.length-1?'1px solid var(--border)':'none',fontSize:'12px',fontWeight:600}}>
+                <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                  <span>{s.type==='contact'?'👤':s.type==='task'?'✓':s.type==='schedule'?'📅':s.type==='reminder'?'⏰':'📝'}</span>
+                  <span>{s.label}</span>
+                </div>
+                {s.linkedId && s.linkedType==='contact' && onClose && (
+                  <button onClick={()=>{onClose();}} style={{background:'rgba(14,165,233,.1)',border:'none',borderRadius:'6px',color:'#0EA5E9',fontSize:'10px',fontWeight:700,padding:'3px 8px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>View Contact →</button>
+                )}
               </div>
             ))}
           </div>
