@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
-// DAILY BRIEFING EMAIL — Beautiful redesign
-// No GCI section, everything clickable, clean modern layout
+// DAILY BRIEFING EMAIL — Full redesign
+// Deep links to exact records, clean table-based layout
 // ═══════════════════════════════════════════════════════════════
 
 export const AGENT_EMAILS = {
@@ -23,19 +23,17 @@ const QUOTES = [
   { q:"In real estate, relationships are your inventory.", a:"Target Team" },
   { q:"Be so good they can't ignore you.", a:"Steve Martin" },
   { q:"The secret of getting ahead is getting started.", a:"Mark Twain" },
-  { q:"Success is not final, failure is not fatal — it is the courage to continue that counts.", a:"Winston Churchill" },
+  { q:"Success is not final, failure is not fatal — it is the courage to continue.", a:"Winston Churchill" },
   { q:"Push yourself, because no one else is going to do it for you.", a:"Unknown" },
-  { q:"Great things never come from comfort zones.", a:"Unknown" },
   { q:"Wake up with determination. Go to bed with satisfaction.", a:"Unknown" },
   { q:"Do something today that your future self will thank you for.", a:"Unknown" },
   { q:"Sometimes later becomes never. Do it now.", a:"Unknown" },
-  { q:"Discipline is choosing between what you want now and what you want most.", a:"Unknown" },
-  { q:"The best time to plant a tree was 20 years ago. The second best time is now.", a:"Chinese Proverb" },
   { q:"A real estate agent's most powerful asset is their follow-up.", a:"Target Team" },
+  { q:"Discipline is choosing between what you want now and what you want most.", a:"Unknown" },
 ]
 
 function getQuote() {
-  const i = (new Date().getDay() + new Date().getDate()) % QUOTES.length
+  const i = (new Date().getDay() * 3 + new Date().getDate()) % QUOTES.length
   return QUOTES[i]
 }
 
@@ -46,206 +44,305 @@ function getDayStr() {
   })
 }
 
-function priorityColor(p) {
-  return { urgent:'#DC2626', high:'#D97706', normal:'#0EA5E9', low:'#94A3B8' }[p||'normal'] || '#0EA5E9'
+function priorityStyle(p) {
+  const s = {
+    urgent: { bg:'#FEF2F2', border:'#FCA5A5', text:'#DC2626', dot:'#DC2626', label:'URGENT' },
+    high:   { bg:'#FFFBEB', border:'#FDE68A', text:'#D97706', dot:'#D97706', label:'HIGH'   },
+    normal: { bg:'#EFF6FF', border:'#BFDBFE', text:'#2563EB', dot:'#2563EB', label:'NORMAL' },
+    low:    { bg:'#F8FAFC', border:'#E2E8F0', text:'#94A3B8', dot:'#CBD5E1', label:'LOW'    },
+  }
+  return s[p||'normal'] || s.normal
 }
 
-function priorityBg(p) {
-  return { urgent:'#FEF2F2', high:'#FFFBEB', normal:'#EFF6FF', low:'#F8FAFC' }[p||'normal'] || '#EFF6FF'
-}
-
-export function buildDailyEmail({ agentName, tasks=[], overdueTasks=[], appointments=[], agentColor='#CC2200' }) {
+// ── MAIN BUILD FUNCTION ───────────────────────────────────────
+export function buildDailyEmail({
+  agentName, tasks=[], overdueTasks=[], appointments=[],
+  agentColor='#CC2200', showQuote=true,
+  // Customization options
+  headerStyle='gradient',    // 'gradient' | 'solid' | 'minimal'
+  accentColor,               // override agent color
+  greeting,                  // custom greeting text
+  footerNote,                // custom footer note
+  showProgress=false,        // show units/production/gci progress
+  agentProgress=null,        // { units, unitGoal, prod, prodGoal, gci, gciGoal }
+}) {
+  const color = accentColor || agentColor
   const quote = getQuote()
   const day = getDayStr()
   const firstName = agentName.split(' ')[0]
-  const hour = new Date().getHours()
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-  const ini = (agentName.split(' ')[0][0]||'?') + (agentName.split(' ')[1]?.[0]||'')
+  const hour = new Date().toLocaleString('en-US',{hour:'numeric',hour12:false,timeZone:'America/New_York'})
+  const timeGreeting = Number(hour) < 12 ? 'Good morning' : Number(hour) < 17 ? 'Good afternoon' : 'Good evening'
+  const customGreeting = greeting || `${timeGreeting}, ${firstName}!`
+  const ini = (agentName[0]||'?') + (agentName.split(' ')[1]?.[0]||'')
+  const fmt$ = n => '$' + Number(n||0).toLocaleString()
+  const pct = (a,g) => Math.min(Math.round((a||0)/(g||1)*100),100)
 
-  // Task rows — each links to tasks page
-  const taskRows = tasks.length > 0
-    ? tasks.map(t => `
-      <tr>
-        <td style="padding:0;">
-          <a href="${APP}#tasks" style="text-decoration:none;display:block;padding:13px 20px;border-bottom:1px solid #F1F5F9;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td width="20" valign="top" style="padding-top:2px;">
-                  <div style="width:16px;height:16px;border-radius:4px;border:2px solid ${priorityColor(t.priority)};background:transparent;"></div>
-                </td>
-                <td style="padding-left:10px;">
-                  <div style="font-size:13px;font-weight:600;color:#1E293B;line-height:1.4;">${t.title}</div>
-                  <div style="font-size:11px;color:${priorityColor(t.priority)};margin-top:3px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">
-                    ${t.priority||'normal'} priority${t.due_date ? ' · Due today' : ''}
-                  </div>
-                </td>
-                <td width="60" align="right" valign="middle">
-                  <span style="font-size:10px;background:${priorityBg(t.priority)};color:${priorityColor(t.priority)};padding:3px 8px;border-radius:20px;font-weight:700;">Open →</span>
-                </td>
-              </tr>
-            </table>
-          </a>
-        </td>
-      </tr>`).join('')
-    : `<tr><td style="padding:20px;text-align:center;">
-        <div style="font-size:32px;margin-bottom:8px;">✅</div>
-        <div style="font-size:14px;font-weight:700;color:#16A34A;margin-bottom:3px;">All clear!</div>
-        <div style="font-size:12px;color:#94A3B8;">No tasks scheduled for today — great day to prospect.</div>
-      </td></tr>`
-
-  // Overdue rows
-  const overdueRows = overdueTasks.length > 0
-    ? overdueTasks.map(t => {
-        const daysOverdue = t.due_date ? Math.floor((Date.now()-new Date(t.due_date))/86400000) : 1
-        return `
-        <tr>
-          <td style="padding:0;">
-            <a href="${APP}#tasks" style="text-decoration:none;display:block;padding:13px 20px;border-bottom:1px solid #FEE2E2;background:#FFF5F5;">
+  // ── TASK ROW — deep links to exact task ──────────────────────
+  function taskRow(t, isOverdue=false) {
+    const ps = priorityStyle(isOverdue ? 'urgent' : t.priority)
+    const daysOverdue = isOverdue && t.due_date ? Math.floor((Date.now()-new Date(t.due_date))/86400000) : 0
+    // Deep link: open tasks page with this task highlighted
+    const link = `${APP}/?page=tasks&task=${t.id||''}`
+    return `
+    <tr>
+      <td style="padding:0;border-bottom:1px solid ${isOverdue?'#FEE2E2':'#F1F5F9'};">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:${isOverdue?'#FFF5F5':'#ffffff'};">
+          <tr>
+            <td width="5" style="background:${ps.dot};border-radius:0;font-size:0;">&nbsp;</td>
+            <td style="padding:14px 16px 14px 14px;">
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td width="20" valign="top" style="padding-top:2px;">
-                    <div style="font-size:16px;">⚠️</div>
-                  </td>
-                  <td style="padding-left:10px;">
-                    <div style="font-size:13px;font-weight:700;color:#DC2626;line-height:1.4;">${t.title}</div>
-                    <div style="font-size:11px;color:#EF4444;margin-top:3px;">
-                      ${daysOverdue} day${daysOverdue>1?'s':''} overdue · Was due ${new Date(t.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                  <td>
+                    <div style="font-size:14px;font-weight:700;color:${isOverdue?'#DC2626':'#1E293B'};line-height:1.4;margin-bottom:4px;">${isOverdue?'⚠️ ':''}${t.title}</div>
+                    <div style="font-size:11px;color:${ps.text};font-weight:600;">
+                      ${isOverdue
+                        ? `${daysOverdue} day${daysOverdue>1?'s':''} overdue · Was due ${new Date(t.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`
+                        : `${(t.priority||'normal').toUpperCase()}${t.due_date?' · Due today':''}`
+                      }
                     </div>
                   </td>
-                  <td width="70" align="right" valign="middle">
-                    <span style="font-size:10px;background:#FEE2E2;color:#DC2626;padding:3px 8px;border-radius:20px;font-weight:700;">Fix Now →</span>
+                  <td width="90" align="right" valign="middle" style="padding-left:10px;">
+                    <a href="${link}"
+                      style="display:inline-block;background:${isOverdue?'#DC2626':color};color:#ffffff;text-decoration:none;font-size:11px;font-weight:700;padding:7px 14px;border-radius:7px;white-space:nowrap;">
+                      ${isOverdue?'Fix Now':'Open Task'}
+                    </a>
                   </td>
                 </tr>
               </table>
-            </a>
-          </td>
-        </tr>`
-      }).join('')
-    : ''
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`
+  }
 
-  // Appointment rows
-  const apptRows = appointments.length > 0
-    ? appointments.map(a => `
+  // ── APPOINTMENT ROW — deep links to calendar ─────────────────
+  function apptRow(a) {
+    const link = `${APP}/?page=calendar`
+    return `
+    <tr>
+      <td style="padding:0;border-bottom:1px solid #DBEAFE;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F7FF;">
+          <tr>
+            <td width="5" style="background:#2563EB;font-size:0;">&nbsp;</td>
+            <td style="padding:14px 16px 14px 14px;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td>
+                    <div style="font-size:14px;font-weight:700;color:#1E40AF;line-height:1.4;margin-bottom:4px;">📅 ${a.title}</div>
+                    <div style="font-size:11px;color:#3B82F6;font-weight:600;">
+                      ${a.time||''}${a.location?' · '+a.location:''}
+                    </div>
+                  </td>
+                  <td width="90" align="right" valign="middle" style="padding-left:10px;">
+                    <a href="${link}"
+                      style="display:inline-block;background:#2563EB;color:#ffffff;text-decoration:none;font-size:11px;font-weight:700;padding:7px 14px;border-radius:7px;white-space:nowrap;">
+                      View
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`
+  }
+
+  // ── SECTION HEADER ────────────────────────────────────────────
+  function sectionHeader(label, count, linkPage, bgColor, textColor) {
+    return `
+    <tr>
+      <td style="background:${bgColor};padding:11px 20px;border-left:4px solid ${textColor};">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td><span style="font-size:11px;font-weight:800;color:${textColor};text-transform:uppercase;letter-spacing:.8px;">${label}${count!==undefined?' ('+count+')':''}</span></td>
+            ${linkPage?`<td align="right"><a href="${APP}/?page=${linkPage}" style="font-size:11px;color:${textColor};text-decoration:none;font-weight:700;">View all →</a></td>`:'<td></td>'}
+          </tr>
+        </table>
+      </td>
+    </tr>`
+  }
+
+  // ── PROGRESS BARS ─────────────────────────────────────────────
+  function progressSection(p) {
+    if(!p) return ''
+    const metrics = [
+      { label:'Units', actual:p.units, goal:p.unitGoal, fmt:v=>v, color:'#0EA5E9' },
+      { label:'Production', actual:p.prod, goal:p.prodGoal, fmt:fmt$, color:'#7C3AED' },
+      { label:'GCI', actual:p.gci, goal:p.gciGoal, fmt:fmt$, color:color },
+    ]
+    const cols = metrics.map(m => {
+      const pc = pct(m.actual, m.goal)
+      const barW = Math.round(pc * 1.4) // max ~140px out of 160px
+      return `
+      <td style="padding:0 6px;vertical-align:top;width:33%;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;">
+          <tr><td style="padding:14px 12px 10px;">
+            <div style="font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">${m.label}</div>
+            <div style="font-size:18px;font-weight:900;color:#1E293B;margin-bottom:2px;">${m.fmt(m.actual)}</div>
+            <div style="font-size:10px;color:#94A3B8;margin-bottom:8px;">of ${m.fmt(m.goal)}</div>
+            <div style="background:#E2E8F0;border-radius:99px;height:5px;overflow:hidden;">
+              <div style="background:${m.color};border-radius:99px;height:5px;width:${barW}px;max-width:100%;"></div>
+            </div>
+            <div style="font-size:11px;font-weight:800;color:${m.color};margin-top:5px;">${pc}%</div>
+          </td></tr>
+        </table>
+      </td>`
+    }).join('')
+    return `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:2px;background:#ffffff;border:1px solid #E2E8F0;border-top:none;">
       <tr>
-        <td style="padding:0;">
-          <a href="${APP}#calendar" style="text-decoration:none;display:block;padding:13px 20px;border-bottom:1px solid #DBEAFE;background:#EFF6FF;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td width="36" valign="middle">
-                  <div style="width:36px;height:36px;border-radius:8px;background:#2563EB;display:flex;align-items:center;justify-content:center;font-size:16px;text-align:center;line-height:36px;">📅</div>
-                </td>
-                <td style="padding-left:10px;">
-                  <div style="font-size:13px;font-weight:700;color:#1E40AF;line-height:1.4;">${a.title}</div>
-                  <div style="font-size:11px;color:#60A5FA;margin-top:2px;">${a.time||''}${a.location?' · '+a.location:''}</div>
-                </td>
-                <td width="70" align="right" valign="middle">
-                  <span style="font-size:10px;background:#DBEAFE;color:#2563EB;padding:3px 8px;border-radius:20px;font-weight:700;">View →</span>
-                </td>
-              </tr>
-            </table>
-          </a>
+        <td style="padding:14px 14px 16px;">
+          <div style="font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">📈 Your Progress — 2026</div>
+          <table width="100%" cellpadding="0" cellspacing="0"><tr>${cols}</tr></table>
         </td>
-      </tr>`).join('')
-    : ''
+      </tr>
+    </table>`
+  }
 
   const hasOverdue = overdueTasks.length > 0
-  const hasAppts = appointments.length > 0
+  const hasAppts   = appointments.length > 0
+  const hasTasks   = tasks.length > 0
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <title>Daily Briefing — ${day}</title>
 </head>
-<body style="margin:0;padding:0;background:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">
-<div style="max-width:580px;margin:0 auto;padding:20px 12px 40px;">
+<body style="margin:0;padding:0;background:#EEF2F7;-webkit-text-size-adjust:100%;mso-line-height-rule:exactly;">
 
-  <!-- HEADER -->
-  <div style="background:linear-gradient(135deg,#1B2B4B 0%,#0F1A2E 100%);border-radius:18px 18px 0 0;padding:30px 28px 26px;position:relative;overflow:hidden;">
-    <div style="position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(204,34,0,.12);"></div>
-    <div style="position:absolute;bottom:-40px;left:-20px;width:100px;height:100px;border-radius:50%;background:rgba(245,166,35,.06);"></div>
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#EEF2F7;padding:24px 0 40px;">
+  <tr>
+    <td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
 
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td width="48">
-          <div style="width:48px;height:48px;border-radius:12px;background:${agentColor};display:table-cell;vertical-align:middle;text-align:center;font-size:18px;font-weight:900;color:#fff;">${ini}</div>
-        </td>
-        <td style="padding-left:14px;">
-          <div style="color:#fff;font-size:20px;font-weight:800;line-height:1.2;">${greeting}, ${firstName}! 👋</div>
-          <div style="color:rgba(255,255,255,.45);font-size:12px;margin-top:3px;">${day}</div>
-        </td>
-        <td width="80" align="right">
-          <a href="${APP}" style="display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;text-decoration:none;font-size:11px;font-weight:700;padding:6px 12px;border-radius:8px;">Open App →</a>
-        </td>
-      </tr>
-    </table>
+        <!-- ═══ HEADER ═══ -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#1B2B4B 0%,#0D1A30 100%);border-radius:16px 16px 0 0;padding:28px 28px 24px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td width="50" valign="middle">
+                  <div style="width:50px;height:50px;border-radius:12px;background:${color};text-align:center;line-height:50px;font-size:18px;font-weight:900;color:#ffffff;font-family:Arial,sans-serif;">${ini}</div>
+                </td>
+                <td style="padding-left:14px;" valign="middle">
+                  <div style="color:#ffffff;font-size:20px;font-weight:800;line-height:1.2;font-family:Arial,sans-serif;">${customGreeting} 👋</div>
+                  <div style="color:rgba(255,255,255,0.45);font-size:12px;margin-top:4px;font-family:Arial,sans-serif;">${day}</div>
+                </td>
+                <td width="110" align="right" valign="middle">
+                  <a href="${APP}" style="display:inline-block;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#ffffff;text-decoration:none;font-size:11px;font-weight:700;padding:8px 14px;border-radius:8px;font-family:Arial,sans-serif;">Open App →</a>
+                </td>
+              </tr>
+            </table>
+            <!-- Summary line -->
+            <div style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.65);font-size:13px;line-height:1.7;font-family:Arial,sans-serif;">
+              ${hasTasks ? `You have <strong style="color:#ffffff;">${tasks.length} task${tasks.length>1?'s':''}</strong> due today.` : `No tasks scheduled for today.`}
+              ${hasAppts ? ` <strong style="color:#93C5FD;">${appointments.length} appointment${appointments.length>1?'s':''}</strong> on your calendar.` : ''}
+              ${hasOverdue ? ` <strong style="color:#FCA5A5;">${overdueTasks.length} overdue item${overdueTasks.length>1?'s':''} need your attention.</strong>` : ` All caught up — no overdue items! ✅`}
+            </div>
+          </td>
+        </tr>
 
-    <div style="margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.1);">
-      <div style="color:rgba(255,255,255,.65);font-size:13px;line-height:1.7;">
-        ${tasks.length > 0
-          ? `You have <strong style="color:#fff;">${tasks.length} task${tasks.length>1?'s':''}</strong> due today.`
-          : `You're all clear on tasks today.`}
-        ${hasAppts ? ` <strong style="color:#93C5FD;">${appointments.length} appointment${appointments.length>1?'s':''}</strong> scheduled.` : ''}
-        ${hasOverdue ? ` <strong style="color:#FCA5A5;">${overdueTasks.length} overdue item${overdueTasks.length>1?'s':''} need attention.</strong>` : ''}
-      </div>
-    </div>
-  </div>
+        <!-- ═══ OVERDUE ═══ -->
+        ${hasOverdue ? `
+        <tr><td style="padding-top:3px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #FEE2E2;border-top:none;border-radius:0;">
+            <tr>${sectionHeader('⚠️ Overdue — Needs Attention', overdueTasks.length, 'tasks', '#FFF5F5', '#DC2626')}</tr>
+            ${overdueTasks.map(t=>taskRow(t,true)).join('')}
+          </table>
+        </td></tr>` : ''}
 
-  <!-- OVERDUE (if any) -->
-  ${hasOverdue ? `
-  <div style="background:#fff;border-left:4px solid #DC2626;border-right:1px solid #FEE2E2;border-bottom:1px solid #FEE2E2;">
-    <div style="padding:12px 20px 6px;">
-      <span style="font-size:10px;font-weight:800;color:#DC2626;text-transform:uppercase;letter-spacing:.8px;">⚠️ Overdue — Needs Attention (${overdueTasks.length})</span>
-    </div>
-    <table width="100%" cellpadding="0" cellspacing="0">${overdueRows}</table>
-  </div>` : ''}
+        <!-- ═══ APPOINTMENTS ═══ -->
+        ${hasAppts ? `
+        <tr><td style="padding-top:3px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #DBEAFE;border-top:none;">
+            <tr>${sectionHeader("📅 Today's Appointments", appointments.length, 'calendar', '#F0F7FF', '#2563EB')}</tr>
+            ${appointments.map(a=>apptRow(a)).join('')}
+          </table>
+        </td></tr>` : ''}
 
-  <!-- APPOINTMENTS (if any) -->
-  ${hasAppts ? `
-  <div style="background:#fff;border-left:4px solid #2563EB;border-right:1px solid #DBEAFE;border-bottom:1px solid #DBEAFE;margin-top:1px;">
-    <div style="padding:12px 20px 6px;">
-      <span style="font-size:10px;font-weight:800;color:#2563EB;text-transform:uppercase;letter-spacing:.8px;">📅 Today's Appointments (${appointments.length})</span>
-    </div>
-    <table width="100%" cellpadding="0" cellspacing="0">${apptRows}</table>
-  </div>` : ''}
+        <!-- ═══ TODAY'S TASKS ═══ -->
+        <tr><td style="padding-top:3px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E2E8F0;">
+            <tr>${sectionHeader("✓ Today's Tasks", tasks.length, 'tasks', '#F8FAFC', color)}</tr>
+            ${hasTasks
+              ? tasks.map(t=>taskRow(t,false)).join('')
+              : `<tr><td style="padding:24px;text-align:center;background:#ffffff;">
+                  <div style="font-size:28px;margin-bottom:8px;">🎯</div>
+                  <div style="font-size:14px;font-weight:700;color:#16A34A;margin-bottom:4px;">All clear for today!</div>
+                  <div style="font-size:12px;color:#94A3B8;">No tasks scheduled — great day to prospect and follow up.</div>
+                  <div style="margin-top:12px;"><a href="${APP}/?page=contacts" style="display:inline-block;background:${color};color:#ffffff;text-decoration:none;font-size:12px;font-weight:700;padding:9px 20px;border-radius:8px;font-family:Arial,sans-serif;">Open Contacts →</a></div>
+                </td></tr>`
+            }
+          </table>
+        </td></tr>
 
-  <!-- TODAY'S TASKS -->
-  <div style="background:#fff;border-left:4px solid ${agentColor};border-right:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;margin-top:1px;">
-    <div style="padding:12px 20px 6px;display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:10px;font-weight:800;color:${agentColor};text-transform:uppercase;letter-spacing:.8px;">✓ Today's Tasks (${tasks.length})</span>
-      ${tasks.length > 0 ? `<a href="${APP}#tasks" style="font-size:10px;color:${agentColor};text-decoration:none;font-weight:700;">View all →</a>` : ''}
-    </div>
-    <table width="100%" cellpadding="0" cellspacing="0">${taskRows}</table>
-  </div>
+        <!-- ═══ PROGRESS (optional) ═══ -->
+        ${showProgress && agentProgress ? progressSection(agentProgress) : ''}
 
-  ${!hasOverdue ? `
-  <!-- ALL CAUGHT UP -->
-  <div style="background:#F0FDF4;border-left:4px solid #16A34A;border-right:1px solid #BBF7D0;border-bottom:1px solid #BBF7D0;margin-top:1px;padding:14px 20px;">
-    <span style="font-size:13px;font-weight:600;color:#16A34A;">✅ No overdue tasks — you're all caught up!</span>
-  </div>` : ''}
+        <!-- ═══ QUOTE ═══ -->
+        ${showQuote ? `
+        <tr><td style="padding-top:3px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #E2E8F0;">
+            <tr>
+              <td style="padding:22px 24px;">
+                <div style="font-size:10px;font-weight:700;color:#CBD5E1;text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px;font-family:Arial,sans-serif;">💬 Daily Inspiration</div>
+                <table cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td width="4" style="background:${color};border-radius:2px;font-size:0;">&nbsp;</td>
+                    <td style="padding-left:16px;">
+                      <div style="font-size:16px;font-style:italic;color:#334155;line-height:1.7;font-family:Georgia,serif;font-weight:400;">"${quote.q}"</div>
+                      <div style="font-size:12px;color:#94A3B8;margin-top:8px;font-family:Arial,sans-serif;">— ${quote.a}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td></tr>` : ''}
 
-  <!-- QUOTE -->
-  <div style="background:#fff;border:1px solid #E2E8F0;border-top:none;padding:22px 24px;margin-top:1px;">
-    <div style="font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;">💬 Daily Inspiration</div>
-    <div style="border-left:3px solid ${agentColor};padding-left:16px;">
-      <div style="font-size:16px;font-style:italic;color:#334155;line-height:1.7;font-weight:500;">"${quote.q}"</div>
-      <div style="font-size:12px;color:#94A3B8;margin-top:8px;">— ${quote.a}</div>
-    </div>
-  </div>
+        <!-- ═══ FOOTER CTA ═══ -->
+        <tr><td style="padding-top:3px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#1B2B4B,#0D1A30);border-radius:0 0 16px 16px;">
+            <tr>
+              <td style="padding:24px 28px;text-align:center;">
+                <a href="${APP}" style="display:inline-block;background:linear-gradient(135deg,#CC2200,#E8650A);color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;padding:14px 36px;border-radius:10px;margin-bottom:18px;font-family:Arial,sans-serif;letter-spacing:.2px;">
+                  Open TargetOS →
+                </a>
+                <div style="display:block;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td align="center" style="padding:0 8px;">
+                        <a href="${APP}/?page=contacts" style="display:inline-block;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);text-decoration:none;font-size:11px;font-weight:600;padding:8px 14px;border-radius:7px;font-family:Arial,sans-serif;">Contacts</a>
+                      </td>
+                      <td align="center" style="padding:0 8px;">
+                        <a href="${APP}/?page=listings" style="display:inline-block;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);text-decoration:none;font-size:11px;font-weight:600;padding:8px 14px;border-radius:7px;font-family:Arial,sans-serif;">Listings</a>
+                      </td>
+                      <td align="center" style="padding:0 8px;">
+                        <a href="${APP}/?page=production" style="display:inline-block;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);text-decoration:none;font-size:11px;font-weight:600;padding:8px 14px;border-radius:7px;font-family:Arial,sans-serif;">Pipeline</a>
+                      </td>
+                      <td align="center" style="padding:0 8px;">
+                        <a href="${APP}/?page=tasks" style="display:inline-block;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);text-decoration:none;font-size:11px;font-weight:600;padding:8px 14px;border-radius:7px;font-family:Arial,sans-serif;">Tasks</a>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                ${footerNote ? `<div style="margin-top:14px;color:rgba(255,255,255,0.4);font-size:11px;font-family:Arial,sans-serif;">${footerNote}</div>` : ''}
+                <div style="margin-top:16px;color:rgba(255,255,255,0.25);font-size:11px;font-family:Arial,sans-serif;line-height:1.8;">
+                  Target Team · Keller Williams Valley Realty · 845.424.1014
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
 
-  <!-- FOOTER CTA -->
-  <div style="background:linear-gradient(135deg,#1B2B4B,#0F1A2E);border-radius:0 0 18px 18px;padding:22px 24px;text-align:center;margin-top:1px;">
-    <a href="${APP}" style="display:inline-block;background:linear-gradient(135deg,#CC2200,#E8650A);color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:13px 32px;border-radius:10px;margin-bottom:16px;letter-spacing:.2px;">
-      Open TargetOS →
-    </a>
-    <div style="color:rgba(255,255,255,.3);font-size:11px;line-height:1.8;">
-      Target Team · Keller Williams Valley Realty · 845.424.1014<br/>
-      <a href="${APP}" style="color:rgba(255,255,255,.2);font-size:10px;text-decoration:none;">Manage preferences</a>
-    </div>
-  </div>
+      </table>
+    </td>
+  </tr>
+</table>
 
-</div>
 </body>
 </html>`
 }

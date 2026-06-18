@@ -17,6 +17,15 @@ export function Tasks() {
 
   useEffect(() => { loadTasks() }, [])
 
+  useEffect(() => {
+    if(highlightId) {
+      setTimeout(() => {
+        const el = document.getElementById('task-'+highlightId)
+        if(el) { el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.outline='3px solid #CC2200'; el.style.borderRadius='10px' }
+      }, 800)
+    }
+  }, [highlightId, tasks])
+
   async function loadTasks() {
     const { data } = await supabase.from('tasks').select('*').order('created_at',{ascending:false})
     setTasks(data||[]); setLoading(false)
