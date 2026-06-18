@@ -92,16 +92,34 @@ export function DailyBriefing() {
 
   // Check API key status
   async function checkApiConnection() {
+    const key = import.meta.env.VITE_RESEND_API_KEY
+    if(!key) {
+      setApiStatus('error')
+      return
+    }
+    // Key exists — try sending a real test
     try {
-      const key = import.meta.env.VITE_RESEND_API_KEY
-      if(!key) { setApiStatus('error'); return }
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from:'TargetOS <office@targetreteam.com>', to:['yanky@targetreteam.com'], subject:'API Test', html:'<p>Test</p>' })
+        body: JSON.stringify({
+          from: 'TargetOS <office@targetreteam.com>',
+          to: ['yanky@targetreteam.com'],
+          subject: '✅ TargetOS Connection Test',
+          html: '<p>Resend is connected and working! Your daily briefing emails are ready to send.</p>'
+        })
       })
-      setApiStatus(res.status === 200 || res.status === 201 ? 'ok' : 'error')
-    } catch(e) { setApiStatus('error') }
+      const data = await res.json()
+      if(res.ok) {
+        setApiStatus('ok')
+        toast('✅ Test email sent to yanky@targetreteam.com!')
+      } else {
+        console.error('Resend error:', data)
+        setApiStatus('error')
+      }
+    } catch(e) {
+      setApiStatus('error')
+    }
   }
 
   async function sendTest(agentName) {
@@ -193,7 +211,7 @@ export function DailyBriefing() {
         {apiStatus==='ok' && <div style={{fontSize:'13px',fontWeight:700,color:'#16A34A'}}>✅ Resend API connected — emails will send from office@targetreteam.com</div>}
         {apiStatus==='error' && (
           <div>
-            <div style={{fontSize:'13px',fontWeight:700,color:'#DC2626',marginBottom:'8px'}}>❌ API Key Not Found — Follow these steps:</div>
+            <div style={{fontSize:'13px',fontWeight:700,color:'#DC2626',marginBottom:'8px'}}>❌ API Key Not Found in this deployment</div>
             <ol style={{margin:0,paddingLeft:'18px',fontSize:'12px',color:'#DC2626',lineHeight:2}}>
               <li>Go to <strong>vercel.com/dashboard</strong> → click <strong>targetos</strong></li>
               <li>Click <strong>Settings</strong> → <strong>Environment Variables</strong></li>

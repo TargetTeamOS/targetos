@@ -4,6 +4,9 @@
 // From: office@targetreteam.com
 // ═══════════════════════════════════════════════════════════════
 
+// API key from Vercel environment variables
+// Must be set as VITE_RESEND_API_KEY in Vercel → Settings → Environment Variables
+// Then redeployed to take effect
 const RESEND_API_KEY = import.meta.env.VITE_RESEND_API_KEY
 
 const FROM_EMAIL = 'TargetOS <office@targetreteam.com>'
