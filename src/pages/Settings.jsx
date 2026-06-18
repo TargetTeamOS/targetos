@@ -5,7 +5,7 @@ import { Card, CardHeader, Btn, Input, Grid2 } from '../components/UI'
 const THEMES = [['light','#F4F5F7','Light','#1A202C'],['dark','#0F1520','Dark','#E8EDF3'],['slate','#1A2332','Slate','#E2E8F0']]
 const INTEGRATIONS = [
   ['Twilio','Phone system — calls, SMS, IVR, extensions 101–108','Not connected','https://twilio.com','#CC2200'],
-  ['Resend','Email blast sending','Not connected','https://resend.com','#CC2200'],
+  ['Resend (Email) ✅','Email blast sending','Not connected','https://resend.com','#CC2200'],
   ['Google Maps','Live maps — key AIzaSyDPvAMfd7OoW5eCx1ILkDtCE8Fs4fwZIDw','Key saved ✓','#','#16A34A'],
   ['OneKey MLS','Live listing data — Rockland County NY','Pending approval','#','var(--border)'],
   ['WhatsApp Business','Meta business verification required','Pending','#','var(--border)'],

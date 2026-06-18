@@ -7,6 +7,7 @@ import { useConfirm } from '../components/ConfirmDialog'
 import { nowISO, formatActivity, formatTime } from '../lib/time'
 import { logChange, logFieldChanges } from '../lib/activityLog'
 import { VoiceCapture } from '../components/VoiceCapture'
+import { sendContactEmail } from '../lib/emailService'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
@@ -301,11 +302,19 @@ export function ContactDetail({ contactId, onBack }) {
             )}
             {activeTab==='EMAIL' && (
               <div>
-                <input placeholder="Subject..." style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none',marginBottom:'8px',boxSizing:'border-box'}}/>
-                <textarea placeholder="Email body..." style={{width:'100%',minHeight:'70px',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none',resize:'none',boxSizing:'border-box',marginBottom:'8px'}}/>
+                <input data-email-subject placeholder="Subject..." style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none',marginBottom:'8px',boxSizing:'border-box'}}/>
+                <textarea data-email-body placeholder="Email body..." style={{width:'100%',minHeight:'70px',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none',resize:'none',boxSizing:'border-box',marginBottom:'8px'}}/>
                 <div style={{display:'flex',gap:'8px',justifyContent:'flex-end'}}>
                   {contact.email && <a href={'mailto:'+contact.email} style={{textDecoration:'none'}}><Btn size="sm">✉ Open Email</Btn></a>}
-                  <Btn size="sm" onClick={()=>{ addActivity('email','✉','#E8650A','Email sent'); toast('Email logged!') }}>Log Email</Btn>
+                  <Btn size="sm" onClick={async()=>{
+              const subj = document.querySelector('[data-email-subject]')?.value || 'Message from Target Team'
+              const body = document.querySelector('[data-email-body]')?.value || ''
+              if(!contact.email) { toast('No email on file for this contact','#DC2626'); return }
+              if(!body.trim()) { toast('Please write a message first','#DC2626'); return }
+              const result = await sendContactEmail({ contactEmail:contact.email, contactName:contact.first_name+' '+(contact.last_name||''), subject:subj, body, agentName:state.currentAgent?.name||'Agent' })
+              if(result.success) { addActivity('email','✉','#E8650A','Email sent: '+subj); toast('✅ Email sent to '+contact.email+'!') }
+              else toast('Send failed: '+result.error,'#DC2626')
+            }}>✉ Send Email</Btn>
                 </div>
               </div>
             )}

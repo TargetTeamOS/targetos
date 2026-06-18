@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { AGENTS } from '../lib/constants'
 import { Card, CardHeader, Btn, Grid2 } from '../components/UI'
 import { buildDailyEmail, AGENT_EMAILS } from '../lib/dailyBriefing'
+import { sendDailyBriefing, sendTestEmail as sendTest } from '../lib/emailService'
 
 const AGENT_COLORS = {
   'Lazer Farkas':'#CC2200','Mendy Jankovits':'#0EA5E9','Isaac Leibowitz':'#F5A623',
@@ -71,22 +72,45 @@ export function DailyBriefing() {
 
   async function sendTestEmail(agentName) {
     setSending(true)
-    // Simulate sending (Resend not yet connected)
-    await new Promise(r => setTimeout(r, 1200))
-    toast(`Test email sent to ${AGENT_EMAILS[agentName] || agentName}!`)
+    const email = AGENT_EMAILS[agentName]
+    if(!email) { toast('No email for ' + agentName, '#DC2626'); setSending(false); return }
+    // Build the HTML for this agent
+    const today = new Date().toISOString().split('T')[0]
+    const agentTasks = tasks.filter(t => t.due_date === today)
+    const overdueT = tasks.filter(t => t.due_date && t.due_date < today)
+    const html = buildDailyEmail({
+      agentName, tasks: agentTasks, overdueTasks: overdueT, appointments: [],
+      agentColor: AGENT_COLORS[agentName] || '#CC2200',
+    })
+    const result = await sendDailyBriefing({ agentName, email, html })
     setSending(false)
-    setLastSent(new Date().toLocaleString())
+    if(result.success) {
+      toast(`✅ Email sent to ${email}!`)
+      setLastSent(new Date().toLocaleString())
+    } else {
+      toast('Send failed: ' + result.error, '#DC2626')
+    }
   }
 
   async function sendAllNow() {
     setSending(true)
-    const agents = Object.keys(AGENT_EMAILS)
-    for(const agent of agents) {
-      await new Promise(r => setTimeout(r, 200))
+    const today = new Date().toISOString().split('T')[0]
+    const agents = Object.entries(AGENT_EMAILS)
+    let sent = 0, failed = 0
+    for(const [agentName, email] of agents) {
+      const agentTasks = tasks.filter(t => t.due_date === today)
+      const overdueT = tasks.filter(t => t.due_date && t.due_date < today)
+      const html = buildDailyEmail({
+        agentName, tasks: agentTasks, overdueTasks: overdueT, appointments: [],
+        agentColor: AGENT_COLORS[agentName] || '#CC2200',
+      })
+      const result = await sendDailyBriefing({ agentName, email, html })
+      if(result.success) sent++; else failed++
+      await new Promise(r => setTimeout(r, 300)) // rate limit buffer
     }
     setSending(false)
     setLastSent(new Date().toLocaleString())
-    toast(`Daily briefing sent to all ${agents.length} agents!`)
+    toast(`✅ Sent ${sent} emails${failed>0?' · '+failed+' failed':''}!`)
   }
 
   const todayStr = new Date().toISOString().split('T')[0]
