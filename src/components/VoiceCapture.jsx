@@ -48,15 +48,19 @@ function useSpeech() {
     let final = ''
     r.onstart = () => { setStage('recording'); timerRef.current = setInterval(()=>setSecs(s=>s+1),1000) }
     r.onresult = e => {
-      let tmp = ''
+      // Only collect FINAL results to prevent duplication
       for(let i=e.resultIndex;i<e.results.length;i++) {
-        if(e.results[i].isFinal) final += e.results[i][0].transcript+' '
-        else tmp += e.results[i][0].transcript
+        if(e.results[i].isFinal) {
+          final += e.results[i][0].transcript+' '
+          setTranscript(final)
+          setInterim('')
+        } else {
+          setInterim(e.results[i][0].transcript)
+        }
       }
-      setTranscript(final); setInterim(tmp)
     }
-    r.onerror = e => { if(e.error!=='no-speech') setError('Mic error: '+e.error); stop(onDone, final) }
-    r.onend = () => { clearInterval(timerRef.current); onDone(final.trim()||transcript.trim()) }
+    r.onerror = e => { if(e.error!=='no-speech') setError('Mic error: '+e.error); clearInterval(timerRef.current); onDone(final.trim()) }
+    r.onend = () => { clearInterval(timerRef.current); setInterim(''); onDone(final.trim()) }
     recRef.current = r
     r.start()
   }
@@ -111,7 +115,6 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
       first_name: extracted.first || 'Unknown',
       last_name:  extracted.last  || '',
       phone:      extracted.phone || '',
-      status:     'New',
       source:     'Voice Capture',
       notes:      `Voice note recorded — needs full profile completion`,
       agent_id:   state.user?.id,
