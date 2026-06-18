@@ -3,6 +3,8 @@ import { useApp } from './context/AppContext'
 import { supabase } from './lib/supabase'
 import { AGENTS } from './lib/constants'
 import { Login } from './components/Login'
+import { MobileLayout } from './components/MobileLayout'
+import { MobileDashboard } from './pages/MobileDashboard'
 import { Layout } from './components/Layout'
 import { Toast } from './components/UI'
 
@@ -59,6 +61,12 @@ const PAGE_MAP = {
 
 export default function App() {
   const { state, dispatch } = useApp()
+  const [isMobile, setIsMobile] = React.useState(() => window.innerWidth < 768)
+  React.useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
   const [page, setPage] = useState('dash')
   const [checking, setChecking] = useState(true)
 
@@ -95,6 +103,21 @@ export default function App() {
   )
 
   if(!state.user) return <Login/>
+
+  // ── MOBILE LAYOUT ──────────────────────────────────────────
+  if(isMobile) {
+    const MobilePage = page === 'dash' ? null : PAGE_MAP[page]
+    return (
+      <MobileLayout page={page} setPage={setPage}>
+        {page === 'dash'
+          ? <MobileDashboard setPage={setPage}/>
+          : MobilePage
+          ? <div style={{padding:'14px'}}><MobilePage setPage={setPage}/></div>
+          : <MobileDashboard setPage={setPage}/>
+        }
+      </MobileLayout>
+    )
+  }
 
   const PageComponent = PAGE_MAP[page]
 

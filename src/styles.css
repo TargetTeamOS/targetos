@@ -49,3 +49,36 @@ body.slate {
   animation: shimmer 1.5s infinite;
   border-radius: 8px;
 }
+
+/* ── MOBILE STYLES ─────────────────────────────── */
+@media (max-width: 767px) {
+  /* Prevent tap highlight */
+  * { -webkit-tap-highlight-color: transparent; }
+  
+  /* Better touch targets */
+  button { min-height: 36px; }
+  
+  /* Smooth scrolling */
+  body { -webkit-overflow-scrolling: touch; }
+  
+  /* Prevent zoom on inputs */
+  input, select, textarea { font-size: 16px !important; }
+  
+  /* Cards full width on mobile */
+  .card { border-radius: 14px !important; }
+  
+  /* Hide desktop sidebar elements on mobile */
+  .desktop-only { display: none !important; }
+  
+  /* Modal full screen on mobile */
+  [data-modal] {
+    border-radius: 20px 20px 0 0 !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    max-width: 100% !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+}
