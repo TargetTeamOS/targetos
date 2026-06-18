@@ -6,6 +6,7 @@ import { Login } from './components/Login'
 import { MobileLayout } from './components/MobileLayout'
 import { MobileDashboard } from './pages/MobileDashboard'
 import { DailyBriefing } from './pages/DailyBriefing'
+import { EmailDesigner } from './pages/EmailDesigner'
 import { Layout } from './components/Layout'
 import { Toast } from './components/UI'
 

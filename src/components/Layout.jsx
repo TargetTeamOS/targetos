@@ -15,6 +15,7 @@ const DEFAULT_NAV = [
   { id:'tasks',        label:'Tasks',           icon:'✓'  },
   { id:'calls',        label:'Phone & Calls',   icon:'📞' },
   { id:'email',        label:'Email Blast',     icon:'✉'  },
+  { id:'designer',     label:'Email Designer',  icon:'🎨' },
   { id:'cards',        label:'Card Generator',  icon:'🎨' },
   { id:'mixads',       label:'Mix Ads',         icon:'📰' },
   { id:'leadgen',      label:'Lead Gen',        icon:'🎯' },

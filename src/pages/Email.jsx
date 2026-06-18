@@ -104,7 +104,7 @@ const RECIPIENT_GROUPS = [
 
 const STYLE_COLORS = { red:'#CC2200', navy:'#1B2B4B', gold:'#F5A623', teal:'#0EA5E9', green:'#16A34A' }
 
-export function Email() {
+export function Email({ setPage }) {
   const { state, toast } = useApp()
   const [step, setStep] = useState(1) // 1=recipients, 2=template, 3=compose, 4=preview, 5=sent
   const [selectedGroups, setSelectedGroups] = useState([])
@@ -183,6 +183,15 @@ export function Email() {
 
   return (
     <div>
+      {/* Designer button */}
+      <div style={{background:'linear-gradient(135deg,rgba(27,43,75,.08),rgba(204,34,0,.05))',border:'1px solid var(--border)',borderRadius:'12px',padding:'14px 18px',marginBottom:'16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div>
+          <div style={{fontSize:'13px',fontWeight:700,marginBottom:'2px'}}>✨ Visual Email Designer</div>
+          <div style={{fontSize:'11px',color:'var(--muted)'}}>Design custom email templates with full drag-and-drop control over layout, colors, fonts and content</div>
+        </div>
+        <Btn size="sm" onClick={()=>setPage('designer')}>Open Designer →</Btn>
+      </div>
+
       {/* Step indicator */}
       <div style={{display:'flex',gap:'0',marginBottom:'20px'}}>
         {['Recipients','Template','Compose','Preview','Done'].map((s,i)=>(
