@@ -138,7 +138,6 @@ export function VoiceContactCapture({ onSaved, onClose, compact=false }) {
       source:      'Voice Capture',
       notes:       `Voice note: "${extracted.notes}" — Needs full profile completion`,
       agent_id:    state.user?.id,
-      assigned_agent: state.currentAgent?.name || '',
     }]).select()
 
     if(err) { setError('Save failed: '+err.message); setStage('review'); return }
