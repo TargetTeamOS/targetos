@@ -45,7 +45,7 @@ const PAGES = {
   route:Route,signs:Signs,mortgage:Mortgage,calendar:Calendar,
   news:News,notes:Notes,listprep:ListingPrep,gifts:Gifts,
   announce:Announcements,automations:Automations,
-  admin:Admin,actlog:ActivityLog,settings:Settings,
+  admin:Admin,actlog:ActivityLog,briefing:DailyBriefing,settings:Settings,
 }
 
 // fix the typo above
@@ -57,7 +57,7 @@ const PAGE_MAP = {
   route:Route,signs:Signs,mortgage:Mortgage,calendar:Calendar,
   news:News,notes:Notes,listprep:ListingPrep,gifts:Gifts,
   announce:Announcements,automations:Automations,
-  admin:Admin,actlog:ActivityLog,settings:Settings,
+  admin:Admin,actlog:ActivityLog,briefing:DailyBriefing,settings:Settings,
 }
 
 export default function App() {

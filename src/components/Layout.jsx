@@ -33,6 +33,7 @@ const DEFAULT_NAV = [
   { id:'announce',     label:'Announcements',   icon:'📣' },
   { section: 'Admin' },
   { id:'actlog',       label:'Activity Log',    icon:'📋' },
+  { id:'briefing',     label:'Daily Briefing',  icon:'📧' },
   { id:'automations',  label:'Automations',     icon:'⚡' },
   { id:'admin',        label:'Admin Panel',     icon:'🔒' },
   { id:'settings',     label:'Settings',        icon:'⚙'  },
