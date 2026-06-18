@@ -36,6 +36,7 @@ function useSpeech() {
   const [error, setError] = useState('')
   const recRef = useRef(null)
   const timerRef = useRef(null)
+  const doneRef = useRef(null) // store callback to avoid stale closure
 
   const supported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 
@@ -43,42 +44,64 @@ function useSpeech() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if(!SR) { setError('Voice not supported. Use Chrome or Safari.'); return }
     setError(''); setTranscript(''); setInterim(''); setSecs(0)
+    doneRef.current = onDone
+
     const r = new SR()
-    r.lang = 'en-US'; r.continuous = true; r.interimResults = true
-    let final = ''
-    r.onstart = () => { setStage('recording'); timerRef.current = setInterval(()=>setSecs(s=>s+1),1000) }
+    r.lang = 'en-US'
+    r.continuous = false      // SINGLE SHOT — stops after first pause, no duplicates
+    r.interimResults = true   // show live text while speaking
+    r.maxAlternatives = 1
+
+    r.onstart = () => {
+      setStage('recording')
+      timerRef.current = setInterval(() => setSecs(s => s + 1), 1000)
+    }
+
     r.onresult = e => {
-      // Only collect FINAL results to prevent duplication
-      for(let i=e.resultIndex;i<e.results.length;i++) {
-        if(e.results[i].isFinal) {
-          final += e.results[i][0].transcript+' '
-          setTranscript(final)
-          setInterim('')
-        } else {
-          setInterim(e.results[i][0].transcript)
-        }
+      let interimText = ''
+      let finalText = ''
+      for(let i = 0; i < e.results.length; i++) {
+        if(e.results[i].isFinal) finalText += e.results[i][0].transcript + ' '
+        else interimText += e.results[i][0].transcript
+      }
+      if(finalText) setTranscript(finalText.trim())
+      setInterim(interimText)
+    }
+
+    r.onerror = e => {
+      clearInterval(timerRef.current)
+      if(e.error !== 'no-speech' && e.error !== 'aborted') {
+        setError('Mic error: ' + e.error + '. Make sure mic access is allowed.')
       }
     }
-    r.onerror = e => { if(e.error!=='no-speech') setError('Mic error: '+e.error); clearInterval(timerRef.current); onDone(final.trim()) }
-    r.onend = () => { clearInterval(timerRef.current); setInterim(''); onDone(final.trim()) }
+
+    r.onend = () => {
+      clearInterval(timerRef.current)
+      setInterim('')
+      // Get final text from state via ref trick
+      setTranscript(prev => {
+        if(doneRef.current) doneRef.current(prev.trim())
+        return prev
+      })
+    }
+
     recRef.current = r
     r.start()
   }
 
-  function stop(onDone, override) {
-    clearInterval(timerRef.current)
-    if(recRef.current) { recRef.current.stop(); recRef.current = null }
-    setStage('processing')
-    if(override !== undefined) onDone(override)
-  }
-
   function manualStop() {
-    if(recRef.current) recRef.current.stop()
     clearInterval(timerRef.current)
+    if(recRef.current) {
+      recRef.current.stop() // triggers onend which calls done
+      recRef.current = null
+    }
     setStage('processing')
   }
 
-  useEffect(() => () => { clearInterval(timerRef.current); if(recRef.current) recRef.current.stop() }, [])
+  useEffect(() => () => {
+    clearInterval(timerRef.current)
+    if(recRef.current) { try { recRef.current.abort() } catch(e) {} }
+  }, [])
 
   return { stage, setStage, transcript, interim, secs, error, setError, supported, start, manualStop }
 }
