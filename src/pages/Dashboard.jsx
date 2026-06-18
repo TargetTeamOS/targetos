@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase'
 import { AGENTS } from '../lib/constants'
 import { StatCard, Card, CardHeader, ProgressBar, Badge, Avatar, Grid4, Grid2, Btn, Modal, ModalTitle, SkeletonTable } from '../components/UI'
 
-const fmt$ = n => '$' + Number(n).toLocaleString()
 
 const REAL_DEALS = [
   {id:'d1',addr:'12 Nesher Ct #212, Monsey',agent:'Isaac L.',agentId:'a3',gci:27750,prod:925000,side:'Dual',stage:'Offer Accepted',aoDate:'2026-05-29'},
@@ -22,13 +21,9 @@ const REAL_DEALS = [
   {id:'d13',addr:'121 Broadway, Haverstraw',agent:'Eli H.',agentId:'a7',gci:18000,prod:450000,side:'Dual',stage:'Under Contract',aoDate:'2026-05-20'},
 ]
 
-const GOAL_GCI = 2000000
+import { TEAM_GOALS, TEAM_ACTUALS, AGENT_GOALS, AGENT_ACTUALS, fmt$, pct as calcPct } from '../lib/goals'
+const GOAL_GCI = TEAM_GOALS.gci // keep for backward compat
 
-const AGENT_GOALS = {
-  a1:{gci:200000,deals:35},a2:{gci:150000,deals:25},a3:{gci:180000,deals:30},
-  a4:{gci:100000,deals:20},a5:{gci:80000,deals:15},a6:{gci:120000,deals:22},
-  a7:{gci:90000,deals:18},a8:{gci:160000,deals:28}
-}
 const AGENT_SPLIT = {a1:.21,a2:.15,a3:.17,a4:.09,a5:.08,a6:.12,a7:.06,a8:.12}
 
 // Widget order stored in localStorage
@@ -86,23 +81,31 @@ export function Dashboard({ setPage }) {
 
       case 'goalbar': return (
         <Card key="goalbar" style={{padding:'18px',marginBottom:'14px'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'6px'}}>
-            <div>
-              <div style={{fontSize:'11px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.8px',marginBottom:'4px'}}>Team GCI Goal — 2026</div>
-              <div style={{fontSize:'28px',fontWeight:900}}>
-                {fmt$(totalGCI)}
-                <span style={{color:'var(--muted)',fontSize:'14px',fontWeight:400}}> of {fmt$(GOAL_GCI)}</span>
-              </div>
-            </div>
-            {/* Clickable GCI total */}
-            <div onClick={()=>setModal({type:'gci_detail', deals:REAL_DEALS})}
-              style={{textAlign:'right',cursor:'pointer',background:'rgba(204,34,0,.06)',borderRadius:'12px',padding:'10px 16px',border:'1px solid rgba(204,34,0,.15)'}}
-              title="Click to see all deals behind this number">
-              <div style={{fontSize:'36px',fontWeight:900,color:'#CC2200'}}>{pct}%</div>
-              <div style={{color:'var(--muted)',fontSize:'11px'}}>tap to see deals →</div>
-            </div>
+          <div style={{fontSize:'11px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.8px',marginBottom:'14px'}}>Team Goals — 2026</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px',marginBottom:'14px'}}>
+            {[
+              {label:'Units',icon:'🏠',actual:TEAM_ACTUALS.units,goal:TEAM_GOALS.units,fmt:v=>v,color:'#0EA5E9'},
+              {label:'Production',icon:'📊',actual:TEAM_ACTUALS.production,goal:TEAM_GOALS.production,fmt:v=>fmt$(v),color:'#7C3AED'},
+              {label:'GCI',icon:'💰',actual:TEAM_ACTUALS.gci,goal:TEAM_GOALS.gci,fmt:v=>fmt$(v),color:'#CC2200'},
+            ].map(m=>{
+              const p = calcPct(m.actual,m.goal)
+              return (
+                <div key={m.label} onClick={()=>setModal({type:'gci_detail',deals:REAL_DEALS})} style={{cursor:'pointer'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'5px'}}>
+                    <div>
+                      <div style={{fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.5px'}}>{m.icon} {m.label}</div>
+                      <div style={{fontSize:'18px',fontWeight:900,marginTop:'2px'}}>{m.fmt(m.actual)}</div>
+                      <div style={{fontSize:'10px',color:'var(--muted)'}}>of {m.fmt(m.goal)}</div>
+                    </div>
+                    <div style={{fontSize:'22px',fontWeight:900,color:m.color}}>{p}%</div>
+                  </div>
+                  <div style={{background:'var(--dim)',borderRadius:'99px',height:6,overflow:'hidden'}}>
+                    <div style={{background:m.color,borderRadius:'99px',height:6,width:p+'%',transition:'width .8s ease'}}/>
+                  </div>
+                </div>
+              )
+            })}
           </div>
-          <ProgressBar pct={pct} style={{margin:'10px 0 6px'}}/>
           <div style={{color:'var(--muted)',fontSize:'11px',display:'flex',gap:'16px'}}>
             <span>{pipeline.length} deals in pipeline</span>
             <span>·</span>

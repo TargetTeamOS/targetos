@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Card, CardHeader, Btn, StatCard, Modal, ModalTitle, Input, Select, Grid2, Grid3 } from '../components/UI'
 import { AGENTS, SOURCES, PROPERTY_TYPES, DEAL_STAGES } from '../lib/constants'
+import { AGENT_GOALS, AGENT_ACTUALS, pct as calcPct } from '../lib/goals'
 import { BulkUpload } from '../components/BulkUpload'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts'
 
@@ -306,19 +307,18 @@ export function Production() {
               <table style={{width:'100%',borderCollapse:'collapse'}}>
                 <thead>
                   <tr style={{background:'var(--dim)'}}>
-                    {['#','Agent','Deals','Volume','GCI','Goal','Progress'].map(h=>(
+                    {['#','Agent','Units','Production','GCI','Units Goal','GCI Goal','Progress'].map(h=>(
                       <th key={h} style={{padding:'10px 14px',textAlign:'left',fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',borderBottom:'1px solid var(--border)'}}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {AGENTS.map((agent,i)=>{
+                    const actual = AGENT_ACTUALS[agent.id] || {units:0,production:0,gci:0}
+                    const goals = AGENT_GOALS[agent.id] || {units:10,production:3000000,gci:100000}
                     const agDeals = deals.filter(d=>d.agentId===agent.id)
-                    const agGCI = agDeals.reduce((s,d)=>s+d.gci,0)
-                    const agProd = agDeals.reduce((s,d)=>s+d.prod,0)
-                    const goal = {a1:200000,a2:150000,a3:180000,a4:100000,a5:80000,a6:120000,a7:90000,a8:160000}[agent.id]||100000
-                    const pct = Math.min(Math.round(agGCI/goal*100),100)
-                    if(agDeals.length===0) return null
+                    const pct = calcPct(actual.gci, goals.gci)
+                    if(actual.units===0 && agDeals.length===0) return null
                     return (
                       <tr key={agent.id} style={{borderBottom:'1px solid var(--border)'}} onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                         <td style={{padding:'12px 14px',fontSize:'13px',fontWeight:700,color:'var(--muted)'}}>{i+1}</td>
@@ -331,10 +331,11 @@ export function Production() {
                             </div>
                           </div>
                         </td>
-                        <td style={{padding:'12px 14px',fontSize:'13px',fontWeight:700}}>{agDeals.length}</td>
-                        <td style={{padding:'12px 14px',fontSize:'13px',fontWeight:700}}>{fmt$(agProd)}</td>
-                        <td style={{padding:'12px 14px',fontSize:'13px',fontWeight:700,color:'#D97706'}}>{fmt$(agGCI)}</td>
-                        <td style={{padding:'12px 14px',fontSize:'12px',color:'var(--muted)'}}>{fmt$(goal)}</td>
+                        <td style={{padding:'12px 14px',fontSize:'13px',fontWeight:700}}>{actual.units}</td>
+                        <td style={{padding:'12px 14px',fontSize:'13px',fontWeight:700}}>{fmt$(actual.production)}</td>
+                        <td style={{padding:'12px 14px',fontSize:'13px',fontWeight:700,color:'#D97706'}}>{fmt$(actual.gci)}</td>
+                        <td style={{padding:'12px 14px',fontSize:'12px',color:'var(--muted)'}}>{goals.units} units</td>
+                        <td style={{padding:'12px 14px',fontSize:'12px',color:'var(--muted)'}}>{fmt$(goals.gci)}</td>
                         <td style={{padding:'12px 14px',minWidth:'120px'}}>
                           <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
                             <div style={{flex:1,background:'var(--dim)',borderRadius:'99px',height:6,overflow:'hidden'}}>
