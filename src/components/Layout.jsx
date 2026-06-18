@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
+import { formatTime } from '../lib/time'
 import { AGENTS } from '../lib/constants'
 
 const DEFAULT_NAV = [
@@ -168,6 +169,7 @@ export function Layout({ page, setPage, children }) {
           <div style={{fontSize:'16px',fontWeight:800,flex:1,color:'var(--text)'}}>{PAGE_TITLES[page] || page}</div>
           <input placeholder="Search..." style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',padding:'8px 13px',outline:'none',width:'220px',fontFamily:'Inter,system-ui,sans-serif'}}
             onFocus={e=>e.target.style.borderColor='#CC2200'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
+          <LiveClock/>
           <ThemeToggle/>
           <div style={{display:'flex',alignItems:'center',gap:'5px'}}>
             <div style={{width:7,height:7,borderRadius:'50%',background:'#10B981'}}/>
@@ -278,6 +280,33 @@ export function Layout({ page, setPage, children }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function LiveClock() {
+  const [time, setTime] = React.useState(new Date())
+  React.useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  const et = time.toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true
+  })
+
+  return (
+    <div style={{
+      background:'var(--dim)', border:'1px solid var(--border)',
+      borderRadius:'8px', padding:'6px 12px',
+      fontSize:'11px', fontWeight:700, color:'var(--text)',
+      fontFamily:'monospace', whiteSpace:'nowrap',
+      display:'flex', alignItems:'center', gap:'5px',
+    }}>
+      <span style={{color:'#10B981',fontSize:'8px'}}>●</span>
+      {et} ET
     </div>
   )
 }

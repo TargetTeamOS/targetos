@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { getRecordActivity } from '../lib/activityLog'
+import { timeAgo, formatActivity } from '../lib/time'
 
 const ACTION_STYLES = {
   'Created':        { bg:'#F0FDF4', color:'#16A34A', icon:'✦'  },
@@ -14,17 +15,7 @@ const ACTION_STYLES = {
   'default':        { bg:'var(--dim)', color:'var(--muted)', icon:'•' },
 }
 
-function timeAgo(dateStr) {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff/60000)
-  const hours = Math.floor(diff/3600000)
-  const days = Math.floor(diff/86400000)
-  if(mins < 1)    return 'just now'
-  if(mins < 60)   return mins+'m ago'
-  if(hours < 24)  return hours+'h ago'
-  if(days < 7)    return days+'d ago'
-  return new Date(dateStr).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
-}
+// timeAgo and formatActivity imported from lib/time
 
 export function RecordActivityFeed({ recordType, recordId, localEntries=[], compact=false }) {
   const [entries, setEntries] = useState([])
@@ -141,7 +132,7 @@ function FullEntry({ entry: e }) {
 
         {/* Timestamp */}
         <div style={{fontSize:'10px',color:'var(--muted)',marginTop:'6px'}}>
-          {e.created_at ? new Date(e.created_at).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}) : e.time || ''}
+          {formatActivity(e.created_at||e.time)}
         </div>
       </div>
     </div>

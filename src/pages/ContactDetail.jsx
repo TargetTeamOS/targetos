@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { AGENTS, SOURCES, PROPERTY_TYPES, CONTACT_TYPES } from '../lib/constants'
 import { Badge, Btn, Input, Select, Grid2, Grid3 } from '../components/UI'
 import { useConfirm } from '../components/ConfirmDialog'
+import { nowISO, formatActivity, formatTime } from '../lib/time'
 import { logChange, logFieldChanges } from '../lib/activityLog'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 
@@ -80,7 +81,7 @@ export function ContactDetail({ contactId, onBack }) {
   }
 
   function addActivity(type, icon, color, title, detail='') {
-    const entry = { type, icon, color, title, detail, time: new Date().toLocaleString(), action: title.split(':')[0]||'Note Added', agent_name: state.currentAgent?.name||'Admin', created_at: new Date().toISOString() }
+    const entry = { type, icon, color, title, detail, time: formatActivity(nowISO()), action: title.split(':')[0]||'Note Added', agent_name: state.currentAgent?.name||'Admin', created_at: nowISO() }
     setActivities(prev => [entry, ...prev])
     setLocalActivity(prev => [entry, ...prev])
     // Log to DB

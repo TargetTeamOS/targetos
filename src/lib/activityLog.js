@@ -6,6 +6,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase } from './supabase'
+import { nowISO } from './time'
 
 // Field display names for human-readable logs
 const FIELD_LABELS = {
@@ -56,7 +57,7 @@ export async function logChange({ recordType, recordId, recordName, action, fiel
     agent_name:   agentName || 'System',
     user_id:      userId || null,
     extra_data:   extra ? JSON.stringify(extra) : null,
-    created_at:   new Date().toISOString(),
+    created_at:   nowISO(),
   }
 
   // Save to Supabase
