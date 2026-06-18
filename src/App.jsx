@@ -5,6 +5,7 @@ import { AGENTS } from './lib/constants'
 import { Login } from './components/Login'
 import { MobileLayout } from './components/MobileLayout'
 import { MobileDashboard } from './pages/MobileDashboard'
+import { DailyBriefing } from './pages/DailyBriefing'
 import { Layout } from './components/Layout'
 import { Toast } from './components/UI'
 
