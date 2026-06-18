@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { AGENTS } from '../lib/constants'
 import { Card, CardHeader, Btn, Grid2 } from '../components/UI'
 import { buildDailyEmail, AGENT_EMAILS } from '../lib/dailyBriefing'
+import { loadBriefingPrefs, saveBriefingPrefs } from '../lib/briefingPrefs'
 import { sendDailyBriefing } from '../lib/emailService'
 
 const AGENT_COLORS = {
@@ -57,14 +58,25 @@ export function DailyBriefing() {
     days: ['Mon','Tue','Wed','Thu','Fri'],
   })
 
-  // Per-agent preferences
+  // Per-agent preferences — persisted to localStorage + Supabase
   const [agentPrefs, setAgentPrefs] = useState(() => {
+    // Try localStorage first
+    try {
+      const saved = localStorage.getItem('targetos_briefing_prefs')
+      if(saved) return JSON.parse(saved)
+    } catch(e) {}
+    // Default
     const prefs = {}
     Object.keys(AGENT_EMAILS).forEach(name => { prefs[name] = {...DEFAULT_AGENT_PREFS, sections:{...DEFAULT_AGENT_PREFS.sections}} })
     return prefs
   })
 
   const [selectedAgent, setSelectedAgent] = useState(null)
+
+  // Auto-save prefs whenever they change
+  useEffect(() => {
+    saveBriefingPrefs(agentPrefs)
+  }, [agentPrefs])
 
   useEffect(() => {
     supabase.from('tasks').select('*').eq('status','pending').then(({data}) => {

@@ -1,3 +1,4 @@
+import { supabase } from '../lib/supabase'
 import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { Card, CardHeader, Btn, Input, Grid2 } from '../components/UI'
@@ -43,7 +44,16 @@ export function Settings() {
               <Grid2 gap={10}><Input label="First Name" value="Yanky"/><Input label="Last Name" value="Lichtenstein"/></Grid2>
               <Input label="Email" value={state.user?.email||'yanky@targetreteam.com'} type="email"/>
               <Grid2 gap={10}><Input label="Phone" value="845-424-1014" type="tel"/><Input label="Extension" value="104"/></Grid2>
-              <Btn onClick={()=>alert('Profile saved!')}>Save Profile</Btn>
+              <Btn onClick={async()=>{
+  const { error } = await supabase.from('user_settings').upsert({
+    user_id: state.user?.id,
+    display_name: state.user?.email?.split('@')[0] || '',
+    preferences: { theme: state.theme },
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'user_id' })
+  if(error) toast('Save failed: '+error.message,'#DC2626')
+  else toast('✅ Profile saved!')
+}}>Save Profile</Btn>
             </div>
           </Card>
           <Card>
@@ -52,7 +62,13 @@ export function Settings() {
               <Input label="Current Password" type="password"/>
               <Input label="New Password" type="password"/>
               <Input label="Confirm New Password" type="password"/>
-              <Btn onClick={()=>alert('Password updated!')}>Update Password</Btn>
+              <Btn onClick={async()=>{
+  const newPw = document.querySelector('[data-pw-input]')?.value
+  if(!newPw||newPw.length<6) { toast('Password must be at least 6 characters','#DC2626'); return }
+  const { error } = await supabase.auth.updateUser({ password: newPw })
+  if(error) toast('Error: '+error.message,'#DC2626')
+  else { toast('✅ Password updated!'); document.querySelector('[data-pw-input]').value='' }
+}}>Update Password</Btn>
             </div>
           </Card>
         </>

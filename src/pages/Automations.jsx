@@ -1,5 +1,7 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 import { Btn, Modal, ModalTitle, Input, Select, Grid2 } from '../components/UI'
+import { useApp } from '../context/AppContext'
 import { useConfirm } from '../components/ConfirmDialog'
 
 // ── REAL DATA FROM MONDAY.COM BOARDS ──────────────────────────
@@ -215,8 +217,64 @@ const PRESETS = [
 // ── MAIN PAGE ──────────────────────────────────────────────────
 export function Automations() {
   const { confirm, ConfirmDialog } = useConfirm()
+  const { toast } = useApp()
   const [view, setView] = useState('list')
   const [automations, setAutomations] = useState(PRESETS)
+
+  // Load saved automations from Supabase on mount, merge with presets
+  useEffect(() => {
+    async function loadAutomations() {
+      try {
+        const { data, error } = await supabase.from('automations').select('*')
+        if(data && data.length > 0) {
+          // Merge DB automations with presets (DB wins for matching IDs)
+          const dbIds = new Set(data.map(a => a.id))
+          const merged = [
+            ...PRESETS.filter(p => !dbIds.has(p.id)), // presets not in DB
+            ...data.map(a => ({
+              ...a,
+              nodes: a.nodes || [],
+              connections: a.connections || [],
+              count: a.fire_count || 0,
+              lastFired: a.last_fired ? new Date(a.last_fired).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '',
+              color: a.color || '#CC2200',
+            }))
+          ]
+          setAutomations(merged)
+        } else {
+          // First time — push presets to DB
+          await syncPresetsToDB(PRESETS)
+        }
+      } catch(e) {
+        console.log('Automations table not yet created — using presets only')
+      }
+    }
+    loadAutomations()
+  }, [])
+
+  async function syncPresetsToDB(presets) {
+    try {
+      await supabase.from('automations').upsert(
+        presets.map(a => ({
+          id: a.id, name: a.name, description: a.description,
+          active: a.active, nodes: a.nodes, connections: a.connections,
+          fire_count: a.count || 0, color: a.color
+        })),
+        { onConflict: 'id' }
+      )
+    } catch(e) { console.log('DB sync skipped:', e.message) }
+  }
+
+  async function persistAutomation(auto) {
+    try {
+      await supabase.from('automations').upsert({
+        id: auto.id, name: auto.name, description: auto.description,
+        active: auto.active, nodes: auto.nodes, connections: auto.connections,
+        fire_count: auto.count || 0, color: auto.color,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' })
+    } catch(e) { console.log('DB persist skipped:', e.message) }
+  }
   const [editing, setEditing] = useState(null)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
@@ -228,14 +286,26 @@ export function Automations() {
 
   function saveAuto(auto) {
     setAutomations(prev => { const e=prev.find(a=>a.id===auto.id); return e?prev.map(a=>a.id===auto.id?auto:a):[...prev,auto] })
+    persistAutomation(auto)
     setView('list'); setEditing(null)
+    toast('Automation saved!')
   }
 
-  function toggleActive(id) { setAutomations(prev=>prev.map(a=>a.id===id?{...a,active:!a.active}:a)) }
+  function toggleActive(id) {
+    setAutomations(prev => {
+      const updated = prev.map(a => a.id===id ? {...a,active:!a.active} : a)
+      const changed = updated.find(a => a.id===id)
+      if(changed) persistAutomation(changed)
+      return updated
+    })
+  }
 
   function deleteAuto(id) {
     const a = automations.find(x=>x.id===id)
-    confirm({ title:'Delete Automation?', message:`"${a?.name}" will be permanently deleted.`, confirmLabel:'Delete', onConfirm:()=>setAutomations(prev=>prev.filter(x=>x.id!==id)) })
+    confirm({ title:'Delete Automation?', message:`"${a?.name}" will be permanently deleted.`, confirmLabel:'Delete', onConfirm:async()=>{
+      setAutomations(prev=>prev.filter(x=>x.id!==id))
+      try { await supabase.from('automations').delete().eq('id',id) } catch(e) {}
+    }})
   }
 
   if(view==='builder' && editing) return (
@@ -343,6 +413,7 @@ export function Automations() {
 // ── VISUAL BUILDER ─────────────────────────────────────────────
 function AutomationBuilder({ automation, onSave, onCancel }) {
   const { confirm, ConfirmDialog } = useConfirm()
+  const { toast } = useApp()
   const [auto, setAuto] = useState({...automation,nodes:[...automation.nodes],connections:[...automation.connections]})
   const [selected, setSelected] = useState(null)
   const [connecting, setConnecting] = useState(null)
