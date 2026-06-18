@@ -60,7 +60,16 @@ export function Layout({ page, setPage, children }) {
   const [nav, setNav] = useState(() => {
     try {
       const saved = localStorage.getItem('targetos_nav')
-      return saved ? JSON.parse(saved) : DEFAULT_NAV
+      if(!saved) return DEFAULT_NAV
+      const savedNav = JSON.parse(saved)
+      // Merge: add any new items from DEFAULT_NAV that aren't in saved version
+      const savedIds = new Set(savedNav.filter(n=>n.id).map(n=>n.id))
+      const newItems = DEFAULT_NAV.filter(n => n.id && !savedIds.has(n.id))
+      if(newItems.length === 0) return savedNav
+      // Insert new items before Settings (last item)
+      const withoutSettings = savedNav.filter(n=>n.id!=='settings')
+      const settings = savedNav.filter(n=>n.id==='settings')
+      return [...withoutSettings, ...newItems, ...settings]
     } catch { return DEFAULT_NAV }
   })
 
