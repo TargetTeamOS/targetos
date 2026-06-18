@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
-import { VoiceContactCapture } from '../components/VoiceContactCapture'
+import { VoiceCapture } from '../components/VoiceCapture'
 import { AGENTS } from '../lib/constants'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
@@ -55,7 +55,7 @@ export function MobileDashboard({ setPage }) {
       {showVoice && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:200,display:'flex',alignItems:'flex-end'}} onClick={e=>{if(e.target===e.currentTarget)setShowVoice(false)}}>
           <div style={{background:'var(--panel)',borderRadius:'20px 20px 0 0',padding:'20px 20px max(20px,env(safe-area-inset-bottom)) 20px',width:'100%',boxShadow:'0 -8px 40px rgba(0,0,0,.3)'}}>
-            <VoiceContactCapture onSaved={()=>setTimeout(()=>setShowVoice(false),2500)} onClose={()=>setShowVoice(false)}/>
+            <VoiceCapture onSaved={contact=>{if(contact){}setTimeout(()=>setShowVoice(false),2500)}} onClose={()=>setShowVoice(false)}/>
           </div>
         </div>
       )}

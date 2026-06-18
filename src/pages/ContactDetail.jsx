@@ -6,6 +6,7 @@ import { Badge, Btn, Input, Select, Grid2, Grid3 } from '../components/UI'
 import { useConfirm } from '../components/ConfirmDialog'
 import { nowISO, formatActivity, formatTime } from '../lib/time'
 import { logChange, logFieldChanges } from '../lib/activityLog'
+import { VoiceCapture } from '../components/VoiceCapture'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
@@ -26,6 +27,7 @@ export function ContactDetail({ contactId, onBack }) {
   const [saving, setSaving] = useState(false)
   const [editingAll, setEditingAll] = useState(false)
   const [localActivity, setLocalActivity] = useState([])
+  const [showVoiceNote, setShowVoiceNote] = useState(false)
   const [form, setForm] = useState({})
 
   useEffect(() => {
@@ -262,9 +264,22 @@ export function ContactDetail({ contactId, onBack }) {
                   style={{width:'100%',minHeight:'90px',background:'transparent',border:'none',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',resize:'none',outline:'none',lineHeight:1.6,boxSizing:'border-box'}}/>
                 <div style={{display:'flex',justifyContent:'flex-end',marginTop:'8px'}}>
                   <Btn onClick={saveNote} disabled={!noteText.trim()}>SAVE</Btn>
+              <Btn size="sm" variant="ghost" onClick={()=>setShowVoiceNote(v=>!v)}>🎤</Btn>
                 </div>
               </>
             )}
+            {/* Voice note capture */}
+            {showVoiceNote && activeTab==='NOTE' && (
+              <div style={{background:'var(--dim)',borderRadius:'12px',padding:'16px',marginBottom:'12px'}}>
+                <VoiceCapture
+                  contactId={contactId}
+                  contactName={contact?.first_name+' '+(contact?.last_name||'')}
+                  onClose={()=>setShowVoiceNote(false)}
+                  onSaved={()=>{setShowVoiceNote(false);addActivity('note','📝','#0EA5E9','Voice note saved')}}
+                />
+              </div>
+            )}
+
             {activeTab==='CALL' && (
               <div>
                 <input placeholder="Call outcome / notes..." style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none',marginBottom:'10px',boxSizing:'border-box'}}
