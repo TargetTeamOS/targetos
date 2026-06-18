@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import { VoiceContactCapture } from '../components/VoiceContactCapture'
 import { AGENTS } from '../lib/constants'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
@@ -23,6 +24,7 @@ export function MobileDashboard({ setPage }) {
   const [contacts, setContacts] = useState([])
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showVoice, setShowVoice] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -44,6 +46,19 @@ export function MobileDashboard({ setPage }) {
 
   return (
     <div style={{padding:'14px'}}>
+      {/* Voice FAB */}
+      <button onClick={()=>setShowVoice(true)} style={{position:'fixed',bottom:'76px',right:'16px',width:54,height:54,borderRadius:'50%',background:'linear-gradient(135deg,#CC2200,#E8650A)',border:'none',color:'#fff',fontSize:'22px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',zIndex:50,boxShadow:'0 4px 16px rgba(204,34,0,.4)'}}>
+        🎤
+      </button>
+
+      {/* Voice modal */}
+      {showVoice && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:200,display:'flex',alignItems:'flex-end'}} onClick={e=>{if(e.target===e.currentTarget)setShowVoice(false)}}>
+          <div style={{background:'var(--panel)',borderRadius:'20px 20px 0 0',padding:'20px 20px max(20px,env(safe-area-inset-bottom)) 20px',width:'100%',boxShadow:'0 -8px 40px rgba(0,0,0,.3)'}}>
+            <VoiceContactCapture onSaved={()=>setTimeout(()=>setShowVoice(false),2500)} onClose={()=>setShowVoice(false)}/>
+          </div>
+        </div>
+      )}
 
       {/* Welcome */}
       <div style={{marginBottom:'16px'}}>

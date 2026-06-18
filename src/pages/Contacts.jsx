@@ -5,6 +5,7 @@ import { AGENTS, SOURCES, PROPERTY_TYPES, CONTACT_TYPES } from '../lib/constants
 import { Card, CardHeader, Badge, Avatar, Btn, Modal, ModalTitle, Input, Select, Grid2, Grid3, SkeletonTable } from '../components/UI'
 import { ContactDetail } from './ContactDetail'
 import { BulkUpload } from '../components/BulkUpload'
+import { VoiceContactCapture } from '../components/VoiceContactCapture'
 import { useConfirm } from '../components/ConfirmDialog'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
@@ -24,6 +25,7 @@ export function Contacts() {
   const [editMode, setEditMode] = useState(false)
   const [fullPageId, setFullPageId] = useState(null)
   const [showBulkUpload, setShowBulkUpload] = useState(false)
+  const [showVoice, setShowVoice] = useState(false)
 
   useEffect(() => { loadContacts() }, [])
 
@@ -92,6 +94,7 @@ export function Contacts() {
         <div style={{display:'flex',gap:'7px'}}>
           <Btn variant="ghost" size="sm" onClick={()=>exportCSV(contacts)}>Export CSV</Btn>
           <Btn variant="ghost" size="sm" onClick={()=>setShowBulkUpload(true)}>⬆ Bulk Import</Btn>
+          <Btn size="sm" variant="secondary" onClick={()=>setShowVoice(true)}>🎤 Voice</Btn>
           <Btn size="sm" onClick={()=>setShowAdd(true)}>+ New Contact</Btn>
         </div>
       </div>
@@ -114,6 +117,19 @@ export function Contacts() {
       </Card>
 
       <ConfirmDialog/>
+
+      {/* Voice capture modal */}
+      {showVoice && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',display:'flex',alignItems:'flex-end',justifyContent:'center',zIndex:999,backdropFilter:'blur(4px)'}} onClick={e=>{if(e.target===e.currentTarget)setShowVoice(false)}}>
+          <div style={{background:'var(--panel)',borderRadius:'20px 20px 0 0',padding:'20px',width:'100%',maxWidth:'480px',boxShadow:'0 -8px 40px rgba(0,0,0,.25)'}}>
+            <VoiceContactCapture
+              onSaved={contact=>{loadContacts();setTimeout(()=>setShowVoice(false),2500)}}
+              onClose={()=>setShowVoice(false)}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Bulk Upload modal */}
       {showBulkUpload && (
         <BulkUpload
