@@ -3,25 +3,23 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { logChange } from '../lib/activityLog'
 import { parseVoice } from '../lib/voiceParser'
-import { nowISO } from '../lib/time'
 
-// ── SPEECH + AUDIO RECORDER ───────────────────────────────────
-// Records BOTH transcript (speech-to-text) AND raw audio (for playback)
-function useVoiceRecorder() {
+// ── SPEECH HOOK — uses continuous mode with manual stop + silence detection
+function useSpeech() {
   const [stage, setStage]           = useState('idle')
   const [transcript, setTranscript] = useState('')
   const [interim, setInterim]       = useState('')
   const [secs, setSecs]             = useState(0)
   const [error, setError]           = useState('')
-  const [audioURL, setAudioURL]     = useState(null) // blob URL for playback
+  const [audioURL, setAudioURL]     = useState(null)
 
-  const srRef       = useRef(null) // SpeechRecognition
-  const mediaRef    = useRef(null) // MediaRecorder
-  const chunksRef   = useRef([])
-  const timerRef    = useRef(null)
-  const doneRef     = useRef(null)
-  const finalRef    = useRef('')
-  const silenceRef  = useRef(null) // silence timer
+  const srRef      = useRef(null)
+  const mediaRef   = useRef(null)
+  const chunksRef  = useRef([])
+  const timerRef   = useRef(null)
+  const silenceRef = useRef(null)
+  const finalRef   = useRef('')
+  const doneRef    = useRef(null)
 
   const supported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 
@@ -31,7 +29,7 @@ function useVoiceRecorder() {
     finalRef.current = ''; chunksRef.current = []
     doneRef.current = onDone
 
-    // ── Start MediaRecorder for audio capture ──
+    // Start audio recording for playback
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mr = new MediaRecorder(stream)
@@ -39,23 +37,21 @@ function useVoiceRecorder() {
       mr.onstop = () => {
         stream.getTracks().forEach(t => t.stop())
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-        const url  = URL.createObjectURL(blob)
-        setAudioURL(url)
+        setAudioURL(URL.createObjectURL(blob))
       }
       mr.start(100)
       mediaRef.current = mr
     } catch(e) {
-      // Audio capture failed (permissions), continue with transcript only
       console.warn('Audio capture unavailable:', e.message)
     }
 
-    // ── Start SpeechRecognition ──
+    // Speech recognition — continuous mode, manual stop
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if(!SR) { setError('Voice not supported. Use Chrome or Safari.'); return }
 
     const r = new SR()
     r.lang = 'en-US'
-    r.continuous = false
+    r.continuous = true       // keep listening until manually stopped
     r.interimResults = true
     r.maxAlternatives = 1
 
@@ -65,11 +61,11 @@ function useVoiceRecorder() {
     }
 
     r.onresult = e => {
-      // Clear any existing silence timer - user is still speaking
+      // Reset silence timer every time we hear something
       clearTimeout(silenceRef.current)
 
       let interimText = ''
-      for(let i = 0; i < e.results.length; i++) {
+      for(let i = e.resultIndex; i < e.results.length; i++) {
         if(e.results[i].isFinal) {
           finalRef.current += e.results[i][0].transcript + ' '
           setTranscript(finalRef.current.trim())
@@ -78,9 +74,9 @@ function useVoiceRecorder() {
           interimText += e.results[i][0].transcript
         }
       }
-      setInterim(interimText)
+      if(interimText) setInterim(interimText)
 
-      // Extended silence detection — wait 8 seconds after last speech before auto-stop
+      // Auto-stop after 8 seconds of silence
       silenceRef.current = setTimeout(() => {
         if(srRef.current) srRef.current.stop()
       }, 8000)
@@ -89,8 +85,13 @@ function useVoiceRecorder() {
     r.onerror = e => {
       clearInterval(timerRef.current)
       clearTimeout(silenceRef.current)
-      if(e.error !== 'no-speech' && e.error !== 'aborted')
-        setError('Mic error: ' + e.error)
+      if(e.error === 'no-speech') {
+        // No speech detected — just try again, don't stop
+        return
+      }
+      if(e.error !== 'aborted') {
+        setError('Mic error: ' + e.error + '. Make sure mic access is allowed.')
+      }
     }
 
     r.onend = () => {
@@ -126,10 +127,10 @@ function useVoiceRecorder() {
 }
 
 // ── AUDIO PLAYER ──────────────────────────────────────────────
-function AudioPlayer({ url, label = 'Listen to recording' }) {
+function AudioPlayer({ url }) {
   const [playing, setPlaying] = useState(false)
+  const [progress, setProgress] = useState(0)
   const audioRef = useRef(null)
-
   if(!url) return null
 
   function toggle() {
@@ -141,15 +142,19 @@ function AudioPlayer({ url, label = 'Listen to recording' }) {
 
   return (
     <div style={{display:'flex',alignItems:'center',gap:'10px',background:'rgba(14,165,233,.07)',border:'1px solid rgba(14,165,233,.2)',borderRadius:'10px',padding:'10px 13px',marginTop:'8px'}}>
-      <button onClick={toggle}
-        style={{width:36,height:36,borderRadius:'50%',background:'#0EA5E9',border:'none',color:'#fff',fontSize:'16px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>
+      <button onClick={toggle} style={{width:34,height:34,borderRadius:'50%',background:'#0EA5E9',border:'none',color:'#fff',fontSize:'14px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>
         {playing ? '⏸' : '▶'}
       </button>
       <div style={{flex:1}}>
-        <div style={{fontSize:'11px',fontWeight:700,color:'#0EA5E9'}}>{label}</div>
-        <div style={{fontSize:'10px',color:'var(--muted)'}}>Tap to listen back</div>
+        <div style={{fontSize:'11px',fontWeight:700,color:'#0EA5E9',marginBottom:'3px'}}>🎤 Voice Recording</div>
+        <div style={{background:'rgba(14,165,233,.2)',borderRadius:'99px',height:3,overflow:'hidden'}}>
+          <div style={{background:'#0EA5E9',height:3,width:progress+'%',transition:'width .1s'}}/>
+        </div>
       </div>
-      <audio ref={audioRef} src={url} onEnded={()=>setPlaying(false)} style={{display:'none'}}/>
+      <audio ref={audioRef} src={url}
+        onTimeUpdate={e=>setProgress(e.target.duration?e.target.currentTime/e.target.duration*100:0)}
+        onEnded={()=>{setPlaying(false);setProgress(0)}}
+        style={{display:'none'}}/>
     </div>
   )
 }
@@ -157,31 +162,35 @@ function AudioPlayer({ url, label = 'Listen to recording' }) {
 // ── MAIN COMPONENT ─────────────────────────────────────────────
 export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' }) {
   const { state, toast } = useApp()
-  const rec = useVoiceRecorder()
-  const [mode, setMode]       = useState(null)
-  const [parsed, setParsed]   = useState(null)
-  const [form, setForm]       = useState({ first:'',last:'',phone:'',note:'',taskTitle:'',taskDue:'',schedDate:'',schedTime:'',address:'' })
-  const [actions, setActions] = useState([])
-  const [saving, setSaving]   = useState(false)
-  const [done, setDone]       = useState(null)
-  const [savedAudioURL, setSavedAudioURL] = useState(null) // persisted for playback after save
+  const speech = useSpeech()
+  const [mode, setMode]         = useState(null)
+  const [parsed, setParsed]     = useState(null)
+  const [form, setForm]         = useState({ first:'',last:'',phone:'',note:'',taskTitle:'',taskDue:'',schedDate:'',schedTime:'',address:'' })
+  const [actions, setActions]   = useState([])
+  const [saving, setSaving]     = useState(false)
+  const [done, setDone]         = useState(null)
+  const [savedAudioURL, setSavedAudioURL] = useState(null)
 
   function startCapture() {
-    rec.start(text => {
-      if(!text) { rec.setStage('idle'); rec.setError('Nothing heard — tap mic and speak clearly.'); return }
+    speech.start(text => {
+      if(!text.trim()) {
+        speech.setStage('idle')
+        speech.setError('Nothing heard — tap the mic and speak clearly, then tap stop.')
+        return
+      }
       const result = parseVoice(text)
       setParsed(result)
-      setSavedAudioURL(rec.audioURL)
+      setSavedAudioURL(speech.audioURL)
       setForm({
         first:     result.name.first,
         last:      result.name.last,
         phone:     result.phone,
         note:      text,
         taskTitle: result.isTask||result.isReminder ? cleanTaskText(text) : '',
-        taskDue:   result.dateTime.date  || '',
-        schedDate: result.dateTime.date  || '',
-        schedTime: result.dateTime.time  || '',
-        address:   result.addresses[0]   || '',
+        taskDue:   result.dateTime?.date  || '',
+        schedDate: result.dateTime?.date  || '',
+        schedTime: result.dateTime?.time  || '',
+        address:   result.addresses?.[0]  || '',
       })
       const auto = []
       if(mode==='lead' && (result.name.first||result.phone)) auto.push('contact')
@@ -190,7 +199,7 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
       if(mode==='note' && auto.length===0) auto.push('note')
       if(auto.length===0 && mode==='lead') auto.push('contact')
       setActions(auto)
-      rec.setStage('review')
+      speech.setStage('review')
     })
   }
 
@@ -201,7 +210,6 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
   async function saveAll() {
     setSaving(true)
     const saved = []
-    const audioNote = savedAudioURL ? `[Voice recording attached]` : ''
 
     if(actions.includes('contact') && mode==='lead') {
       const { data, error } = await supabase.from('contacts').insert([{
@@ -209,17 +217,17 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
         last_name:  form.last  || '',
         phone:      form.phone || '',
         source:     'Voice Capture',
-        notes:      `${form.note}${audioNote ? '\n'+audioNote : ''}`,
+        notes:      `Voice note: "${form.note}"`,
         agent_id:   state.user?.id,
       }]).select()
-      if(error) { rec.setError('Contact save failed: '+error.message); setSaving(false); return }
-      await logChange({ recordType:'contact', recordId:data[0].id, recordName:(form.first+' '+form.last).trim()||'Voice Contact', action:'Created', agentName:state.currentAgent?.name||'Agent', userId:state.user?.id, extra:'Voice capture'+audioNote })
+      if(error) { speech.setError('Save failed: '+error.message); setSaving(false); return }
+      await logChange({ recordType:'contact', recordId:data[0].id, recordName:(form.first+' '+form.last).trim()||'Voice Contact', action:'Created', agentName:state.currentAgent?.name||'Agent', userId:state.user?.id, extra:'Voice capture' })
       saved.push({ type:'contact', label:(form.first+' '+form.last).trim()||'New Contact' })
     }
 
     if(actions.includes('note')) {
       if(contactId) {
-        await logChange({ recordType:'contact', recordId:contactId, recordName:contactName, action:'Note Added', agentName:state.currentAgent?.name||'Agent', userId:state.user?.id, extra:`${form.note}${audioNote?'\n'+audioNote:''}` })
+        await logChange({ recordType:'contact', recordId:contactId, recordName:contactName, action:'Note Added', agentName:state.currentAgent?.name||'Agent', userId:state.user?.id, extra:form.note })
         saved.push({ type:'note', label:'Note on '+contactName })
       } else {
         await supabase.from('tasks').insert([{ title:form.note.slice(0,120), priority:'normal', status:'pending', assigned_to:state.user?.id, created_by:state.user?.id }])
@@ -228,24 +236,14 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
     }
 
     if(actions.includes('task') && form.taskTitle.trim()) {
-      // Include address/contact in task title for full context
-      const taskCtx = form.address ? ` — ${form.address}` : (actions.includes('contact')&&form.first ? ` — ${form.first} ${form.last}`.trim() : '')
-      const fullTitle = form.taskTitle.trim() + taskCtx
-      await supabase.from('tasks').insert([{
-        title:       fullTitle.slice(0,200),
-        priority:    'high',
-        status:      'pending',
-        due_date:    form.taskDue || null,
-        assigned_to: state.user?.id,
-        created_by:  state.user?.id,
-      }])
-      saved.push({ type:'task', label:fullTitle.slice(0,60), linkedType: form.address?'listing':'contact' })
+      const ctx = form.address ? ` — ${form.address}` : (actions.includes('contact')&&form.first?` — ${form.first} ${form.last}`.trim():'')
+      await supabase.from('tasks').insert([{ title:(form.taskTitle.trim()+ctx).slice(0,200), priority:'high', status:'pending', due_date:form.taskDue||null, assigned_to:state.user?.id, created_by:state.user?.id }])
+      saved.push({ type:'task', label:form.taskTitle.slice(0,50) })
     }
 
     if(actions.includes('schedule')) {
-      const apptTitle = form.note.replace(/\b(schedule|appointment|meeting|showing)\b/gi,'').trim()||'Appointment'
-      await supabase.from('tasks').insert([{ title:apptTitle.slice(0,120), priority:'normal', status:'pending', due_date:form.schedDate||null, assigned_to:state.user?.id, created_by:state.user?.id }])
-      saved.push({ type:'schedule', label:`${form.schedDate||'Appointment'}${form.schedTime?' at '+fmtTime(form.schedTime):''}` })
+      await supabase.from('tasks').insert([{ title:form.note.replace(/\b(schedule|appointment|meeting|showing)\b/gi,'').trim().slice(0,120)||'Appointment', priority:'normal', status:'pending', due_date:form.schedDate||null, assigned_to:state.user?.id, created_by:state.user?.id }])
+      saved.push({ type:'schedule', label:`Appointment${form.schedDate?' on '+form.schedDate:''}` })
     }
 
     if(actions.includes('contact')) {
@@ -254,12 +252,13 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
     }
 
     setSaving(false)
-    setDone({ saved, message:`${saved.length} item${saved.length>1?'s':''} saved!` })
+    setDone({ saved })
     if(onSaved) onSaved(saved)
+    toast(`✅ ${saved.length} item${saved.length>1?'s':''} saved!`)
   }
 
   function reset() {
-    rec.setStage('idle'); rec.setError('')
+    speech.setStage('idle'); speech.setError('')
     setParsed(null); setSavedAudioURL(null)
     setForm({first:'',last:'',phone:'',note:'',taskTitle:'',taskDue:'',schedDate:'',schedTime:'',address:''})
     setActions([]); setDone(null); setSaving(false)
@@ -274,13 +273,13 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
         <div>
           <div style={{fontSize:'16px',fontWeight:800}}>🎤 Voice Capture</div>
-          <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'2px'}}>Names · Addresses · Tasks · Reminders · Schedules</div>
+          <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'2px'}}>Speak clearly · Tap stop when done · Auto-stops after 8 seconds silence</div>
         </div>
         {onClose && <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'20px',lineHeight:1,padding:'4px'}}>✕</button>}
       </div>
 
       {/* MODE PICKER */}
-      {!mode && rec.stage==='idle' && !done && (
+      {!mode && speech.stage==='idle' && !done && (
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
           <ModeCard icon='👤' label='New Lead' desc='Name, phone, address' color='#CC2200' onClick={()=>setMode('lead')}/>
           <ModeCard icon='📝' label='Quick Note' desc={contactId?`Note on ${contactName||'contact'}`:'Note, task, or reminder'} color='#0EA5E9' onClick={()=>setMode('note')}/>
@@ -288,89 +287,92 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
       )}
 
       {/* RECORDING */}
-      {mode && (rec.stage==='idle'||rec.stage==='recording') && !done && (
+      {mode && (speech.stage==='idle'||speech.stage==='recording') && !done && (
         <div style={{textAlign:'center'}}>
           <ModeBadge mode={mode} onClear={()=>{setMode(null);reset()}}/>
 
-          {/* Example prompts */}
-          <div style={{background:'var(--dim)',borderRadius:'10px',padding:'10px 12px',marginBottom:'16px',textAlign:'left',fontSize:'12px',color:'var(--muted)',lineHeight:1.8}}>
+          {/* Examples */}
+          <div style={{background:'var(--dim)',borderRadius:'10px',padding:'10px 14px',marginBottom:'18px',textAlign:'left',fontSize:'12px',color:'var(--muted)',lineHeight:1.9}}>
             {mode==='lead' ? <>
-              <div>👤 <em>"John Smith, 845-555-1234"</em></div>
-              <div>🏠 <em>"Showing at 47 Prairie Ave Monday at 2pm"</em></div>
-              <div>✓ <em>"Sarah Cohen called, remind me to follow up tomorrow"</em></div>
+              <div>👤 <em style={{color:'var(--text)'}}>"John Smith, 845-555-1234"</em></div>
+              <div>🏠 <em style={{color:'var(--text)'}}>"Showing at 47 Prairie Ave Monday 2pm"</em></div>
+              <div>✓ <em style={{color:'var(--text)'}}>"Call Sarah Cohen, remind me tomorrow"</em></div>
             </> : <>
-              <div>📝 <em>"Client interested in 12 Cloverdale Lane, Monsey"</em></div>
-              <div>✓ <em>"Schedule inspection for 352 Blauvelt Rd Wednesday"</em></div>
-              <div>⏰ <em>"Don't forget to order the closing gift"</em></div>
+              <div>📝 <em style={{color:'var(--text)'}}>"Client interested in 12 Cloverdale, Monsey"</em></div>
+              <div>✓ <em style={{color:'var(--text)'}}>"Schedule inspection Wednesday at 10am"</em></div>
+              <div>⏰ <em style={{color:'var(--text)'}}>"Remind me to order the closing gift"</em></div>
             </>}
           </div>
 
-          {rec.stage==='idle' ? (
-            <MicBtn color={mode==='lead'?'#CC2200':'#0EA5E9'} onClick={startCapture}/>
+          {speech.stage==='idle' ? (
+            <button onClick={startCapture} style={{width:84,height:84,borderRadius:'50%',background:`linear-gradient(135deg,${mode==='lead'?'#CC2200,#E8650A':'#0EA5E9,#2563EB'})`,border:'none',fontSize:'34px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',margin:'0 auto 12px',boxShadow:`0 6px 24px ${mode==='lead'?'rgba(204,34,0,.4)':'rgba(14,165,233,.4)'}`,transition:'transform .15s'}}
+              onMouseEnter={e=>e.currentTarget.style.transform='scale(1.07)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
+              🎤
+            </button>
           ) : (
-            <PulsingMicBtn color={mode==='lead'?'#CC2200':'#0EA5E9'} onClick={rec.manualStop} secs={rec.secs} fmt={fmt}/>
-          )}
-
-          {rec.stage==='recording' && (
-            <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'28px'}}>
-              Tap ⏹ to stop early · Auto-stops after 8 seconds of silence
+            <div style={{position:'relative',width:84,height:84,margin:'0 auto 10px'}}>
+              <div style={{position:'absolute',inset:-10,borderRadius:'50%',border:`3px solid ${mode==='lead'?'rgba(204,34,0,.3)':'rgba(14,165,233,.3)'}`,animation:'vcpulse 1.2s ease-in-out infinite'}}/>
+              <div style={{position:'absolute',inset:-22,borderRadius:'50%',border:`2px solid ${mode==='lead'?'rgba(204,34,0,.12)':'rgba(14,165,233,.12)'}`,animation:'vcpulse 1.2s ease-in-out infinite .4s'}}/>
+              <button onClick={speech.manualStop} style={{width:'100%',height:'100%',borderRadius:'50%',background:`linear-gradient(135deg,${mode==='lead'?'#CC2200,#E8650A':'#0EA5E9,#2563EB'})`,border:'none',fontSize:'28px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:`0 4px 16px ${mode==='lead'?'rgba(204,34,0,.5)':'rgba(14,165,233,.5)'}`}}>
+                ⏹
+              </button>
             </div>
           )}
 
-          {(rec.transcript||rec.interim) && (
-            <div style={{background:'var(--dim)',borderRadius:'10px',padding:'10px 13px',marginTop:'12px',textAlign:'left',fontSize:'12px',lineHeight:1.8}}>
-              <span>{rec.transcript}</span>
-              <span style={{color:'var(--muted)',fontStyle:'italic'}}>{rec.interim}</span>
+          {speech.stage==='recording' && (
+            <div style={{fontSize:'13px',fontWeight:700,color:mode==='lead'?'#CC2200':'#0EA5E9',marginBottom:'4px'}}>🔴 Recording · {fmt(speech.secs)}</div>
+          )}
+          <div style={{fontSize:'11px',color:'var(--muted)',marginBottom:'12px'}}>
+            {speech.stage==='idle'?'Tap to start recording':'Tap ⏹ to stop · Auto-stops after 8s silence'}
+          </div>
+
+          {/* Live transcript */}
+          {(speech.transcript||speech.interim) && (
+            <div style={{background:'var(--dim)',borderRadius:'10px',padding:'11px 13px',textAlign:'left',fontSize:'13px',lineHeight:1.8,minHeight:'50px'}}>
+              <span style={{color:'var(--text)',fontWeight:500}}>{speech.transcript}</span>
+              <span style={{color:'var(--muted)',fontStyle:'italic'}}>{speech.interim}</span>
             </div>
           )}
-          {rec.error && <ErrBox msg={rec.error}/>}
+          {speech.error && <ErrBox msg={speech.error}/>}
         </div>
       )}
 
       {/* PROCESSING */}
-      {rec.stage==='processing' && (
-        <div style={{textAlign:'center',padding:'24px'}}>
-          <div style={{fontSize:'28px',marginBottom:'8px'}}>⚙️</div>
-          <div style={{fontSize:'12px',color:'var(--muted)'}}>Analyzing speech...</div>
+      {speech.stage==='processing' && (
+        <div style={{textAlign:'center',padding:'28px'}}>
+          <div style={{fontSize:'32px',marginBottom:'10px'}}>⚙️</div>
+          <div style={{fontSize:'13px',color:'var(--muted)'}}>Analyzing speech...</div>
         </div>
       )}
 
       {/* REVIEW */}
-      {rec.stage==='review' && parsed && !done && (
+      {speech.stage==='review' && parsed && !done && (
         <div>
-          {/* Transcript box */}
-          <div style={{background:'var(--dim)',borderRadius:'10px',padding:'9px 12px',marginBottom:'4px',fontSize:'11px',color:'var(--muted)',fontStyle:'italic',lineHeight:1.7}}>
+          <div style={{background:'var(--dim)',borderRadius:'10px',padding:'10px 12px',marginBottom:'6px',fontSize:'12px',color:'var(--muted)',fontStyle:'italic',lineHeight:1.7}}>
             "{form.note.slice(0,200)}{form.note.length>200?'…':''}"
           </div>
-
-          {/* Audio playback */}
-          {(savedAudioURL||rec.audioURL) && (
-            <AudioPlayer url={savedAudioURL||rec.audioURL} label="Listen to your recording"/>
-          )}
-
-          <div style={{height:'8px'}}/>
+          <AudioPlayer url={savedAudioURL||speech.audioURL}/>
+          <div style={{height:'10px'}}/>
 
           {/* Action chips */}
-          <div style={{fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'7px'}}>
-            Detected — select what to save:
-          </div>
+          <div style={{fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'7px'}}>Detected — tap to select what to save:</div>
           <div style={{display:'flex',gap:'6px',flexWrap:'wrap',marginBottom:'12px'}}>
             {[
-              mode==='lead'&&(parsed.name.first||parsed.phone) ? {id:'contact',label:'👤 Contact',color:'#CC2200'} : null,
+              mode==='lead'&&(parsed.name?.first||parsed.phone) ? {id:'contact',label:'👤 Contact',color:'#CC2200'} : null,
               contactId ? {id:'note',label:'📝 Note on '+contactName,color:'#0EA5E9'} : null,
               parsed.isTask||parsed.isReminder ? {id:'task',label:'✓ Task',color:'#7C3AED'} : null,
               parsed.isSchedule ? {id:'schedule',label:'📅 Schedule',color:'#16A34A'} : null,
               !contactId&&mode==='note'&&!parsed.isTask&&!parsed.isSchedule ? {id:'note',label:'📝 Save Note',color:'#0EA5E9'} : null,
             ].filter(Boolean).map(a=>(
               <div key={a.id} onClick={()=>toggleAction(a.id)}
-                style={{padding:'6px 13px',borderRadius:'20px',border:'1.5px solid '+(actions.includes(a.id)?a.color:'var(--border)'),background:actions.includes(a.id)?a.color+'12':'transparent',cursor:'pointer',fontSize:'12px',fontWeight:700,color:actions.includes(a.id)?a.color:'var(--muted)',display:'flex',alignItems:'center',gap:'5px',transition:'all .12s'}}>
+                style={{padding:'7px 14px',borderRadius:'20px',border:'1.5px solid '+(actions.includes(a.id)?a.color:'var(--border)'),background:actions.includes(a.id)?a.color+'12':'transparent',cursor:'pointer',fontSize:'12px',fontWeight:700,color:actions.includes(a.id)?a.color:'var(--muted)',display:'flex',alignItems:'center',gap:'5px',transition:'all .12s'}}>
                 {actions.includes(a.id)&&<span style={{fontSize:'10px'}}>✓</span>}
                 {a.label}
               </div>
             ))}
           </div>
 
-          {/* CONTACT */}
+          {/* CONTACT fields */}
           {actions.includes('contact') && mode==='lead' && (
             <Section title="👤 Contact Info" color="#CC2200">
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}}>
@@ -382,16 +384,14 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
             </Section>
           )}
 
-          {/* NOTE */}
+          {/* NOTE fields */}
           {actions.includes('note') && (
             <Section title="📝 Note" color="#0EA5E9">
-              <textarea value={form.note} onChange={e=>set('note',e.target.value)} rows={3}
-                style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',fontFamily:'Inter,system-ui,sans-serif',padding:'8px 10px',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:1.6}}/>
-              {(savedAudioURL||rec.audioURL) && <div style={{fontSize:'10px',color:'var(--muted)',marginTop:'4px'}}>🎤 Voice recording will be attached to this note</div>}
+              <textarea value={form.note} onChange={e=>set('note',e.target.value)} rows={3} style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',fontFamily:'Inter,system-ui,sans-serif',padding:'8px 10px',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:1.6}}/>
             </Section>
           )}
 
-          {/* TASK */}
+          {/* TASK fields */}
           {actions.includes('task') && (
             <Section title="✓ Task / Reminder" color="#7C3AED">
               <FI label="Task Title" value={form.taskTitle} onChange={v=>set('taskTitle',v)} ph="Follow up with client"/>
@@ -399,31 +399,25 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
             </Section>
           )}
 
-          {/* SCHEDULE */}
+          {/* SCHEDULE fields */}
           {actions.includes('schedule') && (
             <Section title="📅 Appointment" color="#16A34A">
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:form.address?'8px':'0'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}}>
                 <FI label="Date" value={form.schedDate} onChange={v=>set('schedDate',v)} type="date"/>
                 <FI label="Time" value={form.schedTime} onChange={v=>set('schedTime',v)} type="time"/>
               </div>
-              {form.address && <FI label="Location / Address" value={form.address} onChange={v=>set('address',v)}/>}
+              {form.address && <FI label="Location" value={form.address} onChange={v=>set('address',v)}/>}
             </Section>
           )}
 
-          {/* Reminder notice */}
           {actions.includes('contact') && (
             <div style={{background:'rgba(245,158,11,.07)',border:'1px solid rgba(245,158,11,.22)',borderRadius:'9px',padding:'9px 12px',marginBottom:'10px',display:'flex',gap:'7px',fontSize:'11px',color:'#D97706'}}>
-              <span>⏰</span><span>A reminder will be created to complete the full profile — email, source, budget, areas.</span>
+              <span>⏰</span><span>A reminder will be created to complete the full profile.</span>
             </div>
           )}
 
-          {actions.length===0 && (
-            <div style={{background:'#FFFBEB',border:'1px solid #FCD34D',borderRadius:'9px',padding:'10px 12px',marginBottom:'10px',fontSize:'12px',color:'#92400E'}}>
-              ⚠️ Select at least one item above to save.
-            </div>
-          )}
-
-          {rec.error && <ErrBox msg={rec.error}/>}
+          {actions.length===0 && <div style={{background:'#FFFBEB',border:'1px solid #FCD34D',borderRadius:'9px',padding:'10px 12px',marginBottom:'10px',fontSize:'12px',color:'#92400E'}}>⚠️ Select at least one item above to save.</div>}
+          {speech.error && <ErrBox msg={speech.error}/>}
 
           <div style={{display:'flex',gap:'8px'}}>
             <button onClick={()=>{reset();setMode(mode)}} style={{flex:1,background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'10px',color:'var(--muted)',fontSize:'12px',fontWeight:600,padding:'11px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>
@@ -439,37 +433,30 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
 
       {/* DONE */}
       {done && (
-        <div style={{textAlign:'center',padding:'12px 8px'}}>
-          <div style={{fontSize:'40px',marginBottom:'10px'}}>🎉</div>
-          <div style={{fontSize:'15px',fontWeight:800,marginBottom:'12px'}}>{done.message}</div>
+        <div style={{textAlign:'center',padding:'16px 8px'}}>
+          <div style={{fontSize:'40px',marginBottom:'12px'}}>🎉</div>
+          <div style={{fontSize:'15px',fontWeight:800,marginBottom:'12px'}}>{done.saved.length} item{done.saved.length!==1?'s':''} saved!</div>
           <div style={{background:'var(--dim)',borderRadius:'12px',padding:'12px',marginBottom:'12px',textAlign:'left'}}>
             {done.saved.map((s,i)=>(
-              <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 0',borderBottom:i<done.saved.length-1?'1px solid var(--border)':'none',fontSize:'12px',fontWeight:600}}>
-                <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                  <span>{s.type==='contact'?'👤':s.type==='task'?'✓':s.type==='schedule'?'📅':s.type==='reminder'?'⏰':'📝'}</span>
-                  <span>{s.label}</span>
-                </div>
-                {s.linkedId && s.linkedType==='contact' && onClose && (
-                  <button onClick={()=>{onClose();}} style={{background:'rgba(14,165,233,.1)',border:'none',borderRadius:'6px',color:'#0EA5E9',fontSize:'10px',fontWeight:700,padding:'3px 8px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>View Contact →</button>
-                )}
+              <div key={i} style={{display:'flex',alignItems:'center',gap:'8px',padding:'6px 0',borderBottom:i<done.saved.length-1?'1px solid var(--border)':'none',fontSize:'12px',fontWeight:600}}>
+                <span>{s.type==='contact'?'👤':s.type==='task'?'✓':s.type==='schedule'?'📅':s.type==='reminder'?'⏰':'📝'}</span>
+                <span>{s.label}</span>
               </div>
             ))}
           </div>
-          {/* Audio playback after save */}
-          {savedAudioURL && <AudioPlayer url={savedAudioURL} label="Listen to original recording"/>}
-          <div style={{display:'flex',gap:'8px',justifyContent:'center',marginTop:'12px'}}>
-            <button onClick={()=>{reset();setMode(null)}} style={{background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'10px',color:'var(--text)',fontSize:'12px',fontWeight:600,padding:'9px 16px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>
-              🎤 Add Another
-            </button>
+          {(savedAudioURL||speech.audioURL) && <AudioPlayer url={savedAudioURL||speech.audioURL}/>}
+          <div style={{display:'flex',gap:'8px',justifyContent:'center',marginTop:'14px'}}>
+            <button onClick={()=>{reset();setMode(null)}} style={{background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'10px',color:'var(--text)',fontSize:'12px',fontWeight:600,padding:'9px 16px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>🎤 Add Another</button>
             {onClose && <button onClick={onClose} style={{background:'#CC2200',border:'none',borderRadius:'10px',color:'#fff',fontSize:'12px',fontWeight:700,padding:'9px 20px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>Done</button>}
           </div>
         </div>
       )}
+
+      <style>{`@keyframes vcpulse{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(1.1);opacity:1}}`}</style>
     </div>
   )
 }
 
-// ── HELPERS ───────────────────────────────────────────────────
 function ModeCard({ icon, label, desc, color, onClick }) {
   return (
     <div onClick={onClick} style={{background:'var(--dim)',border:'2px solid var(--border)',borderRadius:'14px',padding:'18px 14px',textAlign:'center',cursor:'pointer',transition:'all .15s'}}
@@ -483,40 +470,12 @@ function ModeCard({ icon, label, desc, color, onClick }) {
 }
 
 function ModeBadge({ mode, onClear }) {
-  const color = mode==='lead' ? '#CC2200' : '#0EA5E9'
+  const color = mode==='lead'?'#CC2200':'#0EA5E9'
   return (
     <div style={{display:'inline-flex',alignItems:'center',gap:'7px',background:color+'10',borderRadius:'20px',padding:'5px 14px',marginBottom:'14px',border:'1px solid '+color+'25'}}>
       <span style={{fontSize:'13px'}}>{mode==='lead'?'👤':'📝'}</span>
       <span style={{fontSize:'12px',fontWeight:700,color}}>{mode==='lead'?'New Lead':'Quick Note'}</span>
       <button onClick={onClear} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'11px',marginLeft:'4px'}}>change</button>
-    </div>
-  )
-}
-
-function MicBtn({ color, onClick }) {
-  return (
-    <button onClick={onClick}
-      style={{width:80,height:80,borderRadius:'50%',background:`linear-gradient(135deg,${color},${color}CC)`,border:'none',fontSize:'34px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',margin:'0 auto 8px',boxShadow:`0 6px 24px ${color}44`,transition:'transform .15s'}}
-      onMouseEnter={e=>e.currentTarget.style.transform='scale(1.07)'}
-      onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
-      🎤
-    </button>
-  )
-}
-
-function PulsingMicBtn({ color, onClick, secs, fmt }) {
-  return (
-    <div style={{position:'relative',width:84,height:84,margin:'0 auto 6px'}}>
-      <div style={{position:'absolute',inset:-10,borderRadius:'50%',border:`3px solid ${color}44`,animation:'vcpulse 1.2s ease-in-out infinite'}}/>
-      <div style={{position:'absolute',inset:-22,borderRadius:'50%',border:`2px solid ${color}22`,animation:'vcpulse 1.2s ease-in-out infinite .4s'}}/>
-      <button onClick={onClick}
-        style={{width:'100%',height:'100%',borderRadius:'50%',background:`linear-gradient(135deg,${color},${color}CC)`,border:'none',fontSize:'28px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:`0 4px 16px ${color}55`}}>
-        ⏹
-      </button>
-      <div style={{position:'absolute',bottom:-22,left:'50%',transform:'translateX(-50%)',fontSize:'11px',fontWeight:700,color,whiteSpace:'nowrap'}}>
-        🔴 {fmt(secs)}
-      </div>
-      <style>{`@keyframes vcpulse{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(1.1);opacity:1}}`}</style>
     </div>
   )
 }
@@ -545,13 +504,6 @@ function ErrBox({ msg }) {
   return <div style={{margin:'8px 0',fontSize:'11px',color:'#DC2626',background:'#FEF2F2',borderRadius:'8px',padding:'8px 10px',lineHeight:1.5}}>{msg}</div>
 }
 
-function fmtTime(t) {
-  const [h,m] = t.split(':').map(Number)
-  return `${h%12||12}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`
-}
-
 function cleanTaskText(text) {
-  return text
-    .replace(/\b(remind me to|remember to|task|create task|add task|don't forget to|need to|have to|remind me|reminder)\b/gi,'')
-    .replace(/\s+/g,' ').trim()
+  return text.replace(/\b(remind me to|remember to|task|create task|add task|don't forget to|need to|have to|remind me|reminder)\b/gi,'').replace(/\s+/g,' ').trim()
 }

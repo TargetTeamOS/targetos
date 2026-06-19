@@ -71,6 +71,14 @@ export function Listings() {
   const totalVol = listings.reduce((s,l)=>s+l.price,0)
   const totalSpend = listings.reduce((s,l)=>s+tSpent(l),0)
 
+  // Show listing detail if selected
+  if(selectedListing) return (
+    <ListingDetail
+      listingId={selectedListing}
+      onBack={()=>setSelectedListing(null)}
+    />
+  )
+
   return (
     <div>
       {/* Stats */}
@@ -176,7 +184,7 @@ export function Listings() {
           {filtered.map(l=>(
             <div key={l.id} onClick={()=>setSelected(l)}
               style={{display:'grid',gridTemplateColumns:'2.5fr 1fr 1fr 1fr 1fr 1fr 1fr 70px',padding:'11px 16px',borderBottom:'1px solid var(--border)',alignItems:'center',cursor:'pointer'}}
-              onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              onClick={()=>setSelectedListing(l.id)} onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'} style={{...rowStyle, cursor:'pointer'}}>
               <div>
                 <div style={{fontSize:'13px',fontWeight:700}}>{l.addr}</div>
                 <div style={{fontSize:'10px',color:'var(--muted)'}}>{l.city}, {l.state}{l.lock?' · 🔒'+l.lock:''}</div>
