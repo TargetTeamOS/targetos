@@ -106,7 +106,7 @@ export function Listings() {
         onChange={u=>updateListing(u.id,u)}
       />
     )
-    setSelectedListing(null)
+    // listing not found - fall through to main board view
   }
 
   return (

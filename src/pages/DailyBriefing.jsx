@@ -172,9 +172,7 @@ export function DailyBriefing() {
       overdueTasks: prefs.sections.overdueTasks ? tasks.filter(t=>t.due_date&&t.due_date<today) : [],
       appointments: [],
       agentColor: AGENT_COLORS[previewAgent]||'#CC2200',
-      showQuote: prefs.sections.quote,
-      sectionOrder: prefs.sectionOrder,
-      quotes,
+      showQuote: prefs.sections.quote !== false,
     })
     setPreviewHtml(html)
   }, [previewAgent, tasks, agentPrefs, prefsLoading, quotes])
@@ -190,9 +188,7 @@ export function DailyBriefing() {
       tasks: prefs.sections.todayTasks ? tasks.filter(t=>t.due_date===today) : [],
       overdueTasks: prefs.sections.overdueTasks ? tasks.filter(t=>t.due_date&&t.due_date<today) : [],
       appointments: [],
-      showQuote: prefs.sections.quote,
-      sectionOrder: prefs.sectionOrder,
-      quotes,
+      showQuote: prefs.sections.quote !== false,
     })
     const result = await sendDailyBriefing({ agentName, email, html })
     setSending('')
