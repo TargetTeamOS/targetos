@@ -102,6 +102,7 @@ const PRESETS = [
     active:true, lastFired:'Jun 12', count:9, color:'#D97706',
     nodes:[
       {id:'n1',type:'trigger_offer_accepted',label:'Deal → Offer Accapted',icon:'📝',color:'#CC2200',x:240,y:50,config:{stage:'Offer Accapted',board:'Production'}},
+      {id:'n5',type:'action_create_gift',label:'Create UC Gift Record',icon:'🎁',color:'#7C3AED',x:240,y:570,config:{giftType:'Under Contract',amount:'75',vendor:'Kosher basket'}},
       {id:'n2',type:'action_celebrate',label:'Team Celebration',icon:'🎊',color:'#16A34A',x:240,y:180,config:{message:'📝 OFFER ACCEPTED! Congrats to {agent} — {addr} at {price}!'}},
       {id:'n3',type:'action_announce',label:'Post to Team Feed',icon:'📣',color:'#8B5CF6',x:240,y:310,config:{title:'Offer Accepted — {addr}',body:'Congratulations {agent} on getting {addr} accepted! 🏡 Production board updated.'}},
       {id:'n4',type:'action_task',label:'Secretary: Attorney Review',icon:'✓',color:'#7C3AED',x:240,y:440,config:{title:'Attorney review period — {addr} (3 days)',priority:'urgent',assignTo:'Gitty Fogel',dueIn:'3 days'}},
@@ -132,7 +133,7 @@ const PRESETS = [
       {id:'n2',type:'action_celebrate',label:'Celebration Alert',icon:'🎊',color:'#16A34A',x:240,y:180,config:{message:'🏆 CLOSED! {agent} closed {addr} at {price}! GCI: {gci}'}},
       {id:'n3',type:'action_announce',label:'Post to Team Feed',icon:'📣',color:'#8B5CF6',x:240,y:310,config:{title:'CLOSED! {addr}',body:'🏆 Huge congrats to {agent} for closing {addr} at {price}! GCI: {gci}. Another win for Target Team!'}},
       {id:'n4',type:'action_send_sign',label:'Send Sold Sign',icon:'🪧',color:'#DC2626',x:240,y:440,config:{signType:'Sold Sign Sent',column:'label3'}},
-      {id:'n5',type:'action_task',label:'Secretary: Order Closing Gift',icon:'✓',color:'#7C3AED',x:240,y:570,config:{title:'Order closing gift — {addr} clients',priority:'normal',assignTo:'Gitty Fogel',dueIn:'2 days'}},
+      {id:'n5',type:'action_create_gift',label:'Create Closing Gift Record',icon:'🎁',color:'#7C3AED',x:240,y:570,config:{giftType:'Closing',amount:'150',vendor:'Kosher gift basket'}},
       {id:'n6',type:'rule_wait',label:'Wait 7 Days',icon:'⏱',color:'#94A3B8',x:240,y:700,config:{duration:7,unit:'days'}},
       {id:'n7',type:'action_sms',label:'Thank You SMS to Client',icon:'💬',color:'#10B981',x:240,y:830,config:{to:'client',message:"Hi {client_name}! 🏡 It was truly a pleasure helping you with {addr}. Enjoy every moment in your new home! If you ever need anything, we're always here. — Target Team 845.424.1014"}},
       {id:'n8',type:'action_commission_status',label:'Commission: Mark Pending',icon:'💰',color:'#D97706',x:240,y:960,config:{field:'Commission Received',status:'Working on it',column:'status_16'}},

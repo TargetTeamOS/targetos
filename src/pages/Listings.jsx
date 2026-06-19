@@ -45,7 +45,7 @@ export function Listings() {
 
   async function loadListings() {
     setDbLoading(true)
-    const { data, error } = await supabase.from('listings').select('*').order('created_at', { ascending: false })
+    const { data } = await supabase.from('listings').select('*').order('created_at', { ascending: false })
     if(data && data.length > 0) {
       setListings(data.map(l => ({
         ...l,
@@ -55,8 +55,23 @@ export function Listings() {
         agents:   l.agents   || [l.agent_name].filter(Boolean),
       })))
     } else {
-      // DB empty — use hardcoded data so board isn't blank
-      setListings(INIT_LISTINGS)
+      // First time: seed DB with real listings so they get real UUIDs
+      const toInsert = INIT_LISTINGS.map(l => ({
+        addr: l.addr, city: l.city, state: l.state||'NY', zip: l.zip||'',
+        price: l.price, beds: String(l.beds||''), baths: String(l.baths||''),
+        sqft: l.sqft||'', type: l.type||'', status: l.status||'Active',
+        tax: l.tax||'', lock_code: l.lock||'', mls: l.mls||'',
+        agent_name: (l.agents||[])[0]||'', budget: l.budget||2000,
+        days: l.days||0, notes: l.notes||'',
+        spend: l.spend||[], showings: [], interests: [], notes_log: [],
+      }))
+      const { data: inserted } = await supabase.from('listings').insert(toInsert).select()
+      if(inserted?.length) {
+        setListings(inserted.map(l => ({...l, agents:[l.agent_name].filter(Boolean), spend:l.spend||[], showings:[], interests:[]})))
+      } else {
+        // Fallback — show hardcoded but mark as unsynced
+        setListings(INIT_LISTINGS)
+      }
     }
     setDbLoading(false)
   }
