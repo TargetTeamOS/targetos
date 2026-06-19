@@ -50,6 +50,8 @@ export function DailyBriefing() {
   const [showPreview, setShowPreview] = useState(false)
   const [sending, setSending] = useState('')
   const [lastSent, setLastSent] = useState({})
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null)
   const [apiStatus, setApiStatus] = useState(null) // null | 'ok' | 'error'
 
   // Schedule settings
@@ -103,6 +105,34 @@ export function DailyBriefing() {
   }, [previewAgent, tasks, agentPrefs])
 
   // Check API key status
+  async function testEdgeFunction() {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      // First test Resend API directly via our proxy
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'TargetOS <office@targetreteam.com>',
+          to: ['yanky@targetreteam.com'],
+          subject: '✅ TargetOS Connection Test — ' + new Date().toLocaleTimeString(),
+          html: '<div style="font-family:Arial,sans-serif;padding:24px;max-width:500px;margin:0 auto;"><h2 style="color:#1B2B4B;">✅ TargetOS Email Working!</h2><p style="color:#334155;">This test confirms your Resend connection is active and emails are sending correctly.</p><p style="color:#94A3B8;font-size:12px;">Sent at: ' + new Date().toLocaleString() + '</p></div>'
+        })
+      })
+      const data = await res.json()
+      if(data.success || data.id) {
+        setTestResult({ ok: true, message: '✅ Email sent! Check yanky@targetreteam.com' })
+        toast('✅ Test email sent to yanky@targetreteam.com!')
+      } else {
+        setTestResult({ ok: false, message: '❌ Failed: ' + (data.error || 'Unknown error') })
+      }
+    } catch(e) {
+      setTestResult({ ok: false, message: '❌ Error: ' + e.message })
+    }
+    setTesting(false)
+  }
+
   async function checkApiConnection() {
     const key = import.meta.env.VITE_RESEND_API_KEY
     if(!key) {
@@ -205,6 +235,9 @@ export function DailyBriefing() {
         </div>
         <div style={{display:'flex',gap:'8px'}}>
           <Btn size="sm" variant="ghost" onClick={()=>setShowPreview(true)}>👁 Preview</Btn>
+          <Btn size="sm" variant="ghost" onClick={testEdgeFunction} disabled={testing}>
+            {testing?'Testing…':'🔌 Test Connection'}
+          </Btn>
           <Btn size="sm" onClick={sendAll} disabled={sending==='all'}>{sending==='all'?'Sending…':'📤 Send All Now'}</Btn>
         </div>
       </div>
@@ -238,6 +271,14 @@ export function DailyBriefing() {
           </div>
         )}
       </div>
+
+      {/* Test result */}
+      {testResult && (
+        <div style={{background:testResult.ok?'rgba(22,163,74,.08)':'#FEF2F2',border:'1px solid '+(testResult.ok?'rgba(22,163,74,.25)':'#FECACA'),borderRadius:'12px',padding:'12px 16px',marginBottom:'12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontSize:'13px',fontWeight:600,color:testResult.ok?'#16A34A':'#DC2626'}}>{testResult.message}</span>
+          <button onClick={()=>setTestResult(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'16px'}}>✕</button>
+        </div>
+      )}
 
       {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'10px',marginBottom:'16px'}}>
