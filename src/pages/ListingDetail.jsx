@@ -145,7 +145,7 @@ export function ListingDetail({ listingId, onBack }) {
   const agentShowings = interests.filter(i => i.type==='agent')
 
   // Group agent showings by agent
-  const agentGroups: Record<string,any[]> = {}
+  const agentGroups = {}
   showings.forEach(s => {
     const key = s.agent_name || 'Unknown'
     if(!agentGroups[key]) agentGroups[key] = []
