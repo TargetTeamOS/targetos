@@ -6,7 +6,7 @@ import { useConfirm } from '../components/ConfirmDialog'
 import { logChange } from '../lib/activityLog'
 import { BulkUpload } from '../components/BulkUpload'
 
-export function Tasks() {
+export function Tasks({ highlightId }) {
   const { state, toast, log } = useApp()
   const [tasks, setTasks] = useState([])
   const { confirm, ConfirmDialog } = useConfirm()

@@ -6,7 +6,6 @@ import { Card, CardHeader, Badge, Btn, Modal, ModalTitle, Input, Select, Grid2, 
 import { BulkUpload } from '../components/BulkUpload'
 import { logChange, logFieldChanges } from '../lib/activityLog'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
-import { ListingDetail as ListingDetailPage } from './ListingDetail'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()
 const tSpent = l => (l.spend||[]).reduce((s,x)=>s+x.a,0)
@@ -97,12 +96,18 @@ export function Listings() {
   const totalSpend = listings.reduce((s,l)=>s+tSpent(l),0)
 
   // Show listing detail if selected
-  if(selectedListing) return (
-    <ListingDetailPage
-      listingId={selectedListing}
-      onBack={()=>setSelectedListing(null)}
-    />
-  )
+  if(selectedListing) {
+    const listing = listings.find(l => l.id === selectedListing)
+    if(listing) return (
+      <ListingDetail
+        listing={listing}
+        onClose={()=>setSelectedListing(null)}
+        onEdit={()=>{setEditListing({...listing});setSelectedListing(null)}}
+        onChange={u=>updateListing(u.id,u)}
+      />
+    )
+    setSelectedListing(null)
+  }
 
   return (
     <div>
