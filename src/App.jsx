@@ -61,6 +61,30 @@ const PAGE_MAP = {
   admin:Admin,actlog:ActivityLog,briefing:DailyBriefing,settings:Settings,
 }
 
+
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null } }
+  static getDerivedStateFromError(e) { return { error: e } }
+  render() {
+    if(this.state.error) return (
+      <div style={{padding:'40px',maxWidth:'600px',margin:'60px auto',fontFamily:'Inter,system-ui,sans-serif'}}>
+        <div style={{background:'#1B2B4B',borderRadius:'16px',padding:'32px',textAlign:'center',marginBottom:'20px'}}>
+          <div style={{color:'#fff',fontSize:'20px',fontWeight:800,marginBottom:'8px'}}>TargetOS — Loading Error</div>
+          <div style={{color:'rgba(255,255,255,.5)',fontSize:'13px'}}>Something crashed. Try refreshing.</div>
+        </div>
+        <div style={{background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:'12px',padding:'16px'}}>
+          <div style={{fontSize:'12px',fontWeight:700,color:'#DC2626',marginBottom:'6px'}}>Error Details:</div>
+          <div style={{fontSize:'11px',color:'#DC2626',fontFamily:'monospace',wordBreak:'break-all'}}>{this.state.error?.message}</div>
+        </div>
+        <button onClick={()=>window.location.reload()} style={{marginTop:'16px',width:'100%',background:'#CC2200',border:'none',borderRadius:'10px',color:'#fff',fontSize:'14px',fontWeight:700,padding:'14px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>
+          Reload TargetOS
+        </button>
+      </div>
+    )
+    return this.props.children
+  }
+}
+
 export default function App() {
   const { state, dispatch } = useApp()
   const [isMobile, setIsMobile] = React.useState(() => window.innerWidth < 768)
@@ -124,12 +148,12 @@ export default function App() {
   const PageComponent = PAGE_MAP[page]
 
   return (
-    <>
+    <ErrorBoundary>
       <Layout page={page} setPage={setPage}>
         {PageComponent ? <PageComponent setPage={setPage}/> : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'55vh'}}><div style={{textAlign:'center',color:'var(--muted)'}}>Page not found</div></div>}
       </Layout>
       <Toast toast={state.toast}/>
       <style>{`@keyframes slideUp{from{transform:translateX(-50%) translateY(20px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}`}</style>
-    </>
+    </ErrorBoundary>
   )
 }

@@ -20,7 +20,7 @@ function reducer(state, action) {
   switch (action.type) {
     case 'SET_USER':       return { ...state, user: action.payload }
     case 'SET_AGENT':      return { ...state, currentAgent: action.payload }
-    case 'SET_THEME':      return { ...state, theme: action.payload }
+    case 'SET_THEME':      return { ...state, theme: action.theme || action.payload }
     case 'SET_CONTACTS':   return { ...state, contacts: action.payload }
     case 'ADD_CONTACT':    return { ...state, contacts: [action.payload, ...state.contacts] }
     case 'DEL_CONTACT':    return { ...state, contacts: state.contacts.filter(c => c.id !== action.payload) }
@@ -35,6 +35,7 @@ function reducer(state, action) {
     case 'ADD_LOG':        return { ...state, activityLog: [action.payload, ...state.activityLog].slice(0, 2000) }
     case 'SET_LOG':        return { ...state, activityLog: action.payload }
     case 'TOAST':          return { ...state, toast: action.payload }
+    case 'LOGOUT':         return { ...state, user: null, currentAgent: null }
     case 'SET_LOADING':    return { ...state, loading: { ...state.loading, [action.key]: action.val } }
     default: return state
   }
