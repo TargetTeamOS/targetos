@@ -67,22 +67,24 @@ export function Production() {
   const [showAdd, setShowAdd] = useState(false)
   const [showBulk, setShowBulk] = useState(false)
 
+  if(dealsLoading) return <div style={{padding:'40px',textAlign:'center',color:'var(--muted)'}}><div style={{fontSize:'24px',marginBottom:'10px'}}>⏳</div>Loading deals...</div>
+
   const filtered = deals.filter(d => {
-    if(search && !d.addr.toLowerCase().includes(search.toLowerCase()) && !d.agent.toLowerCase().includes(search.toLowerCase())) return false
-    if(filterAgent && d.agent !== filterAgent) return false
+    if(search && !d.addr?.toLowerCase().includes(search.toLowerCase()) && !(d.agent_name||d.agent||'').toLowerCase().includes(search.toLowerCase())) return false
+    if(filterAgent && (d.agent_name||d.agent) !== filterAgent) return false
     if(filterStage && d.stage !== filterStage) return false
     return true
   })
 
-  const totalGCI  = filtered.reduce((s,d)=>s+d.gci,0)
-  const totalProd = filtered.reduce((s,d)=>s+d.prod,0)
+  const totalGCI  = filtered.reduce((s,d)=>s+(d.gci||0),0)
+  const totalProd = filtered.reduce((s,d)=>s+(d.prod||0),0)
   const pipeline  = filtered.filter(d=>!['Closed','Deal Fell Through'].includes(d.stage))
   const goalPct   = Math.round(totalGCI/TEAM_GOAL*100)
 
   // Chart data
   const agentChartData = AGENTS.map(a => {
-    const agentDeals = deals.filter(d=>d.agentId===a.id)
-    return { name: a.name.split(' ')[0], gci: agentDeals.reduce((s,d)=>s+d.gci,0), deals: agentDeals.length, color: a.color }
+    const agentDeals = deals.filter(d=>(d.agent_name||d.agent||'').includes(a.name.split(' ')[0]))
+    return { name: a.name.split(' ')[0], gci: agentDeals.reduce((s,d)=>s+(d.gci||0),0), deals: agentDeals.length, color: a.color }
   }).filter(d=>d.deals>0)
 
   const stageChartData = STAGE_ORDER.map(stage => ({
@@ -195,7 +197,7 @@ export function Production() {
                         </div>
                         <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
                           <div style={{width:8,height:8,borderRadius:'50%',background:AGENT_COLORS[d.agentId]||'#64748B',flexShrink:0}}/>
-                          <span style={{fontSize:'11px'}}>{d.agent}</span>
+                          <span style={{fontSize:'11px'}}>{d.agent_name||d.agent||'—'}</span>
                         </div>
                         <div><span style={{fontSize:'10px',background:'var(--dim)',padding:'2px 8px',borderRadius:'20px',color:'var(--muted)'}}>{d.side}</span></div>
                         <div style={{fontSize:'11px',color:'var(--muted)'}}>{d.type||'—'}</div>
@@ -229,7 +231,7 @@ export function Production() {
             <div key={d.id} style={{display:'grid',gridTemplateColumns:'2.5fr 1fr 1fr 1fr 1fr 1fr 1fr',padding:'11px 16px',borderBottom:'1px solid var(--border)',alignItems:'center',cursor:'pointer'}}
               onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <div><div style={{fontSize:'13px',fontWeight:700}}>{d.addr}</div><div style={{fontSize:'10px',color:'var(--muted)'}}>A/O: {d.aoDate}</div></div>
-              <div style={{fontSize:'11px',color:'var(--muted)'}}>{d.agent}</div>
+              <div style={{fontSize:'11px',color:'var(--muted)'}}>{d.agent_name||d.agent||'—'}</div>
               <div><span style={{fontSize:'10px',background:'var(--dim)',padding:'2px 8px',borderRadius:'20px',color:'var(--muted)'}}>{d.side}</span></div>
               <div><span style={{fontSize:'10px',fontWeight:600,padding:'2px 8px',borderRadius:'20px',background:(STAGE_COLORS[d.stage]||'#94A3B8')+'18',color:STAGE_COLORS[d.stage]||'#94A3B8'}}>{d.stage}</span></div>
               <div style={{fontSize:'11px',color:'var(--muted)'}}>{d.source}</div>
@@ -427,6 +429,6 @@ function AddDealModal({ onClose, onSaved }) {
 
 function exportProd(deals) {
   const h='Address,Agent,Side,Stage,Source,Production,GCI,A/O Date\n'
-  const r=deals.map(d=>`"${d.addr}","${d.agent}","${d.side}","${d.stage}","${d.source}","${d.prod}","${d.gci}","${d.aoDate}"`)
+  const r=deals.map(d=>`"${d.addr}","${d.agent_name||d.agent||'—'}","${d.side}","${d.stage}","${d.source}","${d.prod}","${d.gci}","${d.aoDate}"`)
   const b=new Blob([h+r.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='production.csv';a.click()
 }

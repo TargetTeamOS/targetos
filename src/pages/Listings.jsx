@@ -50,11 +50,14 @@ export function Listings() {
     if(data && data.length > 0) {
       setListings(data.map(l => ({
         ...l,
-        spend: l.spend || [],
+        spend:    l.spend    || [],
         showings: l.showings || [],
-        interests: l.interests || [],
-        agents: l.agents || [l.agent_name].filter(Boolean),
+        interests:l.interests|| [],
+        agents:   l.agents   || [l.agent_name].filter(Boolean),
       })))
+    } else {
+      // DB empty — use hardcoded data so board isn't blank
+      setListings(INIT_LISTINGS)
     }
     setDbLoading(false)
   }
