@@ -239,7 +239,7 @@ function ContactFormModal({ title, initial={}, onClose, onSave }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
   async function save() {
-    if(!form.first_name.trim()){ alert('First name required'); return }
+    if(!form.first_name.trim()){ toast('First name is required','#DC2626'); return }
     setSaving(true)
     await onSave({
       ...form,

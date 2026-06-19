@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 import { Btn } from '../components/UI'
 import { sendEmail } from '../lib/emailService'
 import { useApp } from '../context/AppContext'
@@ -446,6 +447,13 @@ export function EmailDesigner({ onClose }) {
   const [sendTo, setSendTo] = useState('')
   const [sending, setSending] = useState(false)
   const [savedTemplates, setSavedTemplates] = useState([])
+
+  // Load templates from DB on mount
+  useEffect(() => {
+    supabase.from('email_templates').select('*').order('created_at',{ascending:false}).then(({data})=>{
+      if(data?.length) setSavedTemplates(data.map(t=>({name:t.name,blocks:t.blocks,settings:t.settings,id:t.id})))
+    })
+  }, [])
   const [templateName, setTemplateName] = useState('')
 
   const html = buildHtml(blocks, settings)
@@ -480,17 +488,21 @@ export function EmailDesigner({ onClose }) {
     setSelected(nb.id)
   }
 
-  function saveTemplate() {
+  async function saveTemplate() {
     if(!templateName.trim()) return
-    setSavedTemplates(prev=>[...prev,{name:templateName.trim(),blocks:JSON.parse(JSON.stringify(blocks)),settings:{...settings}}])
+    const tmpl = {name:templateName.trim(),blocks:JSON.parse(JSON.stringify(blocks)),settings:{...settings},subject:settings.subject||''}
+    const {data,error} = await supabase.from('email_templates').insert([tmpl]).select()
+    if(error) { toast('Save failed: '+error.message); return }
+    setSavedTemplates(prev=>[{...tmpl,id:data[0].id},...prev])
     setTemplateName('')
-    toast('Template saved!')
+    toast('✅ Template saved!')
   }
 
   function loadTemplate(t) {
-    setBlocks(t.blocks.map(b=>({...b,id:'b'+Date.now()+Math.random().toString(36).slice(2,5)})))
-    setSettings(t.settings)
+    setBlocks((t.blocks||[]).map(b=>({...b,id:'b'+Date.now()+Math.random().toString(36).slice(2,5)})))
+    setSettings(t.settings||{subject:'',bgColor:'#EEF2F7',width:'580',radius:'16px',shadow:true,outerPad:'24px 12px 40px'})
     setSelected(null)
+    toast('Template loaded!')
   }
 
   async function sendTestEmail() {

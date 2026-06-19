@@ -1,3 +1,4 @@
+import { useApp } from '../context/AppContext'
 import React, { useState } from 'react'
 import { Card, CardHeader, Btn } from '../components/UI'
 
@@ -11,6 +12,7 @@ const fmt$ = n => '$' + Number(n).toLocaleString()
 const TYPES = [['coming','Coming Soon','#1B2B4B'],['contract','Under Contract','#7C3AED'],['sold_listing','Listing Sold','#CC2200'],['sold_buyer','Buyer Closed','#E8650A']]
 
 export function Cards() {
+  const { toast } = useApp()
   const [cardType, setCardType] = useState('coming')
   const [listingIdx, setListingIdx] = useState(0)
   const listing = LISTINGS_SHORT[listingIdx]
@@ -18,12 +20,12 @@ export function Cards() {
   const headerText = TYPES.find(t=>t[0]===cardType)?.[1]||'Coming Soon'
 
   function download() {
-    alert('To download as HD image, right-click the preview and "Save image as..." — or use Ctrl+P to print/save as PDF')
+    toast('Right-click the card preview and choose "Save image as" to download, or press Ctrl+P to print/save as PDF')
   }
   function share() {
     const msg = `Target Team — ${headerText}\n${listing.addr}\n${fmt$(listing.price)}\n845.424.1014\n@thetargetteam`
     if(navigator.share) navigator.share({title:'Target Team',text:msg}).catch(()=>{})
-    else { navigator.clipboard?.writeText(msg).then(()=>alert('Copied!')).catch(()=>alert(msg)) }
+    else { navigator.clipboard?.writeText(msg).then(()=>toast('✅ Copied to clipboard!')).catch(()=>toast('Copy this manually: '+msg.substring(0,60),'#DC2626')) }
   }
 
   return (

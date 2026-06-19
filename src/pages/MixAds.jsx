@@ -1,3 +1,4 @@
+import { useApp } from '../context/AppContext'
 import React, { useState } from 'react'
 import { Card, CardHeader, Btn } from '../components/UI'
 
@@ -5,6 +6,7 @@ const LISTINGS = ['47 Prairie Ave, Suffern','12 Sherman Drive #202, Spring Valle
 const PRICES = [599000,1499000,1649000,1149000,979000,949000]
 
 export function MixAds() {
+  const { toast } = useApp()
   const [style, setStyle] = useState('white')
   const [selected, setSelected] = useState([])
 
@@ -41,7 +43,7 @@ export function MixAds() {
                 <span style={{fontSize:'16px',color:selected.includes(i)?'#CC2200':'#16A34A',fontWeight:700}}>{selected.includes(i)?'✓':'+'}</span>
               </div>
             ))}
-            <Btn style={{width:'100%',marginTop:'12px'}} onClick={()=>selected.length?alert('Mix Ad generated for '+selected.length+' listings!\n\nTo download, right-click the preview and save as image.'):alert('Select at least one listing first')}>
+            <Btn style={{width:'100%',marginTop:'12px'}} onClick={()=>selected.length ? toast('✅ Mix Ad generated for '+selected.length+' listing'+( selected.length>1?'s':'')+'! Right-click the preview to save as image.') : toast('Select at least one listing first','#DC2626')}>
               Generate Mix Ad
             </Btn>
           </div>

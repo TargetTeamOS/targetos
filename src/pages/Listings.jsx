@@ -380,7 +380,7 @@ function ListingDetail({ listing:l, onClose, onEdit, onChange }) {
             </div>
             <div style={{display:'flex',gap:'7px',flexWrap:'wrap'}}>
               {listing.mls && <a href={listing.mls} target="_blank" rel="noreferrer"><Btn size="sm" variant="ghost">View on MLS ↗</Btn></a>}
-              <Btn size="sm" variant="ghost" onClick={()=>{const msg=`${listing.addr}, ${listing.city} ${listing.state}\n${listing.type} · ${listing.beds||'—'}bd · ${listing.baths||'—'}ba\n${fmt$(listing.price)}\nCall: 845.424.1014`;navigator.clipboard?.writeText(msg).then(()=>alert('Copied!')).catch(()=>{})}}>Share</Btn>
+              <Btn size="sm" variant="ghost" onClick={()=>{const msg=`${listing.addr}, ${listing.city} ${listing.state}\n${listing.type} · ${listing.beds||'—'}bd · ${listing.baths||'—'}ba\n${fmt$(listing.price)}\nCall: 845.424.1014`;navigator.clipboard?.writeText(msg).then(()=>toast('✅ Listing info copied!')).catch(()=>{})}}>Share</Btn>
             </div>
           </>
         )}

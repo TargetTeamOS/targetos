@@ -383,7 +383,7 @@ function AddUserModal({ onClose, onSave, agents }) {
           </div>
           <div style={{display:'flex',gap:'8px',justifyContent:'flex-end'}}>
             <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-            <Btn onClick={()=>{if(!form.name||!form.email){alert('Name and email required');return}setStep(2)}}>Next: Set Permissions →</Btn>
+            <Btn onClick={()=>{if(!form.name||!form.email){toast('Name and email required','#DC2626');return}setStep(2)}}>Next: Set Permissions →</Btn>
           </div>
         </>
       )}

@@ -40,11 +40,11 @@ export function Mortgage() {
   function sendToClient() {
     if(!calc) return
     const c = contacts.find(x=>x.id===selectedClient)
-    if(!c) { alert('Select a client first'); return }
+    if(!c) { toast('Select a client first','#DC2626'); return }
     const msg = `Mortgage Calculation from Target Team:\n\nHome Price: ${fmt$(calc.price)}\nDown Payment: ${fmt$(calc.downAmt)} (${calc.dp}%)\nLoan Amount: ${fmt$(calc.loan)}\nRate: ${calc.r}%\n\nMonthly P&I: ${fmt$(calc.pi)}\nProperty Tax: ${fmt$(calc.monthlyTax)}/mo\nInsurance: ${fmt$(calc.monthlyIns)}/mo${calc.pmiAmt>0?'\nPMI: '+fmt$(calc.pmiAmt)+'/mo':''}\n\nTOTAL MONTHLY: ${fmt$(calc.total)}\nClosing Costs (est.): ${fmt$(calc.ccAmt)}\n\nCall us: 845.424.1014\nTarget Team — KW Valley Realty`
     if(c.email) window.location.href = 'mailto:'+c.email+'?subject=Your+Mortgage+Calculation+from+Target+Team&body='+encodeURIComponent(msg)
     else if(c.phone) window.location.href = 'sms:'+c.phone.replace(/\D/g,'')+'?body='+encodeURIComponent(msg)
-    else { navigator.clipboard?.writeText(msg); alert('Copied to clipboard!') }
+    else { navigator.clipboard?.writeText(msg).then(()=>toast('✅ Copied to clipboard!')) }
   }
 
   return (
@@ -114,7 +114,7 @@ export function Mortgage() {
                 </select>
                 <div style={{display:'flex',gap:'7px'}}>
                   <Btn style={{flex:1}} onClick={sendToClient}>Send to Client</Btn>
-                  <Btn variant="ghost" onClick={()=>{if(!calc)return;const msg=`Home: ${fmt$(calc.price)}\nDown: ${fmt$(calc.downAmt)} (${calc.dp}%)\nLoan: ${fmt$(calc.loan)}\nMonthly: ${fmt$(calc.total)}\nP&I: ${fmt$(calc.pi)}\nTax: ${fmt$(calc.monthlyTax)}/mo\nInsurance: ${fmt$(calc.monthlyIns)}/mo\nClosing: ${fmt$(calc.ccAmt)}`;navigator.clipboard?.writeText(msg).then(()=>alert('Copied!')).catch(()=>alert('Copy: '+msg.substring(0,50)))}}>Copy</Btn>
+                  <Btn variant="ghost" onClick={()=>{if(!calc)return;const msg=`Home: ${fmt$(calc.price)}\nDown: ${fmt$(calc.downAmt)} (${calc.dp}%)\nLoan: ${fmt$(calc.loan)}\nMonthly: ${fmt$(calc.total)}\nP&I: ${fmt$(calc.pi)}\nTax: ${fmt$(calc.monthlyTax)}/mo\nInsurance: ${fmt$(calc.monthlyIns)}/mo\nClosing: ${fmt$(calc.ccAmt)}`;navigator.clipboard?.writeText(msg).then(()=>toast('✅ Copied!')).catch(()=>toast('Copy failed — try manually','#DC2626'))}}>Copy</Btn>
                 </div>
               </div>
             </>

@@ -390,7 +390,7 @@ export function Automations() {
 
                 <div style={{display:'flex',gap:'6px'}}>
                   <Btn size="xs" onClick={()=>{setEditing({...auto,nodes:auto.nodes.map(n=>({...n})),connections:[...auto.connections]});setView('builder')}}>✏️ Edit Flow</Btn>
-                  <Btn size="xs" variant="ghost" onClick={()=>{toggleActive(auto.id);alert(auto.active?`"${auto.name}" paused.`:`"${auto.name}" is now active!`)}}>{auto.active?'⏸ Pause':'▶ Activate'}</Btn>
+                  <Btn size="xs" variant="ghost" onClick={()=>toggleActive(auto.id)}>{auto.active?'⏸ Pause':'▶ Activate'}</Btn>
                   <Btn size="xs" variant="danger" onClick={()=>deleteAuto(auto.id)}>🗑</Btn>
                 </div>
               </div>
