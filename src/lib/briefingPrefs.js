@@ -1,28 +1,36 @@
 import { supabase } from './supabase'
 
-const LS_KEY = 'targetos_briefing_prefs'
+const LS_KEY = 'targetos_briefing_prefs_v2'
 
-// Load from localStorage first (instant), then sync with Supabase
 export async function loadBriefingPrefs() {
-  const local = localStorage.getItem(LS_KEY)
-  if(local) {
-    try { return JSON.parse(local) } catch(e) {}
-  }
-  // Try Supabase
-  const { data } = await supabase.from('briefing_prefs').select('*')
-  if(data?.length) {
-    const prefs = {}
-    data.forEach(row => { prefs[row.agent_name] = { enabled: row.enabled, sections: row.sections } })
-    localStorage.setItem(LS_KEY, JSON.stringify(prefs))
-    return prefs
-  }
+  // 1. Try Supabase first (source of truth)
+  try {
+    const { data } = await supabase.from('briefing_prefs').select('*')
+    if(data?.length) {
+      const prefs = {}
+      data.forEach(row => {
+        prefs[row.agent_name] = { enabled: row.enabled, sections: row.sections }
+      })
+      // Cache in localStorage
+      localStorage.setItem(LS_KEY, JSON.stringify(prefs))
+      return prefs
+    }
+  } catch(e) {}
+
+  // 2. Fall back to localStorage
+  try {
+    const saved = localStorage.getItem(LS_KEY)
+    if(saved) return JSON.parse(saved)
+  } catch(e) {}
+
   return null
 }
 
 export async function saveBriefingPrefs(prefs) {
-  // Always save to localStorage immediately
+  // Save to localStorage immediately
   localStorage.setItem(LS_KEY, JSON.stringify(prefs))
-  // Try to save to Supabase (will work once table exists)
+
+  // Save to Supabase
   try {
     const rows = Object.entries(prefs).map(([agent_name, p]) => ({
       agent_name,
@@ -32,7 +40,6 @@ export async function saveBriefingPrefs(prefs) {
     }))
     await supabase.from('briefing_prefs').upsert(rows, { onConflict: 'agent_name' })
   } catch(e) {
-    // Table might not exist yet — localStorage is the fallback
-    console.log('Briefing prefs saved to localStorage only')
+    console.warn('briefing_prefs DB save failed:', e.message)
   }
 }

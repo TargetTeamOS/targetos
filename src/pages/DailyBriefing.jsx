@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
-import { AGENTS } from '../lib/constants'
-import { Card, CardHeader, Btn } from '../components/UI'
+import { Card, CardHeader, Btn, Grid2 } from '../components/UI'
 import { buildDailyEmail, AGENT_EMAILS } from '../lib/dailyBriefing'
-import { loadBriefingPrefs, saveBriefingPrefs } from '../lib/briefingPrefs'
 import { sendDailyBriefing } from '../lib/emailService'
+import { saveBriefingPrefs, loadBriefingPrefs } from '../lib/briefingPrefs'
 
 const AGENT_COLORS = {
   'Lazer Farkas':'#CC2200','Mendy Jankovits':'#0EA5E9','Isaac Leibowitz':'#F5A623',
@@ -14,171 +13,186 @@ const AGENT_COLORS = {
 }
 
 const AGENT_GCI = {
-  'Lazer Farkas':       { gci: 77440,  goal: 200000 },
-  'Mendy Jankovits':    { gci: 34000,  goal: 150000 },
-  'Isaac Leibowitz':    { gci: 46090,  goal: 180000 },
-  'Yanky Lichtenstein': { gci: 0,      goal: 100000 },
-  'Gitty Fogel':        { gci: 0,      goal: 80000  },
-  'Joel Rottenstein':   { gci: 39750,  goal: 120000 },
-  'Eli Hoffman':        { gci: 146735, goal: 90000  },
-  'Avraham Weinberger': { gci: 24000,  goal: 160000 },
+  'Lazer Farkas':{gci:77440,goal:200000},
+  'Mendy Jankovits':{gci:34000,goal:150000},
+  'Isaac Leibowitz':{gci:46090,goal:180000},
+  'Yanky Lichtenstein':{gci:0,goal:100000},
+  'Gitty Fogel':{gci:0,goal:80000},
+  'Joel Rottenstein':{gci:39750,goal:120000},
+  'Eli Hoffman':{gci:146735,goal:90000},
+  'Avraham Weinberger':{gci:24000,goal:160000},
 }
 
-const fmt$ = n => '$' + Number(n).toLocaleString()
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
-// Per-agent email preferences
+const fmt$ = n => '$' + Number(n||0).toLocaleString()
+
+// All available email sections with labels
+const ALL_SECTIONS = [
+  { key:'greeting',      label:'👋 Greeting & Date',       required:true  },
+  { key:'summary',       label:'📊 Day Summary Line',      required:true  },
+  { key:'overdueTasks',  label:'⚠️ Overdue Tasks',         required:false },
+  { key:'appointments',  label:'📅 Appointments',          required:false },
+  { key:'todayTasks',    label:'✓ Today\'s Tasks',         required:false },
+  { key:'allClear',      label:'✅ All Clear Banner',      required:false },
+  { key:'quote',         label:'💬 Daily Quote',           required:false },
+  { key:'quickLinks',    label:'🔗 Quick Links Footer',    required:true  },
+]
+
+// KW / Gary Keller quotes
+const DEFAULT_QUOTES = [
+  { text:"Your next deal is one conversation away.", author:"Target Team", category:"motivation" },
+  { text:"Every call you make is a door you open.", author:"Target Team", category:"motivation" },
+  { text:"Consistency builds empires. Show up every day.", author:"Target Team", category:"motivation" },
+  { text:"In real estate, relationships are your inventory.", author:"Target Team", category:"real estate" },
+  { text:"A real estate agent's most powerful asset is their follow-up.", author:"Target Team", category:"real estate" },
+  { text:"Your mindset determines your market.", author:"Gary Keller", category:"kw" },
+  { text:"No one succeeds alone. Never have, never will.", author:"Gary Keller", category:"kw" },
+  { text:"Time on dollar — focus only on what moves you toward your goals.", author:"Gary Keller", category:"kw" },
+  { text:"The ONE Thing you can do such that by doing it everything else will be easier or unnecessary.", author:"Gary Keller", category:"kw" },
+  { text:"Leverage is the ability to do more work with the same amount of energy.", author:"Gary Keller", category:"kw" },
+  { text:"Your job is to list and sell. Everything else is a distraction.", author:"Gary Keller", category:"kw" },
+  { text:"Lead generation is the lifeblood of your business.", author:"Gary Keller", category:"kw" },
+  { text:"Knowledge is only potential power — it becomes power when you act on it.", author:"Gary Keller", category:"kw" },
+  { text:"Success is actually a short race — a sprint fueled by discipline.", author:"Gary Keller", category:"kw" },
+  { text:"The secret of getting ahead is getting started.", author:"Mark Twain", category:"general" },
+  { text:"Push yourself, because no one else is going to do it for you.", author:"Unknown", category:"general" },
+  { text:"Wake up with determination. Go to bed with satisfaction.", author:"Unknown", category:"general" },
+  { text:"Do something today that your future self will thank you for.", author:"Unknown", category:"general" },
+  { text:"Sometimes later becomes never. Do it now.", author:"Unknown", category:"general" },
+  { text:"Discipline is choosing between what you want now and what you want most.", author:"Unknown", category:"general" },
+]
+
 const DEFAULT_AGENT_PREFS = {
   enabled: true,
+  sectionOrder: ALL_SECTIONS.map(s => s.key),
   sections: {
-    gciProgress:    true,
-    todayTasks:     true,
-    overdueTasks:   true,
-    appointments:   true,
-    quote:          true,
-    teamAnnouncements: false,
-    pipelineSnapshot: false,
+    greeting:true, summary:true, overdueTasks:true,
+    appointments:true, todayTasks:true, allClear:true,
+    quote:true, quickLinks:true,
   }
 }
 
 export function DailyBriefing() {
   const { state, toast } = useApp()
-  const [tasks, setTasks] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [tasks, setTasks]             = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [prefsLoading, setPrefsLoading] = useState(true)
+  const [agentPrefs, setAgentPrefs]   = useState({})
+  const [selectedAgent, setSelectedAgent] = useState(null)
+  const [showPreview, setShowPreview] = useState(false)
   const [previewAgent, setPreviewAgent] = useState('Yanky Lichtenstein')
   const [previewHtml, setPreviewHtml] = useState('')
-  const [showPreview, setShowPreview] = useState(false)
-  const [sending, setSending] = useState('')
-  const [lastSent, setLastSent] = useState({})
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState(null)
-  const [apiStatus, setApiStatus] = useState(null) // null | 'ok' | 'error'
+  const [sending, setSending]         = useState('')
+  const [lastSent, setLastSent]       = useState({})
+  const [schedule, setSchedule]       = useState({ time:'07:00', days:['Mon','Tue','Wed','Thu','Fri'] })
+  const [quotes, setQuotes]           = useState(DEFAULT_QUOTES)
+  const [showQuoteManager, setShowQuoteManager] = useState(false)
+  const [newQuote, setNewQuote]       = useState({ text:'', author:'', category:'motivation' })
+  const [quoteFilter, setQuoteFilter] = useState('all')
+  const [dragOver, setDragOver]       = useState(null)
+  const saveTimeout = useRef(null)
 
-  // Schedule settings
-  const [schedule, setSchedule] = useState({
-    time: '07:00',
-    days: ['Mon','Tue','Wed','Thu','Fri'],
-  })
-
-  // Per-agent preferences — persisted to localStorage + Supabase
-  const [agentPrefs, setAgentPrefs] = useState(() => {
-    // Try localStorage first
-    try {
-      const saved = localStorage.getItem('targetos_briefing_prefs')
-      if(saved) return JSON.parse(saved)
-    } catch(e) {}
-    // Default
-    const prefs = {}
-    Object.keys(AGENT_EMAILS).forEach(name => { prefs[name] = {...DEFAULT_AGENT_PREFS, sections:{...DEFAULT_AGENT_PREFS.sections}} })
-    return prefs
-  })
-
-  const [selectedAgent, setSelectedAgent] = useState(null)
-
-  // Auto-save prefs whenever they change
+  // Load prefs from DB on mount
   useEffect(() => {
-    saveBriefingPrefs(agentPrefs)
-  }, [agentPrefs])
-
-  useEffect(() => {
+    async function init() {
+      setPrefsLoading(true)
+      const saved = await loadBriefingPrefs()
+      if(saved) {
+        // Merge with defaults to ensure new agents/sections are included
+        const merged = {}
+        Object.keys(AGENT_EMAILS).forEach(name => {
+          merged[name] = saved[name]
+            ? {
+                ...DEFAULT_AGENT_PREFS,
+                ...saved[name],
+                sections: { ...DEFAULT_AGENT_PREFS.sections, ...(saved[name].sections||{}) },
+                sectionOrder: saved[name].sectionOrder || DEFAULT_AGENT_PREFS.sectionOrder,
+              }
+            : { ...DEFAULT_AGENT_PREFS, sections:{...DEFAULT_AGENT_PREFS.sections}, sectionOrder:[...DEFAULT_AGENT_PREFS.sectionOrder] }
+        })
+        setAgentPrefs(merged)
+      } else {
+        const defaults = {}
+        Object.keys(AGENT_EMAILS).forEach(name => {
+          defaults[name] = { ...DEFAULT_AGENT_PREFS, sections:{...DEFAULT_AGENT_PREFS.sections}, sectionOrder:[...DEFAULT_AGENT_PREFS.sectionOrder] }
+        })
+        setAgentPrefs(defaults)
+      }
+      setPrefsLoading(false)
+    }
+    init()
     supabase.from('tasks').select('*').eq('status','pending').then(({data}) => {
-      setTasks(data||[])
-      setLoading(false)
+      setTasks(data||[]); setLoading(false)
     })
   }, [])
 
+  // Debounced save — wait 1 second after last change before saving
+  function savePrefs(newPrefs) {
+    setAgentPrefs(newPrefs)
+    clearTimeout(saveTimeout.current)
+    saveTimeout.current = setTimeout(async () => {
+      await saveBriefingPrefs(newPrefs)
+      toast('✅ Preferences saved!', undefined, 1500)
+    }, 1000)
+  }
+
+  function setAgentEnabled(name, enabled) {
+    const updated = { ...agentPrefs, [name]: { ...agentPrefs[name], enabled } }
+    savePrefs(updated)
+  }
+
+  function setAgentSection(name, key, val) {
+    const updated = {
+      ...agentPrefs,
+      [name]: {
+        ...agentPrefs[name],
+        sections: { ...agentPrefs[name].sections, [key]: val }
+      }
+    }
+    savePrefs(updated)
+  }
+
+  function reorderSection(name, fromIdx, toIdx) {
+    const order = [...(agentPrefs[name]?.sectionOrder || DEFAULT_AGENT_PREFS.sectionOrder)]
+    const [moved] = order.splice(fromIdx, 1)
+    order.splice(toIdx, 0, moved)
+    const updated = { ...agentPrefs, [name]: { ...agentPrefs[name], sectionOrder: order } }
+    savePrefs(updated)
+  }
+
+  // Build preview HTML
   useEffect(() => {
+    if(!previewAgent || prefsLoading) return
     const today = new Date().toISOString().split('T')[0]
-    const agentTasks = tasks.filter(t => t.due_date === today)
-    const overdueT = tasks.filter(t => t.due_date && t.due_date < today)
     const prefs = agentPrefs[previewAgent] || DEFAULT_AGENT_PREFS
     const html = buildDailyEmail({
       agentName: previewAgent,
-      tasks: prefs.sections.todayTasks ? agentTasks.slice(0,5) : [],
-      overdueTasks: prefs.sections.overdueTasks ? overdueT.slice(0,3) : [],
-      appointments: prefs.sections.appointments ? [{ title:'Team Meeting — Monday 9AM', time:'9:00 AM', location:'Zoom' }].filter(()=>new Date().getDay()===1) : [],
-      agentColor: AGENT_COLORS[previewAgent] || '#CC2200',
-      showGCI: prefs.sections.gciProgress,
+      tasks: prefs.sections.todayTasks ? tasks.filter(t=>t.due_date===today) : [],
+      overdueTasks: prefs.sections.overdueTasks ? tasks.filter(t=>t.due_date&&t.due_date<today) : [],
+      appointments: [],
+      agentColor: AGENT_COLORS[previewAgent]||'#CC2200',
       showQuote: prefs.sections.quote,
+      sectionOrder: prefs.sectionOrder,
+      quotes,
     })
     setPreviewHtml(html)
-  }, [previewAgent, tasks, agentPrefs])
-
-  // Check API key status
-  async function testEdgeFunction() {
-    setTesting(true)
-    setTestResult(null)
-    try {
-      // First test Resend API directly via our proxy
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: 'TargetOS <office@targetreteam.com>',
-          to: ['yanky@targetreteam.com'],
-          subject: '✅ TargetOS Connection Test — ' + new Date().toLocaleTimeString(),
-          html: '<div style="font-family:Arial,sans-serif;padding:24px;max-width:500px;margin:0 auto;"><h2 style="color:#1B2B4B;">✅ TargetOS Email Working!</h2><p style="color:#334155;">This test confirms your Resend connection is active and emails are sending correctly.</p><p style="color:#94A3B8;font-size:12px;">Sent at: ' + new Date().toLocaleString() + '</p></div>'
-        })
-      })
-      const data = await res.json()
-      if(data.success || data.id) {
-        setTestResult({ ok: true, message: '✅ Email sent! Check yanky@targetreteam.com' })
-        toast('✅ Test email sent to yanky@targetreteam.com!')
-      } else {
-        setTestResult({ ok: false, message: '❌ Failed: ' + (data.error || 'Unknown error') })
-      }
-    } catch(e) {
-      setTestResult({ ok: false, message: '❌ Error: ' + e.message })
-    }
-    setTesting(false)
-  }
-
-  async function checkApiConnection() {
-    const key = import.meta.env.VITE_RESEND_API_KEY
-    if(!key) {
-      setApiStatus('error')
-      return
-    }
-    // Key exists — try sending a real test
-    try {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: 'TargetOS <office@targetreteam.com>',
-          to: ['yanky@targetreteam.com'],
-          subject: '✅ TargetOS Connection Test',
-          html: '<p>Resend is connected and working! Your daily briefing emails are ready to send.</p>'
-        })
-      })
-      const data = await res.json()
-      if(res.ok) {
-        setApiStatus('ok')
-        toast('✅ Test email sent to yanky@targetreteam.com!')
-      } else {
-        console.error('Resend error:', data)
-        setApiStatus('error')
-      }
-    } catch(e) {
-      setApiStatus('error')
-    }
-  }
+  }, [previewAgent, tasks, agentPrefs, prefsLoading, quotes])
 
   async function sendTest(agentName) {
     const email = AGENT_EMAILS[agentName]
     if(!email) { toast('No email for '+agentName,'#DC2626'); return }
     setSending(agentName)
     const today = new Date().toISOString().split('T')[0]
-    const agentTasks = tasks.filter(t=>t.due_date===today)
-    const overdueT = tasks.filter(t=>t.due_date&&t.due_date<today)
     const prefs = agentPrefs[agentName] || DEFAULT_AGENT_PREFS
     const html = buildDailyEmail({
-      agentName, agentColor: AGENT_COLORS[agentName]||'#CC2200',
-      tasks: prefs.sections.todayTasks ? agentTasks : [],
-      overdueTasks: prefs.sections.overdueTasks ? overdueT : [],
+      agentName, agentColor:AGENT_COLORS[agentName]||'#CC2200',
+      tasks: prefs.sections.todayTasks ? tasks.filter(t=>t.due_date===today) : [],
+      overdueTasks: prefs.sections.overdueTasks ? tasks.filter(t=>t.due_date&&t.due_date<today) : [],
       appointments: [],
-      showGCI: prefs.sections.gciProgress,
       showQuote: prefs.sections.quote,
+      sectionOrder: prefs.sectionOrder,
+      quotes,
     })
     const result = await sendDailyBriefing({ agentName, email, html })
     setSending('')
@@ -186,7 +200,7 @@ export function DailyBriefing() {
       setLastSent(p=>({...p,[agentName]:new Date().toLocaleTimeString()}))
       toast(`✅ Email sent to ${email}!`)
     } else {
-      toast('Send failed: '+(result.error||'Check API key in Vercel'),'#DC2626')
+      toast('Send failed: '+(result.error||'Check API key'),'#DC2626')
     }
   }
 
@@ -202,28 +216,34 @@ export function DailyBriefing() {
         tasks: prefs.sections.todayTasks ? tasks.filter(t=>t.due_date===today) : [],
         overdueTasks: prefs.sections.overdueTasks ? tasks.filter(t=>t.due_date&&t.due_date<today) : [],
         appointments: [],
-        showGCI: prefs.sections.gciProgress,
         showQuote: prefs.sections.quote,
+        sectionOrder: prefs.sectionOrder,
+        quotes,
       })
       const r = await sendDailyBriefing({agentName,email,html})
       if(r.success) sent++; else failed++
-      await new Promise(res=>setTimeout(res,200))
+      await new Promise(r=>setTimeout(r,250))
     }
     setSending('')
     toast(`✅ Sent ${sent}${failed>0?' · '+failed+' failed':''}`)
   }
 
-  function setAgentPref(agent, key, val) {
-    setAgentPrefs(prev=>({...prev,[agent]:{...prev[agent],[key]:val}}))
-  }
-  function setAgentSection(agent, section, val) {
-    setAgentPrefs(prev=>({...prev,[agent]:{...prev[agent],sections:{...prev[agent].sections,[section]:val}}}))
+  function addQuote() {
+    if(!newQuote.text.trim()||!newQuote.author.trim()) { toast('Quote and author required','#DC2626'); return }
+    setQuotes(q=>[...q, {...newQuote}])
+    setNewQuote({text:'',author:'',category:'motivation'})
+    toast('Quote added!')
   }
 
   const todayStr = new Date().toISOString().split('T')[0]
-  const todayTasks = tasks.filter(t=>t.due_date===todayStr)
-  const overdueTasks = tasks.filter(t=>t.due_date&&t.due_date<todayStr)
   const enabledCount = Object.values(agentPrefs).filter(p=>p.enabled).length
+
+  if(prefsLoading) return (
+    <div style={{padding:'40px',textAlign:'center',color:'var(--muted)',fontSize:'13px'}}>
+      <div style={{fontSize:'24px',marginBottom:'10px'}}>⏳</div>
+      Loading preferences...
+    </div>
+  )
 
   return (
     <div>
@@ -231,62 +251,22 @@ export function DailyBriefing() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px',flexWrap:'wrap',gap:'8px'}}>
         <div>
           <div style={{fontSize:'20px',fontWeight:900}}>📧 Daily Briefing Emails</div>
-          <div style={{fontSize:'12px',color:'var(--muted)',marginTop:'2px'}}>Personalized morning emails sent to each agent every day</div>
+          <div style={{fontSize:'12px',color:'var(--muted)',marginTop:'2px'}}>{enabledCount} of 8 agents receiving · sends 7AM ET daily</div>
         </div>
         <div style={{display:'flex',gap:'8px'}}>
+          <Btn size="sm" variant="ghost" onClick={()=>setShowQuoteManager(true)}>💬 Manage Quotes</Btn>
           <Btn size="sm" variant="ghost" onClick={()=>setShowPreview(true)}>👁 Preview</Btn>
-          <Btn size="sm" variant="ghost" onClick={testEdgeFunction} disabled={testing}>
-            {testing?'Testing…':'🔌 Test Connection'}
-          </Btn>
           <Btn size="sm" onClick={sendAll} disabled={sending==='all'}>{sending==='all'?'Sending…':'📤 Send All Now'}</Btn>
         </div>
       </div>
 
-      {/* API Status banner */}
-      <div style={{background:apiStatus==='ok'?'rgba(22,163,74,.08)':apiStatus==='error'?'#FEF2F2':'rgba(245,158,11,.08)',border:'1px solid '+(apiStatus==='ok'?'rgba(22,163,74,.25)':apiStatus==='error'?'#FECACA':'rgba(245,158,11,.3)'),borderRadius:'12px',padding:'14px 16px',marginBottom:'16px'}}>
-        {!apiStatus && (
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div>
-              <div style={{fontSize:'13px',fontWeight:700,color:'#D97706'}}>⚠️ Verify Resend API Connection</div>
-              <div style={{fontSize:'12px',color:'var(--muted)',marginTop:'3px'}}>Make sure the API key is set in Vercel before sending</div>
-            </div>
-            <Btn size="sm" variant="ghost" onClick={checkApiConnection}>Test Connection</Btn>
-          </div>
-        )}
-        {apiStatus==='ok' && <div style={{fontSize:'13px',fontWeight:700,color:'#16A34A'}}>✅ Resend API connected — emails will send from office@targetreteam.com</div>}
-        {apiStatus==='error' && (
-          <div>
-            <div style={{fontSize:'13px',fontWeight:700,color:'#DC2626',marginBottom:'8px'}}>❌ API Key Not Found in this deployment</div>
-            <ol style={{margin:0,paddingLeft:'18px',fontSize:'12px',color:'#DC2626',lineHeight:2}}>
-              <li>Go to <strong>vercel.com/dashboard</strong> → click <strong>targetos</strong></li>
-              <li>Click <strong>Settings</strong> → <strong>Environment Variables</strong></li>
-              <li>Click <strong>Add New</strong></li>
-              <li>Name: <code style={{background:'#FEE2E2',padding:'1px 5px',borderRadius:'4px'}}>VITE_RESEND_API_KEY</code></li>
-              <li>Value: your Resend API key (starts with <code style={{background:'#FEE2E2',padding:'1px 5px',borderRadius:'4px'}}>re_</code>)</li>
-              <li>Check <strong>Production</strong>, <strong>Preview</strong>, <strong>Development</strong></li>
-              <li>Click <strong>Save</strong></li>
-              <li>Go to <strong>Deployments</strong> → click <strong>...</strong> → <strong>Redeploy</strong></li>
-            </ol>
-            <div style={{marginTop:'10px',fontSize:'12px',color:'#B91C1C',fontWeight:600}}>After redeploying, refresh this page and click "Test Connection" again.</div>
-          </div>
-        )}
-      </div>
-
-      {/* Test result */}
-      {testResult && (
-        <div style={{background:testResult.ok?'rgba(22,163,74,.08)':'#FEF2F2',border:'1px solid '+(testResult.ok?'rgba(22,163,74,.25)':'#FECACA'),borderRadius:'12px',padding:'12px 16px',marginBottom:'12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <span style={{fontSize:'13px',fontWeight:600,color:testResult.ok?'#16A34A':'#DC2626'}}>{testResult.message}</span>
-          <button onClick={()=>setTestResult(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'16px'}}>✕</button>
-        </div>
-      )}
-
       {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'10px',marginBottom:'16px'}}>
         {[
-          ['Total Agents', Object.keys(AGENT_EMAILS).length, '#CC2200'],
-          ['Receiving', enabledCount, '#16A34A'],
-          ["Today's Tasks", loading?'…':todayTasks.length, '#D97706'],
-          ['Overdue', loading?'…':overdueTasks.length, overdueTasks.length>0?'#DC2626':'#16A34A'],
+          ['Receiving',enabledCount,'#16A34A'],
+          ['Paused',8-enabledCount,'#DC2626'],
+          ["Today's Tasks",loading?'…':tasks.filter(t=>t.due_date===todayStr).length,'#D97706'],
+          ['Overdue',loading?'…':tasks.filter(t=>t.due_date&&t.due_date<todayStr).length,'#CC2200'],
         ].map(([k,v,c])=>(
           <div key={k} style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'12px',padding:'14px'}}>
             <div style={{fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.8px',marginBottom:'5px'}}>{k}</div>
@@ -295,182 +275,208 @@ export function DailyBriefing() {
         ))}
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:'14px'}}>
-        {/* Schedule */}
-        <Card>
-          <CardHeader>⏰ Send Schedule</CardHeader>
-          <div style={{padding:'16px'}}>
-            <div style={{marginBottom:'14px'}}>
-              <label style={{display:'block',fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'6px'}}>Send Time (Eastern)</label>
-              <input type="time" value={schedule.time} onChange={e=>setSchedule(s=>({...s,time:e.target.value}))}
-                style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'16px',fontWeight:700,fontFamily:'Inter,system-ui,sans-serif',padding:'9px 13px',outline:'none'}}/>
-              <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'5px'}}>⚠️ Auto-schedule requires a cron job — use "Send All Now" until Twilio/cron is connected</div>
-            </div>
-            <div>
-              <label style={{display:'block',fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'6px'}}>Send On</label>
-              <div style={{display:'flex',gap:'6px'}}>
-                {DAYS.map(d=>(
-                  <div key={d} onClick={()=>setSchedule(s=>({...s,days:s.days.includes(d)?s.days.filter(x=>x!==d):[...s.days,d]}))}
-                    style={{width:36,height:36,borderRadius:'50%',border:'1.5px solid '+(schedule.days.includes(d)?'#CC2200':'var(--border)'),background:schedule.days.includes(d)?'rgba(204,34,0,.1)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:'11px',fontWeight:700,color:schedule.days.includes(d)?'#CC2200':'var(--muted)'}}>
-                    {d[0]}
-                  </div>
-                ))}
-              </div>
+      {/* Schedule */}
+      <Card style={{marginBottom:'14px'}}>
+        <CardHeader>⏰ Schedule</CardHeader>
+        <div style={{padding:'14px 16px',display:'flex',gap:'20px',alignItems:'center',flexWrap:'wrap'}}>
+          <div>
+            <label style={lbl}>Send Time (Eastern)</label>
+            <input type="time" value={schedule.time} onChange={e=>setSchedule(s=>({...s,time:e.target.value}))}
+              style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'14px',fontWeight:700,fontFamily:'Inter,system-ui,sans-serif',padding:'8px 12px',outline:'none'}}/>
+          </div>
+          <div>
+            <label style={lbl}>Days</label>
+            <div style={{display:'flex',gap:'5px'}}>
+              {DAYS.map(d=>(
+                <div key={d} onClick={()=>setSchedule(s=>({...s,days:s.days.includes(d)?s.days.filter(x=>x!==d):[...s.days,d]}))}
+                  style={{width:34,height:34,borderRadius:'50%',border:'1.5px solid '+(schedule.days.includes(d)?'#CC2200':'var(--border)'),background:schedule.days.includes(d)?'rgba(204,34,0,.1)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:'11px',fontWeight:700,color:schedule.days.includes(d)?'#CC2200':'var(--muted)'}}>
+                  {d[0]}
+                </div>
+              ))}
             </div>
           </div>
-        </Card>
-
-        {/* Global sections */}
-        <Card>
-          <CardHeader>📋 Default Email Sections</CardHeader>
-          <div style={{padding:'16px'}}>
-            <div style={{fontSize:'11px',color:'var(--muted)',marginBottom:'12px'}}>These are the defaults — you can customize per agent below</div>
-            {[
-              ['gciProgress',       '📈 GCI Progress Bar'],
-              ['todayTasks',        '✓ Today\'s Tasks'],
-              ['overdueTasks',      '⚠️ Overdue Tasks'],
-              ['appointments',      '📅 Appointments'],
-              ['quote',             '💬 Motivational Quote'],
-              ['teamAnnouncements', '📣 Team Announcements'],
-              ['pipelineSnapshot',  '📊 Pipeline Snapshot'],
-            ].map(([key,label])=>{
-              // Check if all agents have this section enabled
-              const allEnabled = Object.values(agentPrefs).every(p=>p.sections[key])
-              const someEnabled = Object.values(agentPrefs).some(p=>p.sections[key])
-              return (
-                <div key={key} onClick={()=>{
-                  // Toggle all agents
-                  const newVal = !allEnabled
-                  setAgentPrefs(prev=>{
-                    const updated = {...prev}
-                    Object.keys(updated).forEach(a=>{ updated[a]={...updated[a],sections:{...updated[a].sections,[key]:newVal}} })
-                    return updated
-                  })
-                }} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid var(--border)',cursor:'pointer'}}>
-                  <span style={{fontSize:'13px'}}>{label}</span>
-                  <div style={{width:38,height:20,borderRadius:'99px',background:allEnabled?'#10B981':someEnabled?'#D97706':'var(--border)',position:'relative',transition:'background .2s',flexShrink:0}}>
-                    <div style={{width:16,height:16,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:allEnabled?20:2,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
-                  </div>
-                </div>
-              )
-            })}
+          <div style={{fontSize:'11px',color:'var(--muted)',background:'var(--dim)',borderRadius:'8px',padding:'8px 12px'}}>
+            ⚡ Auto-sends at {schedule.time} ET on {schedule.days.join(', ')} via Edge Function
           </div>
-        </Card>
-      </div>
-
-      {/* Per-agent settings */}
-      <Card style={{marginTop:'14px'}}>
-        <CardHeader>👥 Agent Settings — Click any agent to customize</CardHeader>
-        <div>
-          {Object.entries(AGENT_EMAILS).map(([name, email]) => {
-            const prefs = agentPrefs[name] || DEFAULT_AGENT_PREFS
-            const color = AGENT_COLORS[name] || '#CC2200'
-            const gci = AGENT_GCI[name] || {gci:0,goal:100000}
-            const pct = Math.min(Math.round(gci.gci/gci.goal*100),100)
-            const isOpen = selectedAgent === name
-            const agent = AGENTS.find(a=>a.name===name)
-
-            return (
-              <div key={name} style={{borderBottom:'1px solid var(--border)'}}>
-                {/* Agent row */}
-                <div onClick={()=>setSelectedAgent(isOpen?null:name)}
-                  style={{display:'flex',alignItems:'center',gap:'12px',padding:'14px 16px',cursor:'pointer',background:isOpen?'rgba(204,34,0,.03)':'transparent'}}
-                  onMouseEnter={e=>!isOpen&&(e.currentTarget.style.background='var(--hov)')} onMouseLeave={e=>!isOpen&&(e.currentTarget.style.background='transparent')}>
-
-                  {/* Avatar */}
-                  <div style={{width:40,height:40,borderRadius:'10px',background:color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px',fontWeight:800,color:'#fff',flexShrink:0}}>
-                    {name.charAt(0)}
-                  </div>
-
-                  {/* Info */}
-                  <div style={{flex:1}}>
-                    <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'2px'}}>
-                      <span style={{fontSize:'13px',fontWeight:700}}>{name}</span>
-                      {!prefs.enabled && <span style={{fontSize:'10px',background:'#FEF2F2',color:'#DC2626',border:'1px solid #FECACA',borderRadius:'20px',padding:'1px 8px',fontWeight:600}}>Paused</span>}
-                      {lastSent[name] && <span style={{fontSize:'10px',color:'#16A34A',fontWeight:600}}>✓ Sent {lastSent[name]}</span>}
-                    </div>
-                    <div style={{fontSize:'11px',color:'var(--muted)'}}>{email}</div>
-                  </div>
-
-                  {/* GCI mini bar */}
-                  <div style={{textAlign:'right',minWidth:'80px'}}>
-                    <div style={{fontSize:'11px',fontWeight:700,color,marginBottom:'3px'}}>{pct}%</div>
-                    <div style={{background:'var(--dim)',borderRadius:'99px',height:4,overflow:'hidden',width:'70px'}}>
-                      <div style={{background:color,borderRadius:'99px',height:4,width:pct+'%'}}/>
-                    </div>
-                  </div>
-
-                  {/* Enabled toggle */}
-                  <div onClick={e=>{e.stopPropagation();setAgentPref(name,'enabled',!prefs.enabled)}}
-                    style={{width:40,height:22,borderRadius:'99px',background:prefs.enabled?'#10B981':'var(--border)',position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0}}>
-                    <div style={{width:18,height:18,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:prefs.enabled?20:2,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
-                  </div>
-
-                  {/* Actions */}
-                  <div style={{display:'flex',gap:'6px'}} onClick={e=>e.stopPropagation()}>
-                    <Btn size="xs" variant="ghost" onClick={()=>{setPreviewAgent(name);setShowPreview(true)}}>👁</Btn>
-                    <Btn size="xs" onClick={()=>sendTest(name)} disabled={!!sending}>{sending===name?'…':'Send'}</Btn>
-                  </div>
-
-                  <span style={{color:'var(--muted)',fontSize:'12px'}}>{isOpen?'▲':'▼'}</span>
-                </div>
-
-                {/* Expanded per-agent settings */}
-                {isOpen && (
-                  <div style={{background:'var(--dim)',padding:'14px 16px 16px',borderTop:'1px solid var(--border)'}}>
-                    <div style={{fontSize:'11px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'10px'}}>Email Sections for {name.split(' ')[0]}</div>
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:'6px'}}>
-                      {[
-                        ['gciProgress',       '📈 GCI Progress Bar'],
-                        ['todayTasks',        '✓ Today\'s Tasks'],
-                        ['overdueTasks',      '⚠️ Overdue Tasks'],
-                        ['appointments',      '📅 Appointments'],
-                        ['quote',             '💬 Motivational Quote'],
-                        ['teamAnnouncements', '📣 Team Announcements'],
-                        ['pipelineSnapshot',  '📊 Pipeline Snapshot'],
-                      ].map(([key,label])=>(
-                        <div key={key} onClick={()=>setAgentSection(name,key,!prefs.sections[key])}
-                          style={{display:'flex',alignItems:'center',gap:'9px',padding:'9px 11px',borderRadius:'9px',border:'1.5px solid '+(prefs.sections[key]?color:'var(--border)'),background:prefs.sections[key]?color+'08':'transparent',cursor:'pointer',transition:'all .12s'}}>
-                          <div style={{width:32,height:18,borderRadius:'99px',background:prefs.sections[key]?color:'var(--border)',position:'relative',flexShrink:0,transition:'background .2s'}}>
-                            <div style={{width:14,height:14,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:prefs.sections[key]?16:2,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
-                          </div>
-                          <span style={{fontSize:'11px',fontWeight:600,color:prefs.sections[key]?'var(--text)':'var(--muted)'}}>{label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
         </div>
+      </Card>
+
+      {/* Agent list */}
+      <Card>
+        <CardHeader>👥 Agent Preferences — toggle and customize each agent</CardHeader>
+        {Object.entries(AGENT_EMAILS).map(([name, email]) => {
+          const prefs = agentPrefs[name] || DEFAULT_AGENT_PREFS
+          const color = AGENT_COLORS[name]||'#CC2200'
+          const gci = AGENT_GCI[name]||{gci:0,goal:100000}
+          const pct = Math.min(Math.round(gci.gci/gci.goal*100),100)
+          const isOpen = selectedAgent === name
+          const sectionOrder = prefs.sectionOrder || DEFAULT_AGENT_PREFS.sectionOrder
+
+          return (
+            <div key={name} style={{borderBottom:'1px solid var(--border)'}}>
+              {/* Agent row */}
+              <div onClick={()=>setSelectedAgent(isOpen?null:name)}
+                style={{display:'flex',alignItems:'center',gap:'12px',padding:'14px 16px',cursor:'pointer',background:isOpen?'rgba(204,34,0,.02)':'transparent'}}
+                onMouseEnter={e=>!isOpen&&(e.currentTarget.style.background='var(--hov)')}
+                onMouseLeave={e=>!isOpen&&(e.currentTarget.style.background='transparent')}>
+                <div style={{width:40,height:40,borderRadius:'10px',background:color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'15px',fontWeight:800,color:'#fff',flexShrink:0}}>
+                  {name.charAt(0)}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{display:'flex',alignItems:'center',gap:'7px',marginBottom:'2px'}}>
+                    <span style={{fontSize:'13px',fontWeight:700}}>{name}</span>
+                    {!prefs.enabled&&<span style={{fontSize:'10px',background:'#FEF2F2',color:'#DC2626',border:'1px solid #FECACA',borderRadius:'20px',padding:'1px 8px',fontWeight:600}}>Paused</span>}
+                    {lastSent[name]&&<span style={{fontSize:'10px',color:'#16A34A',fontWeight:600}}>✓ Sent {lastSent[name]}</span>}
+                  </div>
+                  <div style={{fontSize:'11px',color:'var(--muted)'}}>{email}</div>
+                </div>
+                <div style={{textAlign:'right',minWidth:'70px'}}>
+                  <div style={{fontSize:'11px',fontWeight:700,color,marginBottom:'3px'}}>{pct}%</div>
+                  <div style={{background:'var(--dim)',borderRadius:'99px',height:4,overflow:'hidden',width:'60px'}}>
+                    <div style={{background:color,borderRadius:'99px',height:4,width:pct+'%'}}/>
+                  </div>
+                </div>
+                {/* Enabled toggle */}
+                <div onClick={e=>{e.stopPropagation();setAgentEnabled(name,!prefs.enabled)}}
+                  style={{width:42,height:22,borderRadius:'99px',background:prefs.enabled?'#10B981':'var(--border)',position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0}}>
+                  <div style={{width:18,height:18,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:prefs.enabled?22:2,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
+                </div>
+                <div style={{display:'flex',gap:'5px'}} onClick={e=>e.stopPropagation()}>
+                  <Btn size="xs" variant="ghost" onClick={()=>{setPreviewAgent(name);setShowPreview(true)}}>👁</Btn>
+                  <Btn size="xs" onClick={()=>sendTest(name)} disabled={!!sending}>{sending===name?'…':'Send'}</Btn>
+                </div>
+                <span style={{color:'var(--muted)',fontSize:'12px'}}>{isOpen?'▲':'▼'}</span>
+              </div>
+
+              {/* Expanded settings */}
+              {isOpen && (
+                <div style={{background:'var(--dim)',padding:'16px',borderTop:'1px solid var(--border)'}}>
+                  <div style={{fontSize:'11px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'12px'}}>
+                    📧 Email Sections for {name.split(' ')[0]} — drag to reorder, toggle to show/hide
+                  </div>
+
+                  {/* Drag-and-drop section order */}
+                  <div style={{marginBottom:'14px'}}>
+                    {sectionOrder.map((key, idx) => {
+                      const section = ALL_SECTIONS.find(s=>s.key===key)
+                      if(!section) return null
+                      const enabled = prefs.sections[key] !== false
+                      return (
+                        <div key={key}
+                          draggable
+                          onDragStart={e=>{e.dataTransfer.setData('idx',String(idx));e.dataTransfer.setData('agent',name)}}
+                          onDragOver={e=>{e.preventDefault();setDragOver(idx)}}
+                          onDragEnd={()=>setDragOver(null)}
+                          onDrop={e=>{
+                            e.preventDefault()
+                            const fromIdx=parseInt(e.dataTransfer.getData('idx'))
+                            if(fromIdx!==idx) reorderSection(name,fromIdx,idx)
+                            setDragOver(null)
+                          }}
+                          style={{display:'flex',alignItems:'center',gap:'10px',padding:'9px 12px',background:dragOver===idx?'rgba(204,34,0,.05)':'var(--panel)',borderRadius:'9px',marginBottom:'5px',cursor:'grab',border:'1.5px solid '+(dragOver===idx?'#CC2200':'var(--border)'),transition:'all .1s',opacity:enabled?1:.5}}>
+                          <span style={{color:'var(--muted)',fontSize:'14px',cursor:'grab'}}>⠿</span>
+                          <span style={{flex:1,fontSize:'12px',fontWeight:600}}>{section.label}</span>
+                          {section.required
+                            ? <span style={{fontSize:'10px',color:'var(--muted)',background:'var(--dim)',borderRadius:'4px',padding:'2px 7px'}}>Required</span>
+                            : <div onClick={e=>{e.stopPropagation();setAgentSection(name,key,!enabled)}}
+                                style={{width:36,height:18,borderRadius:'99px',background:enabled?color:'var(--border)',position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0}}>
+                                <div style={{width:14,height:14,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:enabled?20:2,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
+                              </div>
+                          }
+                        </div>
+                      )
+                    })}
+                    <div style={{fontSize:'10px',color:'var(--muted)',marginTop:'5px'}}>Drag rows to reorder • toggle to show/hide</div>
+                  </div>
+
+                  <div style={{display:'flex',gap:'7px'}}>
+                    <Btn size="sm" variant="ghost" onClick={()=>{setPreviewAgent(name);setShowPreview(true)}}>👁 Preview Email</Btn>
+                    <Btn size="sm" onClick={()=>sendTest(name)} disabled={!!sending}>{sending===name?'Sending…':'Send Test Email'}</Btn>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </Card>
 
       {/* Preview modal */}
       {showPreview && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}} onClick={e=>{if(e.target===e.currentTarget)setShowPreview(false)}}>
           <div style={{background:'var(--panel)',borderRadius:'18px',width:'100%',maxWidth:'660px',maxHeight:'90vh',overflow:'hidden',display:'flex',flexDirection:'column'}}>
-            <div style={{padding:'16px 20px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div>
-                <div style={{fontSize:'14px',fontWeight:800}}>Email Preview</div>
-                <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'2px'}}>Showing: {previewAgent}</div>
-              </div>
+            <div style={{padding:'14px 20px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontSize:'14px',fontWeight:800}}>Email Preview — {previewAgent}</div>
               <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
                 <select value={previewAgent} onChange={e=>setPreviewAgent(e.target.value)}
-                  style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',fontFamily:'Inter,system-ui,sans-serif',padding:'7px 10px',outline:'none'}}>
+                  style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',fontFamily:'Inter,system-ui,sans-serif',padding:'6px 10px',outline:'none'}}>
                   {Object.keys(AGENT_EMAILS).map(n=><option key={n} value={n}>{n}</option>)}
                 </select>
                 <button onClick={()=>setShowPreview(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'20px',lineHeight:1}}>✕</button>
               </div>
             </div>
             <div style={{flex:1,overflowY:'auto'}}>
-              <iframe srcDoc={previewHtml} style={{width:'100%',height:'600px',border:'none',display:'block'}} title="Email Preview"/>
+              <iframe srcDoc={previewHtml} style={{width:'100%',height:'600px',border:'none',display:'block'}} title="Preview"/>
             </div>
             <div style={{padding:'12px 20px',borderTop:'1px solid var(--border)',display:'flex',gap:'8px',justifyContent:'flex-end'}}>
               <Btn variant="ghost" onClick={()=>setShowPreview(false)}>Close</Btn>
-              <Btn onClick={()=>{sendTest(previewAgent);setShowPreview(false)}} disabled={!!sending}>
-                {sending===previewAgent?'Sending…':'Send Test to '+previewAgent.split(' ')[0]}
-              </Btn>
+              <Btn onClick={()=>{sendTest(previewAgent);setShowPreview(false)}} disabled={!!sending}>Send Test to {previewAgent.split(' ')[0]}</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quote manager modal */}
+      {showQuoteManager && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}} onClick={e=>{if(e.target===e.currentTarget)setShowQuoteManager(false)}}>
+          <div style={{background:'var(--panel)',borderRadius:'18px',width:'100%',maxWidth:'640px',maxHeight:'90vh',overflow:'hidden',display:'flex',flexDirection:'column'}}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontSize:'15px',fontWeight:800}}>💬 Manage Quotes ({quotes.length})</div>
+              <button onClick={()=>setShowQuoteManager(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'20px'}}>✕</button>
+            </div>
+
+            {/* Add new quote */}
+            <div style={{padding:'14px 20px',borderBottom:'1px solid var(--border)',background:'var(--dim)'}}>
+              <div style={{fontSize:'11px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'8px'}}>Add New Quote</div>
+              <textarea value={newQuote.text} onChange={e=>setNewQuote(q=>({...q,text:e.target.value}))} placeholder="Quote text..." rows={2}
+                style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'9px 11px',outline:'none',resize:'none',boxSizing:'border-box',marginBottom:'8px'}}/>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 100px',gap:'8px'}}>
+                <input value={newQuote.author} onChange={e=>setNewQuote(q=>({...q,author:e.target.value}))} placeholder="Author (e.g. Gary Keller)"
+                  style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',fontFamily:'Inter,system-ui,sans-serif',padding:'8px 10px',outline:'none'}}/>
+                <select value={newQuote.category} onChange={e=>setNewQuote(q=>({...q,category:e.target.value}))}
+                  style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',fontFamily:'Inter,system-ui,sans-serif',padding:'8px 10px',outline:'none'}}>
+                  <option value="kw">KW / Gary Keller</option>
+                  <option value="real estate">Real Estate</option>
+                  <option value="motivation">Motivation</option>
+                  <option value="general">General</option>
+                </select>
+                <Btn size="sm" onClick={addQuote}>Add</Btn>
+              </div>
+            </div>
+
+            {/* Filter + list */}
+            <div style={{padding:'10px 20px',borderBottom:'1px solid var(--border)',display:'flex',gap:'6px'}}>
+              {[['all','All'],['kw','KW/Gary Keller'],['real estate','Real Estate'],['motivation','Motivation'],['general','General']].map(([k,l])=>(
+                <button key={k} onClick={()=>setQuoteFilter(k)} style={{padding:'5px 11px',borderRadius:'20px',border:'1.5px solid '+(quoteFilter===k?'#CC2200':'var(--border)'),background:quoteFilter===k?'rgba(204,34,0,.1)':'transparent',color:quoteFilter===k?'#CC2200':'var(--muted)',fontSize:'11px',fontWeight:600,cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>
+                  {l} ({k==='all'?quotes.length:quotes.filter(q=>q.category===k).length})
+                </button>
+              ))}
+            </div>
+
+            <div style={{flex:1,overflowY:'auto',padding:'12px 20px'}}>
+              {quotes.filter(q=>quoteFilter==='all'||q.category===quoteFilter).map((q,i)=>(
+                <div key={i} style={{display:'flex',gap:'10px',padding:'10px 12px',background:'var(--dim)',borderRadius:'9px',marginBottom:'6px',alignItems:'flex-start'}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:'13px',fontStyle:'italic',color:'var(--text)',lineHeight:1.6,marginBottom:'4px'}}>"{q.text}"</div>
+                    <div style={{fontSize:'11px',color:'var(--muted)'}}>— {q.author} · <span style={{background:'var(--panel)',borderRadius:'4px',padding:'1px 7px',fontWeight:600}}>{q.category}</span></div>
+                  </div>
+                  <button onClick={()=>setQuotes(prev=>prev.filter((_,j)=>j!==i))} style={{background:'none',border:'none',cursor:'pointer',color:'#DC2626',fontSize:'14px',flexShrink:0,paddingTop:'2px'}}>🗑</button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{padding:'12px 20px',borderTop:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontSize:'12px',color:'var(--muted)'}}>Quotes rotate daily — each agent gets a different one based on the date</div>
+              <Btn variant="ghost" onClick={()=>setShowQuoteManager(false)}>Done</Btn>
             </div>
           </div>
         </div>
@@ -478,3 +484,5 @@ export function DailyBriefing() {
     </div>
   )
 }
+
+const lbl = { display:'block',fontSize:'9px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'5px' }
