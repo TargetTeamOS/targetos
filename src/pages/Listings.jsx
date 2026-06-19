@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { AGENTS } from '../lib/constants'
 import { Card, CardHeader, Badge, Btn, Modal, ModalTitle, Input, Select, Grid2, Grid3, Grid4, StatCard } from '../components/UI'
@@ -36,8 +37,26 @@ const INIT_LISTINGS = [
 
 export function Listings() {
   const { state } = useApp()
-  const [listings, setListings] = useState(INIT_LISTINGS)
+  const [listings, setListings] = useState([])
+  const [dbLoading, setDbLoading] = useState(true)
   const [view, setView] = useState('board') // board | list | grid
+
+  useEffect(() => { loadListings() }, [])
+
+  async function loadListings() {
+    setDbLoading(true)
+    const { data, error } = await supabase.from('listings').select('*').order('created_at', { ascending: false })
+    if(data && data.length > 0) {
+      setListings(data.map(l => ({
+        ...l,
+        spend: l.spend || [],
+        showings: l.showings || [],
+        interests: l.interests || [],
+        agents: l.agents || [l.agent_name].filter(Boolean),
+      })))
+    }
+    setDbLoading(false)
+  }
   const [filterAgent, setFilterAgent] = useState('')
   const [filterStatus, setFilterStatus] = useState('active') // active | all | sold
   const [search, setSearch] = useState('')
@@ -45,8 +64,10 @@ export function Listings() {
   const [editListing, setEditListing] = useState(null)
   const [showBulk, setShowBulk] = useState(false)
 
-  function updateListing(id, changes) {
+  async function updateListing(id, changes) {
     setListings(prev => prev.map(l => l.id===id ? {...l,...changes} : l))
+    // Persist to Supabase
+    await supabase.from('listings').update({...changes, updated_at: new Date().toISOString()}).eq('id', id)
     if(selected?.id===id) setSelected(prev => ({...prev,...changes}))
   }
 
@@ -214,9 +235,19 @@ export function Listings() {
       {selected && <ListingDetail listing={selected} onClose={()=>setSelected(null)} onEdit={()=>{setEditListing({...selected});setSelected(null)}} onChange={u=>updateListing(u.id,u)}/>}
 
       {/* Edit */}
-      {editListing && <ListingEditModal listing={editListing} onClose={()=>setEditListing(null)} onSave={updated=>{
+      {editListing && <ListingEditModal listing={editListing} onClose={()=>setEditListing(null)} onSave={async (updated)=>{
         if(updated.id==='new'){
-          const n={...updated,id:'l'+Date.now(),price:parseFloat(updated.price)||0,days:0,spend:[],showings:[],notes:updated.notes||''}
+          let n={...updated,id:'l'+Date.now(),price:parseFloat(updated.price)||0,days:0,spend:[],showings:[],notes:updated.notes||''}
+          // Save to Supabase
+          const { data: saved } = await supabase.from('listings').insert([{
+            addr:n.addr, city:n.city, state:n.state||'NY', zip:n.zip,
+            price:n.price, beds:n.beds, baths:n.baths, sqft:n.sqft,
+            type:n.type, status:n.status||'Active', tax:n.tax,
+            lock_code:n.lock, mls:n.mls, agent_name:(n.agents||[])[0]||'',
+            budget:n.budget||2000, days:n.days||0, notes:n.notes||'',
+            spend:n.spend||[], showings:n.showings||[], interests:[], notes_log:[]
+          }]).select()
+          if(saved?.[0]) n = {...n, id: saved[0].id}
           setListings(prev=>[n,...prev])
           logChange({recordType:'listing',recordId:n.id,recordName:n.addr+', '+n.city,action:'Created',agentName:currentAgent?.name||'Admin'})
         } else {

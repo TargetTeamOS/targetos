@@ -1,3 +1,4 @@
+import { supabase } from '../lib/supabase'
 import React, { useState } from 'react'
 import { Card, CardHeader, Btn, StatCard, Modal, ModalTitle, Input, Select, Grid2, Grid3 } from '../components/UI'
 import { AGENTS, SOURCES, PROPERTY_TYPES, DEAL_STAGES } from '../lib/constants'
@@ -30,7 +31,35 @@ const AGENT_COLORS = {'a1':'#CC2200','a2':'#0EA5E9','a3':'#F5A623','a4':'#10B981
 const TEAM_GOAL = 2000000
 
 export function Production() {
-  const [deals, setDeals] = useState(DEALS)
+  const [deals, setDeals] = useState([])
+  const [dealsLoading, setDealsLoading] = useState(true)
+
+  useEffect(() => { loadDeals() }, [])
+
+  async function loadDeals() {
+    setDealsLoading(true)
+    const { data, error } = await supabase.from('deals').select('*').order('created_at', { ascending: false })
+    if(data && data.length > 0) {
+      setDeals(data)
+    } else {
+      // Seed with real deals on first load
+      const realDeals = DEALS
+      for(const d of realDeals) {
+        await supabase.from('deals').insert([{
+          addr: d.addr, agent_name: d.agent, side: d.side||'Buyer',
+          stage: d.stage, prod: d.prod, gci: d.gci,
+          ao_date: d.aoDate, source: d.source||'', client_name: d.client||'',
+        }])
+      }
+      setDeals(realDeals)
+    }
+    setDealsLoading(false)
+  }
+
+  async function updateDeal(id, changes) {
+    setDeals(prev => prev.map(d => d.id===id ? {...d,...changes} : d))
+    await supabase.from('deals').update({...changes, updated_at: new Date().toISOString()}).eq('id', id)
+  }
   const [view, setView] = useState('board') // board | list | charts
   const [filterAgent, setFilterAgent] = useState('')
   const [filterStage, setFilterStage] = useState('')
