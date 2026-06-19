@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardHeader, Btn, StatCard, Modal, ModalTitle, Input, Select, Grid2, Grid3 } from '../components/UI'
 import { AGENTS, SOURCES, PROPERTY_TYPES, DEAL_STAGES } from '../lib/constants'
 import { AGENT_GOALS, AGENT_ACTUALS, pct as calcPct } from '../lib/goals'
