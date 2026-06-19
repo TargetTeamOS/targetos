@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const SUPABASE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 const RESEND_KEY = Deno.env.get('RESEND_API_KEY')!
 const APP_URL = 'https://app.targetreteam.com'
 const AGENT_EMAILS: Record<string,string> = { 'Lazer Farkas':'lazer@targetreteam.com','Mendy Jankovits':'mendy@targetreteam.com','Isaac Leibowitz':'isaac6829490@gmail.com','Yanky Lichtenstein':'yanky@targetreteam.com','Gitty Fogel':'office@targetreteam.com','Joel Rottenstein':'joel@targetreteam.com','Eli Hoffman':'eli@targetreteam.com','Avraham Weinberger':'avraham@targetreteam.com' }

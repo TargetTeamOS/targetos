@@ -30,6 +30,7 @@ const MORE_ITEMS = [
   { id:'gifts',        label:'Gifts',        icon:'🎁' },
   { id:'announce',     label:'Alerts',       icon:'📣' },
   { id:'automations',  label:'Automations',  icon:'⚡' },
+  { id:'briefing',     label:'Daily Brief',  icon:'📧' },
   { id:'admin',        label:'Admin',        icon:'⚙️' },
   { id:'settings',     label:'Settings',     icon:'🔧' },
   { id:'news',         label:'News',         icon:'📰' },

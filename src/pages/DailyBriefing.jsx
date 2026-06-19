@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { AGENTS } from '../lib/constants'
-import { Card, CardHeader, Btn, Grid2 } from '../components/UI'
+import { Card, CardHeader, Btn } from '../components/UI'
 import { buildDailyEmail, AGENT_EMAILS } from '../lib/dailyBriefing'
 import { loadBriefingPrefs, saveBriefingPrefs } from '../lib/briefingPrefs'
 import { sendDailyBriefing } from '../lib/emailService'
@@ -254,7 +254,7 @@ export function DailyBriefing() {
         ))}
       </div>
 
-      <Grid2 gap={14}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:'14px'}}>
         {/* Schedule */}
         <Card>
           <CardHeader>⏰ Send Schedule</CardHeader>
@@ -315,7 +315,7 @@ export function DailyBriefing() {
             })}
           </div>
         </Card>
-      </Grid2>
+      </div>
 
       {/* Per-agent settings */}
       <Card style={{marginTop:'14px'}}>
