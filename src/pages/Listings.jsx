@@ -64,6 +64,7 @@ export function Listings() {
   const [filterStatus, setFilterStatus] = useState('active') // active | all | sold
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
+  const [selectedListing, setSelectedListing] = useState(null)
   const [editListing, setEditListing] = useState(null)
   const [showBulk, setShowBulk] = useState(false)
 
