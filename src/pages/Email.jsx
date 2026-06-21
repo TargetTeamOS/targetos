@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { Card, CardHeader, Btn, Input, Select, Grid2, Grid3 } from '../components/UI'
 import { AGENTS } from '../lib/constants'
 import { sendEmail } from '../lib/emailService'
@@ -105,7 +106,8 @@ const RECIPIENT_GROUPS = [
 const STYLE_COLORS = { red:'#CC2200', navy:'#1B2B4B', gold:'#F5A623', teal:'#0EA5E9', green:'#16A34A' }
 
 export function Email({ setPage }) {
-  const { state, toast } = useApp()
+  const { agent } = useAuth()
+  const { toast } = useApp()
   const [step, setStep] = useState(1) // 1=recipients, 2=template, 3=compose, 4=preview, 5=sent
   const [selectedGroups, setSelectedGroups] = useState([])
   const [customContacts, setCustomContacts] = useState([])

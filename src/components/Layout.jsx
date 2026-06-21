@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { formatTime } from '../lib/time'
 import { AGENTS } from '../lib/constants'
 
@@ -47,7 +48,7 @@ const FONT_SIZES = ['11px','12px','13px','14px','15px']
 const FONT_WEIGHTS = ['400','500','600','700','800']
 const SIDEBAR_WIDTHS = ['200px','220px','240px','260px','280px']
 
-export function Layout({ page, setPage, children }) {
+export function Layout({ page, setPage, agent: agentProp, children }) {
   const { state, dispatch } = useApp()
   const agent = state.currentAgent || AGENTS[3]
 

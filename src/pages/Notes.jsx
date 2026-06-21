@@ -1,132 +1,89 @@
-import React, { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import React, { useState } from 'react'
+import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { Card, Btn } from '../components/UI'
-import { useConfirm } from '../components/ConfirmDialog'
+import { getNotes, createNote, updateNote, deleteNote } from '../lib/db/notes'
+import { getDaysAgo } from '../lib/utils/format'
+import { useEffect } from 'react'
 
 export function Notes() {
-  const { state, toast } = useApp()
-  const { confirm, ConfirmDialog } = useConfirm()
-  const [notes, setNotes] = useState([])
+  const { agent } = useAuth()
+  const { toast } = useApp()
+  const [notes, setNotes]     = useState([])
   const [loading, setLoading] = useState(true)
-  const [text, setText] = useState('')
-  const [pinned, setPinned] = useState(false)
-  const [search, setSearch] = useState('')
+  const [text, setText]       = useState('')
+  const [saving, setSaving]   = useState(false)
   const [editing, setEditing] = useState(null)
+  const [editText, setEditText] = useState('')
 
-  useEffect(() => { loadNotes() }, [])
+  useEffect(() => {
+    getNotes({ agentId: agent?.id }).then(setNotes).catch(e=>toast(e.message,'#DC2626')).finally(()=>setLoading(false))
+  }, [])
 
-  async function loadNotes() {
-    setLoading(true)
-    const { data } = await supabase.from('tasks')
-      .select('*')
-      .eq('priority', 'note')
-      .order('created_at', { ascending: false })
-    setNotes(data || [])
-    setLoading(false)
+  async function addNote() {
+    if(!text.trim()) return
+    setSaving(true)
+    try {
+      const d = await createNote({ title: text.trim(), agent_id: agent?.id, status:'pinned' })
+      setNotes(p=>[d,...p]); setText(''); toast('✅ Note saved!')
+    } catch(e) { toast('Error: '+e.message,'#DC2626') }
+    finally { setSaving(false) }
   }
 
-  async function saveNote() {
-    if(!text.trim()) { toast('Note is empty','#DC2626'); return }
-    if(editing) {
-      await supabase.from('tasks').update({ title: text.trim(), updated_at: new Date().toISOString() }).eq('id', editing)
-      toast('Note updated!')
-      setEditing(null)
-    } else {
-      await supabase.from('tasks').insert([{
-        title: text.trim(),
-        priority: 'note',
-        status: pinned ? 'pinned' : 'pending',
-        assigned_to: state.user?.id,
-        created_by: state.user?.id,
-      }])
-      toast('✅ Note saved!')
-    }
-    setText(''); setPinned(false); loadNotes()
+  async function saveEdit(id) {
+    try {
+      const d = await updateNote(id, { title: editText })
+      setNotes(p=>p.map(n=>n.id===id?d:n)); setEditing(null)
+    } catch(e) { toast(e.message,'#DC2626') }
   }
 
-  async function deleteNote(id) {
-    const n = notes.find(x=>x.id===id)
-    confirm({ title:'Delete Note?', message:`Delete this note?`, confirmLabel:'Delete', onConfirm: async () => {
-      await supabase.from('tasks').delete().eq('id', id)
-      toast('Note deleted'); loadNotes()
-    }})
+  async function removeNote(id) {
+    try { await deleteNote(id); setNotes(p=>p.filter(n=>n.id!==id)); toast('Note deleted') }
+    catch(e) { toast(e.message,'#DC2626') }
   }
-
-  async function togglePin(id, status) {
-    const newStatus = status === 'pinned' ? 'pending' : 'pinned'
-    await supabase.from('tasks').update({ status: newStatus }).eq('id', id)
-    setNotes(prev => prev.map(n => n.id===id ? {...n,status:newStatus} : n))
-  }
-
-  const filtered = notes.filter(n => !search || n.title.toLowerCase().includes(search.toLowerCase()))
-  const pinnedNotes = filtered.filter(n => n.status==='pinned')
-  const regularNotes = filtered.filter(n => n.status!=='pinned')
 
   return (
     <div>
-      <ConfirmDialog/>
-      <div style={{fontSize:'20px',fontWeight:900,marginBottom:'14px'}}>📓 Notes</div>
-
-      {/* New note input */}
-      <Card style={{padding:'16px',marginBottom:'14px'}}>
-        <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Write a note... (Shift+Enter for new line)" rows={4}
-          style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'14px',fontFamily:'Inter,system-ui,sans-serif',padding:'12px',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:1.7}}
-          onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();saveNote()}}}
-          onFocus={e=>e.target.style.borderColor='#CC2200'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'10px'}}>
-          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-            <input type="checkbox" checked={pinned} onChange={e=>setPinned(e.target.checked)} id="pin-note"/>
-            <label htmlFor="pin-note" style={{fontSize:'12px',color:'var(--muted)',cursor:'pointer'}}>📌 Pin this note</label>
-          </div>
-          <Btn size="sm" onClick={saveNote} disabled={!text.trim()}>{editing?'Update':'Save Note'}</Btn>
-        </div>
-      </Card>
-
-      {/* Search */}
-      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search notes..."
-        style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none',boxSizing:'border-box',marginBottom:'14px'}}/>
-
-      {loading && <div style={{padding:'28px',textAlign:'center',color:'var(--muted)',fontSize:'13px'}}>Loading...</div>}
-
-      {/* Pinned notes */}
-      {pinnedNotes.length > 0 && (
-        <div style={{marginBottom:'14px'}}>
-          <div style={{fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.8px',marginBottom:'8px'}}>📌 Pinned</div>
-          {pinnedNotes.map(n => <NoteCard key={n.id} note={n} onEdit={n=>{setText(n.title);setEditing(n.id)}} onDelete={deleteNote} onPin={togglePin}/>)}
-        </div>
-      )}
-
-      {/* Regular notes */}
-      {regularNotes.length === 0 && !loading && pinnedNotes.length === 0
-        ? <div style={{padding:'32px',textAlign:'center',color:'var(--muted)',fontSize:'13px',background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'12px'}}>No notes yet — write one above</div>
-        : regularNotes.map(n => <NoteCard key={n.id} note={n} onEdit={n=>{setText(n.title);setEditing(n.id)}} onDelete={deleteNote} onPin={togglePin}/>)
-      }
-    </div>
-  )
-}
-
-function NoteCard({ note, onEdit, onDelete, onPin }) {
-  const ago = getAgo(note.created_at)
-  return (
-    <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'12px',padding:'14px 16px',marginBottom:'8px'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'10px'}}>
-        <div style={{flex:1,fontSize:'13px',lineHeight:1.7,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{note.title}</div>
-        <div style={{display:'flex',gap:'5px',flexShrink:0}}>
-          <button onClick={()=>onPin(note.id,note.status)} style={{background:'none',border:'none',cursor:'pointer',fontSize:'14px',opacity:note.status==='pinned'?.9:.3}} title={note.status==='pinned'?'Unpin':'Pin'}>📌</button>
-          <button onClick={()=>onEdit(note)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'13px'}}>✏</button>
-          <button onClick={()=>onDelete(note.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#DC2626',fontSize:'13px'}}>🗑</button>
-        </div>
+      <div style={{ fontSize:'18px',fontWeight:900,marginBottom:'14px' }}>📌 Notes</div>
+      <div style={{ display:'flex',gap:'8px',marginBottom:'16px' }}>
+        <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Write a note... (press Shift+Enter for new line, Enter to save)"
+          onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addNote()}}}
+          rows={2}
+          style={{ flex:1,background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 12px',outline:'none',resize:'none' }}/>
+        <button onClick={addNote} disabled={saving||!text.trim()}
+          style={{ background:'#CC2200',border:'none',borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:700,padding:'10px 16px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',opacity:(saving||!text.trim())?.5:1,alignSelf:'flex-end' }}>
+          Save
+        </button>
       </div>
-      <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'6px'}}>{ago}</div>
+
+      {loading && <div style={{ padding:'24px',textAlign:'center',color:'var(--muted)' }}>Loading...</div>}
+      {!loading&&notes.length===0&&<div style={{ padding:'48px',textAlign:'center',color:'var(--muted)',background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px' }}><div style={{ fontSize:'28px',marginBottom:'10px' }}>📌</div>No notes yet</div>}
+
+      <div style={{ columns:'2',columnGap:'10px' }}>
+        {notes.map(n=>(
+          <div key={n.id} style={{ background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'12px',padding:'14px',marginBottom:'10px',breakInside:'avoid' }}>
+            {editing===n.id
+              ? <div>
+                  <textarea value={editText} onChange={e=>setEditText(e.target.value)} autoFocus rows={3}
+                    style={{ width:'100%',background:'var(--inp)',border:'1.5px solid #CC2200',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'8px 10px',outline:'none',resize:'vertical',boxSizing:'border-box',marginBottom:'8px' }}/>
+                  <div style={{ display:'flex',gap:'6px' }}>
+                    <button onClick={()=>saveEdit(n.id)} style={{ flex:2,background:'#CC2200',border:'none',borderRadius:'8px',color:'#fff',fontSize:'11px',fontWeight:700,padding:'7px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif' }}>Save</button>
+                    <button onClick={()=>setEditing(null)} style={{ flex:1,background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'8px',color:'var(--muted)',fontSize:'11px',padding:'7px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif' }}>Cancel</button>
+                  </div>
+                </div>
+              : <>
+                  <div style={{ fontSize:'13px',lineHeight:1.7,whiteSpace:'pre-wrap',marginBottom:'10px' }}>{n.title}</div>
+                  <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+                    <div style={{ fontSize:'10px',color:'var(--muted)' }}>{getDaysAgo(n.created_at)}</div>
+                    <div style={{ display:'flex',gap:'6px' }}>
+                      <button onClick={()=>{setEditing(n.id);setEditText(n.title)}} style={{ background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'12px' }}>✏️</button>
+                      <button onClick={()=>removeNote(n.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#DC2626',fontSize:'12px' }}>🗑</button>
+                    </div>
+                  </div>
+                </>
+            }
+          </div>
+        ))}
+      </div>
     </div>
   )
-}
-
-function getAgo(ts) {
-  if(!ts) return ''
-  const d = Math.floor((Date.now()-new Date(ts).getTime())/86400000)
-  if(d === 0) return 'Today'
-  if(d === 1) return 'Yesterday'
-  return d+'d ago'
 }

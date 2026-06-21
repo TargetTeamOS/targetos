@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { logChange } from '../lib/activityLog'
 import { parseVoice } from '../lib/voiceParser'
 
@@ -161,7 +162,8 @@ function AudioPlayer({ url }) {
 
 // ── MAIN COMPONENT ─────────────────────────────────────────────
 export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' }) {
-  const { state, toast } = useApp()
+  const { agent } = useAuth()
+  const { toast } = useApp()
   const speech = useSpeech()
   const [mode, setMode]         = useState(null)
   const [parsed, setParsed]     = useState(null)
@@ -218,36 +220,36 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
         phone:      form.phone || '',
         source:     'Voice Capture',
         notes:      `Voice note: "${form.note}"`,
-        agent_id:   state.user?.id,
+        agent_id:   agent?.id,
       }]).select()
       if(error) { speech.setError('Save failed: '+error.message); setSaving(false); return }
-      await logChange({ recordType:'contact', recordId:data[0].id, recordName:(form.first+' '+form.last).trim()||'Voice Contact', action:'Created', agentName:state.currentAgent?.name||'Agent', userId:state.user?.id, extra:'Voice capture' })
+      await logChange({ recordType:'contact', recordId:data[0].id, recordName:(form.first+' '+form.last).trim()||'Voice Contact', action:'Created', agentName:agent?.name||'Agent', userId:agent?.id, extra:'Voice capture' })
       saved.push({ type:'contact', label:(form.first+' '+form.last).trim()||'New Contact' })
     }
 
     if(actions.includes('note')) {
       if(contactId) {
-        await logChange({ recordType:'contact', recordId:contactId, recordName:contactName, action:'Note Added', agentName:state.currentAgent?.name||'Agent', userId:state.user?.id, extra:form.note })
+        await logChange({ recordType:'contact', recordId:contactId, recordName:contactName, action:'Note Added', agentName:agent?.name||'Agent', userId:agent?.id, extra:form.note })
         saved.push({ type:'note', label:'Note on '+contactName })
       } else {
-        await supabase.from('tasks').insert([{ title:form.note.slice(0,120), priority:'normal', status:'pending', assigned_to:state.user?.id, created_by:state.user?.id }])
+        await supabase.from('tasks').insert([{ title:form.note.slice(0,120), priority:'normal', status:'pending', assigned_to:agent?.id, created_by:agent?.id }])
         saved.push({ type:'note', label:'Note saved' })
       }
     }
 
     if(actions.includes('task') && form.taskTitle.trim()) {
       const ctx = form.address ? ` — ${form.address}` : (actions.includes('contact')&&form.first?` — ${form.first} ${form.last}`.trim():'')
-      await supabase.from('tasks').insert([{ title:(form.taskTitle.trim()+ctx).slice(0,200), priority:'high', status:'pending', due_date:form.taskDue||null, assigned_to:state.user?.id, created_by:state.user?.id }])
+      await supabase.from('tasks').insert([{ title:(form.taskTitle.trim()+ctx).slice(0,200), priority:'high', status:'pending', due_date:form.taskDue||null, assigned_to:agent?.id, created_by:agent?.id }])
       saved.push({ type:'task', label:form.taskTitle.slice(0,50) })
     }
 
     if(actions.includes('schedule')) {
-      await supabase.from('tasks').insert([{ title:form.note.replace(/\b(schedule|appointment|meeting|showing)\b/gi,'').trim().slice(0,120)||'Appointment', priority:'normal', status:'pending', due_date:form.schedDate||null, assigned_to:state.user?.id, created_by:state.user?.id }])
+      await supabase.from('tasks').insert([{ title:form.note.replace(/\b(schedule|appointment|meeting|showing)\b/gi,'').trim().slice(0,120)||'Appointment', priority:'normal', status:'pending', due_date:form.schedDate||null, assigned_to:agent?.id, created_by:agent?.id }])
       saved.push({ type:'schedule', label:`Appointment${form.schedDate?' on '+form.schedDate:''}` })
     }
 
     if(actions.includes('contact')) {
-      await supabase.from('tasks').insert([{ title:`Complete profile — ${form.first||'Voice'} ${form.last||'Contact'}${form.phone?' ('+form.phone+')':''}`, priority:'high', status:'pending', due_date:new Date(Date.now()+86400000).toISOString().split('T')[0], assigned_to:state.user?.id, created_by:state.user?.id }])
+      await supabase.from('tasks').insert([{ title:`Complete profile — ${form.first||'Voice'} ${form.last||'Contact'}${form.phone?' ('+form.phone+')':''}`, priority:'high', status:'pending', due_date:new Date(Date.now()+86400000).toISOString().split('T')[0], assigned_to:agent?.id, created_by:agent?.id }])
       saved.push({ type:'reminder', label:'Reminder to complete profile' })
     }
 
