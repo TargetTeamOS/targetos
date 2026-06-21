@@ -124,7 +124,7 @@ function useSpeech() {
     r.onend = () => {
       // On mobile, recognition fires onend unexpectedly
       // Restart it if we're still supposed to be recording
-      if(recordingRef.current && srRef.current) {
+      if(recordingRef.current && srRef.current !== null) {
         try {
           srRef.current = new SR()
           srRef.current.lang = 'en-US'
@@ -153,11 +153,14 @@ function useSpeech() {
   }
 
   function manualStop() {
-    recordingRef.current = false  // stop auto-restart
+    recordingRef.current = false  // stop auto-restart FIRST
     clearInterval(timerRef.current)
     clearTimeout(silenceRef.current)
+    // Null out srRef BEFORE calling stop() to prevent onend from restarting
+    const sr = srRef.current
+    srRef.current = null
     setStage('processing')
-    if(srRef.current) { try { srRef.current.stop() } catch(e) {}; srRef.current = null }
+    if(sr) { try { sr.abort() } catch(e) {} }  // abort is instant, stop() fires onend
     if(mediaRef.current && mediaRef.current.state !== 'inactive') { try { mediaRef.current.stop() } catch(e) {} }
   }
 
