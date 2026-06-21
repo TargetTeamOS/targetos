@@ -37,10 +37,11 @@ const MORE_ITEMS = [
   { id:'news',         label:'News',         icon:'📰' },
 ]
 
-export function MobileLayout({ page, setPage, children }) {
+export function MobileLayout({ page, setPage, agent: agentProp, children }) {
   const { state, dispatch } = useApp()
   const [showMore, setShowMore] = useState(false)
-  const agent = AGENTS.find(a => a.id === agent?.id) || AGENTS[3]
+  const { agent: authAgent } = useAuth()
+  const agent = agentProp || authAgent || AGENTS[3]
 
   // Live clock
   const [time, setTime] = useState(new Date())
