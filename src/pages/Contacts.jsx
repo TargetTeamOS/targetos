@@ -1,322 +1,242 @@
-import React, { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import React, { useState, useCallback } from 'react'
+import { useAuth } from '../context/AuthContext'
+import { useContacts } from '../lib/hooks/useContacts'
+import { useAgents } from '../lib/hooks/useAgents'
+import { validateContact, hasErrors } from '../lib/utils/validate'
+import { fmtDate, getDaysAgo, getInitials, fmtPhone } from '../lib/utils/format'
 import { useApp } from '../context/AppContext'
-import { AGENTS, SOURCES, PROPERTY_TYPES, CONTACT_TYPES } from '../lib/constants'
-import { Card, CardHeader, Badge, Avatar, Btn, Modal, ModalTitle, Input, Select, Grid2, Grid3, SkeletonTable } from '../components/UI'
-import { ContactDetail } from './ContactDetail'
-import { BulkUpload } from '../components/BulkUpload'
-import { VoiceCapture } from '../components/VoiceCapture'
-import { useConfirm } from '../components/ConfirmDialog'
 
-const fmt$ = n => '$' + Number(n).toLocaleString()
-const roleColor = r => ({ buyer:'#0EA5E9', seller:'#10B981', investor:'#7C3AED', tenant:'#F59E0B' }[r] || '#64748B')
+const STATUSES   = ['New','Hot','Warm','Cold','Active','Nurturing','Under Contract','Closed','Unresponsive']
+const SOURCES    = ['Past Client Repeat','Past Client Referral','SOI','Referral','System Call','Social Media','Sign Call','Farm','Cold Calls','Zillow','Israel','Office Referral','Approached','Other']
+const STATUS_COLORS = { New:'#0EA5E9',Hot:'#DC2626',Warm:'#D97706',Cold:'#94A3B8',Active:'#16A34A',Nurturing:'#7C3AED','Under Contract':'#2563EB',Closed:'#225091',Unresponsive:'#64748B' }
+
+const EMPTY_FORM = { first_name:'', last_name:'', phone:'', email:'', address:'', city:'', state:'NY', zip:'', status:'New', source:'', tags:'', notes:'' }
 
 export function Contacts() {
-  const { state, dispatch, toast, log } = useApp()
-  const { confirm, ConfirmDialog } = useConfirm()
-  const [contacts, setContacts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filterRole, setFilterRole] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [filterAgent, setFilterAgent] = useState('')
-  const [showAdd, setShowAdd] = useState(false)
-  const [selected, setSelected] = useState(null)
-  const [editMode, setEditMode] = useState(false)
-  const [fullPageId, setFullPageId] = useState(null)
-  const [showBulkUpload, setShowBulkUpload] = useState(false)
-  const [showVoice, setShowVoice] = useState(false)
+  const { agent, isAdmin } = useAuth()
+  const { toast } = useApp()
+  const [search, setSearch]       = useState('')
+  const [filterStatus, setFilter] = useState('')
+  const [showAdd, setShowAdd]     = useState(false)
+  const [selected, setSelected]   = useState(null)
+  const [form, setForm]           = useState(EMPTY_FORM)
+  const [errors, setErrors]       = useState({})
+  const [saving, setSaving]       = useState(false)
 
-  useEffect(() => { loadContacts() }, [])
-
-  async function loadContacts() {
-    setLoading(true)
-    const { data } = await supabase.from('contacts').select('*').order('created_at', { ascending: false })
-    setContacts(data || [])
-    dispatch({ type: 'SET_CONTACTS', payload: data || [] })
-    setLoading(false)
-  }
-
-  const filtered = contacts.filter(c => {
-    if(search && !(c.first_name+' '+(c.last_name||'')+' '+(c.email||'')+' '+(c.phone||'')+' '+(c.source||'')+' '+(c.city||'')).toLowerCase().includes(search.toLowerCase())) return false
-    if(filterRole && c.role !== filterRole) return false
-    if(filterStatus && c.status !== filterStatus) return false
-    if(filterAgent && c.assigned_agent !== filterAgent) return false
-    return true
+  const { contacts, loading, add, update, remove } = useContacts({
+    search: search.length > 1 ? search : undefined,
+    status: filterStatus || undefined,
   })
 
-  async function deleteContact(id) {
-    confirm({
-      title: 'Delete Contact?',
-      message: 'This will permanently remove the contact and all their data. This cannot be undone.',
-      confirmLabel: 'Yes, Delete',
-      onConfirm: async () => {
-        await supabase.from('contacts').delete().eq('id', id)
-        setContacts(c => c.filter(x => x.id !== id))
-        toast('Contact deleted')
-        log({ cat:'contact', action:'Deleted', subject:'Contact', detail:'Permanently removed' })
-      }
-    })
-  }
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  async function saveContact(id, updates) {
-    const { data, error } = await supabase.from('contacts').update(updates).eq('id', id).select()
-    if(error) { toast('Error saving: ' + error.message, '#DC2626'); return false }
-    setContacts(prev => prev.map(c => c.id === id ? { ...c, ...data[0] } : c))
-    if(selected?.id === id) setSelected(prev => ({ ...prev, ...data[0] }))
-    toast('Contact saved!')
-    log({ cat:'contact', action:'Updated', subject: updates.first_name || 'Contact', detail: Object.keys(updates).join(', ') + ' updated' })
-    return true
-  }
-
-  // Show full page contact detail
-  if(fullPageId) return (
-    <ContactDetail contactId={fullPageId} onBack={()=>setFullPageId(null)}/>
-  )
-
-  return (
-    <div>
-      {/* Header */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px',flexWrap:'wrap',gap:'8px'}}>
-        <div style={{display:'flex',gap:'8px',alignItems:'center',flexWrap:'wrap'}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)}
-            placeholder="Search contacts..."
-            style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',padding:'8px 13px',outline:'none',width:'220px',fontFamily:'Inter,system-ui,sans-serif'}}
-            onFocus={e=>e.target.style.borderColor='#CC2200'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
-          <FilterSelect value={filterRole} onChange={setFilterRole} placeholder="All Types" options={CONTACT_TYPES.map(t=>({value:t.toLowerCase(),label:t}))}/>
-          <FilterSelect value={filterStatus} onChange={setFilterStatus} placeholder="All Status" options={['Hot','Active','New','Nurturing','Cold'].map(s=>({value:s,label:s}))}/>
-          <FilterSelect value={filterAgent} onChange={setFilterAgent} placeholder="All Agents" options={AGENTS.map(a=>({value:a.name,label:a.name}))}/>
-          {(search||filterRole||filterStatus||filterAgent) && (
-            <button onClick={()=>{setSearch('');setFilterRole('');setFilterStatus('');setFilterAgent('')}} style={{background:'none',border:'none',color:'var(--muted)',fontSize:'11px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>Clear</button>
-          )}
-          <span style={{color:'var(--muted)',fontSize:'12px'}}>{filtered.length} contacts</span>
-        </div>
-        <div style={{display:'flex',gap:'7px'}}>
-          <Btn variant="ghost" size="sm" onClick={()=>exportCSV(contacts)}>Export CSV</Btn>
-          <Btn variant="ghost" size="sm" onClick={()=>setShowBulkUpload(true)}>⬆ Bulk Import</Btn>
-          <Btn size="sm" variant="secondary" onClick={()=>setShowVoice(true)}>🎤 Voice</Btn>
-          <Btn size="sm" onClick={()=>setShowAdd(true)}>+ New Contact</Btn>
-        </div>
-      </div>
-
-      {/* Table */}
-      <Card>
-        <div style={{display:'grid',gridTemplateColumns:'2.2fr 1fr 1fr 1fr 1fr 1fr 90px',padding:'9px 16px',borderBottom:'1px solid var(--border)',color:'var(--muted)',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'.7px'}}>
-          <div>Contact</div><div>Type</div><div>Source</div><div>Budget</div><div>Status</div><div>Agent</div><div>Actions</div>
-        </div>
-        {loading ? <SkeletonTable rows={8}/> : filtered.length === 0 ? (
-          <div style={{padding:'36px',textAlign:'center',color:'var(--muted)'}}>
-            No contacts found. <button onClick={()=>setShowAdd(true)} style={{color:'#CC2200',background:'none',border:'none',cursor:'pointer',fontSize:'13px'}}>Add first</button>
-          </div>
-        ) : filtered.map(c => (
-          <ContactTableRow key={c.id} contact={c}
-            onSelect={id=>setFullPageId(id)}
-            onDelete={deleteContact}
-            onOpenFull={id=>setFullPageId(id)}/>
-        ))}
-      </Card>
-
-      <ConfirmDialog/>
-
-      {/* Voice capture modal */}
-      {showVoice && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',display:'flex',alignItems:'flex-end',justifyContent:'center',zIndex:999,backdropFilter:'blur(4px)'}} onClick={e=>{if(e.target===e.currentTarget)setShowVoice(false)}}>
-          <div style={{background:'var(--panel)',borderRadius:'20px 20px 0 0',padding:'20px',width:'100%',maxWidth:'480px',boxShadow:'0 -8px 40px rgba(0,0,0,.25)'}}>
-            <VoiceCapture
-              onSaved={contact=>{if(contact)loadContacts();setTimeout(()=>setShowVoice(false),2500)}}
-              onClose={()=>setShowVoice(false)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Bulk Upload modal */}
-      {showBulkUpload && (
-        <BulkUpload
-          board="contacts"
-          onClose={()=>setShowBulkUpload(false)}
-          onImport={async rows => {
-            let imported = 0, errors = 0, errorDetails = []
-            for(const row of rows) {
-              try {
-                const { error } = await supabase.from('contacts').insert([{
-                  ...row,
-                  agent_id: state.user?.id,
-                  budget_max: row.budget_max ? parseFloat(row.budget_max.replace(/[^0-9.]/g,'')) : null,
-                  budget_min: row.budget_min ? parseFloat(row.budget_min.replace(/[^0-9.]/g,'')) : null,
-                }])
-                if(error) { errors++; errorDetails.push({row:imported+errors, error:error.message}) }
-                else imported++
-              } catch(e) { errors++ }
-            }
-            await loadContacts()
-            toast(imported + ' contacts imported!')
-            return { imported, errors, updated:0, errorDetails }
-          }}
-        />
-      )}
-
-      {/* Add modal */}
-      {showAdd && (
-        <ContactFormModal
-          title="New Contact"
-          onClose={()=>setShowAdd(false)}
-          onSave={async form => {
-            const { data, error } = await supabase.from('contacts').insert([{...form, agent_id: state.user?.id}]).select()
-            if(error){ toast('Error: '+error.message,'#DC2626'); return }
-            setContacts(prev=>[data[0],...prev])
-            setShowAdd(false)
-            toast('Contact saved!')
-            log({cat:'contact',action:'Added',subject:form.first_name+' '+(form.last_name||''),detail:'New '+(form.role||'contact')})
-          }}
-        />
-      )}
-
-      {/* Detail / Edit panel */}
-      {selected && (
-        <ContactDetail
-          contact={selected}
-          editMode={editMode}
-          onEdit={()=>setEditMode(true)}
-          onClose={()=>{setSelected(null);setEditMode(false)}}
-          onDelete={id=>{deleteContact(id);setSelected(null)}}
-          onSave={async updates => {
-            const ok = await saveContact(selected.id, updates)
-            if(ok) setEditMode(false)
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-function FilterSelect({ value, onChange, options, placeholder }) {
-  return (
-    <select value={value} onChange={e=>onChange(e.target.value)}
-      style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',padding:'7px 10px',outline:'none',fontFamily:'Inter,system-ui,sans-serif'}}>
-      <option value="">{placeholder}</option>
-      {options.map(o=><option key={o.value||o} value={o.value||o}>{o.label||o}</option>)}
-    </select>
-  )
-}
-
-function ContactTableRow({ contact: c, onSelect, onDelete, onOpenFull }) {
-  const ag = AGENTS.find(a => a.name === c.assigned_agent)
-  return (
-    <div onClick={()=>onSelect(c)}
-      style={{display:'grid',gridTemplateColumns:'2.2fr 1fr 1fr 1fr 1fr 1fr 90px',padding:'12px 16px',borderBottom:'1px solid var(--border)',alignItems:'center',cursor:'pointer'}}
-      onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-      <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
-        <Avatar name={c.first_name+' '+(c.last_name||'')} color={roleColor(c.role)} size={36}/>
-        <div>
-          <div onClick={e=>{e.stopPropagation();onOpenFull(c.id)}} style={{fontSize:'13px',fontWeight:700,color:'var(--red)',cursor:'pointer',textDecoration:'none',display:'inline'}} onMouseEnter={e=>e.currentTarget.style.textDecoration='underline'} onMouseLeave={e=>e.currentTarget.style.textDecoration='none'}>{c.first_name} {c.last_name||''}</div>
-          <div style={{fontSize:'11px',color:'var(--muted)'}}>{c.phone||c.email||'No contact info'}</div>
-        </div>
-      </div>
-      <div style={{fontSize:'12px',color:'var(--muted)',textTransform:'capitalize'}}>{c.role||'—'}</div>
-      <div><span style={{fontSize:'11px',background:'var(--dim)',padding:'3px 9px',borderRadius:'20px',color:'var(--muted)'}}>{c.source||'—'}</span></div>
-      <div style={{fontSize:'12px',fontWeight:600}}>{c.budget_max?fmt$(c.budget_max):'—'}</div>
-      <div><Badge label={c.status||'New'}/></div>
-      <div style={{fontSize:'11px',color:'var(--muted)'}}>{ag?ag.name.split(' ')[0]:'—'}</div>
-      <div style={{display:'flex',gap:'4px'}} onClick={e=>e.stopPropagation()}>
-        {c.phone && <button onClick={()=>window.location.href='tel:'+c.phone.replace(/\D/g,'')} style={{background:'none',border:'none',fontSize:'15px',cursor:'pointer',color:'var(--muted)',padding:'3px'}}>📞</button>}
-        <button onClick={()=>onDelete(c.id)} style={{background:'none',border:'none',fontSize:'15px',cursor:'pointer',color:'var(--muted)',padding:'3px'}}>🗑</button>
-      </div>
-    </div>
-  )
-}
-
-// ─── CONTACT FORM (used for both Add and Edit) ─────────────────────
-function ContactFormModal({ title, initial={}, onClose, onSave }) {
-  const [form, setForm] = useState({
-    first_name:'', last_name:'', phone:'', phone2:'', email:'', email2:'',
-    role:'buyer', status:'New', assigned_agent:'', source:'', tag:'',
-    budget_max:'', budget_min:'', preferred_areas:'', property_type_interest:'',
-    min_beds:'', birthday:'', closing_anniversary:'', city:'', tax_info:'', notes:'',
-    ...initial
-  })
-  const [saving, setSaving] = useState(false)
-  const set = (k,v) => setForm(f=>({...f,[k]:v}))
-
-  async function save() {
-    if(!form.first_name.trim()){ toast('First name is required','#DC2626'); return }
-    setSaving(true)
-    await onSave({
+  async function handleSave() {
+    const payload = {
       ...form,
-      budget_max: form.budget_max ? parseFloat(form.budget_max) : null,
-      budget_min: form.budget_min ? parseFloat(form.budget_min) : null,
-      min_beds:   form.min_beds   ? parseInt(form.min_beds)      : null,
+      agent_id: form.agent_id || agent?.id,
+      tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+      last_activity: new Date().toISOString(),
+    }
+    const errs = validateContact(payload)
+    if (hasErrors(errs)) { setErrors(errs); return }
+    setSaving(true)
+    try {
+      if (selected) {
+        await update(selected.id, payload)
+        toast('✅ Contact updated!')
+        setSelected(null)
+      } else {
+        await add(payload)
+        toast('✅ Contact added!')
+        setShowAdd(false)
+      }
+      setForm(EMPTY_FORM)
+      setErrors({})
+    } catch(e) {
+      toast('Error: ' + e.message, '#DC2626')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete(id) {
+    if (!confirm('Delete this contact?')) return
+    try {
+      await remove(id)
+      toast('Contact deleted')
+      if (selected?.id === id) setSelected(null)
+    } catch(e) {
+      toast('Error: ' + e.message, '#DC2626')
+    }
+  }
+
+  function openEdit(contact) {
+    setForm({
+      ...EMPTY_FORM,
+      ...contact,
+      tags: (contact.tags || []).join(', '),
     })
-    setSaving(false)
+    setSelected(contact)
+    setShowAdd(false)
+    setErrors({})
   }
 
   return (
-    <Modal onClose={onClose} maxWidth={600}>
-      <ModalTitle onClose={onClose}>{title}</ModalTitle>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 340px', gap:'14px', height:'calc(100vh - 120px)' }}>
+      {/* Left — contact list */}
+      <div style={{ display:'flex', flexDirection:'column', minHeight:0 }}>
+        {/* Toolbar */}
+        <div style={{ display:'flex', gap:'8px', marginBottom:'12px', flexWrap:'wrap' }}>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search name, phone, email..."
+            style={inputStyle}
+          />
+          <select value={filterStatus} onChange={e => setFilter(e.target.value)} style={selStyle}>
+            <option value="">All Statuses</option>
+            {STATUSES.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <button onClick={() => { setShowAdd(true); setSelected(null); setForm(EMPTY_FORM); setErrors({}) }} style={btnStyle}>
+            + Add Contact
+          </button>
+        </div>
 
-      <div style={{fontSize:'11px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'8px'}}>Basic Information</div>
-      <Grid2 gap={10}>
-        <Input label="First Name *" value={form.first_name} onChange={e=>set('first_name',e.target.value)} placeholder="John"/>
-        <Input label="Last Name"    value={form.last_name}  onChange={e=>set('last_name', e.target.value)} placeholder="Smith"/>
-      </Grid2>
-      <Grid2 gap={10}>
-        <Input label="Phone"            value={form.phone}  onChange={e=>set('phone', e.target.value)} placeholder="845-555-1234" type="tel"/>
-        <Input label="Additional Phone" value={form.phone2} onChange={e=>set('phone2',e.target.value)} placeholder="845-555-5678" type="tel"/>
-      </Grid2>
-      <Grid2 gap={10}>
-        <Input label="Email"            value={form.email}  onChange={e=>set('email', e.target.value)} placeholder="john@email.com" type="email"/>
-        <Input label="Additional Email" value={form.email2} onChange={e=>set('email2',e.target.value)} placeholder="john2@email.com" type="email"/>
-      </Grid2>
+        {/* Stats */}
+        <div style={{ display:'flex', gap:'8px', marginBottom:'12px', flexWrap:'wrap' }}>
+          {['Hot','Warm','New'].map(s => (
+            <div key={s} onClick={() => setFilter(f => f===s?'':s)}
+              style={{ fontSize:'11px', fontWeight:700, padding:'5px 12px', borderRadius:'20px', cursor:'pointer',
+                background:filterStatus===s?(STATUS_COLORS[s]+'20'):'var(--dim)',
+                border:`1.5px solid ${filterStatus===s?STATUS_COLORS[s]:'var(--border)'}`,
+                color:filterStatus===s?STATUS_COLORS[s]:'var(--muted)' }}>
+              {s} ({contacts.filter(c=>c.status===s).length})
+            </div>
+          ))}
+          <div style={{ fontSize:'11px', color:'var(--muted)', padding:'5px 12px' }}>
+            {contacts.length} total
+          </div>
+        </div>
 
-      <div style={{fontSize:'11px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',margin:'10px 0 8px'}}>Classification</div>
-      <Grid3 gap={10}>
-        <Select label="Type" value={form.role} onChange={e=>set('role',e.target.value)}
-          options={CONTACT_TYPES.map(t=>({value:t.toLowerCase(),label:t}))}/>
-        <Select label="Status" value={form.status} onChange={e=>set('status',e.target.value)}
-          options={['New','Hot','Active','Nurturing','Cold']}/>
-        <Select label="Assigned Agent" value={form.assigned_agent||''} onChange={e=>set('assigned_agent',e.target.value)}
-          options={[{value:'',label:'Unassigned'},...AGENTS.map(a=>({value:a.name,label:a.name}))]}/>
-      </Grid3>
-      <Grid2 gap={10}>
-        <Select label="Lead Source" value={form.source||''} onChange={e=>set('source',e.target.value)}
-          options={[{value:'',label:'Select source...'},...SOURCES.map(s=>({value:s,label:s}))]}/>
-        <Select label="Tag" value={form.tag||''} onChange={e=>set('tag',e.target.value)}
-          options={[{value:'',label:'None'},...['VIP','Hot Lead','Past Client','Referral Partner','Professional'].map(t=>({value:t,label:t}))]}/>
-      </Grid2>
-
-      <div style={{fontSize:'11px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',margin:'10px 0 8px'}}>Property Criteria</div>
-      <Grid2 gap={10}>
-        <Input label="Max Budget ($)" value={form.budget_max||''} onChange={e=>set('budget_max',e.target.value)} type="number" placeholder="500000"/>
-        <Input label="Min Budget ($)" value={form.budget_min||''} onChange={e=>set('budget_min',e.target.value)} type="number" placeholder="300000"/>
-      </Grid2>
-      <Grid2 gap={10}>
-        <Input label="Preferred Areas"  value={form.preferred_areas||''} onChange={e=>set('preferred_areas',e.target.value)} placeholder="Suffern, Monsey, Spring Valley"/>
-        <Select label="Property Type"  value={form.property_type_interest||''} onChange={e=>set('property_type_interest',e.target.value)}
-          options={[{value:'',label:'Any'},...PROPERTY_TYPES.map(p=>({value:p,label:p}))]}/>
-      </Grid2>
-      <Grid2 gap={10}>
-        <Input label="Min Bedrooms" value={form.min_beds||''} onChange={e=>set('min_beds',e.target.value)} type="number" placeholder="3"/>
-        <Input label="Tax Info"     value={form.tax_info||''} onChange={e=>set('tax_info',e.target.value)} placeholder="$12,000/yr"/>
-      </Grid2>
-
-      <div style={{fontSize:'11px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',margin:'10px 0 8px'}}>Personal Info</div>
-      <Grid2 gap={10}>
-        <Input label="Birthday"           value={form.birthday||''}            onChange={e=>set('birthday',e.target.value)} type="date"/>
-        <Input label="Closing Anniversary" value={form.closing_anniversary||''} onChange={e=>set('closing_anniversary',e.target.value)} type="date"/>
-      </Grid2>
-      <Grid2 gap={10}>
-        <Input label="City / Area" value={form.city||''} onChange={e=>set('city',e.target.value)} placeholder="Suffern"/>
-        <Input label="Notes"       value={form.notes||''} onChange={e=>set('notes',e.target.value)} placeholder="Notes..."/>
-      </Grid2>
-
-      <div style={{display:'flex',gap:'8px',justifyContent:'flex-end',marginTop:'12px'}}>
-        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-        <Btn onClick={save} disabled={saving}>{saving?'Saving...':'Save Contact'}</Btn>
+        {/* List */}
+        <div style={{ flex:1, overflowY:'auto', background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'12px' }}>
+          {loading && <div style={{ padding:'28px', textAlign:'center', color:'var(--muted)', fontSize:'13px' }}>Loading...</div>}
+          {!loading && contacts.length === 0 && (
+            <div style={{ padding:'40px', textAlign:'center', color:'var(--muted)', fontSize:'13px' }}>
+              <div style={{ fontSize:'28px', marginBottom:'10px' }}>👥</div>
+              No contacts yet
+            </div>
+          )}
+          {contacts.map(c => (
+            <div key={c.id} onClick={() => openEdit(c)}
+              style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 16px', borderBottom:'1px solid var(--border)', cursor:'pointer',
+                background: selected?.id===c.id ? 'rgba(204,34,0,.04)' : 'transparent' }}
+              onMouseEnter={e => { if(selected?.id!==c.id) e.currentTarget.style.background='var(--hov)' }}
+              onMouseLeave={e => { if(selected?.id!==c.id) e.currentTarget.style.background='transparent' }}>
+              {/* Avatar */}
+              <div style={{ width:38, height:38, borderRadius:'50%', background:(STATUS_COLORS[c.status]||'#94A3B8')+'18',
+                border:`2px solid ${STATUS_COLORS[c.status]||'#94A3B8'}`, display:'flex', alignItems:'center',
+                justifyContent:'center', fontSize:'13px', fontWeight:800, color:STATUS_COLORS[c.status]||'#94A3B8', flexShrink:0 }}>
+                {getInitials((c.first_name||'') + ' ' + (c.last_name||''))}
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:'13px', fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {c.first_name} {c.last_name}
+                </div>
+                <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px' }}>
+                  {c.phone && <span>{c.phone} · </span>}
+                  {c.email && <span>{c.email}</span>}
+                </div>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:'4px', flexShrink:0 }}>
+                <StatusPill status={c.status} />
+                <div style={{ fontSize:'10px', color:'var(--muted)' }}>{getDaysAgo(c.last_activity)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-    </Modal>
+
+      {/* Right — add/edit form */}
+      {(showAdd || selected) && (
+        <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'14px', padding:'18px', overflowY:'auto' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
+            <div style={{ fontSize:'15px', fontWeight:800 }}>{selected ? 'Edit Contact' : 'New Contact'}</div>
+            <button onClick={() => { setSelected(null); setShowAdd(false) }}
+              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'18px' }}>✕</button>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+            <Field label="First Name *" value={form.first_name} onChange={v=>set('first_name',v)} error={errors.first_name} ph="John"/>
+            <Field label="Last Name"    value={form.last_name}  onChange={v=>set('last_name',v)}  ph="Smith"/>
+          </div>
+          <Field label="Phone" value={form.phone} onChange={v=>set('phone',v)} type="tel" ph="(845) 555-1234"/>
+          <Field label="Email" value={form.email} onChange={v=>set('email',v)} type="email" error={errors.email} ph="john@email.com"/>
+          <Field label="Address" value={form.address} onChange={v=>set('address',v)} ph="47 Prairie Ave"/>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 80px', gap:'6px' }}>
+            <Field label="City"  value={form.city}  onChange={v=>set('city',v)}  ph="Suffern"/>
+            <Field label="State" value={form.state} onChange={v=>set('state',v)} ph="NY"/>
+            <Field label="Zip"   value={form.zip}   onChange={v=>set('zip',v)}   ph="10901"/>
+          </div>
+          <div style={{ marginBottom:'10px' }}>
+            <label style={lblStyle}>Status</label>
+            <select value={form.status} onChange={e=>set('status',e.target.value)} style={{ ...selStyle, width:'100%' }}>
+              {STATUSES.map(s=><option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom:'10px' }}>
+            <label style={lblStyle}>Source</label>
+            <select value={form.source} onChange={e=>set('source',e.target.value)} style={{ ...selStyle, width:'100%' }}>
+              <option value="">Select source...</option>
+              {SOURCES.map(s=><option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <Field label="Tags (comma separated)" value={form.tags} onChange={v=>set('tags',v)} ph="buyer, referral, hot"/>
+          <Field label="Notes" value={form.notes} onChange={v=>set('notes',v)} rows={3} ph="Any notes..."/>
+
+          <div style={{ display:'flex', gap:'8px', marginTop:'8px' }}>
+            {selected && (
+              <button onClick={() => handleDelete(selected.id)}
+                style={{ ...btnStyle, background:'rgba(220,38,38,.08)', color:'#DC2626', border:'1px solid rgba(220,38,38,.2)', flex:1 }}>
+                Delete
+              </button>
+            )}
+            <button onClick={handleSave} disabled={saving}
+              style={{ ...btnStyle, flex:2, opacity:saving?.7:1 }}>
+              {saving ? 'Saving…' : selected ? 'Save Changes' : 'Add Contact'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
-// ─── CONTACT DETAIL with inline edit ───────────────────────────────
-const TABS = ['Overview','Activity','Tasks','Appointments','Documents','Listing Alert','Deals']
+function Field({ label, value, onChange, ph='', type='text', rows, error }) {
+  return (
+    <div style={{ marginBottom:'10px' }}>
+      <label style={lblStyle}>{label}</label>
+      {rows
+        ? <textarea value={value||''} onChange={e=>onChange(e.target.value)} placeholder={ph} rows={rows}
+            style={{ ...inputStyle, resize:'vertical', lineHeight:1.6 }}/>
+        : <input type={type} value={value||''} onChange={e=>onChange(e.target.value)} placeholder={ph} style={inputStyle}/>
+      }
+      {error && <div style={{ fontSize:'10px', color:'#DC2626', marginTop:'3px' }}>{error}</div>}
+    </div>
+  )
+}
 
+function StatusPill({ status }) {
+  const c = STATUS_COLORS[status] || '#94A3B8'
+  return (
+    <span style={{ fontSize:'10px', fontWeight:700, padding:'2px 8px', borderRadius:'20px',
+      background:c+'18', color:c, border:`1px solid ${c}30`, whiteSpace:'nowrap' }}>
+      {status}
+    </span>
+  )
+}
+
+const inputStyle = { width:'100%', background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'8px 10px', outline:'none', boxSizing:'border-box' }
+const selStyle   = { background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'8px 10px', outline:'none' }
+const btnStyle   = { background:'#CC2200', border:'none', borderRadius:'9px', color:'#fff', fontSize:'12px', fontWeight:700, padding:'10px 16px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }
+const lblStyle   = { display:'block', fontSize:'9px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:'4px' }

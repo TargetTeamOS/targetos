@@ -1,168 +1,196 @@
-import React, { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import React, { useState } from 'react'
+import { useAuth } from '../context/AuthContext'
+import { useTasks } from '../lib/hooks/useTasks'
 import { useApp } from '../context/AppContext'
-import { Card, CardHeader, Btn, Modal, ModalTitle, Input, Select, Grid2, StatCard, Grid4 } from '../components/UI'
-import { useConfirm } from '../components/ConfirmDialog'
-import { logChange } from '../lib/activityLog'
-import { BulkUpload } from '../components/BulkUpload'
+import { fmtDate } from '../lib/utils/format'
+
+const PRIORITIES = ['urgent','high','normal','low']
+const PRIORITY_COLORS = { urgent:'#DC2626', high:'#D97706', normal:'#0EA5E9', low:'#94A3B8' }
+const EMPTY_FORM = { title:'', priority:'normal', due_date:'', notes:'' }
 
 export function Tasks({ highlightId }) {
-  const { state, toast, log } = useApp()
-  const [tasks, setTasks] = useState([])
-  const { confirm, ConfirmDialog } = useConfirm()
-  const [loading, setLoading] = useState(true)
+  const { agent } = useAuth()
+  const { toast } = useApp()
+  const [filter, setFilter]   = useState('pending')
   const [showAdd, setShowAdd] = useState(false)
-  const [showBulk, setShowBulk] = useState(false)
-  const [filter, setFilter] = useState('open')
+  const [form, setForm]       = useState(EMPTY_FORM)
+  const [saving, setSaving]   = useState(false)
 
-  useEffect(() => { loadTasks() }, [])
+  const { tasks, loading, add, update, remove } = useTasks({
+    agentId: agent?.id,
+    status: filter === 'all' ? undefined : filter,
+  })
 
-  useEffect(() => {
-    if(highlightId) {
-      setTimeout(() => {
-        const el = document.getElementById('task-'+highlightId)
-        if(el) { el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.outline='3px solid #CC2200'; el.style.borderRadius='10px' }
-      }, 800)
-    }
-  }, [highlightId, tasks])
+  const today    = new Date().toISOString().split('T')[0]
+  const overdue  = tasks.filter(t => t.status==='pending' && t.due_date && t.due_date < today)
+  const todayT   = tasks.filter(t => t.status==='pending' && t.due_date === today)
+  const upcoming = tasks.filter(t => t.status==='pending' && (!t.due_date || t.due_date > today))
 
-  async function loadTasks() {
-    const { data } = await supabase.from('tasks').select('*').order('created_at',{ascending:false})
-    setTasks(data||[]); setLoading(false)
+  async function handleAdd() {
+    if (!form.title.trim()) { toast('Title required', '#DC2626'); return }
+    setSaving(true)
+    try {
+      await add({ ...form, agent_id: agent?.id, created_by: agent?.id, status:'pending' })
+      toast('✅ Task added!')
+      setForm(EMPTY_FORM)
+      setShowAdd(false)
+    } catch(e) { toast('Error: '+e.message, '#DC2626') }
+    finally { setSaving(false) }
   }
 
-  async function toggle(task) {
-    const ns = task.status==='done' ? 'pending' : 'done'
-    await supabase.from('tasks').update({status:ns}).eq('id',task.id)
-    setTasks(prev => prev.map(t => t.id===task.id ? {...t,status:ns} : t))
-    toast(ns==='done' ? 'Task completed!' : 'Task reopened')
-    log({cat:'task',action:ns==='done'?'Completed':'Reopened',subject:task.title})
-    logChange({ recordType:'task', recordId:task.id, recordName:task.title, action:ns==='done'?'Completed':'Reopened', field:'status', oldValue:task.status, newValue:ns, agentName:state.currentAgent?.name||'Admin', userId:state.user?.id })
+  async function toggleDone(task) {
+    const newStatus = task.status === 'done' ? 'pending' : 'done'
+    try {
+      await update(task.id, { status: newStatus, completed_at: newStatus==='done' ? new Date().toISOString() : null })
+    } catch(e) { toast('Error: '+e.message, '#DC2626') }
   }
 
-  async function del(id) {
-    const t = tasks.find(x=>x.id===id)
-    confirm({
-      title: 'Delete Task?',
-      message: t ? '"'+t.title+'" will be permanently deleted.' : 'This task will be permanently deleted.',
-      confirmLabel: 'Delete Task',
-      onConfirm: async () => {
-        await supabase.from('tasks').delete().eq('id',id)
-        setTasks(prev => prev.filter(t => t.id!==id))
-        toast('Task deleted')
-      }
-    })
+  async function handleDelete(id) {
+    try { await remove(id); toast('Task deleted') }
+    catch(e) { toast('Error: '+e.message, '#DC2626') }
   }
 
-  const open   = tasks.filter(t => t.status !== 'done')
-  const done   = tasks.filter(t => t.status === 'done')
-  const urgent = tasks.filter(t => t.status !== 'done' && t.priority === 'urgent')
-  const overdue = tasks.filter(t => t.status !== 'done' && t.due_date && new Date(t.due_date) < new Date())
-
-  const shown = filter==='open' ? open : filter==='done' ? done : filter==='urgent' ? urgent : overdue
-
-  const pColors = {urgent:'#DC2626',high:'#D97706',normal:'var(--muted)',low:'#94A3B8'}
+  const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
   return (
     <div>
-      <Grid4 style={{marginBottom:'14px'}}>
-        <StatCard label="Open"    value={open.length}    sub="Tasks to do"     subColor="var(--red)"/>
-        <StatCard label="Urgent"  value={urgent.length}  sub="Needs attention" subColor="#DC2626"/>
-        <StatCard label="Overdue" value={overdue.length} sub="Past due date"   subColor="#DC2626"/>
-        <StatCard label="Done"    value={done.length}    sub="Completed"       subColor="var(--green)"/>
-      </Grid4>
-
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
-        <div style={{display:'flex',gap:'4px',background:'var(--dim)',borderRadius:'8px',padding:'3px'}}>
-          {[['open','Open'],['urgent','Urgent'],['overdue','Overdue'],['done','Done']].map(([k,l]) => (
-            <button key={k} onClick={()=>setFilter(k)}
-              style={{padding:'6px 14px',borderRadius:'6px',border:'none',cursor:'pointer',fontSize:'11px',fontWeight:600,fontFamily:'Inter,system-ui,sans-serif',background:filter===k?'var(--panel)':'transparent',color:filter===k?'var(--text)':'var(--muted)',boxShadow:filter===k?'0 1px 3px rgba(0,0,0,.08)':'none'}}>
-              {l}
-            </button>
-          ))}
+      {/* Header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px', flexWrap:'wrap', gap:'8px' }}>
+        <div>
+          <div style={{ fontSize:'18px', fontWeight:900 }}>✓ Tasks</div>
+          <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>
+            {overdue.length > 0 && <span style={{ color:'#DC2626', fontWeight:700 }}>{overdue.length} overdue · </span>}
+            {todayT.length} due today · {upcoming.length} upcoming
+          </div>
         </div>
-        <Btn variant="ghost" size="sm" onClick={()=>setShowBulk(true)}>⬆ Bulk Import</Btn>
-        <Btn size="sm" onClick={()=>setShowAdd(true)}>+ New Task</Btn>
+        <div style={{ display:'flex', gap:'7px' }}>
+          <div style={{ display:'flex', background:'var(--dim)', borderRadius:'8px', padding:'3px', gap:'2px' }}>
+            {[['pending','Open'],['done','Done'],['all','All']].map(([k,l])=>(
+              <button key={k} onClick={()=>setFilter(k)}
+                style={{ padding:'6px 12px', borderRadius:'6px', border:'none', cursor:'pointer', fontSize:'11px', fontWeight:600, fontFamily:'Inter,system-ui,sans-serif',
+                  background:filter===k?'var(--panel)':'transparent', color:filter===k?'var(--text)':'var(--muted)' }}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <button onClick={()=>setShowAdd(s=>!s)}
+            style={{ background:'#CC2200', border:'none', borderRadius:'8px', color:'#fff', fontSize:'12px', fontWeight:700, padding:'8px 14px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
+            + Add Task
+          </button>
+        </div>
       </div>
 
-      <ConfirmDialog/>
-      <Card>
-        <CardHeader>{filter.charAt(0).toUpperCase()+filter.slice(1)} Tasks ({shown.length})</CardHeader>
-        {loading ? (
-          <div style={{padding:'20px',textAlign:'center',color:'var(--muted)'}}>Loading...</div>
-        ) : shown.length === 0 ? (
-          <div style={{padding:'36px',textAlign:'center',color:filter==='open'?'var(--green)':'var(--muted)',fontSize:'13px',fontWeight:600}}>
-            {filter==='open' ? 'All tasks complete! 🎉' : 'No tasks here.'}
+      {/* Add form */}
+      {showAdd && (
+        <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'12px', padding:'16px', marginBottom:'14px' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr auto auto', gap:'8px', marginBottom:'8px' }}>
+            <input value={form.title} onChange={e=>set('title',e.target.value)} placeholder="Task title..." autoFocus
+              onKeyDown={e=>e.key==='Enter'&&handleAdd()}
+              style={{ background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'13px', fontFamily:'Inter,system-ui,sans-serif', padding:'9px 12px', outline:'none' }}/>
+            <select value={form.priority} onChange={e=>set('priority',e.target.value)}
+              style={{ background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'9px 10px', outline:'none' }}>
+              {PRIORITIES.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+            </select>
+            <input type="date" value={form.due_date} onChange={e=>set('due_date',e.target.value)}
+              style={{ background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'9px 10px', outline:'none' }}/>
           </div>
-        ) : shown.map(t => (
-          <div key={t.id} style={{display:'flex',alignItems:'center',gap:'10px',padding:'12px 16px',borderBottom:'1px solid var(--border)'}}
-            onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-            {/* Checkbox */}
-            <div onClick={()=>toggle(t)} style={{width:20,height:20,borderRadius:'6px',border:'2px solid '+(t.status==='done'?'#16A34A':'var(--border)'),background:t.status==='done'?'#16A34A':'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0,transition:'all .15s'}}>
-              {t.status==='done' && <span style={{color:'#fff',fontSize:'11px',fontWeight:700}}>✓</span>}
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:'13px',fontWeight:600,textDecoration:t.status==='done'?'line-through':'none',opacity:t.status==='done'?.5:1}}>{t.title}</div>
-              <div style={{display:'flex',gap:'10px',marginTop:'3px'}}>
-                {t.due_date && (
-                  <span style={{fontSize:'10px',color:new Date(t.due_date)<new Date()&&t.status!=='done'?'#DC2626':'var(--muted)'}}>
-                    Due {new Date(t.due_date).toLocaleDateString()}
-                    {new Date(t.due_date)<new Date()&&t.status!=='done'?' · OVERDUE':''}
-                  </span>
-                )}
-                <span style={{fontSize:'10px',color:pColors[t.priority]||'var(--muted)',fontWeight:600,textTransform:'capitalize'}}>{t.priority||'normal'}</span>
-              </div>
-              {t.description && <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'3px'}}>{t.description}</div>}
-            </div>
-            <button onClick={()=>del(t.id)} style={{background:'none',border:'none',fontSize:'14px',cursor:'pointer',color:'var(--muted)',padding:'4px',borderRadius:'6px',opacity:.6}}
-              onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='.6'}>🗑</button>
+          <div style={{ display:'flex', gap:'7px', justifyContent:'flex-end' }}>
+            <button onClick={()=>setShowAdd(false)}
+              style={{ background:'var(--dim)', border:'1px solid var(--border)', borderRadius:'8px', color:'var(--muted)', fontSize:'12px', padding:'8px 14px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
+              Cancel
+            </button>
+            <button onClick={handleAdd} disabled={saving}
+              style={{ background:'#CC2200', border:'none', borderRadius:'8px', color:'#fff', fontSize:'12px', fontWeight:700, padding:'8px 16px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', opacity:saving?.7:1 }}>
+              {saving?'Adding…':'Add Task'}
+            </button>
           </div>
-        ))}
-      </Card>
-
-      {showBulk && (
-        <BulkUpload board="tasks" onClose={()=>setShowBulk(false)} onImport={async rows => {
-          let imported = 0, errors = 0
-          for(const row of rows) {
-            const { error } = await supabase.from('tasks').insert([{ title:row.title, due_date:row.due_date||null, priority:row.priority||'normal', status:'pending', assigned_to:state.user?.id, created_by:state.user?.id }])
-            if(error) errors++; else imported++
-          }
-          await loadTasks()
-          return { imported, errors, updated:0, errorDetails:[] }
-        }}/>
+        </div>
       )}
-      {showAdd && <AddTaskModal onClose={()=>setShowAdd(false)} onSaved={t=>{setTasks(prev=>[t,...prev]);setShowAdd(false);toast('Task saved')}}/>}
+
+      {loading && <div style={{ padding:'28px', textAlign:'center', color:'var(--muted)', fontSize:'13px' }}>Loading tasks...</div>}
+
+      {/* Overdue */}
+      {overdue.length > 0 && (
+        <Section title={`⚠️ Overdue (${overdue.length})`} color="#DC2626">
+          {overdue.map(t => <TaskRow key={t.id} task={t} today={today} onToggle={toggleDone} onDelete={handleDelete}/>)}
+        </Section>
+      )}
+
+      {/* Today */}
+      {todayT.length > 0 && (
+        <Section title={`📅 Due Today (${todayT.length})`} color="#D97706">
+          {todayT.map(t => <TaskRow key={t.id} task={t} today={today} onToggle={toggleDone} onDelete={handleDelete} highlight={t.id===highlightId}/>)}
+        </Section>
+      )}
+
+      {/* Upcoming */}
+      {upcoming.length > 0 && (
+        <Section title={`📋 Upcoming (${upcoming.length})`} color="#0EA5E9">
+          {upcoming.map(t => <TaskRow key={t.id} task={t} today={today} onToggle={toggleDone} onDelete={handleDelete}/>)}
+        </Section>
+      )}
+
+      {/* Done */}
+      {filter!=='pending' && tasks.filter(t=>t.status==='done').length > 0 && (
+        <Section title="✅ Completed" color="#16A34A">
+          {tasks.filter(t=>t.status==='done').map(t => <TaskRow key={t.id} task={t} today={today} onToggle={toggleDone} onDelete={handleDelete}/>)}
+        </Section>
+      )}
+
+      {!loading && tasks.length === 0 && (
+        <div style={{ padding:'48px', textAlign:'center', color:'var(--muted)', fontSize:'13px', background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'14px' }}>
+          <div style={{ fontSize:'32px', marginBottom:'12px' }}>🎯</div>
+          <div style={{ fontWeight:700, marginBottom:'4px' }}>No tasks yet</div>
+          <div>Click "+ Add Task" to get started</div>
+        </div>
+      )}
     </div>
   )
 }
 
-function AddTaskModal({ onClose, onSaved }) {
-  const { state } = useApp()
-  const [form, setForm] = useState({title:'',description:'',due_date:'',priority:'normal'})
-  const [saving, setSaving] = useState(false)
-  const set = (k,v) => setForm(f=>({...f,[k]:v}))
-
-  async function save() {
-    if(!form.title.trim()) return
-    setSaving(true)
-    const { data } = await supabase.from('tasks').insert([{...form, assigned_to:state.user?.id, created_by:state.user?.id, status:'pending'}]).select()
-    setSaving(false)
-    if(data?.[0]) onSaved(data[0])
-  }
-
+function Section({ title, color, children }) {
+  const [open, setOpen] = useState(true)
   return (
-    <Modal onClose={onClose} maxWidth={420}>
-      <ModalTitle onClose={onClose}>New Task</ModalTitle>
-      <Input label="Title *" value={form.title} onChange={e=>set('title',e.target.value)} placeholder="Call mortgage broker, schedule inspection..."/>
-      <Input label="Description" value={form.description} onChange={e=>set('description',e.target.value)} rows={2} placeholder="Details..."/>
-      <Grid2 gap={10}>
-        <Input label="Due Date" value={form.due_date} onChange={e=>set('due_date',e.target.value)} type="date"/>
-        <Select label="Priority" value={form.priority} onChange={e=>set('priority',e.target.value)} options={['normal','high','urgent','low']}/>
-      </Grid2>
-      <div style={{display:'flex',gap:'8px',justifyContent:'flex-end',marginTop:'8px'}}>
-        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-        <Btn onClick={save} disabled={saving}>{saving?'Saving...':'Save Task'}</Btn>
+    <div style={{ marginBottom:'10px', border:'1px solid var(--border)', borderRadius:'12px', overflow:'hidden' }}>
+      <div onClick={()=>setOpen(o=>!o)} style={{ padding:'10px 14px', background:'var(--dim)', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', borderLeft:`3px solid ${color}` }}>
+        <span style={{ fontSize:'12px', fontWeight:700, color }}>{title}</span>
+        <span style={{ color:'var(--muted)', fontSize:'12px' }}>{open?'▾':'▸'}</span>
       </div>
-    </Modal>
+      {open && <div>{children}</div>}
+    </div>
+  )
+}
+
+function TaskRow({ task, today, onToggle, onDelete, highlight }) {
+  const isOverdue = task.status==='pending' && task.due_date && task.due_date < today
+  const isDone    = task.status === 'done'
+  const pColor    = PRIORITY_COLORS[task.priority] || '#94A3B8'
+  return (
+    <div id={`task-${task.id}`} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'11px 14px', borderBottom:'1px solid var(--border)', background:highlight?'rgba(204,34,0,.03)':isDone?'rgba(0,0,0,.01)':'transparent' }}>
+      {/* Checkbox */}
+      <div onClick={()=>onToggle(task)}
+        style={{ width:20, height:20, borderRadius:'6px', border:`2px solid ${isDone?'#16A34A':pColor}`, background:isDone?'#16A34A':'transparent',
+          display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, transition:'all .15s' }}>
+        {isDone && <span style={{ color:'#fff', fontSize:'12px', lineHeight:1 }}>✓</span>}
+      </div>
+      {/* Priority dot */}
+      <div style={{ width:7, height:7, borderRadius:'2px', background:pColor, flexShrink:0 }}/>
+      {/* Title */}
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:'13px', fontWeight:500, color:isDone?'var(--muted)':'var(--text)', textDecoration:isDone?'line-through':'none', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          {task.title}
+        </div>
+        {task.due_date && (
+          <div style={{ fontSize:'10px', color:isOverdue?'#DC2626':'var(--muted)', fontWeight:isOverdue?700:400, marginTop:'2px' }}>
+            {isOverdue ? '⚠️ Overdue · ' : ''}{fmtDate(task.due_date)}
+          </div>
+        )}
+      </div>
+      {/* Delete */}
+      <button onClick={()=>onDelete(task.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'13px', opacity:.4, padding:'2px 4px' }}
+        onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='.4'}>
+        ✕
+      </button>
+    </div>
   )
 }
