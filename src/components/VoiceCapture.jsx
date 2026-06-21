@@ -135,7 +135,6 @@ export function VoiceCapture() {
         last_name:    parsed.name.last  || '',
         phone:        parsed.phone      || '',
         source:       'Voice Capture',
-        status:       'New',
         agent_id:     agent.id,
       })
       toast('✅ Contact saved!')
