@@ -24,6 +24,8 @@ function useSpeech() {
 
   const supported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 
+  const recordingRef = useRef(false)  // track if we WANT to be recording
+
   async function start(onDone) {
     setError(''); setTranscript(''); setInterim('')
     setSecs(0); setAudioURL(null)
@@ -120,6 +122,22 @@ function useSpeech() {
     }
 
     r.onend = () => {
+      // On mobile, recognition fires onend unexpectedly
+      // Restart it if we're still supposed to be recording
+      if(recordingRef.current && srRef.current) {
+        try {
+          srRef.current = new SR()
+          srRef.current.lang = 'en-US'
+          srRef.current.continuous = false  // non-continuous works better on mobile
+          srRef.current.interimResults = true
+          srRef.current.maxAlternatives = 3
+          srRef.current.onresult = r.onresult
+          srRef.current.onerror = r.onerror
+          srRef.current.onend = r.onend
+          srRef.current.start()
+          return
+        } catch(e) {}
+      }
       clearInterval(timerRef.current)
       clearTimeout(silenceRef.current)
       setInterim('')
@@ -130,18 +148,21 @@ function useSpeech() {
     }
 
     srRef.current = r
+    recordingRef.current = true
     r.start()
   }
 
   function manualStop() {
+    recordingRef.current = false  // stop auto-restart
     clearInterval(timerRef.current)
     clearTimeout(silenceRef.current)
     setStage('processing')
-    if(srRef.current) { srRef.current.stop(); srRef.current = null }
-    if(mediaRef.current && mediaRef.current.state !== 'inactive') mediaRef.current.stop()
+    if(srRef.current) { try { srRef.current.stop() } catch(e) {}; srRef.current = null }
+    if(mediaRef.current && mediaRef.current.state !== 'inactive') { try { mediaRef.current.stop() } catch(e) {} }
   }
 
   useEffect(() => () => {
+    recordingRef.current = false
     clearInterval(timerRef.current)
     clearTimeout(silenceRef.current)
     if(srRef.current) { try { srRef.current.abort() } catch(e) {} }
