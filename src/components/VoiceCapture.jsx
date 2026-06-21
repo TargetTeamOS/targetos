@@ -124,26 +124,32 @@ export function VoiceCapture() {
 
   async function saveAsContact() {
     if (!parsed) return
+    if (!agent?.id) {
+      toast('Not logged in as an agent. Please log out and log back in.', '#DC2626')
+      return
+    }
     setSaving(true)
     try {
       await createContact({
-        first_name:   parsed.name.first || 'Voice',
-        last_name:    parsed.name.last  || 'Contact',
+        first_name:   parsed.name.first || 'Voice Lead',
+        last_name:    parsed.name.last  || '',
         phone:        parsed.phone      || '',
         notes:        parsed.rawText    || '',
         source:       'Voice Capture',
         status:       'New',
-        agent_id:     agent?.id,
+        agent_id:     agent.id,
         last_activity: new Date().toISOString(),
       })
       toast('✅ Contact saved!')
       setStep('done')
-    } catch(e) { toast('Error: ' + e.message, '#DC2626') }
-    finally { setSaving(false) }
+    } catch(e) {
+      toast('Save failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
   }
 
   async function saveAsTask() {
     if (!parsed) return
+    if (!agent?.id) { toast('Not logged in as agent','#DC2626'); return }
     setSaving(true)
     try {
       await createTask({
@@ -162,6 +168,7 @@ export function VoiceCapture() {
 
   async function saveAsNote() {
     if (!parsed) return
+    if (!agent?.id) { toast('Not logged in as agent','#DC2626'); return }
     setSaving(true)
     try {
       await createTask({
