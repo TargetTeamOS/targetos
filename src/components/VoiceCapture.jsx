@@ -140,7 +140,9 @@ export function VoiceCapture() {
       toast('✅ Contact saved!')
       setStep('done')
     } catch(e) {
-      toast('Save failed: ' + e.message, '#DC2626')
+      const msg = e?.message || e?.error_description || JSON.stringify(e) || 'Unknown error'
+      toast('Contact save failed: ' + msg, '#DC2626')
+      console.error('Voice save error:', e)
     } finally { setSaving(false) }
   }
 
