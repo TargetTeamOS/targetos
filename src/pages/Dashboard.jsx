@@ -10,7 +10,6 @@ import { fmt$, fmtDate } from '../lib/utils/format'
 import { createContact } from '../lib/db/contacts'
 import { createListing } from '../lib/db/listings'
 import { createTask } from '../lib/db/tasks'
-import { VoiceCapture } from '../components/VoiceCapture'
 
 // Per-agent annual goals
 const AGENT_GOALS = {
@@ -56,7 +55,6 @@ export function Dashboard({ setPage }) {
   const [quickAdd, setQuickAdd] = useState(null) // 'lead' | 'listing' | 'task'
   const [form, setForm]         = useState({})
   const [saving, setSaving]     = useState(false)
-  const [showVoice, setShowVoice] = useState(false)
   const [adminTab, setAdminTab] = useState('overview') // 'overview' | 'agents' | 'pipeline'
 
   const today = new Date().toISOString().split('T')[0]
@@ -148,13 +146,7 @@ export function Dashboard({ setPage }) {
 
         {/* Action buttons */}
         <div style={{ display:'flex', gap:'7px', flexWrap:'wrap', alignItems:'center' }}>
-          {/* Voice button */}
-          <button onClick={() => setShowVoice(s => !s)}
-            style={{ width:40, height:40, borderRadius:'50%', background:showVoice?color:'var(--panel)', border:`2px solid ${showVoice?color:'var(--border)'}`, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:'18px', transition:'all .15s' }}>
-            🎙
-          </button>
-
-          {[
+{[
             { key:'lead',    label:'+ Lead',    icon:'👤' },
             { key:'listing', label:'+ Listing', icon:'🏠' },
             { key:'task',    label:'+ Task',    icon:'✓'  },
@@ -167,14 +159,7 @@ export function Dashboard({ setPage }) {
         </div>
       </div>
 
-      {/* ── VOICE CAPTURE ───────────────────────────────────── */}
-      {showVoice && (
-        <div style={{ marginBottom:'14px' }}>
-          <VoiceCapture onClose={() => setShowVoice(false)} embedded />
-        </div>
-      )}
-
-      {/* ── QUICK ADD FORMS ─────────────────────────────────── */}
+{/* ── QUICK ADD FORMS ─────────────────────────────────── */}
       {quickAdd === 'lead' && (
         <div style={{ background:'var(--panel)', border:`1.5px solid ${color}`, borderRadius:'12px', padding:'14px 16px', marginBottom:'14px' }}>
           <div style={{ fontSize:'12px', fontWeight:700, color, marginBottom:'10px' }}>👤 Quick Add Lead</div>

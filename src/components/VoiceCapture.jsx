@@ -1,570 +1,418 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
-import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
-import { logChange } from '../lib/activityLog'
+import { useApp } from '../context/AppContext'
 import { parseVoice } from '../lib/voiceParser'
+import { createContact } from '../lib/db/contacts'
+import { createTask } from '../lib/db/tasks'
 
-// ── SPEECH HOOK — uses continuous mode with manual stop + silence detection
+// ── SIMPLE RELIABLE SPEECH HOOK ───────────────────────────────
 function useSpeech() {
-  const [stage, setStage]           = useState('idle')
+  const [listening, setListening]   = useState(false)
   const [transcript, setTranscript] = useState('')
-  const [interim, setInterim]       = useState('')
-  const [secs, setSecs]             = useState(0)
   const [error, setError]           = useState('')
-  const [audioURL, setAudioURL]     = useState(null)
-
-  const srRef      = useRef(null)
-  const mediaRef   = useRef(null)
-  const chunksRef  = useRef([])
-  const timerRef   = useRef(null)
-  const silenceRef = useRef(null)
-  const finalRef   = useRef('')
-  const doneRef    = useRef(null)
+  const srRef = useRef(null)
+  const finalRef = useRef('')
 
   const supported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 
-  const recordingRef = useRef(false)  // track if we WANT to be recording
-
-  async function start(onDone) {
-    setError(''); setTranscript(''); setInterim('')
-    setSecs(0); setAudioURL(null)
-    finalRef.current = ''; chunksRef.current = []
-    doneRef.current = onDone
-
-    // Start audio recording for playback
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mr = new MediaRecorder(stream)
-      mr.ondataavailable = e => { if(e.data.size > 0) chunksRef.current.push(e.data) }
-      mr.onstop = () => {
-        stream.getTracks().forEach(t => t.stop())
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-        setAudioURL(URL.createObjectURL(blob))
-      }
-      mr.start(100)
-      mediaRef.current = mr
-    } catch(e) {
-      console.warn('Audio capture unavailable:', e.message)
-    }
-
-    // Speech recognition — continuous mode, manual stop
+  function start() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if(!SR) { setError('Voice not supported. Use Chrome or Safari.'); return }
+    if (!SR) { setError('Voice not supported — use Chrome or Safari'); return }
+
+    finalRef.current = ''
+    setTranscript('')
+    setError('')
 
     const r = new SR()
-    r.lang = 'en-US'
-    r.continuous = true
-    r.interimResults = true
-    r.maxAlternatives = 3  // More alternatives = better accuracy
+    r.lang            = 'en-US'
+    r.continuous      = false   // single utterance — most reliable on mobile
+    r.interimResults  = true
+    r.maxAlternatives = 1
 
-    // Add speech grammar for real estate terms if supported
-    if(window.SpeechGrammarList || window.webkitSpeechGrammarList) {
-      const SGL = window.SpeechGrammarList || window.webkitSpeechGrammarList
-      const grammar = new SGL()
-      // Real estate street types, NY cities, common names
-      const words = ['avenue','road','street','drive','lane','boulevard','court','place','way','parkway',
-        'monsey','suffern','spring valley','nanuet','new city','nyack','haverstraw','orangeburg','pearl river',
-        'unit','apartment','floor','listing','contact','task','schedule','showing','open house','offer',
-        'under contract','closing','GCI','commission','buyer','seller','landlord','tenant',
-        'bedroom','bathroom','kitchen','garage','basement','backyard','sqft','acres']
-      grammar.addFromString(`#JSGF V1.0; grammar realestate; public <term> = ${words.join(' | ')};`, 1)
-      r.grammars = grammar
-    }
-
-    r.onstart = () => {
-      setStage('recording')
-      timerRef.current = setInterval(() => setSecs(s => s+1), 1000)
-    }
+    r.onstart  = () => setListening(true)
 
     r.onresult = e => {
-      // Reset silence timer every time we hear something
-      clearTimeout(silenceRef.current)
-
-      let interimText = ''
-      for(let i = e.resultIndex; i < e.results.length; i++) {
-        if(e.results[i].isFinal) {
-          // Pick the alternative with highest confidence
-          let bestTranscript = e.results[i][0].transcript
-          let bestConf = e.results[i][0].confidence || 0
-          for(let j = 1; j < e.results[i].length; j++) {
-            if((e.results[i][j].confidence || 0) > bestConf) {
-              bestConf = e.results[i][j].confidence
-              bestTranscript = e.results[i][j].transcript
-            }
-          }
-          finalRef.current += bestTranscript + ' '
-          setTranscript(finalRef.current.trim())
-          setInterim('')
-        } else {
-          interimText += e.results[i][0].transcript
-        }
+      let text = ''
+      for (let i = 0; i < e.results.length; i++) {
+        text += e.results[i][0].transcript
       }
-      if(interimText) setInterim(interimText)
-
-      // Auto-stop after 8 seconds of silence
-      silenceRef.current = setTimeout(() => {
-        if(srRef.current) srRef.current.stop()
-      }, 12000)
+      setTranscript(text)
+      if (e.results[e.results.length - 1].isFinal) {
+        finalRef.current = text
+      }
     }
 
     r.onerror = e => {
-      clearInterval(timerRef.current)
-      clearTimeout(silenceRef.current)
-      if(e.error === 'no-speech') {
-        // Restart recognition to keep listening
-        try { r.start() } catch(err) {}
-        return
-      }
-      if(e.error !== 'aborted') {
-        setError('Mic error: ' + e.error + '. Make sure mic access is allowed.')
-      }
+      setListening(false)
+      if (e.error === 'not-allowed') setError('Microphone blocked. Allow mic access in browser settings and try again.')
+      else if (e.error === 'no-speech') setError('Nothing heard. Speak louder and try again.')
+      else if (e.error !== 'aborted') setError('Error: ' + e.error)
     }
 
     r.onend = () => {
-      // On mobile, recognition fires onend unexpectedly
-      // Restart it if we're still supposed to be recording
-      if(recordingRef.current && srRef.current !== null) {
-        try {
-          srRef.current = new SR()
-          srRef.current.lang = 'en-US'
-          srRef.current.continuous = false  // non-continuous works better on mobile
-          srRef.current.interimResults = true
-          srRef.current.maxAlternatives = 3
-          srRef.current.onresult = r.onresult
-          srRef.current.onerror = r.onerror
-          srRef.current.onend = r.onend
-          srRef.current.start()
-          return
-        } catch(e) {}
-      }
-      clearInterval(timerRef.current)
-      clearTimeout(silenceRef.current)
-      setInterim('')
-      setStage('processing')
-      if(mediaRef.current && mediaRef.current.state !== 'inactive') mediaRef.current.stop()
-      const final = finalRef.current.trim()
-      if(doneRef.current) doneRef.current(final)
+      setListening(false)
+      srRef.current = null
     }
 
     srRef.current = r
-    recordingRef.current = true
-    r.start()
+    try { r.start() } catch(e) { setError('Could not start microphone: ' + e.message) }
   }
 
-  function manualStop() {
-    recordingRef.current = false  // stop auto-restart FIRST
-    clearInterval(timerRef.current)
-    clearTimeout(silenceRef.current)
-    // Null out srRef BEFORE calling stop() to prevent onend from restarting
-    const sr = srRef.current
-    srRef.current = null
-    setStage('processing')
-    if(sr) { try { sr.abort() } catch(e) {} }  // abort is instant, stop() fires onend
-    if(mediaRef.current && mediaRef.current.state !== 'inactive') { try { mediaRef.current.stop() } catch(e) {} }
-  }
-
-  useEffect(() => () => {
-    recordingRef.current = false
-    clearInterval(timerRef.current)
-    clearTimeout(silenceRef.current)
-    if(srRef.current) { try { srRef.current.abort() } catch(e) {} }
-    if(mediaRef.current && mediaRef.current.state !== 'inactive') { try { mediaRef.current.stop() } catch(e) {} }
-  }, [])
-
-  return { stage, setStage, transcript, interim, secs, error, setError, supported, audioURL, start, manualStop }
-}
-
-// ── AUDIO PLAYER ──────────────────────────────────────────────
-function AudioPlayer({ url }) {
-  const [playing, setPlaying] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const audioRef = useRef(null)
-  if(!url) return null
-
-  function toggle() {
-    const a = audioRef.current
-    if(!a) return
-    if(playing) { a.pause(); setPlaying(false) }
-    else { a.play(); setPlaying(true) }
-  }
-
-  return (
-    <div style={{display:'flex',alignItems:'center',gap:'10px',background:'rgba(14,165,233,.07)',border:'1px solid rgba(14,165,233,.2)',borderRadius:'10px',padding:'10px 13px',marginTop:'8px'}}>
-      <button onClick={toggle} style={{width:34,height:34,borderRadius:'50%',background:'#0EA5E9',border:'none',color:'#fff',fontSize:'14px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>
-        {playing ? '⏸' : '▶'}
-      </button>
-      <div style={{flex:1}}>
-        <div style={{fontSize:'11px',fontWeight:700,color:'#0EA5E9',marginBottom:'3px'}}>🎤 Voice Recording</div>
-        <div style={{background:'rgba(14,165,233,.2)',borderRadius:'99px',height:3,overflow:'hidden'}}>
-          <div style={{background:'#0EA5E9',height:3,width:progress+'%',transition:'width .1s'}}/>
-        </div>
-      </div>
-      <audio ref={audioRef} src={url}
-        onTimeUpdate={e=>setProgress(e.target.duration?e.target.currentTime/e.target.duration*100:0)}
-        onEnded={()=>{setPlaying(false);setProgress(0)}}
-        style={{display:'none'}}/>
-    </div>
-  )
-}
-
-// ── MAIN COMPONENT ─────────────────────────────────────────────
-export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' }) {
-  const { agent } = useAuth()
-  const { toast } = useApp()
-  const speech = useSpeech()
-  const [mode, setMode]         = useState(null)
-  const [micAllowed, setMicAllowed] = useState(null) // null=unknown, true=granted, false=denied
-
-  // Check mic permission on mount
-  React.useEffect(() => {
-    if(navigator.permissions) {
-      navigator.permissions.query({ name:'microphone' }).then(result => {
-        setMicAllowed(result.state === 'granted')
-        result.onchange = () => setMicAllowed(result.state === 'granted')
-      }).catch(() => setMicAllowed(null))
+  function stop() {
+    if (srRef.current) {
+      try { srRef.current.stop() } catch(e) {}
+      srRef.current = null
     }
-  }, [])
-  const [parsed, setParsed]     = useState(null)
-  const [form, setForm]         = useState({ first:'',last:'',phone:'',note:'',taskTitle:'',taskDue:'',schedDate:'',schedTime:'',address:'' })
-  const [actions, setActions]   = useState([])
-  const [saving, setSaving]     = useState(false)
-  const [done, setDone]         = useState(null)
-  const [savedAudioURL, setSavedAudioURL] = useState(null)
-
-  function startCapture() {
-    speech.start(text => {
-      if(!text.trim()) {
-        speech.setStage('idle')
-        speech.setError('Nothing heard. Make sure microphone access is allowed in your browser, then try again.')
-        return
-      }
-      const result = parseVoice(text)
-      setParsed(result)
-      setSavedAudioURL(speech.audioURL)
-      setForm({
-        first:     result.name.first,
-        last:      result.name.last,
-        phone:     result.phone,
-        note:      text,
-        taskTitle: result.isTask||result.isReminder ? cleanTaskText(text) : '',
-        taskDue:   result.dateTime?.date  || '',
-        schedDate: result.dateTime?.date  || '',
-        schedTime: result.dateTime?.time  || '',
-        address:   result.addresses?.[0]  || '',
-      })
-      const auto = []
-      if(mode==='lead' && (result.name.first||result.phone)) auto.push('contact')
-      if(result.isTask||result.isReminder) auto.push('task')
-      if(result.isSchedule && !result.isTask) auto.push('schedule')
-      if(mode==='note' && auto.length===0) auto.push('note')
-      if(auto.length===0 && mode==='lead') auto.push('contact')
-      setActions(auto)
-      speech.setStage('review')
-    })
-  }
-
-  function toggleAction(a) {
-    setActions(prev => prev.includes(a) ? prev.filter(x=>x!==a) : [...prev,a])
-  }
-
-  async function saveAll() {
-    setSaving(true)
-    const saved = []
-
-    if(actions.includes('contact') && mode==='lead') {
-      const { data, error } = await supabase.from('contacts').insert([{
-        first_name: form.first || 'Unknown',
-        last_name:  form.last  || '',
-        phone:      form.phone || '',
-        source:     'Voice Capture',
-        notes:      `Voice note: "${form.note}"`,
-        agent_id:   agent?.id,
-      }]).select()
-      if(error) { speech.setError('Save failed: '+error.message); setSaving(false); return }
-      await logChange({ recordType:'contact', recordId:data[0].id, recordName:(form.first+' '+form.last).trim()||'Voice Contact', action:'Created', agentName:agent?.name||'Agent', userId:agent?.id, extra:'Voice capture' })
-      saved.push({ type:'contact', label:(form.first+' '+form.last).trim()||'New Contact' })
-    }
-
-    if(actions.includes('note')) {
-      if(contactId) {
-        await logChange({ recordType:'contact', recordId:contactId, recordName:contactName, action:'Note Added', agentName:agent?.name||'Agent', userId:agent?.id, extra:form.note })
-        saved.push({ type:'note', label:'Note on '+contactName })
-      } else {
-        await supabase.from('tasks').insert([{ title:form.note.slice(0,120), priority:'normal', status:'pending', agent_id:agent?.id, created_by:agent?.id }])
-        saved.push({ type:'note', label:'Note saved' })
-      }
-    }
-
-    if(actions.includes('task') && form.taskTitle.trim()) {
-      const ctx = form.address ? ` — ${form.address}` : (actions.includes('contact')&&form.first?` — ${form.first} ${form.last}`.trim():'')
-      await supabase.from('tasks').insert([{ title:(form.taskTitle.trim()+ctx).slice(0,200), priority:'high', status:'pending', due_date:form.taskDue||null, agent_id:agent?.id, created_by:agent?.id }])
-      saved.push({ type:'task', label:form.taskTitle.slice(0,50) })
-    }
-
-    if(actions.includes('schedule')) {
-      await supabase.from('tasks').insert([{ title:form.note.replace(/\b(schedule|appointment|meeting|showing)\b/gi,'').trim().slice(0,120)||'Appointment', priority:'normal', status:'pending', due_date:form.schedDate||null, agent_id:agent?.id, created_by:agent?.id }])
-      saved.push({ type:'schedule', label:`Appointment${form.schedDate?' on '+form.schedDate:''}` })
-    }
-
-    if(actions.includes('contact')) {
-      await supabase.from('tasks').insert([{ title:`Complete profile — ${form.first||'Voice'} ${form.last||'Contact'}${form.phone?' ('+form.phone+')':''}`, priority:'high', status:'pending', due_date:new Date(Date.now()+86400000).toISOString().split('T')[0], agent_id:agent?.id, created_by:agent?.id }])
-      saved.push({ type:'reminder', label:'Reminder to complete profile' })
-    }
-
-    setSaving(false)
-    setDone({ saved })
-    if(onSaved) onSaved(saved)
-    toast(`✅ ${saved.length} item${saved.length>1?'s':''} saved!`)
+    setListening(false)
   }
 
   function reset() {
-    speech.setStage('idle'); speech.setError('')
-    setParsed(null); setSavedAudioURL(null)
-    setForm({first:'',last:'',phone:'',note:'',taskTitle:'',taskDue:'',schedDate:'',schedTime:'',address:''})
-    setActions([]); setDone(null); setSaving(false)
+    stop()
+    setTranscript('')
+    setError('')
+    finalRef.current = ''
   }
 
-  const fmt = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`
-  const set = (k,v) => setForm(f=>({...f,[k]:v}))
+  return { listening, transcript, error, supported, start, stop, reset, getFinal: () => finalRef.current || transcript }
+}
+
+// ── FLOATING VOICE BUTTON + PANEL ─────────────────────────────
+export function VoiceCapture() {
+  const { agent } = useAuth()
+  const { toast } = useApp()
+  const speech = useSpeech()
+
+  const [open, setOpen]       = useState(false)
+  const [step, setStep]       = useState('idle') // idle | recording | review | done
+  const [parsed, setParsed]   = useState(null)
+  const [saving, setSaving]   = useState(false)
+
+  // Draggable position
+  const [pos, setPos]         = useState({ x: null, y: null }) // null = use default CSS
+  const dragging = useRef(false)
+  const dragOffset = useRef({ x: 0, y: 0 })
+  const btnRef = useRef()
+
+  // When recognition ends naturally, process result
+  useEffect(() => {
+    if (!speech.listening && step === 'recording') {
+      const text = speech.getFinal()
+      if (text.trim()) {
+        const result = parseVoice(text)
+        setParsed({ ...result, rawText: text })
+        setStep('review')
+      } else {
+        setStep('idle')
+      }
+    }
+  }, [speech.listening])
+
+  function handleMicPress() {
+    if (!speech.supported) {
+      toast('Voice not supported in this browser. Use Chrome on Android or Safari on iPhone.', '#DC2626')
+      return
+    }
+    if (step === 'idle' || step === 'done') {
+      setParsed(null)
+      setStep('recording')
+      speech.start()
+    } else if (step === 'recording') {
+      speech.stop()
+      // useEffect above will handle processing
+    }
+  }
+
+  async function saveAsContact() {
+    if (!parsed) return
+    setSaving(true)
+    try {
+      await createContact({
+        first_name:   parsed.name.first || 'Voice',
+        last_name:    parsed.name.last  || 'Contact',
+        phone:        parsed.phone      || '',
+        notes:        parsed.rawText    || '',
+        source:       'Voice Capture',
+        status:       'New',
+        agent_id:     agent?.id,
+        last_activity: new Date().toISOString(),
+      })
+      toast('✅ Contact saved!')
+      setStep('done')
+    } catch(e) { toast('Error: ' + e.message, '#DC2626') }
+    finally { setSaving(false) }
+  }
+
+  async function saveAsTask() {
+    if (!parsed) return
+    setSaving(true)
+    try {
+      await createTask({
+        title:      parsed.rawText.slice(0, 200),
+        priority:   'normal',
+        status:     'pending',
+        due_date:   parsed.dateTime?.date || null,
+        agent_id:   agent?.id,
+        created_by: agent?.id,
+      })
+      toast('✅ Task saved!')
+      setStep('done')
+    } catch(e) { toast('Error: ' + e.message, '#DC2626') }
+    finally { setSaving(false) }
+  }
+
+  async function saveAsNote() {
+    if (!parsed) return
+    setSaving(true)
+    try {
+      await createTask({
+        title:      parsed.rawText.slice(0, 200),
+        priority:   'note',
+        status:     'pinned',
+        agent_id:   agent?.id,
+        created_by: agent?.id,
+      })
+      toast('✅ Note saved!')
+      setStep('done')
+    } catch(e) { toast('Error: ' + e.message, '#DC2626') }
+    finally { setSaving(false) }
+  }
+
+  function tryAgain() {
+    speech.reset()
+    setParsed(null)
+    setStep('idle')
+  }
+
+  // Drag handlers
+  function onDragStart(e) {
+    dragging.current = true
+    const touch = e.touches ? e.touches[0] : e
+    const rect = btnRef.current.getBoundingClientRect()
+    dragOffset.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top }
+    e.preventDefault()
+  }
+  function onDragMove(e) {
+    if (!dragging.current) return
+    const touch = e.touches ? e.touches[0] : e
+    const newX = touch.clientX - dragOffset.current.x
+    const newY = touch.clientY - dragOffset.current.y
+    // Keep within viewport
+    const maxX = window.innerWidth  - 64
+    const maxY = window.innerHeight - 64
+    setPos({ x: Math.max(0, Math.min(newX, maxX)), y: Math.max(0, Math.min(newY, maxY)) })
+    e.preventDefault()
+  }
+  function onDragEnd() { dragging.current = false }
+
+  useEffect(() => {
+    window.addEventListener('mousemove', onDragMove)
+    window.addEventListener('mouseup',  onDragEnd)
+    window.addEventListener('touchmove', onDragMove, { passive: false })
+    window.addEventListener('touchend',  onDragEnd)
+    return () => {
+      window.removeEventListener('mousemove', onDragMove)
+      window.removeEventListener('mouseup',  onDragEnd)
+      window.removeEventListener('touchmove', onDragMove)
+      window.removeEventListener('touchend',  onDragEnd)
+    }
+  }, [])
+
+  const btnStyle = {
+    position:   'fixed',
+    right:      pos.x !== null ? 'auto' : '20px',
+    bottom:     pos.y !== null ? 'auto' : '80px',
+    left:       pos.x !== null ? pos.x + 'px' : 'auto',
+    top:        pos.y !== null ? pos.y + 'px' : 'auto',
+    width:      '60px',
+    height:     '60px',
+    borderRadius: '50%',
+    background: step === 'recording'
+      ? 'linear-gradient(135deg,#DC2626,#991B1B)'
+      : 'linear-gradient(135deg,#CC2200,#E8650A)',
+    border:     'none',
+    boxShadow:  step === 'recording'
+      ? '0 0 0 8px rgba(220,38,38,.2), 0 8px 24px rgba(220,38,38,.4)'
+      : '0 4px 20px rgba(204,34,0,.4)',
+    display:    'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor:     'grab',
+    zIndex:     9998,
+    transition: 'box-shadow .3s',
+    animation:  step === 'recording' ? 'pulse 1.2s infinite' : 'none',
+    touchAction: 'none',
+  }
 
   return (
-    <div style={{fontFamily:'Inter,system-ui,sans-serif'}}>
-      {/* Header */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
-        <div>
-          <div style={{fontSize:'16px',fontWeight:800}}>🎤 Voice Capture</div>
-          <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'2px'}}>Speak clearly · Tap stop when done · Auto-stops after 8 seconds silence</div>
-        </div>
-        {onClose && <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'20px',lineHeight:1,padding:'4px'}}>✕</button>}
-      </div>
+    <>
+      {/* Floating mic button */}
+      <button
+        ref={btnRef}
+        style={btnStyle}
+        onClick={e => { if (!dragging.current) { setOpen(o => !o); if (step === 'recording') speech.stop() } }}
+        onMouseDown={onDragStart}
+        onTouchStart={onDragStart}
+        title="Voice capture — tap to record"
+      >
+        <span style={{ fontSize: '26px', userSelect: 'none' }}>
+          {step === 'recording' ? '⏹' : '🎙'}
+        </span>
+      </button>
 
-      {/* MODE PICKER */}
-      {!mode && speech.stage==='idle' && !done && (
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
-          <ModeCard icon='👤' label='New Lead' desc='Name, phone, address' color='#CC2200' onClick={()=>setMode('lead')}/>
-          <ModeCard icon='📝' label='Quick Note' desc={contactId?`Note on ${contactName||'contact'}`:'Note, task, or reminder'} color='#0EA5E9' onClick={()=>setMode('note')}/>
-        </div>
-      )}
-
-      {/* RECORDING */}
-      {mode && (speech.stage==='idle'||speech.stage==='recording') && !done && (
-        <div style={{textAlign:'center'}}>
-          <ModeBadge mode={mode} onClear={()=>{setMode(null);reset()}}/>
-
-          {/* Examples */}
-          <div style={{background:'var(--dim)',borderRadius:'10px',padding:'10px 14px',marginBottom:'18px',textAlign:'left',fontSize:'12px',color:'var(--muted)',lineHeight:1.9}}>
-            {mode==='lead' ? <>
-              <div>👤 <em style={{color:'var(--text)'}}>"John Smith, 845-555-1234"</em></div>
-              <div>🏠 <em style={{color:'var(--text)'}}>"Showing at 47 Prairie Ave Monday 2pm"</em></div>
-              <div>✓ <em style={{color:'var(--text)'}}>"Call Sarah Cohen, remind me tomorrow"</em></div>
-            </> : <>
-              <div>📝 <em style={{color:'var(--text)'}}>"Client interested in 12 Cloverdale, Monsey"</em></div>
-              <div>✓ <em style={{color:'var(--text)'}}>"Schedule inspection Wednesday at 10am"</em></div>
-              <div>⏰ <em style={{color:'var(--text)'}}>"Remind me to order the closing gift"</em></div>
-            </>}
+      {/* Panel */}
+      {open && (
+        <div style={{
+          position: 'fixed',
+          right: pos.x !== null ? 'auto' : '90px',
+          bottom: pos.y !== null ? 'auto' : '80px',
+          left: pos.x !== null ? Math.max(0, pos.x - 320) + 'px' : 'auto',
+          top: pos.y !== null ? pos.y + 'px' : 'auto',
+          width: '320px',
+          background: 'var(--panel)',
+          border: '1px solid var(--border)',
+          borderRadius: '16px',
+          boxShadow: '0 8px 40px rgba(0,0,0,.2)',
+          zIndex: 9997,
+          overflow: 'hidden',
+          fontFamily: 'Inter,system-ui,sans-serif',
+        }}>
+          {/* Header */}
+          <div style={{ padding: '13px 16px', background: 'linear-gradient(135deg,#CC2200,#E8650A)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>🎙 Voice Capture</div>
+            <button onClick={() => { setOpen(false); if (step === 'recording') speech.stop() }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.7)', fontSize: '18px' }}>✕</button>
           </div>
 
-          {speech.stage==='idle' ? (
-            <button onClick={startCapture} style={{width:84,height:84,borderRadius:'50%',background:`linear-gradient(135deg,${mode==='lead'?'#CC2200,#E8650A':'#0EA5E9,#2563EB'})`,border:'none',fontSize:'34px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',margin:'0 auto 12px',boxShadow:`0 6px 24px ${mode==='lead'?'rgba(204,34,0,.4)':'rgba(14,165,233,.4)'}`,transition:'transform .15s'}}
-              onMouseEnter={e=>e.currentTarget.style.transform='scale(1.07)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
-              🎤
-            </button>
-          ) : (
-            <div style={{position:'relative',width:84,height:84,margin:'0 auto 10px'}}>
-              <div style={{position:'absolute',inset:-10,borderRadius:'50%',border:`3px solid ${mode==='lead'?'rgba(204,34,0,.3)':'rgba(14,165,233,.3)'}`,animation:'vcpulse 1.2s ease-in-out infinite'}}/>
-              <div style={{position:'absolute',inset:-22,borderRadius:'50%',border:`2px solid ${mode==='lead'?'rgba(204,34,0,.12)':'rgba(14,165,233,.12)'}`,animation:'vcpulse 1.2s ease-in-out infinite .4s'}}/>
-              <button onClick={speech.manualStop} style={{width:'100%',height:'100%',borderRadius:'50%',background:`linear-gradient(135deg,${mode==='lead'?'#CC2200,#E8650A':'#0EA5E9,#2563EB'})`,border:'none',fontSize:'28px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:`0 4px 16px ${mode==='lead'?'rgba(204,34,0,.5)':'rgba(14,165,233,.5)'}`}}>
-                ⏹
-              </button>
-            </div>
-          )}
+          <div style={{ padding: '16px' }}>
 
-          {speech.stage==='recording' && (
-            <div style={{fontSize:'13px',fontWeight:700,color:mode==='lead'?'#CC2200':'#0EA5E9',marginBottom:'4px'}}>🔴 Recording · {fmt(speech.secs)}</div>
-          )}
-          <div style={{fontSize:'11px',color:'var(--muted)',marginBottom:'12px'}}>
-            {speech.stage==='idle'?'Tap to start recording':'Tap ⏹ to stop when done speaking'}
-          </div>
-
-          {/* Live transcript */}
-          {(speech.transcript||speech.interim) && (
-            <div style={{background:'var(--dim)',borderRadius:'10px',padding:'11px 13px',textAlign:'left',fontSize:'13px',lineHeight:1.8,minHeight:'50px'}}>
-              <span style={{color:'var(--text)',fontWeight:500}}>{speech.transcript}</span>
-              <span style={{color:'var(--muted)',fontStyle:'italic'}}>{speech.interim}</span>
-            </div>
-          )}
-          {speech.error && <ErrBox msg={speech.error}/>}
-        </div>
-      )}
-
-      {/* PROCESSING */}
-      {speech.stage==='processing' && (
-        <div style={{textAlign:'center',padding:'28px'}}>
-          <div style={{fontSize:'32px',marginBottom:'10px'}}>⚙️</div>
-          <div style={{fontSize:'13px',color:'var(--muted)'}}>Analyzing speech...</div>
-        </div>
-      )}
-
-      {/* REVIEW */}
-      {speech.stage==='review' && parsed && !done && (
-        <div>
-          <div style={{background:'var(--dim)',borderRadius:'10px',padding:'10px 12px',marginBottom:'6px',fontSize:'12px',color:'var(--muted)',fontStyle:'italic',lineHeight:1.7}}>
-            "{form.note.slice(0,200)}{form.note.length>200?'…':''}"
-          </div>
-          <AudioPlayer url={savedAudioURL||speech.audioURL}/>
-          <div style={{height:'10px'}}/>
-
-          {/* Action chips */}
-          <div style={{fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'7px'}}>Detected — tap to select what to save:</div>
-          <div style={{display:'flex',gap:'6px',flexWrap:'wrap',marginBottom:'12px'}}>
-            {[
-              mode==='lead'&&(parsed.name?.first||parsed.phone) ? {id:'contact',label:'👤 Contact',color:'#CC2200'} : null,
-              contactId ? {id:'note',label:'📝 Note on '+contactName,color:'#0EA5E9'} : null,
-              parsed.isTask||parsed.isReminder ? {id:'task',label:'✓ Task',color:'#7C3AED'} : null,
-              parsed.isSchedule ? {id:'schedule',label:'📅 Schedule',color:'#16A34A'} : null,
-              !contactId&&mode==='note'&&!parsed.isTask&&!parsed.isSchedule ? {id:'note',label:'📝 Save Note',color:'#0EA5E9'} : null,
-            ].filter(Boolean).map(a=>(
-              <div key={a.id} onClick={()=>toggleAction(a.id)}
-                style={{padding:'7px 14px',borderRadius:'20px',border:'1.5px solid '+(actions.includes(a.id)?a.color:'var(--border)'),background:actions.includes(a.id)?a.color+'12':'transparent',cursor:'pointer',fontSize:'12px',fontWeight:700,color:actions.includes(a.id)?a.color:'var(--muted)',display:'flex',alignItems:'center',gap:'5px',transition:'all .12s'}}>
-                {actions.includes(a.id)&&<span style={{fontSize:'10px'}}>✓</span>}
-                {a.label}
+            {/* IDLE — ready to record */}
+            {(step === 'idle' || step === 'done') && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '48px', marginBottom: '12px' }}>🎙</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '6px' }}>
+                  {step === 'done' ? '✅ Saved!' : 'Ready to record'}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '16px', lineHeight: 1.6 }}>
+                  Tap the red mic button and say anything —<br/>
+                  a name, address, task, or note
+                </div>
+                <div style={{ background: 'var(--dim)', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', fontSize: '11px', color: 'var(--muted)', textAlign: 'left', lineHeight: 1.8 }}>
+                  <strong style={{ color: 'var(--text)' }}>Examples:</strong><br/>
+                  "John Smith 845-555-1234 from Monsey"<br/>
+                  "Follow up with Lazer tomorrow"<br/>
+                  "Schedule showing at 47 Prairie Ave Friday 2pm"<br/>
+                  "Note: client wants 4 beds under 800k"
+                </div>
+                <button onClick={handleMicPress}
+                  style={{ width: '100%', background: 'linear-gradient(135deg,#CC2200,#E8650A)', border: 'none', borderRadius: '10px', color: '#fff', fontSize: '14px', fontWeight: 700, padding: '13px', cursor: 'pointer', fontFamily: 'Inter,system-ui,sans-serif' }}>
+                  🎙 Start Recording
+                </button>
               </div>
-            ))}
-          </div>
+            )}
 
-          {/* CONTACT fields */}
-          {actions.includes('contact') && mode==='lead' && (
-            <Section title="👤 Contact Info" color="#CC2200">
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}}>
-                <FI label="First Name" value={form.first} onChange={v=>set('first',v)} ph="John"/>
-                <FI label="Last Name"  value={form.last}  onChange={v=>set('last',v)}  ph="Smith"/>
+            {/* RECORDING */}
+            {step === 'recording' && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: 'rgba(220,38,38,.1)', border: '3px solid #DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px', fontSize: '32px', animation: 'pulse 1.2s infinite' }}>
+                  🎙
+                </div>
+                <div style={{ fontSize: '14px', fontWeight: 800, color: '#DC2626', marginBottom: '8px' }}>
+                  Listening...
+                </div>
+                {speech.transcript && (
+                  <div style={{ background: 'var(--dim)', borderRadius: '10px', padding: '10px 12px', marginBottom: '12px', fontSize: '13px', color: 'var(--text)', textAlign: 'left', lineHeight: 1.6, minHeight: '40px' }}>
+                    {speech.transcript}
+                  </div>
+                )}
+                {!speech.transcript && (
+                  <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '12px' }}>
+                    Speak clearly — it will appear here
+                  </div>
+                )}
+                {speech.error && (
+                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px', fontSize: '12px', color: '#DC2626' }}>
+                    {speech.error}
+                  </div>
+                )}
+                <button onClick={handleMicPress}
+                  style={{ width: '100%', background: '#1B2B4B', border: 'none', borderRadius: '10px', color: '#fff', fontSize: '13px', fontWeight: 700, padding: '12px', cursor: 'pointer', fontFamily: 'Inter,system-ui,sans-serif' }}>
+                  ⏹ Stop Recording
+                </button>
               </div>
-              <FI label="Phone" value={form.phone} onChange={v=>set('phone',v)} ph="(845) 555-1234" type="tel"/>
-              {form.address && <FI label="Address" value={form.address} onChange={v=>set('address',v)}/>}
-            </Section>
-          )}
+            )}
 
-          {/* NOTE fields */}
-          {actions.includes('note') && (
-            <Section title="📝 Note" color="#0EA5E9">
-              <textarea value={form.note} onChange={e=>set('note',e.target.value)} rows={3} style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',fontFamily:'Inter,system-ui,sans-serif',padding:'8px 10px',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:1.6}}/>
-            </Section>
-          )}
+            {/* REVIEW */}
+            {step === 'review' && parsed && (
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.7px', marginBottom: '8px' }}>You said:</div>
+                <div style={{ background: 'var(--dim)', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', fontSize: '13px', color: 'var(--text)', lineHeight: 1.6 }}>
+                  "{parsed.rawText}"
+                </div>
 
-          {/* TASK fields */}
-          {actions.includes('task') && (
-            <Section title="✓ Task / Reminder" color="#7C3AED">
-              <FI label="Task Title" value={form.taskTitle} onChange={v=>set('taskTitle',v)} ph="Follow up with client"/>
-              <FI label="Due Date" value={form.taskDue} onChange={v=>set('taskDue',v)} type="date"/>
-            </Section>
-          )}
+                {/* Detected info */}
+                {(parsed.name.first || parsed.phone || parsed.addresses?.[0] || parsed.dateTime?.date) && (
+                  <div style={{ background: 'rgba(22,163,74,.06)', border: '1px solid rgba(22,163,74,.2)', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', fontSize: '12px', lineHeight: 1.8 }}>
+                    <div style={{ fontWeight: 700, color: '#16A34A', marginBottom: '4px' }}>Detected:</div>
+                    {parsed.name.first && <div>👤 {parsed.name.first} {parsed.name.last}</div>}
+                    {parsed.phone      && <div>📞 {parsed.phone}</div>}
+                    {parsed.addresses?.[0] && <div>🏠 {parsed.addresses[0]}</div>}
+                    {parsed.dateTime?.dateLabel && <div>📅 {parsed.dateTime.dateLabel}{parsed.dateTime.time ? ' at ' + parsed.dateTime.time : ''}</div>}
+                  </div>
+                )}
 
-          {/* SCHEDULE fields */}
-          {actions.includes('schedule') && (
-            <Section title="📅 Appointment" color="#16A34A">
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}}>
-                <FI label="Date" value={form.schedDate} onChange={v=>set('schedDate',v)} type="date"/>
-                <FI label="Time" value={form.schedTime} onChange={v=>set('schedTime',v)} type="time"/>
+                {/* Save options */}
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.7px', marginBottom: '8px' }}>Save as:</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginBottom: '10px' }}>
+                  {parsed.name.first && (
+                    <button onClick={saveAsContact} disabled={saving}
+                      style={actionBtn('#0EA5E9')}>
+                      👤 Save as Contact {parsed.name.first && `— ${parsed.name.first} ${parsed.name.last}`}
+                    </button>
+                  )}
+                  <button onClick={saveAsTask} disabled={saving}
+                    style={actionBtn('#CC2200')}>
+                    ✓ Save as Task{parsed.dateTime?.dateLabel ? ` — due ${parsed.dateTime.dateLabel}` : ''}
+                  </button>
+                  <button onClick={saveAsNote} disabled={saving}
+                    style={actionBtn('#7C3AED')}>
+                    📌 Save as Note
+                  </button>
+                </div>
+                <button onClick={tryAgain}
+                  style={{ width: '100%', background: 'transparent', border: '1px solid var(--border)', borderRadius: '9px', color: 'var(--muted)', fontSize: '12px', padding: '9px', cursor: 'pointer', fontFamily: 'Inter,system-ui,sans-serif' }}>
+                  🔄 Record Again
+                </button>
               </div>
-              {form.address && <FI label="Location" value={form.address} onChange={v=>set('address',v)}/>}
-            </Section>
-          )}
+            )}
 
-          {actions.includes('contact') && (
-            <div style={{background:'rgba(245,158,11,.07)',border:'1px solid rgba(245,158,11,.22)',borderRadius:'9px',padding:'9px 12px',marginBottom:'10px',display:'flex',gap:'7px',fontSize:'11px',color:'#D97706'}}>
-              <span>⏰</span><span>A reminder will be created to complete the full profile.</span>
-            </div>
-          )}
-
-          {actions.length===0 && <div style={{background:'#FFFBEB',border:'1px solid #FCD34D',borderRadius:'9px',padding:'10px 12px',marginBottom:'10px',fontSize:'12px',color:'#92400E'}}>⚠️ Select at least one item above to save.</div>}
-          {speech.error && <ErrBox msg={speech.error}/>}
-
-          <div style={{display:'flex',gap:'8px'}}>
-            <button onClick={()=>{reset();setMode(mode)}} style={{flex:1,background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'10px',color:'var(--muted)',fontSize:'12px',fontWeight:600,padding:'11px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>
-              🎤 Re-record
-            </button>
-            <button onClick={saveAll} disabled={saving||actions.length===0}
-              style={{flex:2,background:'linear-gradient(135deg,#CC2200,#E8650A)',border:'none',borderRadius:'10px',color:'#fff',fontSize:'13px',fontWeight:700,padding:'11px',cursor:saving||actions.length===0?'not-allowed':'pointer',fontFamily:'Inter,system-ui,sans-serif',opacity:saving||actions.length===0?.5:1,boxShadow:'0 3px 12px rgba(204,34,0,.3)'}}>
-              {saving ? 'Saving…' : `✅ Save ${actions.length} item${actions.length!==1?'s':''}`}
-            </button>
           </div>
         </div>
       )}
 
-      {/* DONE */}
-      {done && (
-        <div style={{textAlign:'center',padding:'16px 8px'}}>
-          <div style={{fontSize:'40px',marginBottom:'12px'}}>🎉</div>
-          <div style={{fontSize:'15px',fontWeight:800,marginBottom:'12px'}}>{done.saved.length} item{done.saved.length!==1?'s':''} saved!</div>
-          <div style={{background:'var(--dim)',borderRadius:'12px',padding:'12px',marginBottom:'12px',textAlign:'left'}}>
-            {done.saved.map((s,i)=>(
-              <div key={i} style={{display:'flex',alignItems:'center',gap:'8px',padding:'6px 0',borderBottom:i<done.saved.length-1?'1px solid var(--border)':'none',fontSize:'12px',fontWeight:600}}>
-                <span>{s.type==='contact'?'👤':s.type==='task'?'✓':s.type==='schedule'?'📅':s.type==='reminder'?'⏰':'📝'}</span>
-                <span>{s.label}</span>
-              </div>
-            ))}
-          </div>
-          {(savedAudioURL||speech.audioURL) && <AudioPlayer url={savedAudioURL||speech.audioURL}/>}
-          <div style={{display:'flex',gap:'8px',justifyContent:'center',marginTop:'14px'}}>
-            <button onClick={()=>{reset();setMode(null)}} style={{background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'10px',color:'var(--text)',fontSize:'12px',fontWeight:600,padding:'9px 16px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>🎤 Add Another</button>
-            {onClose && <button onClick={onClose} style={{background:'#CC2200',border:'none',borderRadius:'10px',color:'#fff',fontSize:'12px',fontWeight:700,padding:'9px 20px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>Done</button>}
-          </div>
-        </div>
-      )}
-
-      <style>{`@keyframes vcpulse{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(1.1);opacity:1}}`}</style>
-    </div>
+      {/* Pulse animation */}
+      <style>{`
+        @keyframes pulse {
+          0%   { box-shadow: 0 0 0 0 rgba(220,38,38,.4), 0 8px 24px rgba(220,38,38,.4) }
+          70%  { box-shadow: 0 0 0 14px rgba(220,38,38,0), 0 8px 24px rgba(220,38,38,.2) }
+          100% { box-shadow: 0 0 0 0 rgba(220,38,38,0), 0 8px 24px rgba(220,38,38,.4) }
+        }
+      `}</style>
+    </>
   )
 }
 
-function ModeCard({ icon, label, desc, color, onClick }) {
-  return (
-    <div onClick={onClick} style={{background:'var(--dim)',border:'2px solid var(--border)',borderRadius:'14px',padding:'18px 14px',textAlign:'center',cursor:'pointer',transition:'all .15s'}}
-      onMouseEnter={e=>{e.currentTarget.style.borderColor=color;e.currentTarget.style.background=color+'10'}}
-      onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.background='var(--dim)'}}>
-      <div style={{fontSize:'30px',marginBottom:'8px'}}>{icon}</div>
-      <div style={{fontSize:'14px',fontWeight:800,color,marginBottom:'3px'}}>{label}</div>
-      <div style={{fontSize:'11px',color:'var(--muted)',lineHeight:1.5}}>{desc}</div>
-    </div>
-  )
-}
-
-function ModeBadge({ mode, onClear }) {
-  const color = mode==='lead'?'#CC2200':'#0EA5E9'
-  return (
-    <div style={{display:'inline-flex',alignItems:'center',gap:'7px',background:color+'10',borderRadius:'20px',padding:'5px 14px',marginBottom:'14px',border:'1px solid '+color+'25'}}>
-      <span style={{fontSize:'13px'}}>{mode==='lead'?'👤':'📝'}</span>
-      <span style={{fontSize:'12px',fontWeight:700,color}}>{mode==='lead'?'New Lead':'Quick Note'}</span>
-      <button onClick={onClear} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'11px',marginLeft:'4px'}}>change</button>
-    </div>
-  )
-}
-
-function Section({ title, color, children }) {
-  return (
-    <div style={{background:'var(--dim)',borderRadius:'10px',padding:'12px',marginBottom:'10px',borderLeft:'3px solid '+color}}>
-      <div style={{fontSize:'10px',fontWeight:700,color,textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'8px'}}>{title}</div>
-      {children}
-    </div>
-  )
-}
-
-function FI({ label, value, onChange, ph='', type='text' }) {
-  return (
-    <div style={{marginBottom:'8px'}}>
-      <label style={{display:'block',fontSize:'9px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'4px'}}>{label}</label>
-      <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={ph}
-        style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'8px 10px',outline:'none',boxSizing:'border-box'}}
-        onFocus={e=>e.target.style.borderColor='#CC2200'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
-    </div>
-  )
-}
-
-function ErrBox({ msg }) {
-  return <div style={{margin:'8px 0',fontSize:'11px',color:'#DC2626',background:'#FEF2F2',borderRadius:'8px',padding:'8px 10px',lineHeight:1.5}}>{msg}</div>
-}
-
-function cleanTaskText(text) {
-  return text.replace(/\b(remind me to|remember to|task|create task|add task|don't forget to|need to|have to|remind me|reminder)\b/gi,'').replace(/\s+/g,' ').trim()
+function actionBtn(color) {
+  return {
+    width: '100%',
+    background: color + '12',
+    border: `1.5px solid ${color}30`,
+    borderRadius: '9px',
+    color: color,
+    fontSize: '12px',
+    fontWeight: 700,
+    padding: '10px 12px',
+    cursor: 'pointer',
+    fontFamily: 'Inter,system-ui,sans-serif',
+    textAlign: 'left',
+  }
 }

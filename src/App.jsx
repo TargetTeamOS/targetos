@@ -118,6 +118,7 @@ function AppShell() {
           </Layout>
       }
       <Toast />
+      <VoiceCapture />
     </>
   )
 }
