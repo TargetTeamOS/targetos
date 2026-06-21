@@ -134,11 +134,9 @@ export function VoiceCapture() {
         first_name:   parsed.name.first || 'Voice Lead',
         last_name:    parsed.name.last  || '',
         phone:        parsed.phone      || '',
-        notes:        parsed.rawText    || '',
         source:       'Voice Capture',
         status:       'New',
         agent_id:     agent.id,
-        last_activity: new Date().toISOString(),
       })
       toast('✅ Contact saved!')
       setStep('done')
