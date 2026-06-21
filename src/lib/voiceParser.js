@@ -10,6 +10,13 @@ const ADDRESS_RE = /\b(\d+)\s+([A-Za-z0-9\s]{2,30}(?:Ave|Avenue|Rd|Road|St|Stree
 // NY cities / neighborhoods commonly spoken
 const KNOWN_PLACES = [
   'monsey','spring valley','suffern','nanuet','new city','nyack','haverstraw',
+  'pomona','airmont','chestnut ridge','new hempstead','wesley hills','montebello',
+  'sloatsburg','tallman','tallman ny','Tallman','hillburn','woodbury','harriman',
+  'tuxedo','monroe','kiryas joel','KJ','cornwall','newburgh','middletown',
+  'goshen','warwick','florida','chester','mahwah','ramsey','hillsdale',
+  'river vale','park ridge','woodcliff lake','montvale','park ridge',
+  'clarkstown','ramapo','stony point','tomkins cove','letchworth',
+  'rockland lake','blauvelt','sparkill','snedens landing','grandview',
   'west haverstraw','stony point','tappan','orangeburg','pearl river','congers',
   'valley cottage','west nyack','blauvelt','bardonia','palisades','piermont',
   'upper nyack','south nyack','garnerville','thiells','pomona','airmont',
@@ -28,6 +35,16 @@ const KNOWN_NAMES = new Set([
   'sarah','devorah','esther','malka','shira','tzipora','raizel','gittel',
   'faigy','chayele','baila','bracha','penina','naomi','yael','adina',
   'yanky','yankel','moishe','lazer','feivel','sruli','shloime','mendel',
+  'gershon','nesanel','shmuel','refael','gavriel','uriel','yehuda','yehoshua',
+  'fishel','leibish','mottel','pinny','srulik','yossi','motti','nosson',
+  'avrumi','shloimi','moishi','benji','duvy','sruly','shimi','bentzion',
+  'tzvi','hirsh','betzalel','akiva','nochum','velvel','heshy','gilly',
+  'avigail','tzipporah','nechamie','menucha','shoshana','meirav','liora',
+  'yehudis','zahava','tzirel','chaya','sheindel','ruchel','nechama',
+  // Real estate client names common in area
+  'jose','juan','carlos','miguel','luis','pedro','maria','rosa','elena',
+  'rafael','antonio','francisco','roberto','jorge','manuel','alejandro',
+  'aisha','fatima','omar','ali','hassan','ahmed','yusuf','ibrahim',
   'nuchem','boruch','velvel','berel','leiby','shmueli','hershy','yidel',
   'gitty','fradel','chanie','rivky','esty','deeny','perle','blima',
   // Common secular names

@@ -52,9 +52,23 @@ function useSpeech() {
 
     const r = new SR()
     r.lang = 'en-US'
-    r.continuous = true       // keep listening until manually stopped
+    r.continuous = true
     r.interimResults = true
-    r.maxAlternatives = 1
+    r.maxAlternatives = 3  // More alternatives = better accuracy
+
+    // Add speech grammar for real estate terms if supported
+    if(window.SpeechGrammarList || window.webkitSpeechGrammarList) {
+      const SGL = window.SpeechGrammarList || window.webkitSpeechGrammarList
+      const grammar = new SGL()
+      // Real estate street types, NY cities, common names
+      const words = ['avenue','road','street','drive','lane','boulevard','court','place','way','parkway',
+        'monsey','suffern','spring valley','nanuet','new city','nyack','haverstraw','orangeburg','pearl river',
+        'unit','apartment','floor','listing','contact','task','schedule','showing','open house','offer',
+        'under contract','closing','GCI','commission','buyer','seller','landlord','tenant',
+        'bedroom','bathroom','kitchen','garage','basement','backyard','sqft','acres']
+      grammar.addFromString(`#JSGF V1.0; grammar realestate; public <term> = ${words.join(' | ')};`, 1)
+      r.grammars = grammar
+    }
 
     r.onstart = () => {
       setStage('recording')
@@ -68,7 +82,16 @@ function useSpeech() {
       let interimText = ''
       for(let i = e.resultIndex; i < e.results.length; i++) {
         if(e.results[i].isFinal) {
-          finalRef.current += e.results[i][0].transcript + ' '
+          // Pick the alternative with highest confidence
+          let bestTranscript = e.results[i][0].transcript
+          let bestConf = e.results[i][0].confidence || 0
+          for(let j = 1; j < e.results[i].length; j++) {
+            if((e.results[i][j].confidence || 0) > bestConf) {
+              bestConf = e.results[i][j].confidence
+              bestTranscript = e.results[i][j].transcript
+            }
+          }
+          finalRef.current += bestTranscript + ' '
           setTranscript(finalRef.current.trim())
           setInterim('')
         } else {
@@ -80,14 +103,15 @@ function useSpeech() {
       // Auto-stop after 8 seconds of silence
       silenceRef.current = setTimeout(() => {
         if(srRef.current) srRef.current.stop()
-      }, 8000)
+      }, 12000)
     }
 
     r.onerror = e => {
       clearInterval(timerRef.current)
       clearTimeout(silenceRef.current)
       if(e.error === 'no-speech') {
-        // No speech detected — just try again, don't stop
+        // Restart recognition to keep listening
+        try { r.start() } catch(err) {}
         return
       }
       if(e.error !== 'aborted') {
@@ -166,6 +190,17 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
   const { toast } = useApp()
   const speech = useSpeech()
   const [mode, setMode]         = useState(null)
+  const [micAllowed, setMicAllowed] = useState(null) // null=unknown, true=granted, false=denied
+
+  // Check mic permission on mount
+  React.useEffect(() => {
+    if(navigator.permissions) {
+      navigator.permissions.query({ name:'microphone' }).then(result => {
+        setMicAllowed(result.state === 'granted')
+        result.onchange = () => setMicAllowed(result.state === 'granted')
+      }).catch(() => setMicAllowed(null))
+    }
+  }, [])
   const [parsed, setParsed]     = useState(null)
   const [form, setForm]         = useState({ first:'',last:'',phone:'',note:'',taskTitle:'',taskDue:'',schedDate:'',schedTime:'',address:'' })
   const [actions, setActions]   = useState([])
@@ -177,7 +212,7 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
     speech.start(text => {
       if(!text.trim()) {
         speech.setStage('idle')
-        speech.setError('Nothing heard — tap the mic and speak clearly, then tap stop.')
+        speech.setError('Nothing heard. Make sure microphone access is allowed in your browser, then try again.')
         return
       }
       const result = parseVoice(text)
@@ -325,7 +360,7 @@ export function VoiceCapture({ onClose, onSaved, contactId=null, contactName='' 
             <div style={{fontSize:'13px',fontWeight:700,color:mode==='lead'?'#CC2200':'#0EA5E9',marginBottom:'4px'}}>🔴 Recording · {fmt(speech.secs)}</div>
           )}
           <div style={{fontSize:'11px',color:'var(--muted)',marginBottom:'12px'}}>
-            {speech.stage==='idle'?'Tap to start recording':'Tap ⏹ to stop · Auto-stops after 8s silence'}
+            {speech.stage==='idle'?'Tap to start recording':'Tap ⏹ to stop when done speaking'}
           </div>
 
           {/* Live transcript */}
