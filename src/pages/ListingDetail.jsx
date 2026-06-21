@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { Btn, Card } from '../components/UI'
 import { useConfirm } from '../components/ConfirmDialog'
 import { AGENTS } from '../lib/constants'
@@ -63,7 +64,7 @@ export function ListingDetail({ listingId, onBack }) {
       interest: showingForm.interest,
       notes: showingForm.notes,
       logged_at: new Date().toISOString(),
-      logged_by: state.currentAgent?.name || 'Admin',
+      logged_by: agent?.name || 'Admin',
     }
     const updatedShowings = [...(listing.showings||[]), newShowing]
     await saveField('showings', updatedShowings)

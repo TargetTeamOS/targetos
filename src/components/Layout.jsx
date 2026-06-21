@@ -50,7 +50,7 @@ const SIDEBAR_WIDTHS = ['200px','220px','240px','260px','280px']
 
 export function Layout({ page, setPage, agent: agentProp, children }) {
   const { state, dispatch } = useApp()
-  const agent = state.currentAgent || AGENTS[3]
+  const agent = agent || AGENTS[3]
 
   // Sidebar style state — persisted to localStorage
   const [sbStyle, setSbStyle] = useState(() => {

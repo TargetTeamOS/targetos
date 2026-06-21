@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { Card, CardHeader, Btn, Grid2, StatCard, Grid4 } from '../components/UI'
 import { AGENTS } from '../lib/constants'
 

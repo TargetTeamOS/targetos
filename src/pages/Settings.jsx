@@ -8,7 +8,7 @@ import { sendEmail } from '../lib/emailService'
 export function Settings() {
   const { agent, signOut } = useAuth()
   const { state, dispatch, toast } = useApp()
-  const [theme, setTheme]   = useState(state.theme || 'light')
+  const [theme, setTheme]   = useState(state?.theme || 'light')
   const [testing, setTesting] = useState({})
   const [results, setResults] = useState({})
   const [newPw, setNewPw]   = useState('')

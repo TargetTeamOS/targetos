@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { VoiceCapture } from '../components/VoiceCapture'
 import { AGENTS } from '../lib/constants'

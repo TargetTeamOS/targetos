@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { Card, Btn, Grid2, Grid3 } from '../components/UI'
 
 const fmt$ = n => '$' + Math.round(n).toLocaleString()

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { AGENTS } from '../lib/constants'
 
 // Mobile bottom nav items
@@ -39,7 +40,7 @@ const MORE_ITEMS = [
 export function MobileLayout({ page, setPage, children }) {
   const { state, dispatch } = useApp()
   const [showMore, setShowMore] = useState(false)
-  const agent = AGENTS.find(a => a.id === state.currentAgent?.id) || AGENTS[3]
+  const agent = AGENTS.find(a => a.id === agent?.id) || AGENTS[3]
 
   // Live clock
   const [time, setTime] = useState(new Date())

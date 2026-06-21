@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { nowISO } from '../lib/time'
 import { logChange } from '../lib/activityLog'
 
@@ -137,7 +138,7 @@ export function VoiceContactCapture({ onSaved, onClose, compact=false }) {
       status:      'New',
       source:      'Voice Capture',
       notes:       `Voice note: "${extracted.notes}" — Needs full profile completion`,
-      agent_id:    state.user?.id,
+      agent_id:    agent?.id,
     }]).select()
 
     if(err) { setError('Save failed: '+err.message); setStage('review'); return }
@@ -146,8 +147,8 @@ export function VoiceContactCapture({ onSaved, onClose, compact=false }) {
     await logChange({
       recordType: 'contact', recordId: data[0].id,
       recordName: (extracted.first+' '+extracted.last).trim()||'Voice Contact',
-      action: 'Created', agentName: state.currentAgent?.name||'Agent',
-      userId: state.user?.id, extra:'Created via voice capture'
+      action: 'Created', agentName: agent?.name||'Agent',
+      userId: agent?.id, extra:'Created via voice capture'
     })
 
     // Create a follow-up task to complete the profile
@@ -156,8 +157,8 @@ export function VoiceContactCapture({ onSaved, onClose, compact=false }) {
       priority: 'high',
       status: 'pending',
       due_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-      assigned_to: state.user?.id,
-      created_by:  state.user?.id,
+      assigned_to: agent?.id,
+      created_by:  agent?.id,
     }])
 
     setStage('done')

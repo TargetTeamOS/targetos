@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { AGENTS, SOURCES, PROPERTY_TYPES, CONTACT_TYPES } from '../lib/constants'
 import { Badge, Btn, Input, Select, Grid2, Grid3 } from '../components/UI'
 import { useConfirm } from '../components/ConfirmDialog'
@@ -49,7 +50,7 @@ export function ContactDetail({ contactId, onBack }) {
     setEditField(null)
     toast('Saved!')
     // Log the change with before/after
-    const agentName = state.currentAgent?.name || 'Admin'
+    const agentName = agent?.name || 'Admin'
     await logChange({
       recordType: 'contact',
       recordId: contactId,
@@ -59,7 +60,7 @@ export function ContactDetail({ contactId, onBack }) {
       oldValue: oldVal,
       newValue: val,
       agentName,
-      userId: state.user?.id,
+      userId: agent?.id,
     })
   }
 
@@ -69,7 +70,7 @@ export function ContactDetail({ contactId, onBack }) {
     const { data, error } = await supabase.from('contacts').update(updates).eq('id', contactId).select()
     setSaving(false)
     if(error) { toast('Error: '+error.message, '#DC2626'); return }
-    const agentName = state.currentAgent?.name || 'Admin'
+    const agentName = agent?.name || 'Admin'
     await logFieldChanges({
       recordType: 'contact',
       recordId: contactId,
@@ -77,19 +78,19 @@ export function ContactDetail({ contactId, onBack }) {
       before: contact,
       after: updates,
       agentName,
-      userId: state.user?.id,
+      userId: agent?.id,
     })
     setContact(data[0]); setForm(data[0]); setEditingAll(false)
     toast('Contact saved!')
   }
 
   function addActivity(type, icon, color, title, detail='') {
-    const entry = { type, icon, color, title, detail, time: formatActivity(nowISO()), action: title.split(':')[0]||'Note Added', agent_name: state.currentAgent?.name||'Admin', created_at: nowISO() }
+    const entry = { type, icon, color, title, detail, time: formatActivity(nowISO()), action: title.split(':')[0]||'Note Added', agent_name: agent?.name||'Admin', created_at: nowISO() }
     setActivities(prev => [entry, ...prev])
     setLocalActivity(prev => [entry, ...prev])
     // Log to DB
-    const agentName = state.currentAgent?.name || 'Admin'
-    logChange({ recordType:'contact', recordId:contactId, recordName:contact?.first_name+' '+(contact?.last_name||''), action:title.split(':')[0]||'Note Added', field:null, agentName, userId:state.user?.id, extra:title })
+    const agentName = agent?.name || 'Admin'
+    logChange({ recordType:'contact', recordId:contactId, recordName:contact?.first_name+' '+(contact?.last_name||''), action:title.split(':')[0]||'Note Added', field:null, agentName, userId:agent?.id, extra:title })
   }
 
   function saveNote() {
@@ -311,7 +312,7 @@ export function ContactDetail({ contactId, onBack }) {
               const body = document.querySelector('[data-email-body]')?.value || ''
               if(!contact.email) { toast('No email on file for this contact','#DC2626'); return }
               if(!body.trim()) { toast('Please write a message first','#DC2626'); return }
-              const result = await sendContactEmail({ contactEmail:contact.email, contactName:contact.first_name+' '+(contact.last_name||''), subject:subj, body, agentName:state.currentAgent?.name||'Agent' })
+              const result = await sendContactEmail({ contactEmail:contact.email, contactName:contact.first_name+' '+(contact.last_name||''), subject:subj, body, agentName:agent?.name||'Agent' })
               if(result.success) { addActivity('email','✉','#E8650A','Email sent: '+subj); toast('✅ Email sent to '+contact.email+'!') }
               else toast('Send failed: '+result.error,'#DC2626')
             }}>✉ Send Email</Btn>
