@@ -4,6 +4,7 @@ import { AppProvider, useApp }   from './context/AppContext'
 import { Login }                 from './pages/Login'
 import { Layout }                from './components/Layout'
 import { MobileLayout }          from './components/MobileLayout'
+import { VoiceCapture }          from './components/VoiceCapture'
 
 // Lazy-loaded pages
 const Dashboard     = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })))
