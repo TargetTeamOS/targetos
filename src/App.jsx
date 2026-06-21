@@ -1,159 +1,101 @@
-import React, { useEffect, useState } from 'react'
-import { useApp } from './context/AppContext'
-import { supabase } from './lib/supabase'
-import { AGENTS } from './lib/constants'
-import { Login } from './components/Login'
+import React, { Suspense, lazy } from 'react'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { AppProvider, useApp }   from './context/AppContext'
+import { Login }                 from './pages/Login'
+
+// Lazy load pages — improves initial load time
+const Dashboard    = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })))
+const Contacts     = lazy(() => import('./pages/Contacts').then(m => ({ default: m.Contacts })))
+const Production   = lazy(() => import('./pages/Production').then(m => ({ default: m.Production })))
+const Listings     = lazy(() => import('./pages/Listings').then(m => ({ default: m.Listings })))
+const Tasks        = lazy(() => import('./pages/Tasks').then(m => ({ default: m.Tasks })))
+const Calendar     = lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })))
+const Offers       = lazy(() => import('./pages/Offers').then(m => ({ default: m.Offers })))
+const Transactions = lazy(() => import('./pages/Transactions').then(m => ({ default: m.Transactions })))
+const OpenHouse    = lazy(() => import('./pages/OpenHouse').then(m => ({ default: m.OpenHouse })))
+const Gifts        = lazy(() => import('./pages/Gifts').then(m => ({ default: m.Gifts })))
+const Calls        = lazy(() => import('./pages/Calls').then(m => ({ default: m.Calls })))
+const Notes        = lazy(() => import('./pages/Notes').then(m => ({ default: m.Notes })))
+const Signs        = lazy(() => import('./pages/Signs').then(m => ({ default: m.Signs })))
+const Announcements = lazy(() => import('./pages/Announcements').then(m => ({ default: m.Announcements })))
+const ListingPrep  = lazy(() => import('./pages/ListingPrep').then(m => ({ default: m.ListingPrep })))
+const Automations  = lazy(() => import('./pages/Automations').then(m => ({ default: m.Automations })))
+const DailyBriefing = lazy(() => import('./pages/DailyBriefing').then(m => ({ default: m.DailyBriefing })))
+const Email        = lazy(() => import('./pages/Email').then(m => ({ default: m.Email })))
+const EmailDesigner = lazy(() => import('./pages/EmailDesigner').then(m => ({ default: m.EmailDesigner })))
+const Settings     = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })))
+const Admin        = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })))
+const ActivityLog  = lazy(() => import('./pages/ActivityLog').then(m => ({ default: m.ActivityLog })))
+const Mortgage     = lazy(() => import('./pages/Mortgage').then(m => ({ default: m.Mortgage })))
+const Route        = lazy(() => import('./pages/Route').then(m => ({ default: m.Route })))
+
+import { Layout }       from './components/Layout'
 import { MobileLayout } from './components/MobileLayout'
-import { MobileDashboard } from './pages/MobileDashboard'
-import { DailyBriefing } from './pages/DailyBriefing'
-import { EmailDesigner } from './pages/EmailDesigner'
-import { Layout } from './components/Layout'
-import { Toast } from './components/UI'
 
-import { Dashboard }     from './pages/Dashboard'
-import { Contacts }      from './pages/Contacts'
-import { Pipeline }      from './pages/Pipeline'
-import { Listings }      from './pages/Listings'
-import { Transactions }  from './pages/Transactions'
-import { Production }    from './pages/Production'
-import { Tasks }         from './pages/Tasks'
-import { Calls }         from './pages/Calls'
-import { Email }         from './pages/Email'
-import { Cards }         from './pages/Cards'
-import { MixAds }        from './pages/MixAds'
-import { LeadGen }       from './pages/LeadGen'
-import { OpenHouse }     from './pages/OpenHouse'
-import { Offers }        from './pages/Offers'
-import { Route }         from './pages/Route'
-import { Signs }         from './pages/Signs'
-import { Mortgage }      from './pages/Mortgage'
-import { Calendar }      from './pages/Calendar'
-import { News }          from './pages/News'
-import { Notes }         from './pages/Notes'
-import { ListingPrep }   from './pages/ListingPrep'
-import { Gifts }         from './pages/Gifts'
-import { Announcements } from './pages/Announcements'
-import { Automations }   from './pages/Automations'
-import { Admin }         from './pages/Admin'
-import { ActivityLog }   from './pages/ActivityLog'
-import { Settings }      from './pages/Settings'
-
-const PAGES = {
-  dash:dash=>Dashboard,contacts:Contacts,pipeline:Pipeline,
-  listings:Listings,transactions:Transactions,production:Production,
-  tasks:Tasks,calls:Calls,email:Email,cards:Cards,mixads:MixAds,
-  leadgen:LeadGen,openhouse:OpenHouse,offers:Offers,
-  route:Route,signs:Signs,mortgage:Mortgage,calendar:Calendar,
-  news:News,notes:Notes,listprep:ListingPrep,gifts:Gifts,
-  announce:Announcements,automations:Automations,
-  admin:Admin,actlog:ActivityLog,briefing:DailyBriefing,settings:Settings,
-}
-
-// fix the typo above
 const PAGE_MAP = {
-  dash:Dashboard,contacts:Contacts,pipeline:Pipeline,
-  listings:Listings,transactions:Transactions,production:Production,
-  tasks:Tasks,calls:Calls,email:Email,cards:Cards,mixads:MixAds,
-  leadgen:LeadGen,openhouse:OpenHouse,offers:Offers,
-  route:Route,signs:Signs,mortgage:Mortgage,calendar:Calendar,
-  news:News,notes:Notes,listprep:ListingPrep,gifts:Gifts,
-  announce:Announcements,automations:Automations,
-  admin:Admin,actlog:ActivityLog,briefing:DailyBriefing,settings:Settings,
+  dash: Dashboard, contacts: Contacts, production: Production,
+  listings: Listings, tasks: Tasks, calendar: Calendar,
+  offers: Offers, transactions: Transactions, openhouse: OpenHouse,
+  gifts: Gifts, calls: Calls, notes: Notes, signs: Signs,
+  announcements: Announcements, listingprep: ListingPrep,
+  automations: Automations, briefing: DailyBriefing,
+  email: Email, designer: EmailDesigner,
+  settings: Settings, admin: Admin, activitylog: ActivityLog,
+  mortgage: Mortgage, route: Route,
 }
 
+function AppShell() {
+  const { user, agent, loading } = useAuth()
+  const [page, setPage]          = React.useState('dash')
+  const isMobile = window.innerWidth < 768
 
-class ErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { error: null } }
-  static getDerivedStateFromError(e) { return { error: e } }
-  render() {
-    if(this.state.error) return (
-      <div style={{padding:'40px',maxWidth:'600px',margin:'60px auto',fontFamily:'Inter,system-ui,sans-serif'}}>
-        <div style={{background:'#1B2B4B',borderRadius:'16px',padding:'32px',textAlign:'center',marginBottom:'20px'}}>
-          <div style={{color:'#fff',fontSize:'20px',fontWeight:800,marginBottom:'8px'}}>TargetOS — Loading Error</div>
-          <div style={{color:'rgba(255,255,255,.5)',fontSize:'13px'}}>Something crashed. Try refreshing.</div>
-        </div>
-        <div style={{background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:'12px',padding:'16px'}}>
-          <div style={{fontSize:'12px',fontWeight:700,color:'#DC2626',marginBottom:'6px'}}>Error Details:</div>
-          <div style={{fontSize:'11px',color:'#DC2626',fontFamily:'monospace',wordBreak:'break-all'}}>{this.state.error?.message}</div>
-        </div>
-        <button onClick={()=>window.location.reload()} style={{marginTop:'16px',width:'100%',background:'#CC2200',border:'none',borderRadius:'10px',color:'#fff',fontSize:'14px',fontWeight:700,padding:'14px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>
-          Reload TargetOS
-        </button>
-      </div>
-    )
-    return this.props.children
-  }
-}
-
-export default function App() {
-  const { state, dispatch } = useApp()
-  const [isMobile, setIsMobile] = React.useState(() => window.innerWidth < 768)
-  React.useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
-  const [page, setPage] = useState('dash')
-  const [checking, setChecking] = useState(true)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if(data?.session) {
-        const email = data.session.user.email
-        const agent = AGENTS.find(a => a.email === email) || AGENTS[3]
-        dispatch({ type:'SET_USER',  payload: data.session.user })
-        dispatch({ type:'SET_AGENT', payload: agent })
-      }
-      setChecking(false)
-    })
-    supabase.auth.onAuthStateChange((event) => {
-      if(event === 'SIGNED_OUT') {
-        dispatch({ type:'SET_USER', payload:null })
-        dispatch({ type:'SET_AGENT', payload:null })
-        setPage('dash')
-      }
-    })
-  }, [])
-
-  if(checking) return (
-    <div style={{position:'fixed',inset:0,background:'#1B2B4B',display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{textAlign:'center'}}>
-        <svg width="36" height="42" viewBox="0 0 60 70" style={{marginBottom:'12px'}}>
-          <rect x="8" y="0" width="14" height="70" rx="3" fill="#fff"/>
-          <rect x="38" y="0" width="5" height="70" rx="2" fill="#CC2200"/>
-          <rect x="8" y="60" width="35" height="4" rx="2" fill="#CC2200"/>
-        </svg>
-        <div style={{color:'rgba(255,255,255,.5)',fontSize:'13px'}}>Loading TargetOS...</div>
+  if (loading) return (
+    <div style={{ minHeight:'100vh', background:'#0F1A2E', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Inter,system-ui,sans-serif' }}>
+      <div style={{ textAlign:'center' }}>
+        <div style={{ fontSize:'28px', fontWeight:900, color:'#fff', marginBottom:'12px' }}>Target<span style={{ color:'#F5A623' }}>OS</span></div>
+        <div style={{ color:'rgba(255,255,255,.4)', fontSize:'13px' }}>Loading...</div>
       </div>
     </div>
   )
 
-  if(!state.user) return <Login/>
+  if (!user || !agent) return <Login />
 
-  // ── MOBILE LAYOUT ──────────────────────────────────────────
-  if(isMobile) {
-    const MobilePage = page === 'dash' ? null : PAGE_MAP[page]
+  const PageComponent = PAGE_MAP[page] || Dashboard
+
+  if (isMobile) {
     return (
-      <MobileLayout page={page} setPage={setPage}>
-        {page === 'dash'
-          ? <MobileDashboard setPage={setPage}/>
-          : MobilePage
-          ? <div style={{padding:'14px'}}><MobilePage setPage={setPage}/></div>
-          : <MobileDashboard setPage={setPage}/>
-        }
+      <MobileLayout page={page} setPage={setPage} agent={agent}>
+        <Suspense fallback={<PageLoader />}>
+          <PageComponent setPage={setPage} />
+        </Suspense>
       </MobileLayout>
     )
   }
 
-  const PageComponent = PAGE_MAP[page]
-
   return (
-    <ErrorBoundary>
-      <Layout page={page} setPage={setPage}>
-        {PageComponent ? <PageComponent setPage={setPage}/> : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'55vh'}}><div style={{textAlign:'center',color:'var(--muted)'}}>Page not found</div></div>}
-      </Layout>
-      <Toast toast={state.toast}/>
-      <style>{`@keyframes slideUp{from{transform:translateX(-50%) translateY(20px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}`}</style>
-    </ErrorBoundary>
+    <Layout page={page} setPage={setPage} agent={agent}>
+      <Suspense fallback={<PageLoader />}>
+        <PageComponent setPage={setPage} />
+      </Suspense>
+    </Layout>
+  )
+}
+
+function PageLoader() {
+  return (
+    <div style={{ padding:'40px', textAlign:'center', color:'var(--muted)', fontSize:'13px' }}>
+      <div style={{ fontSize:'24px', marginBottom:'10px' }}>⏳</div>
+      Loading...
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppProvider>
+        <AppShell />
+      </AppProvider>
+    </AuthProvider>
   )
 }
