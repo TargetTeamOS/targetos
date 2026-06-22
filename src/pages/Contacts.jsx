@@ -154,7 +154,7 @@ export function Contacts() {
       {!loading && filtered.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
           {filtered.map(c => (
-            <div key={c.id} onClick={() => openContact(c)}
+            <div key={c.id} onClick={() => navigate('/contacts/' + c.id + '/detail')}
               style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: selected?.id === c.id ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s' }}
               onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
               onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
@@ -163,9 +163,10 @@ export function Contacts() {
                   {initials(c.first_name + ' ' + (c.last_name || ''))}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <a href={'/contacts/' + c.id + '/detail'} onClick={e => { e.preventDefault(); navigate('/contacts/' + c.id + '/detail') }}
+                    style={{ fontWeight: 700, fontSize: '14px', color: 'var(--brand)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', textDecoration: 'none' }}>
                     {c.first_name} {c.last_name}
-                  </div>
+                  </a>
                   {c.phone && <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>{fmtPhone(c.phone)}</div>}
                   {c.email && <div style={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>}
                 </div>

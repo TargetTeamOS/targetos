@@ -14,6 +14,7 @@ import { VoiceCapture }           from './components/VoiceCapture'
 // Page imports
 import { Dashboard }     from './pages/Dashboard'
 import { Contacts }      from './pages/Contacts'
+import { ContactDetail } from './pages/ContactDetail'
 import { Production }    from './pages/Production'
 import { Listings }      from './pages/Listings'
 import { Tasks }         from './pages/Tasks'
@@ -99,6 +100,7 @@ function AppShell() {
           <Route path="/"                    element={<Dashboard />} />
           <Route path="/contacts"            element={<Contacts />} />
           <Route path="/contacts/:id"        element={<Contacts />} />
+          <Route path="/contacts/:id/detail" element={<ContactDetail />} />
           <Route path="/production"          element={<Production />} />
           <Route path="/production/:id"      element={<Production />} />
           <Route path="/listings"            element={<Listings />} />

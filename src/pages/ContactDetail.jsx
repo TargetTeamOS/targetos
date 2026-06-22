@@ -1,483 +1,602 @@
-import React, { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
-import { useApp } from '../context/AppContext'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Contact Detail Page
+// Full 3-panel contact profile view.
+//
+// LEFT PANEL:   All contact details — phone, email, address,
+//               status, source, assigned agent, tags, notes
+// CENTER PANEL: Conversation timeline — calls, emails sent,
+//               SMS, notes, voice captures, all timestamped
+// RIGHT PANEL:  Quick actions, related deals, tasks,
+//               files, activity log
+// ═══════════════════════════════════════════════════════════════
+
+import React, { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { AGENTS, SOURCES, PROPERTY_TYPES, CONTACT_TYPES } from '../lib/constants'
-import { Badge, Btn, Input, Select, Grid2, Grid3 } from '../components/UI'
-import { useConfirm } from '../components/ConfirmDialog'
-import { nowISO, formatActivity, formatTime } from '../lib/time'
-import { logChange, logFieldChanges } from '../lib/activityLog'
-import { VoiceCapture } from '../components/VoiceCapture'
-import { sendContactEmail } from '../lib/email'
-import { RecordActivityFeed } from '../components/RecordActivityFeed'
+import { useApp } from '../context/AppContext'
+import { supabase } from '../lib/supabase'
+import { db } from '../lib/db'
+import { fmtDate, fmtDateTime, fmtPhone, fmt$, initials, phoneHref } from '../lib/utils'
+import { CONTACT_STATUSES, CONTACT_SOURCES, TASK_PRIORITIES } from '../lib/constants'
+import { FileAttachments } from '../components/FileAttachments'
+import {
+  Field, Input, Select, Textarea, Btn, Avatar, Pill,
+  Loading, Confirm, ModalActions, SectionTitle, Divider,
+  Modal, Tabs
+} from '../components/UI'
 
-const fmt$ = n => '$' + Number(n).toLocaleString()
-const roleColor = r => ({buyer:'#0EA5E9',seller:'#10B981',investor:'#7C3AED',tenant:'#F59E0B'}[r]||'#64748B')
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-export function ContactDetail({ contactId, onBack }) {
-  const { state, toast, log } = useApp()
-  const { confirm, ConfirmDialog } = useConfirm()
-  const [contact, setContact] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('NOTE')
-  const [noteText, setNoteText] = useState('')
-  const [activities, setActivities] = useState([
-    { type:'note', icon:'📝', color:'#0EA5E9', title:'Contact created in TargetOS', time:'Today', detail:'' },
-  ])
-  const [editField, setEditField] = useState(null)
-  const [editVal, setEditVal] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [editingAll, setEditingAll] = useState(false)
-  const [localActivity, setLocalActivity] = useState([])
-  const [showVoiceNote, setShowVoiceNote] = useState(false)
-  const [form, setForm] = useState({})
+const STATUS_COLORS = {
+  New: '#0EA5E9', Hot: '#DC2626', Warm: '#F97316', Cold: '#94A3B8',
+  Active: '#10B981', Nurturing: '#8B5CF6', 'Under Contract': '#F5A623',
+  Closed: '#225091', Unresponsive: '#6B7280',
+}
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      const { data } = await supabase.from('contacts').select('*').eq('id', contactId).single()
-      if(data) { setContact(data); setForm(data) }
-      setLoading(false)
-    }
-    load()
-  }, [contactId])
+const TIMELINE_ICONS = {
+  call:    { icon: '📞', color: '#10B981', label: 'Call' },
+  note:    { icon: '📝', color: '#8B5CF6', label: 'Note' },
+  email:   { icon: '📧', color: '#3B82F6', label: 'Email' },
+  sms:     { icon: '💬', color: '#F97316', label: 'SMS' },
+  voice:   { icon: '🎙', color: '#CC2200', label: 'Voice Capture' },
+  status:  { icon: '🔄', color: '#F5A623', label: 'Status Changed' },
+  created: { icon: '✨', color: '#10B981', label: 'Contact Created' },
+  task:    { icon: '✅', color: '#6366F1', label: 'Task' },
+  file:    { icon: '📎', color: '#14B8A6', label: 'File Attached' },
+  meeting: { icon: '🤝', color: '#EC4899', label: 'Meeting' },
+}
 
-  async function saveField(key, val) {
-    const oldVal = contact[key]
-    const { data, error } = await supabase.from('contacts').update({[key]: val}).eq('id', contactId).select()
-    if(error) { toast('Error: '+error.message, '#DC2626'); return }
-    setContact(prev => ({...prev, [key]: val}))
-    setEditField(null)
-    toast('Saved!')
-    // Log the change with before/after
-    const agentName = agent?.name || 'Admin'
-    await logChange({
-      recordType: 'contact',
-      recordId: contactId,
-      recordName: contact.first_name+' '+(contact.last_name||''),
-      action: 'Updated',
-      field: key,
-      oldValue: oldVal,
-      newValue: val,
-      agentName,
-      userId: agent?.id,
-    })
-  }
-
-  async function saveAll() {
-    setSaving(true)
-    const updates = { ...form, budget_max: form.budget_max ? parseFloat(form.budget_max) : null, budget_min: form.budget_min ? parseFloat(form.budget_min) : null }
-    const { data, error } = await supabase.from('contacts').update(updates).eq('id', contactId).select()
-    setSaving(false)
-    if(error) { toast('Error: '+error.message, '#DC2626'); return }
-    const agentName = agent?.name || 'Admin'
-    await logFieldChanges({
-      recordType: 'contact',
-      recordId: contactId,
-      recordName: contact.first_name+' '+(contact.last_name||''),
-      before: contact,
-      after: updates,
-      agentName,
-      userId: agent?.id,
-    })
-    setContact(data[0]); setForm(data[0]); setEditingAll(false)
-    toast('Contact saved!')
-  }
-
-  function addActivity(type, icon, color, title, detail='') {
-    const entry = { type, icon, color, title, detail, time: formatActivity(nowISO()), action: title.split(':')[0]||'Note Added', agent_name: agent?.name||'Admin', created_at: nowISO() }
-    setActivities(prev => [entry, ...prev])
-    setLocalActivity(prev => [entry, ...prev])
-    // Log to DB
-    const agentName = agent?.name || 'Admin'
-    logChange({ recordType:'contact', recordId:contactId, recordName:contact?.first_name+' '+(contact?.last_name||''), action:title.split(':')[0]||'Note Added', field:null, agentName, userId:agent?.id, extra:title })
-  }
-
-  function saveNote() {
-    if(!noteText.trim()) return
-    addActivity('note','📝','#0EA5E9', noteText.trim())
-    setNoteText('')
-    toast('Note saved!')
-  }
-
-  if(loading) return (
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'60vh'}}>
-      <div style={{color:'var(--muted)',fontSize:'13px'}}>Loading...</div>
-    </div>
-  )
-  if(!contact) return (
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'60vh'}}>
-      <Btn onClick={onBack}>← Back to Contacts</Btn>
-    </div>
-  )
-
-  const ag = AGENTS.find(a => a.name === contact.assigned_agent)
-  const initials = ((contact.first_name||'?')[0] + (contact.last_name||'?')[0]).toUpperCase()
-
+// ── TIMELINE ITEM ─────────────────────────────────────────────────
+function TimelineItem({ item }) {
+  const t = TIMELINE_ICONS[item.type] || { icon: '•', color: '#94A3B8', label: item.type }
   return (
-    <div style={{height:'calc(100vh - 110px)', display:'flex', flexDirection:'column'}}>
-      <ConfirmDialog/>
-
-      {/* Top bar */}
-      <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'14px',flexShrink:0}}>
-        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--muted)',fontSize:'13px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',fontWeight:600,display:'flex',alignItems:'center',gap:'5px',padding:'6px 0'}}
-          onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
-          ← Contact Details
-        </button>
+    <div style={{ display: 'flex', gap: '12px', paddingBottom: '16px', position: 'relative' }}>
+      {/* Line */}
+      <div style={{ position: 'absolute', left: '15px', top: '28px', bottom: 0, width: '2px', background: 'var(--border)' }} />
+      {/* Icon */}
+      <div style={{ width: 30, height: 30, borderRadius: '50%', background: t.color + '18', border: `2px solid ${t.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', flexShrink: 0, zIndex: 1, background: 'var(--panel)' }}>
+        {t.icon}
       </div>
-
-      {/* Three-column layout */}
-      <div style={{display:'grid',gridTemplateColumns:'260px 1fr 280px',gap:'14px',flex:1,overflow:'hidden'}}>
-
-        {/* ── LEFT SIDEBAR ─────────────────────────────────────── */}
-        <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:'12px'}}>
-
-          {/* Profile card */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'20px',textAlign:'center',position:'relative'}}>
-            {/* Edit button */}
-            <button onClick={()=>setEditingAll(e=>!e)} style={{position:'absolute',top:12,right:12,background:'none',border:'1px solid var(--border)',borderRadius:'7px',color:'var(--muted)',fontSize:'11px',padding:'4px 9px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>
-              {editingAll ? '✕' : '✏️ Edit'}
-            </button>
-
-            {/* Photo */}
-            <div style={{position:'relative',display:'inline-block',marginBottom:'12px'}}>
-              <div style={{width:80,height:80,borderRadius:'50%',background:roleColor(contact.role),display:'flex',alignItems:'center',justifyContent:'center',fontSize:'26px',fontWeight:900,color:'#fff',margin:'0 auto',boxShadow:'0 4px 16px rgba(0,0,0,.12)'}}>
-                {contact.photo ? <img src={contact.photo} alt="" style={{width:80,height:80,borderRadius:'50%',objectFit:'cover'}}/> : initials}
-              </div>
-              <label style={{position:'absolute',bottom:0,right:0,width:24,height:24,borderRadius:'50%',background:'var(--red)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:'13px',boxShadow:'0 2px 6px rgba(0,0,0,.2)'}}>
-                📷
-                <input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{
-                  const file=e.target.files[0]; if(!file)return
-                  const r=new FileReader(); r.onload=ev=>{setContact(prev=>({...prev,photo:ev.target.result}));toast('Photo updated!')}; r.readAsDataURL(file)
-                }}/>
-              </label>
-            </div>
-
-            <div style={{fontSize:'17px',fontWeight:800,marginBottom:'3px'}}>{contact.first_name} {contact.last_name||''}</div>
-            <div style={{fontSize:'11px',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'8px'}}>SOURCE: {contact.source||'—'}</div>
-            <Badge label={contact.status||'New'}/>
-            {contact.tag && <div style={{marginTop:'5px'}}><span style={{fontSize:'10px',background:'rgba(245,166,35,.15)',color:'#D97706',padding:'2px 9px',borderRadius:'20px',fontWeight:600}}>{contact.tag}</span></div>}
-          </div>
-
-          {/* Quick stats */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'14px'}}>
-            <div style={{display:'flex',flexDirection:'column',gap:'0'}}>
-              {[
-                ['Last Interaction','Today'],
-                ['Stage', contact.status||'New'],
-                ['Type', contact.role||'—'],
-                ['Agent', ag ? ag.name.split(' ')[0] : 'Unassigned'],
-                ['Budget', contact.budget_max ? fmt$(contact.budget_max) : '—'],
-              ].map(([k,v])=>(
-                <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
-                  <span style={{fontSize:'11px',color:'var(--muted)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px'}}>{k}</span>
-                  <span style={{fontSize:'12px',fontWeight:600,textAlign:'right',maxWidth:'130px',wordBreak:'break-word'}}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Contact Info */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'14px'}}>
-            <div style={{fontSize:'12px',fontWeight:700,marginBottom:'10px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              Contact Info
-            </div>
-            {[
-              ['📧','email','Email',contact.email,'email'],
-              ['📧','email2','Email 2',contact.email2,'email'],
-              ['📞','phone','Phone',contact.phone,'tel'],
-              ['📞','phone2','Phone 2',contact.phone2,'tel'],
-              ['🏙','city','City',contact.city,'text'],
-            ].map(([icon,key,label,val,type])=>(
-              <div key={key} style={{marginBottom:'8px'}}>
-                <div style={{fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'3px'}}>{icon} {label}</div>
-                {editField===key ? (
-                  <div style={{display:'flex',gap:'5px'}}>
-                    <input value={editVal} onChange={e=>setEditVal(e.target.value)} type={type}
-                      style={{flex:1,background:'var(--inp)',border:'1.5px solid #CC2200',borderRadius:'7px',color:'var(--text)',fontSize:'12px',padding:'6px 9px',outline:'none',fontFamily:'Inter,system-ui,sans-serif'}}
-                      onKeyDown={e=>{if(e.key==='Enter')saveField(key,editVal); if(e.key==='Escape')setEditField(null)}}
-                      autoFocus/>
-                    <button onClick={()=>saveField(key,editVal)} style={{background:'#CC2200',border:'none',borderRadius:'6px',color:'#fff',fontSize:'11px',padding:'5px 8px',cursor:'pointer'}}>✓</button>
-                    <button onClick={()=>setEditField(null)} style={{background:'var(--dim)',border:'none',borderRadius:'6px',color:'var(--muted)',fontSize:'11px',padding:'5px 8px',cursor:'pointer'}}>✕</button>
-                  </div>
-                ) : (
-                  <div onClick={()=>{setEditField(key);setEditVal(val||'')}} style={{fontSize:'13px',fontWeight:600,cursor:'pointer',padding:'5px 8px',borderRadius:'7px',display:'flex',justifyContent:'space-between',alignItems:'center',background:'transparent'}}
-                    onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <span>{val||<span style={{color:'var(--muted)',fontWeight:400,fontSize:'12px'}}>Click to add...</span>}</span>
-                    <span style={{color:'var(--muted)',fontSize:'10px',opacity:.6}}>✏</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Property Criteria */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'14px'}}>
-            <div style={{fontSize:'12px',fontWeight:700,marginBottom:'10px'}}>Property Criteria</div>
-            {[
-              ['preferred_areas','Areas',contact.preferred_areas,'text'],
-              ['property_type_interest','Type',contact.property_type_interest,'text'],
-              ['budget_max','Max Budget ($)',contact.budget_max,'number'],
-              ['budget_min','Min Budget ($)',contact.budget_min,'number'],
-              ['min_beds','Min Beds',contact.min_beds,'number'],
-            ].map(([key,label,val])=>(
-              <div key={key} style={{marginBottom:'8px'}}>
-                <div style={{fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'3px'}}>{label}</div>
-                {editField===key ? (
-                  <div style={{display:'flex',gap:'5px'}}>
-                    <input value={editVal} onChange={e=>setEditVal(e.target.value)}
-                      style={{flex:1,background:'var(--inp)',border:'1.5px solid #CC2200',borderRadius:'7px',color:'var(--text)',fontSize:'12px',padding:'6px 9px',outline:'none',fontFamily:'Inter,system-ui,sans-serif'}}
-                      onKeyDown={e=>{if(e.key==='Enter')saveField(key,editVal); if(e.key==='Escape')setEditField(null)}} autoFocus/>
-                    <button onClick={()=>saveField(key,editVal)} style={{background:'#CC2200',border:'none',borderRadius:'6px',color:'#fff',fontSize:'11px',padding:'5px 8px',cursor:'pointer'}}>✓</button>
-                    <button onClick={()=>setEditField(null)} style={{background:'var(--dim)',border:'none',borderRadius:'6px',color:'var(--muted)',fontSize:'11px',padding:'5px 8px',cursor:'pointer'}}>✕</button>
-                  </div>
-                ) : (
-                  <div onClick={()=>{setEditField(key);setEditVal(val||'')}} style={{fontSize:'13px',fontWeight:600,cursor:'pointer',padding:'5px 8px',borderRadius:'7px',display:'flex',justifyContent:'space-between',alignItems:'center'}}
-                    onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <span>{val||<span style={{color:'var(--muted)',fontWeight:400,fontSize:'12px'}}>Click to add...</span>}</span>
-                    <span style={{color:'var(--muted)',fontSize:'10px',opacity:.6}}>✏</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── CENTER — ACTIVITY FEED ────────────────────────────── */}
-        <div style={{display:'flex',flexDirection:'column',overflow:'hidden'}}>
-
-          {/* Action tabs */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'16px',marginBottom:'12px',flexShrink:0}}>
-            {/* Tab bar */}
-            <div style={{display:'flex',gap:'0',borderBottom:'1px solid var(--border)',marginBottom:'14px'}}>
-              {['NOTE','EMAIL','CALL','TEXT','APPOINTMENT','OTHER'].map(t=>(
-                <button key={t} onClick={()=>setActiveTab(t)}
-                  style={{padding:'8px 14px',background:'transparent',border:'none',fontFamily:'Inter,system-ui,sans-serif',fontSize:'12px',fontWeight:700,cursor:'pointer',color:activeTab===t?'#CC2200':'var(--muted)',borderBottom:activeTab===t?'2px solid #CC2200':'2px solid transparent',letterSpacing:'.3px'}}>
-                  {t}
-                </button>
-              ))}
-            </div>
-
-            {/* Note input */}
-            {activeTab==='NOTE' && (
+      {/* Content */}
+      <div style={{ flex: 1, background: 'var(--dim)', borderRadius: '10px', padding: '10px 14px', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: t.color, textTransform: 'uppercase', letterSpacing: '.04em' }}>{t.label}</span>
+            {item.agent && (
               <>
-                <textarea value={noteText} onChange={e=>setNoteText(e.target.value)}
-                  placeholder="Write a note or use @ to notify someone on your team"
-                  style={{width:'100%',minHeight:'90px',background:'transparent',border:'none',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',resize:'none',outline:'none',lineHeight:1.6,boxSizing:'border-box'}}/>
-                <div style={{display:'flex',justifyContent:'flex-end',marginTop:'8px'}}>
-                  <Btn onClick={saveNote} disabled={!noteText.trim()}>SAVE</Btn>
-              <Btn size="sm" variant="ghost" onClick={()=>setShowVoiceNote(v=>!v)}>🎤</Btn>
+                <span style={{ color: 'var(--border)', fontSize: '10px' }}>·</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Avatar agent={item.agent} size={16} />
+                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{item.agent.name}</span>
                 </div>
               </>
             )}
-            {/* Voice note capture */}
-            {showVoiceNote && activeTab==='NOTE' && (
-              <div style={{background:'var(--dim)',borderRadius:'12px',padding:'16px',marginBottom:'12px'}}>
-                <VoiceCapture
-                  contactId={contactId}
-                  contactName={contact?.first_name+' '+(contact?.last_name||'')}
-                  onClose={()=>setShowVoiceNote(false)}
-                  onSaved={()=>{setShowVoiceNote(false);addActivity('note','📝','#0EA5E9','Voice note saved')}}
-                />
-              </div>
-            )}
-
-            {activeTab==='CALL' && (
-              <div>
-                <input placeholder="Call outcome / notes..." style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none',marginBottom:'10px',boxSizing:'border-box'}}
-                  onKeyDown={e=>{ if(e.key==='Enter'&&e.target.value.trim()){ addActivity('call','📞','#10B981','Call logged: '+e.target.value.trim()); e.target.value=''; toast('Call logged!') }}}/>
-                <div style={{display:'flex',gap:'8px'}}>
-                  {contact.phone && <a href={'tel:'+contact.phone.replace(/\D/g,'')} style={{textDecoration:'none'}}><Btn size="sm">📞 Call {contact.phone}</Btn></a>}
-                  <Btn size="sm" variant="ghost" onClick={()=>{ addActivity('call','📞','#10B981','Call logged'); toast('Call logged!') }}>Log Call</Btn>
-                </div>
-              </div>
-            )}
-            {activeTab==='TEXT' && (
-              <div>
-                <textarea placeholder="Write a text message..." style={{width:'100%',minHeight:'70px',background:'transparent',border:'none',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',resize:'none',outline:'none',boxSizing:'border-box',marginBottom:'8px'}} id="textMsg"/>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  {contact.phone && <a href={'sms:'+contact.phone.replace(/\D/g,'')} style={{textDecoration:'none'}}><Btn size="sm">💬 Send Text</Btn></a>}
-                  <Btn size="sm" onClick={()=>{ const msg=document.getElementById('textMsg').value.trim(); if(msg){ addActivity('text','💬','#7C3AED','Text sent: '+msg); document.getElementById('textMsg').value=''; toast('Text logged!') }}}>Log Text</Btn>
-                </div>
-              </div>
-            )}
-            {activeTab==='EMAIL' && (
-              <div>
-                <input data-email-subject placeholder="Subject..." style={{width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none',marginBottom:'8px',boxSizing:'border-box'}}/>
-                <textarea data-email-body placeholder="Email body..." style={{width:'100%',minHeight:'70px',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none',resize:'none',boxSizing:'border-box',marginBottom:'8px'}}/>
-                <div style={{display:'flex',gap:'8px',justifyContent:'flex-end'}}>
-                  {contact.email && <a href={'mailto:'+contact.email} style={{textDecoration:'none'}}><Btn size="sm">✉ Open Email</Btn></a>}
-                  <Btn size="sm" onClick={async()=>{
-              const subj = document.querySelector('[data-email-subject]')?.value || 'Message from Target Team'
-              const body = document.querySelector('[data-email-body]')?.value || ''
-              if(!contact.email) { toast('No email on file for this contact','#DC2626'); return }
-              if(!body.trim()) { toast('Please write a message first','#DC2626'); return }
-              const result = await sendContactEmail({ contactEmail:contact.email, contactName:contact.first_name+' '+(contact.last_name||''), subject:subj, body, agentName:agent?.name||'Agent' })
-              if(result.success) { addActivity('email','✉','#E8650A','Email sent: '+subj); toast('✅ Email sent to '+contact.email+'!') }
-              else toast('Send failed: '+result.error,'#DC2626')
-            }}>✉ Send Email</Btn>
-                </div>
-              </div>
-            )}
-            {activeTab==='APPOINTMENT' && (
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
-                <input type="text" placeholder="Appointment title..." style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none'}} id="apptTitle"/>
-                <input type="date" style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none'}} id="apptDate"/>
-                <input type="time" defaultValue="10:00" style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none'}} id="apptTime"/>
-                <input type="text" placeholder="Location..." style={{background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 13px',outline:'none'}} id="apptLoc"/>
-                <Btn onClick={()=>{
-                  const t=document.getElementById('apptTitle').value.trim()
-                  const d=document.getElementById('apptDate').value
-                  const ti=document.getElementById('apptTime').value
-                  if(!t)return
-                  addActivity('appt','📅','#F59E0B','Appointment: '+t+(d?' on '+d:'')+(ti?' at '+ti:''))
-                  toast('Appointment scheduled!')
-                  document.getElementById('apptTitle').value=''
-                }}>Schedule</Btn>
-              </div>
-            )}
-            {activeTab==='OTHER' && (
-              <div>
-                <textarea placeholder="Log any other activity..." style={{width:'100%',minHeight:'70px',background:'transparent',border:'none',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',resize:'none',outline:'none',boxSizing:'border-box'}} id="otherTxt"/>
-                <div style={{display:'flex',justifyContent:'flex-end'}}>
-                  <Btn size="sm" onClick={()=>{ const v=document.getElementById('otherTxt').value.trim(); if(v){ addActivity('other','⚡','#94A3B8',v); document.getElementById('otherTxt').value=''; toast('Activity logged!') }}}>Log Activity</Btn>
-                </div>
-              </div>
-            )}
           </div>
-
-          {/* Activity feed */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
-            {/* Filter bar */}
-            <div style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',display:'flex',gap:'6px',flexShrink:0,overflowX:'auto'}}>
-              {['ALL','📝','✉','📞','💬','📅'].map((f,i)=>(
-                <button key={f} style={{padding:'5px 12px',borderRadius:'20px',border:'1.5px solid var(--border)',background:i===0?'#CC2200':'var(--dim)',color:i===0?'#fff':'var(--text)',fontSize:'11px',fontWeight:600,cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',flexShrink:0}}>
-                  {f === 'ALL' ? 'ALL' : f}
-                  {i>0 && <span style={{marginLeft:'4px',fontSize:'10px',color:i===0?'rgba(255,255,255,.7)':'var(--muted)'}}>{activities.filter(a=>a.icon===f).length}</span>}
-                </button>
-              ))}
-            </div>
-
-            {/* Activity Feed — full audit trail */}
-            <div style={{overflowY:'auto',flex:1,padding:'14px'}}>
-              <RecordActivityFeed
-                recordType="contact"
-                recordId={contactId}
-                localEntries={localActivity}
-              />
-            </div>
-          </div>
+          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{fmtDateTime(item.created_at)}</span>
         </div>
-
-        {/* ── RIGHT SIDEBAR ─────────────────────────────────────── */}
-        <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:'12px'}}>
-
-          {/* Assigned To */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'14px'}}>
-            <div style={{fontSize:'12px',fontWeight:700,marginBottom:'10px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              Assigned To
-              <button onClick={()=>setEditField('assigned_agent')} style={{background:'#CC2200',border:'none',borderRadius:'6px',color:'#fff',fontSize:'10px',fontWeight:700,padding:'4px 9px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>MANAGE</button>
-            </div>
-            {editField==='assigned_agent' ? (
-              <div>
-                <select value={editVal||contact.assigned_agent||''} onChange={e=>setEditVal(e.target.value)}
-                  style={{width:'100%',background:'var(--inp)',border:'1.5px solid #CC2200',borderRadius:'8px',color:'var(--text)',fontSize:'12px',fontFamily:'Inter,system-ui,sans-serif',padding:'8px',outline:'none',marginBottom:'8px'}}>
-                  <option value="">Unassigned</option>
-                  {AGENTS.map(a=><option key={a.id} value={a.name}>{a.name}</option>)}
-                </select>
-                <div style={{display:'flex',gap:'6px'}}>
-                  <Btn size="sm" onClick={()=>saveField('assigned_agent',editVal||contact.assigned_agent)}>Save</Btn>
-                  <Btn size="sm" variant="ghost" onClick={()=>setEditField(null)}>Cancel</Btn>
-                </div>
-              </div>
-            ) : (
-              <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px',borderRadius:'9px',background:'var(--dim)'}}>
-                {ag
-                  ? <div style={{width:36,height:36,borderRadius:'9px',background:ag.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',fontWeight:800,color:'#fff',flexShrink:0}}>{ag.ini}</div>
-                  : <div style={{width:36,height:36,borderRadius:'9px',background:'var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',color:'var(--muted)',flexShrink:0}}>?</div>
-                }
-                <div>
-                  <div style={{fontSize:'13px',fontWeight:700}}>{ag ? ag.name : 'Unassigned'}</div>
-                  <div style={{fontSize:'10px',color:'var(--muted)'}}>{ag ? ag.role.charAt(0).toUpperCase()+ag.role.slice(1)+' · Ext '+ag.ext : 'No agent assigned'}</div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Actions */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'14px'}}>
-            <div style={{fontSize:'12px',fontWeight:700,marginBottom:'10px'}}>Quick Actions</div>
-            <div style={{display:'flex',flexDirection:'column',gap:'7px'}}>
-              {contact.phone && (
-                <a href={'tel:'+contact.phone.replace(/\D/g,'')} style={{textDecoration:'none'}}>
-                  <button style={{width:'100%',background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'9px',color:'var(--text)',fontSize:'12px',fontWeight:600,padding:'10px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',textAlign:'left',display:'flex',alignItems:'center',gap:'8px'}}>📞 Call {contact.phone}</button>
-                </a>
-              )}
-              {contact.phone && (
-                <a href={'sms:'+contact.phone.replace(/\D/g,'')} style={{textDecoration:'none'}}>
-                  <button style={{width:'100%',background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'9px',color:'var(--text)',fontSize:'12px',fontWeight:600,padding:'10px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',textAlign:'left',display:'flex',alignItems:'center',gap:'8px'}}>💬 Text {contact.phone}</button>
-                </a>
-              )}
-              {contact.email && (
-                <a href={'mailto:'+contact.email} style={{textDecoration:'none'}}>
-                  <button style={{width:'100%',background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'9px',color:'var(--text)',fontSize:'12px',fontWeight:600,padding:'10px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',textAlign:'left',display:'flex',alignItems:'center',gap:'8px'}}>✉ Email {contact.email}</button>
-                </a>
-              )}
-              <button onClick={()=>{ window.open('https://calendar.google.com/calendar/r/eventedit?text='+encodeURIComponent('Meeting - '+contact.first_name+' '+(contact.last_name||'')),'_blank') }}
-                style={{width:'100%',background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'9px',color:'var(--text)',fontSize:'12px',fontWeight:600,padding:'10px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',textAlign:'left',display:'flex',alignItems:'center',gap:'8px'}}>📅 Schedule Appointment</button>
-              <button onClick={()=>setActiveTab('NOTE')}
-                style={{width:'100%',background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'9px',color:'var(--text)',fontSize:'12px',fontWeight:600,padding:'10px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',textAlign:'left',display:'flex',alignItems:'center',gap:'8px'}}>📝 Add Note</button>
-            </div>
-          </div>
-
-          {/* Agreements */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'14px'}}>
-            <div style={{fontSize:'12px',fontWeight:700,marginBottom:'10px'}}>Agreements</div>
-            {[['+ BUYER','#CC2200'],['+ SELLER','#1B2B4B'],['+ REFERRAL','#7C3AED']].map(([l,c])=>(
-              <button key={l} onClick={()=>addActivity('doc','📄','#64748B',l.slice(2)+' agreement added')}
-                style={{width:'100%',background:'transparent',border:'1px solid var(--border)',borderRadius:'9px',color:c,fontSize:'12px',fontWeight:700,padding:'10px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',textAlign:'center',marginBottom:'7px',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}>
-                {l}
-              </button>
-            ))}
-          </div>
-
-          {/* Listing Alert */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'14px'}}>
-            <div style={{fontSize:'12px',fontWeight:700,marginBottom:'10px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              Listing Alert
-              <button onClick={()=>{ const minp=contact.budget_min||0; const maxp=contact.budget_max||0; addActivity('alert','🔔','#F59E0B','Listing alert set: '+fmt$(minp)+' – '+fmt$(maxp)); toast('Alert set!') }}
-                style={{background:'#CC2200',border:'none',borderRadius:'6px',color:'#fff',fontSize:'10px',fontWeight:700,padding:'4px 9px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>+ SET</button>
-            </div>
-            <div style={{fontSize:'12px',color:'var(--muted)',lineHeight:1.6}}>
-              Budget: {contact.budget_max ? fmt$(contact.budget_min||0)+' – '+fmt$(contact.budget_max) : 'Not set'}<br/>
-              Area: {contact.preferred_areas || 'Not set'}<br/>
-              Type: {contact.property_type_interest || 'Any'}
-            </div>
-          </div>
-
-          {/* Tasks */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'14px'}}>
-            <div style={{fontSize:'12px',fontWeight:700,marginBottom:'10px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              Tasks
-              <button onClick={()=>{ const t=prompt('New task:'); if(t){ addActivity('task','✓','#10B981','Task added: '+t) }}}
-                style={{background:'#CC2200',border:'none',borderRadius:'6px',color:'#fff',fontSize:'10px',fontWeight:700,padding:'4px 9px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>+ ADD</button>
-            </div>
-            <div style={{fontSize:'12px',color:'var(--muted)'}}>
-              {activities.filter(a=>a.type==='task').length===0 ? 'No tasks yet' : activities.filter(a=>a.type==='task').map((t,i)=>(
-                <div key={i} style={{padding:'5px 0',borderBottom:'1px solid var(--border)',fontSize:'12px',color:'var(--text)'}}>{t.title.replace('Task added: ','')}</div>
-              ))}
-            </div>
-          </div>
-
-          {/* Notes summary */}
-          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',padding:'14px'}}>
-            <div style={{fontSize:'12px',fontWeight:700,marginBottom:'8px'}}>All Notes</div>
-            <div style={{fontSize:'11px',color:'var(--muted)',fontStyle:'italic',lineHeight:1.6}}>
-              {contact.notes || 'No notes on file.'}
-            </div>
-          </div>
-        </div>
+        {item.title && <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>{item.title}</div>}
+        {item.body && <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{item.body}</div>}
+        {item.meta && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>{item.meta}</div>}
+        {item.link && (
+          <a href={item.link} style={{ fontSize: '12px', color: 'var(--brand)', textDecoration: 'none', marginTop: '4px', display: 'block' }}>
+            View details →
+          </a>
+        )}
       </div>
     </div>
   )
+}
+
+// ── ADD TO TIMELINE FORM ──────────────────────────────────────────
+function AddTimelineItem({ contactId, agentId, onAdded }) {
+  const [type,    setType]    = useState('note')
+  const [body,    setBody]    = useState('')
+  const [title,   setTitle]   = useState('')
+  const [saving,  setSaving]  = useState(false)
+  const { toast } = useApp()
+
+  const TYPES = [
+    { value: 'note',    label: '📝 Note' },
+    { value: 'call',    label: '📞 Call' },
+    { value: 'email',   label: '📧 Email' },
+    { value: 'sms',     label: '💬 SMS' },
+    { value: 'meeting', label: '🤝 Meeting' },
+  ]
+
+  async function save() {
+    if (!body.trim() && !title.trim()) { toast('Write something first', '#DC2626'); return }
+    setSaving(true)
+    try {
+      // Save as call log if type is call
+      if (type === 'call') {
+        await db.calls.create({
+          agent_id:     agentId,
+          contact_id:   contactId,
+          contact_name: title,
+          notes:        body,
+          direction:    'Outbound',
+          outcome:      '',
+          called_at:    new Date().toISOString(),
+        })
+      } else {
+        // Save as audit log note with contact linked
+        await supabase.from('audit_log').insert({
+          agent_id:   agentId,
+          table_name: 'contacts',
+          record_id:  contactId,
+          action:     'note',
+          field_name: type,
+          new_value:  body,
+          metadata:   { description: title || body.slice(0, 80), type },
+          created_at: new Date().toISOString(),
+        })
+      }
+      setBody('')
+      setTitle('')
+      toast('✅ Saved to timeline')
+      onAdded?.()
+    } catch(e) {
+      toast('Failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+        {TYPES.map(t => (
+          <button key={t.value} onClick={() => setType(t.value)}
+            style={{ padding: '5px 10px', borderRadius: '6px', border: `1px solid ${type === t.value ? 'var(--brand)' : 'var(--border)'}`, background: type === t.value ? 'rgba(204,34,0,.08)' : 'transparent', color: type === t.value ? 'var(--brand)' : 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {type !== 'note' && (
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder={type === 'call' ? 'Contact name / outcome' : 'Subject / title'}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, marginBottom: '8px', boxSizing: 'border-box' }} />
+      )}
+      <textarea value={body} onChange={e => setBody(e.target.value)} placeholder={type === 'call' ? 'Call notes...' : type === 'email' ? 'Email summary...' : type === 'sms' ? 'Message content...' : 'Write a note...'}
+        rows={3}
+        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, resize: 'vertical', boxSizing: 'border-box', marginBottom: '8px' }} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Btn onClick={save} loading={saving} size="sm">Save to Timeline</Btn>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════
+// MAIN CONTACT DETAIL PAGE
+// ════════════════════════════════════════════════════════════════
+export function ContactDetail() {
+  const { id }    = useParams()
+  const navigate  = useNavigate()
+  const { agent, isAdmin, canManage } = useAuth()
+  const { toast } = useApp()
+
+  const [contact,    setContact]    = useState(null)
+  const [loading,    setLoading]    = useState(true)
+  const [timeline,   setTimeline]   = useState([])
+  const [tlLoading,  setTlLoading]  = useState(true)
+  const [relDeals,   setRelDeals]   = useState([])
+  const [relTasks,   setRelTasks]   = useState([])
+  const [agents,     setAgents]     = useState([])
+  const [editing,    setEditing]    = useState(false)
+  const [form,       setForm]       = useState({})
+  const [saving,     setSaving]     = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [rightTab,   setRightTab]   = useState('deals')
+
+  // ── LOAD CONTACT ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!id) return
+    loadContact()
+    loadTimeline()
+    loadRelated()
+    db.agents.list().then(setAgents)
+  }, [id])
+
+  async function loadContact() {
+    setLoading(true)
+    try {
+      const c = await db.contacts.get(id)
+      setContact(c)
+      setForm(c)
+    } catch(e) {
+      toast('Contact not found', '#DC2626')
+      navigate('/contacts')
+    } finally { setLoading(false) }
+  }
+
+  // ── BUILD TIMELINE FROM MULTIPLE SOURCES ─────────────────────
+  async function loadTimeline() {
+    setTlLoading(true)
+    try {
+      const [calls, auditLogs] = await Promise.all([
+        supabase.from('calls').select('*, agents(id,name,color)').eq('contact_id', id).order('called_at', { ascending: false }).then(r => r.data || []),
+        supabase.from('audit_log').select('*, agents(id,name,color)').eq('record_id', id).order('created_at', { ascending: false }).limit(100).then(r => r.data || []),
+      ])
+
+      const items = []
+
+      // Add calls
+      calls.forEach(c => {
+        items.push({
+          id:         c.id,
+          type:       'call',
+          title:      c.contact_name || 'Call',
+          body:       [c.outcome, c.duration ? `Duration: ${c.duration}` : '', c.notes].filter(Boolean).join('\n'),
+          agent:      c.agents,
+          created_at: c.called_at,
+          meta:       `${c.direction || 'Outbound'} call${c.outcome ? ' · ' + c.outcome : ''}`,
+        })
+      })
+
+      // Add audit log entries
+      auditLogs.forEach(a => {
+        const typeMap = {
+          note:    a.metadata?.type || 'note',
+          created: 'created',
+          status:  'status',
+          updated: null, // skip generic updates
+        }
+        const type = typeMap[a.action] || a.action
+        if (!type || type === null) return
+        if (!TIMELINE_ICONS[type]) return // skip unknown types
+
+        items.push({
+          id:         a.id,
+          type,
+          title:      a.action === 'status' ? `Status: ${a.old_value} → ${a.new_value}` : a.metadata?.description || '',
+          body:       a.action === 'note' ? a.new_value : '',
+          agent:      a.agents,
+          created_at: a.created_at,
+        })
+      })
+
+      // Sort all by date descending
+      items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      setTimeline(items)
+    } catch(e) {
+      console.error('Timeline load error:', e)
+    } finally { setTlLoading(false) }
+  }
+
+  async function loadRelated() {
+    try {
+      const [deals, tasks] = await Promise.all([
+        supabase.from('deals').select('id,addr,stage,gci,agents(id,name,color)').limit(10).then(r => r.data || []),
+        supabase.from('tasks').select('id,title,status,priority,due_date').eq('contact_id', id).order('due_date').then(r => r.data || []),
+      ])
+      setRelDeals(deals)
+      setRelTasks(tasks)
+    } catch { /* silently fail */ }
+  }
+
+  // ── SAVE CONTACT ─────────────────────────────────────────────
+  async function saveContact() {
+    setSaving(true)
+    try {
+      const updated = await db.contacts.update(id, form)
+      setContact(updated)
+      setEditing(false)
+      toast('✅ Contact saved')
+    } catch(e) {
+      toast('Save failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
+  }
+
+  async function deleteContact() {
+    try {
+      await db.contacts.delete(id, agent?.id)
+      toast('Contact deleted')
+      navigate('/contacts')
+    } catch(e) {
+      toast('Delete failed: ' + e.message, '#DC2626')
+    } finally { setConfirmDel(false) }
+  }
+
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
+
+  if (loading) return <div style={{ fontFamily: ff, padding: '28px' }}><Loading /></div>
+  if (!contact) return null
+
+  const statusColor = STATUS_COLORS[contact.status] || '#94A3B8'
+
+  return (
+    <div style={{ fontFamily: ff }}>
+
+      {/* ── TOP HEADER BAR ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <button onClick={() => navigate('/contacts')}
+          style={{ background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer', fontSize: '13px', color: 'var(--muted)', fontFamily: ff }}>
+          ← Contacts
+        </button>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: statusColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>
+              {initials((contact.first_name || '') + ' ' + (contact.last_name || ''))}
+            </div>
+            <div>
+              <h1 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text)', margin: 0 }}>
+                {contact.first_name} {contact.last_name}
+              </h1>
+              {contact.phone && (
+                <a href={phoneHref(contact.phone)} style={{ fontSize: '13px', color: 'var(--brand)', textDecoration: 'none' }}>
+                  {fmtPhone(contact.phone)}
+                </a>
+              )}
+            </div>
+            <Pill label={contact.status} color={statusColor} size="md" />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {contact.phone && (
+            <Btn variant="secondary" size="sm" onClick={() => window.open(phoneHref(contact.phone))}>📞 Call</Btn>
+          )}
+          {contact.email && (
+            <Btn variant="secondary" size="sm" onClick={() => window.open('mailto:' + contact.email)}>📧 Email</Btn>
+          )}
+          <Btn size="sm" onClick={() => setEditing(true)}>✏️ Edit</Btn>
+        </div>
+      </div>
+
+      {/* ── THREE PANEL LAYOUT ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '16px', alignItems: 'start' }}>
+
+        {/* ══════════════════════════════════════════════════════
+            LEFT PANEL — Contact Details
+        ══════════════════════════════════════════════════════ */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* Contact Info Card */}
+          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+              Contact Info
+            </div>
+            <div style={{ padding: '12px 14px' }}>
+              {[
+                { label: '📞 Phone',   value: contact.phone ? fmtPhone(contact.phone) : null, href: contact.phone ? phoneHref(contact.phone) : null },
+                { label: '📧 Email',   value: contact.email, href: contact.email ? 'mailto:' + contact.email : null },
+                { label: '📍 Address', value: [contact.address, contact.city, contact.state, contact.zip].filter(Boolean).join(', ') },
+                { label: '🏷 Status',  value: contact.status, pill: true, color: statusColor },
+                { label: '📌 Source',  value: contact.source },
+                { label: '👤 Agent',   value: contact.agents?.name },
+                { label: '📅 Added',   value: fmtDate(contact.created_at) },
+                { label: '🕐 Last Activity', value: fmtDate(contact.last_activity) },
+              ].filter(row => row.value).map(row => (
+                <div key={row.label} style={{ marginBottom: '10px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '2px' }}>{row.label}</div>
+                  {row.href ? (
+                    <a href={row.href} style={{ fontSize: '13px', color: 'var(--brand)', textDecoration: 'none', fontWeight: 500 }}>{row.value}</a>
+                  ) : row.pill ? (
+                    <Pill label={row.value} color={row.color} />
+                  ) : (
+                    <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 500 }}>{row.value}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes Card */}
+          {contact.notes && (
+            <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+              <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                Notes
+              </div>
+              <div style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                {contact.notes}
+              </div>
+            </div>
+          )}
+
+          {/* Tags */}
+          {contact.tags?.length > 0 && (
+            <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', padding: '12px 14px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Tags</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {contact.tags.map(tag => (
+                  <span key={tag} style={{ padding: '3px 8px', background: 'var(--dim)', borderRadius: '99px', fontSize: '11px', color: 'var(--muted)', border: '1px solid var(--border)' }}>{tag}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Quick Status Change */}
+          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', padding: '12px 14px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Quick Update Status</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {['Hot','Warm','Cold','Active','Nurturing','Closed','Unresponsive'].map(s => (
+                <button key={s} onClick={async () => {
+                  try {
+                    const updated = await db.contacts.update(id, { status: s })
+                    setContact(updated)
+                    setForm(f => ({ ...f, status: s }))
+                    toast(`✅ Status → ${s}`)
+                    loadTimeline()
+                  } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+                }}
+                  style={{ padding: '4px 10px', borderRadius: '6px', border: `1px solid ${contact.status === s ? STATUS_COLORS[s] : 'var(--border)'}`, background: contact.status === s ? STATUS_COLORS[s] + '18' : 'transparent', color: contact.status === s ? STATUS_COLORS[s] : 'var(--muted)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ══════════════════════════════════════════════════════
+            CENTER PANEL — Conversation Timeline
+        ══════════════════════════════════════════════════════ */}
+        <div>
+          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>💬 Conversation History</div>
+              <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{timeline.length} entries</div>
+            </div>
+            <div style={{ padding: '16px' }}>
+              {/* Add to timeline */}
+              <AddTimelineItem contactId={id} agentId={agent?.id} onAdded={loadTimeline} />
+
+              {/* Timeline */}
+              {tlLoading && <Loading />}
+              {!tlLoading && timeline.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '32px 20px', color: 'var(--muted)', fontSize: '13px' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '10px' }}>💬</div>
+                  No conversation history yet.<br />
+                  Add a note, call, or email above to start tracking.
+                </div>
+              )}
+              {timeline.map(item => (
+                <TimelineItem key={item.id + item.type} item={item} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ══════════════════════════════════════════════════════
+            RIGHT PANEL — Actions, Deals, Tasks, Files
+        ══════════════════════════════════════════════════════ */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* Quick Actions */}
+          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', padding: '12px 14px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '10px' }}>Quick Actions</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {[
+                { label: '✅ Create Task',       onClick: () => navigate('/tasks/new') },
+                { label: '📊 Link to Deal',      onClick: () => navigate('/production/new') },
+                { label: '📅 Schedule Event',    onClick: () => navigate('/calendar/new') },
+                { label: '🎁 Add Gift',          onClick: () => navigate('/gifts/new') },
+                { label: '📞 Log Call',          onClick: () => navigate('/calls/new') },
+              ].map(a => (
+                <button key={a.label} onClick={a.onClick}
+                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--text)', fontFamily: ff, transition: 'background .1s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'var(--dim)'}>
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Related Content Tabs */}
+          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
+              {[
+                { id: 'deals',  label: `Deals (${relDeals.length})` },
+                { id: 'tasks',  label: `Tasks (${relTasks.length})` },
+                { id: 'files',  label: 'Files' },
+              ].map(t => (
+                <button key={t.id} onClick={() => setRightTab(t.id)}
+                  style={{ flex: 1, padding: '9px 6px', background: 'none', border: 'none', borderBottom: rightTab === t.id ? '2px solid var(--brand)' : '2px solid transparent', marginBottom: '-1px', fontSize: '11px', fontWeight: rightTab === t.id ? 700 : 500, color: rightTab === t.id ? 'var(--brand)' : 'var(--muted)', cursor: 'pointer', fontFamily: ff }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ padding: '12px 14px' }}>
+
+              {/* Deals */}
+              {rightTab === 'deals' && (
+                <div>
+                  {relDeals.length === 0 && <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '12px' }}>No deals linked yet</div>}
+                  {relDeals.map(d => (
+                    <div key={d.id} onClick={() => navigate('/production/' + d.id)}
+                      style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.addr}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '3px' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</div>
+                        <Pill label={d.stage} color={DEAL_STAGES_MAP[d.stage] || '#94A3B8'} />
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={() => navigate('/production/new')}
+                    style={{ width: '100%', marginTop: '8px', padding: '7px', border: '1px dashed var(--border)', borderRadius: '6px', background: 'transparent', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer', fontFamily: ff }}>
+                    + Link Deal
+                  </button>
+                </div>
+              )}
+
+              {/* Tasks */}
+              {rightTab === 'tasks' && (
+                <div>
+                  {relTasks.length === 0 && <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '12px' }}>No tasks for this contact</div>}
+                  {relTasks.map(t => (
+                    <div key={t.id} onClick={() => navigate('/tasks/' + t.id)}
+                      style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: t.status === 'done' ? '#10B981' : '#F97316', flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}</div>
+                        {t.due_date && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{fmtDate(t.due_date)}</div>}
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={() => navigate('/tasks/new')}
+                    style={{ width: '100%', marginTop: '8px', padding: '7px', border: '1px dashed var(--border)', borderRadius: '6px', background: 'transparent', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer', fontFamily: ff }}>
+                    + Add Task
+                  </button>
+                </div>
+              )}
+
+              {/* Files */}
+              {rightTab === 'files' && (
+                <FileAttachments tableName="contacts" recordId={id} />
+              )}
+            </div>
+          </div>
+
+          {/* Danger Zone */}
+          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid #FECACA', padding: '12px 14px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Danger Zone</div>
+            <Btn variant="danger" size="sm" onClick={() => setConfirmDel(true)} style={{ width: '100%' }}>🗑 Delete Contact</Btn>
+          </div>
+        </div>
+      </div>
+
+      {/* ── EDIT MODAL ── */}
+      <Modal open={editing} onClose={() => setEditing(false)} title="Edit Contact" width={560}>
+        <Tabs tabs={['info','notes']} active={form._tab || 'info'} onChange={t => setForm(f => ({ ...f, _tab: t }))} />
+        {(!form._tab || form._tab === 'info') && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="First Name" required><Input value={form.first_name || ''} onChange={v => set('first_name', v)} placeholder="John" /></Field>
+              <Field label="Last Name"><Input value={form.last_name || ''} onChange={v => set('last_name', v)} placeholder="Smith" /></Field>
+              <Field label="Phone"><Input value={form.phone || ''} onChange={v => set('phone', v)} type="tel" placeholder="(845) 555-1234" /></Field>
+              <Field label="Email"><Input value={form.email || ''} onChange={v => set('email', v)} type="email" placeholder="john@email.com" /></Field>
+            </div>
+            <Field label="Address"><Input value={form.address || ''} onChange={v => set('address', v)} placeholder="123 Main St" /></Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="City"><Input value={form.city || ''} onChange={v => set('city', v)} placeholder="Monsey" /></Field>
+              <Field label="Zip"><Input value={form.zip || ''} onChange={v => set('zip', v)} placeholder="10952" /></Field>
+              <Field label="Status"><Select value={form.status || ''} onChange={v => set('status', v)} options={CONTACT_STATUSES} /></Field>
+              <Field label="Source"><Select value={form.source || ''} onChange={v => set('source', v)} options={CONTACT_SOURCES} placeholder="Source" /></Field>
+            </div>
+            {(isAdmin || canManage) && (
+              <Field label="Assigned Agent">
+                <Select value={form.agent_id || ''} onChange={v => set('agent_id', v)} options={agents.map(a => ({ value: a.id, label: a.name }))} placeholder="Assign agent" />
+              </Field>
+            )}
+          </div>
+        )}
+        {form._tab === 'notes' && (
+          <Field label="Notes"><Textarea value={form.notes || ''} onChange={v => set('notes', v)} rows={8} placeholder="Notes about this contact..." /></Field>
+        )}
+        <ModalActions>
+          <Btn variant="secondary" onClick={() => setEditing(false)}>Cancel</Btn>
+          <Btn onClick={saveContact} loading={saving}>Save Changes</Btn>
+        </ModalActions>
+      </Modal>
+
+      <Confirm open={confirmDel} message={`Delete ${contact.first_name} ${contact.last_name || ''}? This cannot be undone.`} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />
+    </div>
+  )
+}
+
+// Stage colors for the deals panel
+const DEAL_STAGES_MAP = {
+  'Negotiations':      '#037f4c',
+  'Offer Accapted':    '#00c875',
+  'Under Shtar':       '#bb3354',
+  'Under Contract':    '#757575',
+  'Closed':            '#225091',
+  'Deal Fell Through': '#ff007f',
 }
