@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect } from 'react'
+import { FileAttachments } from '../components/FileAttachments'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
@@ -191,6 +192,7 @@ export function Listings() {
           { id: 'info', label: 'Property Info' },
           { id: 'details', label: 'Details' },
           { id: 'notes', label: 'Notes' },
+          { id: 'files', label: 'Files' },
         ]} active={tab} onChange={setTab} />
 
         {tab === 'info' && (
@@ -265,6 +267,8 @@ export function Listings() {
             <Textarea value={form.notes} onChange={v => set('notes', v)} placeholder="Listing notes..." rows={8} />
           </Field>
         )}
+        {tab === 'files' && selected && <FileAttachments tableName="listings" recordId={selected.id} />}
+        {tab === 'files' && !selected && <div style={{ color:'var(--muted)', fontSize:'13px', padding:'20px 0' }}>Save the listing first to attach files.</div>}
 
         <ModalActions>
           {selected && (

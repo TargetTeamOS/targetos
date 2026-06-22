@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect } from 'react'
+import { FileAttachments } from '../components/FileAttachments'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
@@ -187,7 +188,7 @@ export function Contacts() {
       <Modal open={!!(selected || showAdd)} onClose={closePanel} title={selected ? `${selected.first_name} ${selected.last_name || ''}` : 'New Contact'} width={560}>
 
         {selected && (
-          <Tabs tabs={['info','notes']} active={tab} onChange={setTab} />
+          <Tabs tabs={['info','notes','files','activity']} active={tab} onChange={setTab} />
         )}
 
         {(!selected || tab === 'info') && (
@@ -244,6 +245,12 @@ export function Contacts() {
           <Field label="Notes">
             <Textarea value={form.notes} onChange={v => set('notes', v)} placeholder="Add notes about this contact..." rows={8} />
           </Field>
+        )}
+        {selected && tab === 'files' && (
+          <FileAttachments tableName="contacts" recordId={selected.id} />
+        )}
+        {selected && tab === 'activity' && (
+          <RecordActivity recordId={selected.id} tableName="contacts" />
         )}
 
         <ModalActions>

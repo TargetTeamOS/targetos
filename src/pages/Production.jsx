@@ -5,6 +5,8 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect } from 'react'
+import { RecordActivity } from '../pages/ActivityLog'
+import { FileAttachments } from '../components/FileAttachments'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
@@ -243,6 +245,8 @@ export function Production() {
           { id: 'status', label: 'Status & Dates' },
           { id: 'finance', label: 'Finance' },
           { id: 'notes', label: 'Notes' },
+          { id: 'files', label: 'Files' },
+          { id: 'activity', label: 'Activity' },
         ]} active={tab} onChange={setTab} />
 
         {/* DEAL INFO TAB */}
@@ -367,6 +371,15 @@ export function Production() {
             <Textarea value={form.notes} onChange={v => set('notes', v)} placeholder="Deal notes..." rows={8} />
           </Field>
         )}
+
+        {/* FILES TAB */}
+        {tab === 'files' && selected && (
+          <FileAttachments tableName="deals" recordId={selected.id} />
+        )}
+        {tab === 'files' && !selected && (
+          <div style={{ color: 'var(--muted)', fontSize: '13px', padding: '20px 0' }}>Save the deal first to attach files.</div>
+        )}
+        {tab === 'activity' && selected && <RecordActivity recordId={selected.id} tableName="deals" />}
 
         <ModalActions>
           {selected && (
