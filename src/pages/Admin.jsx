@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { useAgents } from '../lib/hooks/useAgents'
+import { useAgents } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
-import { updateAgent } from '../lib/db/agents'
+import { updateAgent } from '../lib/db'
 
 const ROLES = ['agent','secretary','admin']
 const ROLE_COLORS = { admin:'#CC2200', agent:'#0EA5E9', secretary:'#7C3AED' }

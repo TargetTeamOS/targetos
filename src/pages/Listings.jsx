@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useListings } from '../lib/hooks/useListings'
-import { useAgents } from '../lib/hooks/useAgents'
+import { useListings } from '../lib/hooks'
+import { useAgents } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmt$, fmtDate } from '../lib/utils/format'
-import { updateListing } from '../lib/db/listings'
+import { fmt$, fmtDate } from '../lib/utils'
+import { updateListing } from '../lib/db'
 
 const STATUSES = ['Active','Accepted offer','Under Contract','Off Market','Expired','Temporary off market','Seller not selling','Sold']
 const STATUS_COLORS = { 'Active':'#16A34A','Accepted offer':'#784bd1','Under Contract':'#007eb5','Off Market':'#fdab3d','Expired':'#df2f4a','Sold':'#ffcb00','Temporary off market':'#579bfc','Seller not selling':'#333333' }

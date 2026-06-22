@@ -8,7 +8,7 @@ import { useConfirm } from '../components/ConfirmDialog'
 import { nowISO, formatActivity, formatTime } from '../lib/time'
 import { logChange, logFieldChanges } from '../lib/activityLog'
 import { VoiceCapture } from '../components/VoiceCapture'
-import { sendContactEmail } from '../lib/emailService'
+import { sendContactEmail } from '../lib/email'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 
 const fmt$ = n => '$' + Number(n).toLocaleString()

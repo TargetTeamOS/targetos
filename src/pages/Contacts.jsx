@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useContacts } from '../lib/hooks/useContacts'
-import { useAgents } from '../lib/hooks/useAgents'
+import { useContacts } from '../lib/hooks'
+import { useAgents } from '../lib/hooks'
 import { validateContact, hasErrors } from '../lib/utils/validate'
-import { fmtDate, getDaysAgo, getInitials, fmtPhone } from '../lib/utils/format'
+import { fmtDate, getDaysAgo, initials, fmtPhone } from '../lib/utils'
 import { useApp } from '../context/AppContext'
 
 const STATUSES   = ['New','Hot','Warm','Cold','Active','Nurturing','Under Contract','Closed','Unresponsive']
@@ -149,7 +149,7 @@ export function Contacts() {
               <div style={{ width:38, height:38, borderRadius:'50%', background:(STATUS_COLORS[c.status]||'#94A3B8')+'18',
                 border:`2px solid ${STATUS_COLORS[c.status]||'#94A3B8'}`, display:'flex', alignItems:'center',
                 justifyContent:'center', fontSize:'13px', fontWeight:800, color:STATUS_COLORS[c.status]||'#94A3B8', flexShrink:0 }}>
-                {getInitials((c.first_name||'') + ' ' + (c.last_name||''))}
+                {initials((c.first_name||'') + ' ' + (c.last_name||''))}
               </div>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontSize:'13px', fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>

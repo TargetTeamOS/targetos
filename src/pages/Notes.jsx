@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { getNotes, createNote, updateNote, deleteNote } from '../lib/db/notes'
-import { getDaysAgo } from '../lib/utils/format'
+import { getNotes, createNote, updateNote, deleteNote } from '../lib/db'
+import { getDaysAgo } from '../lib/utils'
 import { useEffect } from 'react'
 
 export function Notes() {

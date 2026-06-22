@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useGifts } from '../lib/hooks/useGifts'
-import { useAgents } from '../lib/hooks/useAgents'
+import { useGifts } from '../lib/hooks'
+import { useAgents } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmtDate, fmt$ } from '../lib/utils/format'
+import { fmtDate, fmt$ } from '../lib/utils'
 
 const GIFT_TYPES = ['Under Contract','Closing']
 const STATUSES   = ['Pending','Shipped out','Delivered','Couldn\'t Deliver','Too Late','Please deliver','Don\'t send','Check Note']

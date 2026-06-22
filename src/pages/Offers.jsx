@@ -2,9 +2,9 @@ import React, { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { useAgents } from '../lib/hooks/useAgents'
-import { getOffers, createOffer, updateOffer, deleteOffer } from '../lib/db/offers'
-import { fmt$, fmtDate } from '../lib/utils/format'
+import { useAgents } from '../lib/hooks'
+import { getOffers, createOffer, updateOffer, deleteOffer } from '../lib/db'
+import { fmt$, fmtDate } from '../lib/utils'
 import { useEffect } from 'react'
 
 const STATUSES = ['Sent','AO','Stuck','Fell through']

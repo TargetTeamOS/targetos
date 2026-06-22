@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { useAgents } from '../lib/hooks/useAgents'
-import { getSigns, createSign, updateSign, deleteSign } from '../lib/db/signs'
-import { fmtDate } from '../lib/utils/format'
+import { useAgents } from '../lib/hooks'
+import { getSigns, createSign, updateSign, deleteSign } from '../lib/db'
+import { fmtDate } from '../lib/utils'
 
 const TYPES = ['For Sale','Under Contract','Sold','Open House','Coming Soon']
 const EMPTY = { addr:'', type:'For Sale', agent_id:'', installed:'', removed:'', notes:'' }

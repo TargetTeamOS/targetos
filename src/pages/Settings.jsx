@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
-import { updateAgent } from '../lib/db/agents'
-import { sendEmail } from '../lib/emailService'
+import { updateAgent } from '../lib/db'
+import { sendEmail } from '../lib/email'
 
 export function Settings() {
   const { agent, signOut } = useAuth()

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Btn } from '../components/UI'
-import { sendEmail } from '../lib/emailService'
+import { sendEmail } from '../lib/email'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 

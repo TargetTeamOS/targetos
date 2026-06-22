@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useCalendar } from '../lib/hooks/useCalendar'
+import { useCalendar } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmtTime } from '../lib/utils/format'
+import { fmtTime } from '../lib/utils'
 
 const EVENT_TYPES = ['appointment','showing','open house','closing','inspection','meeting','personal','other']
 const TYPE_COLORS = { appointment:'#CC2200',showing:'#0EA5E9','open house':'#D97706',closing:'#16A34A',inspection:'#7C3AED',meeting:'#E8650A',personal:'#14B8A6',other:'#94A3B8' }

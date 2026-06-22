@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useTransactions } from '../lib/hooks/useTransactions'
-import { useAgents } from '../lib/hooks/useAgents'
+import { useTransactions } from '../lib/hooks'
+import { useAgents } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmt$, fmtDate } from '../lib/utils/format'
+import { fmt$, fmtDate } from '../lib/utils'
 
 const CTC_STAGES  = ['Offer Accapted','Under Shtar','Under Contract','Inspection scheduled','Mortgage process','Appraisal ordered','Conditional Approval','Clear to close','Closing scheduled','Closed']
 const CTC_COLORS  = {'Offer Accapted':'#D97706','Under Shtar':'#bb3354','Under Contract':'#2563EB','Inspection scheduled':'#0EA5E9','Mortgage process':'#7C3AED','Appraisal ordered':'#8B5CF6','Conditional Approval':'#F59E0B','Clear to close':'#10B981','Closing scheduled':'#16A34A','Closed':'#059669'}

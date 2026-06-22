@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { getAutomations, upsertAutomation, updateAutomation, deleteAutomation } from '../lib/db/automations'
+import { getAutomations, upsertAutomation, updateAutomation, deleteAutomation } from '../lib/db'
 
 const PRESETS = [
   { id:'p1', name:'New Contact → Welcome Task', description:'When a contact is added, create a follow-up task for the agent', active:true, trigger_type:'trigger_new_contact',

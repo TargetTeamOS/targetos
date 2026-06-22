@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { useDeals } from '../lib/hooks/useDeals'
+import { useDeals } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmt$, getInitials } from '../lib/utils/format'
+import { fmt$, initials } from '../lib/utils'
 
 const PIPELINE_STAGES = [
   { key:'Negotiations',   label:'Negotiations',   color:'#037f4c' },

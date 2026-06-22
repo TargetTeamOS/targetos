@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { useAgents } from '../lib/hooks/useAgents'
-import { getListingPreps, createListingPrep, updateListingPrep, deleteListingPrep } from '../lib/db/listingprep'
+import { useAgents } from '../lib/hooks'
+import { getListingPreps, createListingPrep, updateListingPrep, deleteListingPrep } from '../lib/db'
 
 const DEFAULT_CHECKLIST = [
   {id:'c1',label:'Signed listing agreement',done:false,category:'Legal'},

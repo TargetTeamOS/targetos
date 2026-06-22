@@ -1,132 +1,151 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { useAgents } from '../lib/hooks/useAgents'
-import { useTasks } from '../lib/hooks/useTasks'
-import { getBriefingPrefs, upsertBriefingPrefs } from '../lib/db/briefingprefs'
-import { buildDailyEmail, AGENT_EMAILS } from '../lib/dailyBriefing'
-import { sendDailyBriefing } from '../lib/emailService'
-
-const AGENT_COLORS = {
-  'Lazer Farkas':'#CC2200','Mendy Jankovits':'#0EA5E9','Isaac Leibowitz':'#F5A623',
-  'Yanky Lichtenstein':'#10B981','Gitty Fogel':'#7C3AED','Joel Rottenstein':'#E8650A',
-  'Eli Hoffman':'#14B8A6','Avraham Weinberger':'#8B5CF6'
-}
+import { useAgents } from '../lib/hooks'
+import { useTasks } from '../lib/hooks'
+import { sendEmail, buildDailyBriefingEmail } from '../lib/email'
+import { fmtDate, today, isOverdue, isDueToday } from '../lib/utils'
+import { PageHeader, Btn, Toggle, Loading, Avatar, Pill } from '../components/UI'
 
 export function DailyBriefing() {
   const { agent, isAdmin } = useAuth()
-  const { toast } = useApp()
-  const { agents } = useAgents()
-  const { tasks } = useTasks()
-  const [prefs, setPrefs]     = useState({})
-  const [loading, setLoading] = useState(true)
-  const [sending, setSending] = useState('')
-  const [lastSent, setLastSent] = useState({})
-  const saveTimer = useRef(null)
+  const { toast }          = useApp()
+  const { agents }         = useAgents()
+  const { tasks }          = useTasks()
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      const loadedPrefs = {}
-      for (const a of agents) {
-        try {
-          const p = await getBriefingPrefs(a.id)
-          loadedPrefs[a.id] = p || { agent_id: a.id, enabled: true, sections: {} }
-        } catch(e) {
-          loadedPrefs[a.id] = { agent_id: a.id, enabled: true, sections: {} }
-        }
+  const [sending,    setSending]    = useState(false)
+  const [sendAll,    setSendAll]    = useState(false)
+  const [preview,    setPreview]    = useState(null)
+  const [sentLog,    setSentLog]    = useState([])
+
+  const todayStr = today()
+
+  // Get tasks due today or overdue for an agent
+  function agentTasks(agentId) {
+    return tasks.filter(t =>
+      t.agent_id === agentId &&
+      t.status === 'pending' &&
+      (isOverdue(t.due_date) || isDueToday(t.due_date))
+    )
+  }
+
+  async function sendBriefing(targetAgent) {
+    setSending(true)
+    try {
+      const agentTasks_ = agentTasks(targetAgent.id)
+      const overdueCount = agentTasks_.filter(t => isOverdue(t.due_date)).length
+      const html = buildDailyBriefingEmail({
+        agentName:    targetAgent.name,
+        agentColor:   targetAgent.color,
+        tasks:        agentTasks_,
+        overdueCount,
+      })
+      const result = await sendEmail({
+        to:      targetAgent.email,
+        subject: `📋 TargetOS Daily Briefing — ${new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}`,
+        html,
+      })
+      if (result.success) {
+        toast(`✅ Briefing sent to ${targetAgent.name}`)
+        setSentLog(l => [...l, { name: targetAgent.name, at: new Date().toLocaleTimeString() }])
+      } else {
+        toast('Send failed: ' + result.error, '#DC2626')
       }
-      setPrefs(loadedPrefs)
-      setLoading(false)
+    } catch(e) {
+      toast('Error: ' + e.message, '#DC2626')
+    } finally {
+      setSending(false)
     }
-    if (agents.length > 0) load()
-  }, [agents])
-
-  async function toggleEnabled(agentId, enabled) {
-    const updated = { ...prefs, [agentId]: { ...prefs[agentId], enabled } }
-    setPrefs(updated)
-    clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(async () => {
-      try {
-        await upsertBriefingPrefs({ ...(prefs[agentId]||{}), agent_id: agentId, enabled })
-        toast('✅ Saved!', undefined, 1200)
-      } catch(e) { toast('Save failed: '+e.message,'#DC2626') }
-    }, 800)
   }
 
-  async function sendTest(agentData) {
-    const emailAddr = AGENT_EMAILS[agentData.name]
-    if(!emailAddr) { toast('No email for '+agentData.name,'#DC2626'); return }
-    setSending(agentData.id)
-    const today = new Date().toISOString().split('T')[0]
-    const agentTasks = tasks.filter(t=>t.agent_id===agentData.id&&t.status==='pending'&&t.due_date===today)
-    const html = buildDailyEmail({ agentName:agentData.name, agentColor:agentData.color||'#CC2200', tasks:agentTasks, overdueTasks:[], appointments:[], showQuote:true })
-    const result = await sendDailyBriefing({ agentName:agentData.name, email:emailAddr, html })
-    setSending('')
-    if(result.success) { setLastSent(p=>({...p,[agentData.id]:new Date().toLocaleTimeString()})); toast(`✅ Sent to ${emailAddr}!`) }
-    else toast('Failed: '+(result.error||'Unknown error'),'#DC2626')
-  }
-
-  async function sendAll() {
-    setSending('all')
-    let sent=0
-    for(const a of agents) {
-      const p = prefs[a.id]
-      if(!p?.enabled) continue
-      await sendTest(a)
-      sent++
-      await new Promise(r=>setTimeout(r,300))
+  async function sendToAll() {
+    setSending(true)
+    for (const a of agents.filter(a => a.active)) {
+      await sendBriefing(a)
     }
-    setSending('')
-    toast(`✅ Sent ${sent} briefings!`)
+    setSending(false)
   }
 
-  const enabledCount = agents.filter(a=>prefs[a.id]?.enabled!==false).length
+  function showPreview(targetAgent) {
+    const agentTasks_ = agentTasks(targetAgent.id)
+    const overdueCount = agentTasks_.filter(t => isOverdue(t.due_date)).length
+    const html = buildDailyBriefingEmail({ agentName: targetAgent.name, agentColor: targetAgent.color, tasks: agentTasks_, overdueCount })
+    setPreview({ name: targetAgent.name, html })
+  }
 
   return (
     <div>
-      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px',flexWrap:'wrap',gap:'8px' }}>
-        <div>
-          <div style={{ fontSize:'18px',fontWeight:900 }}>📧 Daily Briefing</div>
-          <div style={{ fontSize:'12px',color:'var(--muted)',marginTop:'2px' }}>{enabledCount} of {agents.length} agents receiving · 7AM ET daily</div>
+      <PageHeader
+        title="Daily Briefing"
+        icon="📧"
+        subtitle="Send personalized task summaries to each agent"
+        actions={
+          isAdmin && (
+            <Btn onClick={sendToAll} disabled={sending} icon="📤">
+              {sending ? 'Sending...' : 'Send to All Agents'}
+            </Btn>
+          )
+        }
+      />
+
+      {/* Sent log */}
+      {sentLog.length > 0 && (
+        <div style={{ background:'rgba(22,163,74,.06)', border:'1px solid rgba(22,163,74,.2)', borderRadius:'10px', padding:'12px 16px', marginBottom:'14px' }}>
+          <div style={{ fontSize:'12px', fontWeight:700, color:'#16A34A', marginBottom:'6px' }}>✅ Sent this session</div>
+          {sentLog.map((s,i) => (
+            <div key={i} style={{ fontSize:'12px', color:'var(--muted)' }}>{s.name} at {s.at}</div>
+          ))}
         </div>
-        {isAdmin&&<button onClick={sendAll} disabled={!!sending} style={btnStyle}>{sending==='all'?'Sending…':'📤 Send All Now'}</button>}
-      </div>
+      )}
 
-      {loading && <div style={{ padding:'24px',textAlign:'center',color:'var(--muted)' }}>Loading...</div>}
+      {/* Preview modal */}
+      {preview && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}
+          onClick={()=>setPreview(null)}>
+          <div style={{ background:'var(--panel)', borderRadius:'16px', width:'100%', maxWidth:'680px', maxHeight:'85vh', overflow:'hidden', display:'flex', flexDirection:'column' }}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div style={{ fontSize:'14px', fontWeight:700 }}>Preview — {preview.name}</div>
+              <button onClick={()=>setPreview(null)} style={{ background:'var(--dim)', border:'none', borderRadius:'50%', width:'28px', height:'28px', cursor:'pointer', fontSize:'14px' }}>✕</button>
+            </div>
+            <div style={{ flex:1, overflowY:'auto', padding:'0' }}>
+              <iframe srcDoc={preview.html} style={{ width:'100%', height:'500px', border:'none' }} title="Email Preview"/>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div style={{ background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',overflow:'hidden' }}>
-        {agents.map(a=>{
-          const agentPrefs = prefs[a.id]
-          const enabled    = agentPrefs?.enabled !== false
+      {/* Agent list */}
+      <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+        {agents.filter(a => a.active).map(a => {
+          const at = agentTasks(a.id)
+          const overdue = at.filter(t => isOverdue(t.due_date)).length
           return (
-            <div key={a.id} style={{ display:'flex',alignItems:'center',gap:'12px',padding:'14px 16px',borderBottom:'1px solid var(--border)' }}>
-              <div style={{ width:38,height:38,borderRadius:'10px',background:a.color||'#CC2200',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px',fontWeight:800,color:'#fff',flexShrink:0 }}>
-                {a.name?.[0]||'?'}
-              </div>
-              <div style={{ flex:1,minWidth:0 }}>
-                <div style={{ fontSize:'13px',fontWeight:700 }}>{a.name}</div>
-                <div style={{ fontSize:'11px',color:'var(--muted)',marginTop:'2px' }}>
-                  {AGENT_EMAILS[a.name]||a.email}
-                  {lastSent[a.id]&&<span style={{ color:'#16A34A',fontWeight:600 }}> · ✓ Sent {lastSent[a.id]}</span>}
+            <div key={a.id} style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'12px', padding:'14px 16px', display:'flex', alignItems:'center', gap:'12px' }}>
+              <Avatar name={a.name} color={a.color} size={40}/>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:'13px', fontWeight:700 }}>{a.name}</div>
+                <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px' }}>{a.email}</div>
+                <div style={{ display:'flex', gap:'6px', marginTop:'5px', flexWrap:'wrap' }}>
+                  <Pill label={`${at.length} task${at.length!==1?'s':''} due`} color="#0EA5E9" size="sm"/>
+                  {overdue > 0 && <Pill label={`${overdue} overdue`} color="#DC2626" size="sm"/>}
                 </div>
               </div>
-              <div style={{ display:'flex',gap:'8px',alignItems:'center',flexShrink:0 }}>
-                {isAdmin&&<button onClick={()=>sendTest(a)} disabled={!!sending} style={{ fontSize:'11px',fontWeight:600,padding:'6px 12px',borderRadius:'8px',border:'1px solid var(--border)',background:'var(--dim)',color:'var(--text)',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',opacity:!!sending?.6:1 }}>
-                  {sending===a.id?'Sending…':'Send Test'}
-                </button>}
-                {/* Toggle */}
-                <div onClick={()=>toggleEnabled(a.id,!enabled)}
-                  style={{ width:42,height:22,borderRadius:'99px',background:enabled?'#10B981':'var(--border)',position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0 }}>
-                  <div style={{ width:18,height:18,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:enabled?22:2,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)' }}/>
-                </div>
+              <div style={{ display:'flex', gap:'7px' }}>
+                <Btn variant="secondary" size="sm" onClick={()=>showPreview(a)}>👁 Preview</Btn>
+                <Btn size="sm" onClick={()=>sendBriefing(a)} disabled={sending}>📧 Send</Btn>
               </div>
             </div>
           )
         })}
       </div>
+
+      <div style={{ marginTop:'16px', padding:'14px', background:'var(--dim)', borderRadius:'10px', fontSize:'12px', color:'var(--muted)', lineHeight:1.8 }}>
+        <strong style={{ color:'var(--text)' }}>How it works:</strong><br/>
+        Each agent receives a personalized email showing their tasks due today and overdue tasks.
+        The email links directly to TargetOS so they can mark tasks complete.
+        Best practice: send every morning at 8am.
+      </div>
     </div>
   )
 }
-
-const btnStyle = { background:'#CC2200',border:'none',borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:700,padding:'9px 15px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif' }

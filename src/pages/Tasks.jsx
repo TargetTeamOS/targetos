@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useTasks } from '../lib/hooks/useTasks'
+import { useTasks } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmtDate } from '../lib/utils/format'
+import { fmtDate } from '../lib/utils'
 
 const PRIORITIES = ['urgent','high','normal','low']
 const PRIORITY_COLORS = { urgent:'#DC2626', high:'#D97706', normal:'#0EA5E9', low:'#94A3B8' }

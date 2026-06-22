@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { getOpenHouses, createOpenHouse, deleteOpenHouse, getVisitors, createVisitor, updateVisitor } from '../lib/db/openhouse'
-import { fmtDate, fmtTime } from '../lib/utils/format'
-import { sendEmail } from '../lib/emailService'
+import { getOpenHouses, createOpenHouse, deleteOpenHouse, getVisitors, createVisitor, updateVisitor } from '../lib/db'
+import { fmtDate, fmtTime } from '../lib/utils'
+import { sendEmail } from '../lib/email'
 
 const INTEREST = ['Hot','Warm','Cold']
 const INTEREST_COLORS = { Hot:'#DC2626', Warm:'#D97706', Cold:'#94A3B8' }

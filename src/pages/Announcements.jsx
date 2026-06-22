@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useAnnouncements } from '../lib/hooks/useAnnouncements'
+import { useAnnouncements } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { getDaysAgo, getInitials } from '../lib/utils/format'
-import { useAgents } from '../lib/hooks/useAgents'
+import { getDaysAgo, initials } from '../lib/utils'
+import { useAgents } from '../lib/hooks'
 
 const TYPES = ['info','success','warning','celebration']
 const TYPE_ICONS = { info:'📢', success:'✅', warning:'⚠️', celebration:'🎉' }

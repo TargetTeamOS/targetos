@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { useAgents } from '../lib/hooks/useAgents'
-import { getAuditLog } from '../lib/db/audit'
-import { getDaysAgo } from '../lib/utils/format'
+import { useAgents } from '../lib/hooks'
+import { getAuditLog } from '../lib/db'
+import { getDaysAgo } from '../lib/utils'
 
 const ACTION_COLORS = { INSERT:'#16A34A', UPDATE:'#0EA5E9', DELETE:'#DC2626', LOGIN:'#7C3AED', AUTOMATION_FIRED:'#D97706' }
 const ACTION_ICONS  = { INSERT:'➕', UPDATE:'✏️', DELETE:'🗑', LOGIN:'🔐', AUTOMATION_FIRED:'⚡' }

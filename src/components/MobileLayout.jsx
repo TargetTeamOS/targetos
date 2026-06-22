@@ -1,119 +1,97 @@
-import React, { useState, useEffect } from 'react'
-import { useApp } from '../context/AppContext'
+import React, { useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { AGENTS } from '../lib/constants'
 
-// Mobile bottom nav items
-const MOBILE_NAV = [
-  { id:'dash',         label:'Home',       icon:'🏠' },
-  { id:'contacts',     label:'Contacts',   icon:'👥' },
-  { id:'listings',     label:'Listings',   icon:'🏡' },
-  { id:'production',   label:'Pipeline',   icon:'📊' },
-  { id:'tasks',        label:'Tasks',      icon:'✓'  },
-  { id:'more',         label:'More',       icon:'⋯'  },
+const BOTTOM_NAV = [
+  { id: '/',          icon: '🏠', label: 'Home'      },
+  { id: '/contacts',  icon: '👥', label: 'Contacts'  },
+  { id: '/production',icon: '📊', label: 'Board'     },
+  { id: '/tasks',     icon: '✓',  label: 'Tasks'     },
+  { id: '/more',      icon: '☰',  label: 'More'      },
 ]
 
-const MORE_ITEMS = [
-  { id:'transactions', label:'Transactions', icon:'📋' },
-  { id:'calls',        label:'Calls',        icon:'📞' },
-  { id:'email',        label:'Email',        icon:'✉'  },
-  { id:'mortgage',     label:'Mortgage',     icon:'🔢' },
-  { id:'openhouse',    label:'Open House',   icon:'🏡' },
-  { id:'offers',       label:'Offers',       icon:'📝' },
-  { id:'route',        label:'Route',        icon:'🗺' },
-  { id:'signs',        label:'Signs',        icon:'🪧' },
-  { id:'calendar',     label:'Calendar',     icon:'📅' },
-  { id:'notes',        label:'Notes',        icon:'📓' },
-  { id:'leadgen',      label:'Lead Gen',     icon:'🎯' },
-  { id:'cards',        label:'Cards',        icon:'🖼' },
-  { id:'mixads',       label:'Mix Ads',      icon:'📰' },
-  { id:'listprep',     label:'List Prep',    icon:'📋' },
-  { id:'gifts',        label:'Gifts',        icon:'🎁' },
-  { id:'announce',     label:'Alerts',       icon:'📣' },
-  { id:'automations',  label:'Automations',  icon:'⚡' },
-  { id:'briefing',     label:'Daily Brief',  icon:'📧' },
-  { id:'admin',        label:'Admin',        icon:'⚙️' },
-  { id:'settings',     label:'Settings',     icon:'🔧' },
-  { id:'news',         label:'News',         icon:'📰' },
+const MORE_NAV = [
+  { id: '/listings',    icon: '🏡', label: 'Listings'        },
+  { id: '/pipeline',    icon: '📈', label: 'Pipeline'        },
+  { id: '/transactions',icon: '📋', label: 'Transactions'    },
+  { id: '/offers',      icon: '📝', label: 'Offers'          },
+  { id: '/gifts',       icon: '🎁', label: 'Gifts'           },
+  { id: '/calls',       icon: '📞', label: 'Calls'           },
+  { id: '/openhouse',   icon: '🏠', label: 'Open House'      },
+  { id: '/listingprep', icon: '📋', label: 'Listing Prep'    },
+  { id: '/signs',       icon: '🪧', label: 'Signs'           },
+  { id: '/calendar',    icon: '📅', label: 'Calendar'        },
+  { id: '/announcements',icon:'📣', label: 'Announcements'   },
+  { id: '/email',       icon: '✉',  label: 'Email'           },
+  { id: '/settings',    icon: '⚙',  label: 'Settings'        },
 ]
 
-export function MobileLayout({ page, setPage, agent: agentProp, children }) {
-  const { state, dispatch } = useApp()
+export function MobileLayout({ children }) {
+  const navigate  = useNavigate()
+  const location  = useLocation()
+  const { agent, isAdmin, signOut } = useAuth()
   const [showMore, setShowMore] = useState(false)
-  const { agent: authAgent } = useAuth()
-  const agent = agentProp || authAgent || AGENTS[3]
 
-  // Live clock
-  const [time, setTime] = useState(new Date())
-  useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t) }, [])
-  const timeStr = time.toLocaleTimeString('en-US', { timeZone:'America/New_York', hour:'numeric', minute:'2-digit', hour12:true })
-
-  function nav(id) {
-    if(id === 'more') { setShowMore(true); return }
-    setPage(id)
-    setShowMore(false)
-  }
+  const activePath = location.pathname
 
   return (
-    <div style={{ position:'fixed', inset:0, display:'flex', flexDirection:'column', background:'var(--bg)', overflow:'hidden', fontFamily:'Inter,system-ui,sans-serif' }}>
+    <div style={{ display:'flex', flexDirection:'column', height:'100vh', background:'var(--bg)', fontFamily:'Inter,system-ui,sans-serif' }}>
 
       {/* Top bar */}
-      <div style={{ background:'var(--navy)', padding:'12px 16px 10px', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0, paddingTop:'max(12px, env(safe-area-inset-top))' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-          <img src="/logo.png" alt="TargetOS" style={{ width:28, height:28, objectFit:'contain' }}/>
-          <div>
-            <div style={{ color:'#fff', fontSize:'14px', fontWeight:800, lineHeight:1 }}>Target<span style={{ color:'#F5A623' }}>OS</span></div>
-            <div style={{ color:'rgba(255,255,255,.4)', fontSize:'9px', letterSpacing:'1px' }}>KW Valley Realty</div>
-          </div>
+      <div style={{ background:'var(--sidebar)', padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, boxShadow:'0 2px 8px rgba(0,0,0,.15)' }}>
+        <div style={{ fontSize:'18px', fontWeight:900, color:'#fff' }}>
+          Target<span style={{ color:'#F5A623' }}>OS</span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-          <div style={{ color:'rgba(255,255,255,.5)', fontSize:'11px', fontWeight:600 }}>{timeStr} ET</div>
-          <div style={{ width:32, height:32, borderRadius:'50%', background:agent.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'12px', fontWeight:800, color:'#fff', cursor:'pointer' }}
-            onClick={() => setPage('settings')}>
-            {agent.ini}
+          {isAdmin && <span style={{ fontSize:'10px', fontWeight:700, color:'#CC2200', background:'rgba(204,34,0,.15)', padding:'3px 9px', borderRadius:'20px' }}>ADMIN</span>}
+          <div style={{ width:30, height:30, borderRadius:'50%', background:agent?.color||'#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'12px', fontWeight:800, color:'#fff' }}>
+            {agent?.name?.[0]||'?'}
           </div>
         </div>
       </div>
 
       {/* Page content */}
-      <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', WebkitOverflowScrolling:'touch', paddingBottom:'80px' }}>
+      <div style={{ flex:1, overflowY:'auto', padding:'12px' }}>
         {children}
-      </div>
-
-      {/* Bottom navigation */}
-      <div style={{ position:'fixed', bottom:0, left:0, right:0, background:'var(--panel)', borderTop:'1px solid var(--border)', display:'flex', zIndex:100, paddingBottom:'max(8px, env(safe-area-inset-bottom))', boxShadow:'0 -4px 20px rgba(0,0,0,.08)' }}>
-        {MOBILE_NAV.map(item => {
-          const isActive = page === item.id
-          return (
-            <button key={item.id} onClick={() => nav(item.id)}
-              style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'8px 4px 4px', background:'transparent', border:'none', cursor:'pointer', position:'relative', minHeight:'54px' }}>
-              {isActive && <div style={{ position:'absolute', top:0, left:'25%', right:'25%', height:2, background:'#CC2200', borderRadius:'0 0 3px 3px' }}/>}
-              <span style={{ fontSize:'20px', lineHeight:1, marginBottom:'3px' }}>{item.icon}</span>
-              <span style={{ fontSize:'9px', fontWeight:isActive?700:500, color:isActive?'#CC2200':'var(--muted)', letterSpacing:'.3px' }}>{item.label}</span>
-            </button>
-          )
-        })}
       </div>
 
       {/* More drawer */}
       {showMore && (
-        <div style={{ position:'fixed', inset:0, zIndex:200 }}>
-          <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.5)', backdropFilter:'blur(4px)' }} onClick={() => setShowMore(false)}/>
-          <div style={{ position:'absolute', bottom:0, left:0, right:0, background:'var(--panel)', borderRadius:'20px 20px 0 0', padding:'0 0 max(20px, env(safe-area-inset-bottom)) 0', maxHeight:'80vh', overflowY:'auto' }}>
-            <div style={{ width:40, height:4, borderRadius:2, background:'var(--border)', margin:'10px auto 16px' }}/>
-            <div style={{ padding:'0 16px 8px', fontSize:'12px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.8px' }}>All Modules</div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'2px', padding:'0 8px 8px' }}>
-              {MORE_ITEMS.map(item => (
-                <button key={item.id} onClick={() => { setPage(item.id); setShowMore(false) }}
-                  style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'14px 8px', background:'var(--dim)', borderRadius:'12px', border:'none', cursor:'pointer', margin:'3px' }}>
-                  <span style={{ fontSize:'24px', marginBottom:'5px' }}>{item.icon}</span>
-                  <span style={{ fontSize:'10px', fontWeight:600, color:'var(--text)', textAlign:'center', lineHeight:1.2 }}>{item.label}</span>
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:900 }} onClick={() => setShowMore(false)}>
+          <div style={{ position:'absolute', bottom:'56px', left:0, right:0, background:'var(--panel)', borderRadius:'20px 20px 0 0', padding:'20px 16px', maxHeight:'70vh', overflowY:'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ width:'36px', height:'4px', background:'var(--border)', borderRadius:'99px', margin:'0 auto 16px' }}/>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'8px' }}>
+              {MORE_NAV.map(item => (
+                <button key={item.id} onClick={() => { navigate(item.id); setShowMore(false) }}
+                  style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'5px', padding:'12px 6px', background: activePath.startsWith(item.id) ? 'rgba(204,34,0,.1)' : 'var(--dim)', border:`1px solid ${activePath.startsWith(item.id)?'rgba(204,34,0,.3)':'var(--border)'}`, borderRadius:'12px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
+                  <span style={{ fontSize:'20px' }}>{item.icon}</span>
+                  <span style={{ fontSize:'10px', fontWeight:600, color:'var(--text)', textAlign:'center' }}>{item.label}</span>
                 </button>
               ))}
             </div>
+            <button onClick={signOut}
+              style={{ width:'100%', marginTop:'14px', background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)', borderRadius:'10px', color:'#DC2626', fontSize:'13px', fontWeight:600, padding:'11px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
+              Sign Out
+            </button>
           </div>
         </div>
       )}
+
+      {/* Bottom nav */}
+      <div style={{ background:'var(--panel)', borderTop:'1px solid var(--border)', display:'flex', flexShrink:0, height:'56px', zIndex:100 }}>
+        {BOTTOM_NAV.map(item => {
+          const isActive = item.id === '/more' ? showMore : (activePath === item.id || (item.id !== '/' && activePath.startsWith(item.id)))
+          return (
+            <button key={item.id}
+              onClick={() => { if (item.id === '/more') setShowMore(s => !s); else { navigate(item.id); setShowMore(false) }}}
+              style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'2px', background:'transparent', border:'none', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', borderTop:`2px solid ${isActive?'#CC2200':'transparent'}` }}>
+              <span style={{ fontSize:'18px' }}>{item.icon}</span>
+              <span style={{ fontSize:'9px', fontWeight:600, color:isActive?'#CC2200':'var(--muted)' }}>{item.label}</span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

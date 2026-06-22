@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useCalls } from '../lib/hooks/useCalls'
+import { useCalls } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmtDate } from '../lib/utils/format'
+import { fmtDate } from '../lib/utils'
 
 const OUTCOMES = ['Answered','Voicemail','No Answer','Wrong Number','Callback Scheduled']
 const DIRECTIONS = ['Outbound','Inbound']

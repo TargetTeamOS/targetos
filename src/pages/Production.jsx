@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useDeals } from '../lib/hooks/useDeals'
-import { useAgents } from '../lib/hooks/useAgents'
+import { useDeals } from '../lib/hooks'
+import { useAgents } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmt$, fmtDate } from '../lib/utils/format'
+import { fmt$, fmtDate } from '../lib/utils'
 
 const STAGES = [
   { label:'Negotiations',      color:'#037f4c' },
