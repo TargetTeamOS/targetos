@@ -1,10 +1,15 @@
 // ═══════════════════════════════════════════════════════════════
-// TargetOS V2 — Dashboard (Full Rebuild)
-// • Every widget is clickable — opens a detail card popup
-//   showing every line that made the number
-// • Drag to reorder widgets
-// • Admin can edit goals and control what each agent sees
-// • Custom metric filters per widget
+// TargetOS V2 — Dashboard (Complete Rebuild)
+//
+// Features:
+// • Every widget clickable → opens detail popup with all records
+// • Drag to reorder — saves to Supabase, persists across devices
+// • Widget size control: half / full width
+// • Widget accent color picker
+// • Per-agent goals stored in DB — each agent sees only their own
+// • Admin can update any agent's goal
+// • Admin controls what each agent can see
+// • Year and agent filters
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
@@ -12,59 +17,52 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
-import { db } from '../lib/db'
 import {
-  fmt$, fmtDate, fmtDateShort, parseNum, pct, initials,
-  isOverdue, isDueToday, getDaysUntil, lsGet, lsSet
+  loadDashPrefs, saveDashPrefs,
+  loadAgentGoals, saveAgentGoal,
+  loadTeamGoal, saveTeamGoal,
+  DEFAULT_WIDGETS
+} from '../lib/dashboardPrefs'
+import {
+  fmt$, fmtDate, parseNum, pct, initials,
+  isOverdue, isDueToday, getDaysUntil
 } from '../lib/utils'
-import { DEAL_STAGES, CONTACT_STATUSES } from '../lib/constants'
-import { Avatar, Pill, Btn, Loading, Spinner, Modal, Field, Input, Select, Tabs } from '../components/UI'
+import { DEAL_STAGES } from '../lib/constants'
+import { Avatar, Pill, Btn, Loading, Spinner, Field, Input } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-// ── DEFAULT GOALS (editable by admin) ────────────────────────────
-const DEFAULT_GOALS = {
-  agent_gci:   250000,
-  team_gci:    2000000,
-  team_deals:  200,
+// ── WIDGET REGISTRY ───────────────────────────────────────────────
+const WIDGET_DEFS = {
+  gci_goal:        { label: 'My GCI Goal',           icon: '🎯', roles: ['admin','secretary','agent'] },
+  team_goal:       { label: 'Team Goal',             icon: '🏆', roles: ['admin','secretary'] },
+  quick_stats:     { label: 'Quick Stats',           icon: '📊', roles: ['admin','secretary','agent'] },
+  pipeline:        { label: 'Pipeline by Stage',     icon: '🔀', roles: ['admin','secretary','agent'] },
+  todays_tasks:    { label: "Today's Tasks",         icon: '✅', roles: ['admin','secretary','agent'] },
+  hot_leads:       { label: 'Hot & Warm Leads',      icon: '🔥', roles: ['admin','secretary','agent'] },
+  active_deals:    { label: 'Active Deals',          icon: '💼', roles: ['admin','secretary','agent'] },
+  upcoming_close:  { label: 'Upcoming Closings',     icon: '📅', roles: ['admin','secretary','agent'] },
+  active_listings: { label: 'Active Listings',       icon: '🏡', roles: ['admin','secretary','agent'] },
+  leaderboard:     { label: 'Team Leaderboard',      icon: '🥇', roles: ['admin','secretary'] },
+  gci_chart:       { label: 'GCI by Month',          icon: '📈', roles: ['admin','secretary','agent'] },
+  open_houses:     { label: 'Open Houses This Week', icon: '🚪', roles: ['admin','secretary','agent'] },
+  gifts_pending:   { label: 'Gifts Pending',         icon: '🎁', roles: ['admin','secretary'] },
+  quick_add:       { label: 'Quick Add',             icon: '⚡', roles: ['admin','secretary','agent'] },
+  overdue_alert:   { label: 'Overdue Alert',         icon: '⚠️',  roles: ['admin','secretary','agent'] },
+  announcements:   { label: 'Announcements',         icon: '📣', roles: ['admin','secretary','agent'] },
 }
 
-function getGoals() { return lsGet('tos_goals', DEFAULT_GOALS) }
-function saveGoals(g) { lsSet('tos_goals', g) }
-
-// ── WIDGET DEFINITIONS ────────────────────────────────────────────
-const WIDGET_DEFS = [
-  { id: 'gci_goal',        label: 'My GCI Goal',           icon: '🎯', roles: ['admin','secretary','agent'] },
-  { id: 'team_goal',       label: 'Team Goal',             icon: '🏆', roles: ['admin','secretary'] },
-  { id: 'quick_stats',     label: 'Quick Stats',           icon: '📊', roles: ['admin','secretary','agent'] },
-  { id: 'pipeline',        label: 'Pipeline by Stage',     icon: '🔀', roles: ['admin','secretary','agent'] },
-  { id: 'todays_tasks',    label: "Today's Tasks",         icon: '✅', roles: ['admin','secretary','agent'] },
-  { id: 'hot_leads',       label: 'Hot & Warm Leads',      icon: '🔥', roles: ['admin','secretary','agent'] },
-  { id: 'active_deals',    label: 'Active Deals',          icon: '💼', roles: ['admin','secretary','agent'] },
-  { id: 'upcoming_close',  label: 'Upcoming Closings',     icon: '📅', roles: ['admin','secretary','agent'] },
-  { id: 'active_listings', label: 'Active Listings',       icon: '🏡', roles: ['admin','secretary','agent'] },
-  { id: 'open_houses',     label: 'Open Houses',           icon: '🚪', roles: ['admin','secretary','agent'] },
-  { id: 'leaderboard',     label: 'Team Leaderboard',      icon: '🥇', roles: ['admin','secretary'] },
-  { id: 'gci_chart',       label: 'GCI by Month',          icon: '📈', roles: ['admin','secretary','agent'] },
-  { id: 'gifts_pending',   label: 'Gifts Pending',         icon: '🎁', roles: ['admin','secretary'] },
-  { id: 'quick_add',       label: 'Quick Add',             icon: '⚡', roles: ['admin','secretary','agent'] },
-  { id: 'announcements',   label: 'Announcements',         icon: '📣', roles: ['admin','secretary','agent'] },
-  { id: 'overdue_alert',   label: 'Overdue Alert',         icon: '⚠️',  roles: ['admin','secretary','agent'] },
+const ACCENT_COLORS = [
+  '#CC2200','#DC2626','#F97316','#F5A623','#10B981',
+  '#0EA5E9','#3B82F6','#8B5CF6','#EC4899','#14B8A6',
+  '#84CC16','#6366F1','#9D50DD','#007eb5','#037f4c',
 ]
-
-function getPrefs(agentId, role) {
-  const saved = lsGet(`dash2_${agentId}`, null)
-  if (saved) return saved
-  const visible = WIDGET_DEFS.filter(w => w.roles.includes(role)).map(w => w.id)
-  return { visible, order: visible }
-}
-function savePrefs(agentId, p) { lsSet(`dash2_${agentId}`, p) }
 
 // ── GCI RING ─────────────────────────────────────────────────────
 function GCIRing({ value, goal, color = '#CC2200', size = 88 }) {
-  const r    = (size - 12) / 2
+  const r = (size - 12) / 2
   const circ = 2 * Math.PI * r
-  const p2   = Math.min(100, pct(value, goal))
+  const p2 = Math.min(100, goal > 0 ? Math.round((value / goal) * 100) : 0)
   const dash = (p2 / 100) * circ
   return (
     <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
@@ -80,11 +78,12 @@ function GCIRing({ value, goal, color = '#CC2200', size = 88 }) {
 function MiniBar({ data, color = '#CC2200' }) {
   if (!data?.length) return null
   const max = Math.max(...data.map(d => d.value), 1)
+  const curMonth = new Date().getMonth()
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '56px' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '60px' }}>
       {data.map((d, i) => (
-        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-          <div title={fmt$(d.value)} style={{ width: '100%', background: i === new Date().getMonth() ? color : color + '55', borderRadius: '2px 2px 0 0', height: `${Math.max(3, (d.value / max) * 48)}px`, transition: 'height .4s ease', cursor: 'pointer' }} />
+        <div key={i} title={fmt$(d.value)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+          <div style={{ width: '100%', background: i === curMonth ? color : color + '44', borderRadius: '2px 2px 0 0', height: `${Math.max(3, (d.value / max) * 50)}px`, transition: 'height .4s ease' }} />
           <div style={{ fontSize: '8px', color: 'var(--muted)' }}>{d.label}</div>
         </div>
       ))}
@@ -92,145 +91,262 @@ function MiniBar({ data, color = '#CC2200' }) {
   )
 }
 
-// ── WIDGET SHELL ─────────────────────────────────────────────────
-function Widget({ id, title, icon, sub = null, onDragStart, onDragOver, onDrop, isDragging, children }) {
-  return (
-    <div
-      draggable
-      onDragStart={() => onDragStart?.(id)}
-      onDragOver={(e) => { e.preventDefault(); onDragOver?.(id) }}
-      onDrop={() => onDrop?.(id)}
-      style={{
-        background:    'var(--panel)',
-        borderRadius:  'var(--radius)',
-        border:        '1px solid var(--border)',
-        display:       'flex',
-        flexDirection: 'column',
-        overflow:      'hidden',
-        opacity:       isDragging ? 0.4 : 1,
-        transition:    'opacity .15s, box-shadow .15s',
-        cursor:        'grab',
-      }}>
-      <div style={{ padding: '11px 14px 9px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '14px' }}>{icon}</span>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{title}</span>
-          {sub && <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{sub}</span>}
-        </div>
-        <span style={{ fontSize: '11px', color: 'var(--border)', userSelect: 'none' }}>⋮⋮</span>
-      </div>
-      <div style={{ flex: 1, padding: '12px 14px', overflow: 'hidden' }}>
-        {children}
-      </div>
-    </div>
-  )
-}
-
 // ── DETAIL POPUP ──────────────────────────────────────────────────
-// Opens when clicking a widget — shows every row that made the number
-function DetailPopup({ open, onClose, title, icon, children, width = 560 }) {
+function DetailPopup({ open, onClose, title, icon, children, width = 580 }) {
+  useEffect(() => {
+    const fn = (e) => { if (e.key === 'Escape') onClose() }
+    if (open) document.addEventListener('keydown', fn)
+    return () => document.removeEventListener('keydown', fn)
+  }, [open])
+
   if (!open) return null
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(3px)', fontFamily: ff }}>
-      <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: width, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)', animation: 'fadeUp .15s ease' }}>
-        <div style={{ padding: '16px 20px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(3px)', fontFamily: ff }}>
+      <div style={{ background: 'var(--panel)', borderRadius: '16px', width: '100%', maxWidth: width, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,.35)', animation: 'fadeUp .15s ease' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '18px' }}>{icon}</span>
-            <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>{title}</div>
+            <span style={{ fontSize: '20px' }}>{icon}</span>
+            <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>{title}</span>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)', padding: '4px 8px', borderRadius: '6px' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)', padding: '4px 8px' }}>✕</button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-          {children}
-        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>{children}</div>
       </div>
     </div>
   )
 }
 
-// Row component for detail popups
-function DetailRow({ left, right, sub = null, onClick, color = null }) {
+function DetailRow({ left, sub, right, onClick, badge }) {
   return (
     <div onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: '1px solid var(--border)', cursor: onClick ? 'pointer' : 'default', transition: 'background .1s' }}
-      onMouseEnter={e => { if (onClick) e.currentTarget.style.background = 'var(--hov)'; e.currentTarget.style.margin = '0 -4px'; e.currentTarget.style.padding = '9px 4px' }}
-      onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.margin = ''; e.currentTarget.style.padding = '9px 0' }}>
+      style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 8px', borderBottom: '1px solid var(--border)', cursor: onClick ? 'pointer' : 'default', borderRadius: '6px', transition: 'background .1s' }}
+      onMouseEnter={e => { if (onClick) e.currentTarget.style.background = 'var(--hov)' }}
+      onMouseLeave={e => e.currentTarget.style.background = ''}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{left}</div>
-        {sub && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '1px' }}>{sub}</div>}
+        {sub && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
       </div>
       <div style={{ flexShrink: 0, textAlign: 'right' }}>
-        {typeof right === 'string' || typeof right === 'number'
-          ? <div style={{ fontSize: '13px', fontWeight: 700, color: color || 'var(--text)' }}>{right}</div>
-          : right}
+        {badge && <div style={{ marginBottom: '3px' }}>{badge}</div>}
+        {right && <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{right}</div>}
+      </div>
+      {onClick && <span style={{ color: 'var(--muted)', fontSize: '12px', flexShrink: 0 }}>→</span>}
+    </div>
+  )
+}
+
+// ── WIDGET SETTINGS PANEL ─────────────────────────────────────────
+function WidgetSettings({ widget, onUpdate, onClose }) {
+  const [color,   setColor]   = useState(widget.color || '#CC2200')
+  const [size,    setSize]    = useState(widget.size  || 'md')
+  const [visible, setVisible] = useState(widget.visible !== false)
+
+  function save() {
+    onUpdate({ ...widget, color, size, visible })
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ff, padding: '20px' }}>
+      <div style={{ background: 'var(--panel)', borderRadius: '14px', width: '100%', maxWidth: '360px', boxShadow: '0 20px 50px rgba(0,0,0,.3)' }}>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
+            {WIDGET_DEFS[widget.id]?.icon} Widget Settings
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+        </div>
+        <div style={{ padding: '16px 20px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Accent Color</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+            {ACCENT_COLORS.map(c => (
+              <div key={c} onClick={() => setColor(c)}
+                style={{ width: 26, height: 26, borderRadius: '50%', background: c, cursor: 'pointer', border: color === c ? '3px solid var(--text)' : '2px solid transparent', transition: 'border .12s', boxShadow: color === c ? '0 0 0 1px var(--panel)' : 'none' }} />
+            ))}
+          </div>
+
+          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Width</div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            {[
+              { value: 'md', label: 'Half Width',  desc: '1 column' },
+              { value: 'lg', label: 'Full Width',  desc: '2 columns' },
+            ].map(s => (
+              <div key={s.value} onClick={() => setSize(s.value)}
+                style={{ flex: 1, padding: '10px 12px', border: `2px solid ${size === s.value ? color : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer', background: size === s.value ? color + '11' : 'transparent', textAlign: 'center' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: size === s.value ? color : 'var(--text)' }}>{s.label}</div>
+                <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px' }}>{s.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+            <div onClick={() => setVisible(v => !v)}
+              style={{ width: 36, height: 20, borderRadius: '99px', background: visible ? color : 'var(--border)', position: 'relative', flexShrink: 0, cursor: 'pointer', transition: 'background .2s' }}>
+              <div style={{ position: 'absolute', top: 2, left: visible ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+            </div>
+            <span style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 500 }}>Visible on dashboard</span>
+          </label>
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={save} style={{ background: color }}>Save</Btn>
+        </div>
       </div>
     </div>
   )
 }
 
 // ── CUSTOMIZE PANEL ───────────────────────────────────────────────
-function CustomizePanel({ prefs, onSave, onClose, role }) {
-  const [visible, setVisible] = useState([...(prefs.visible || [])])
-  const available = WIDGET_DEFS.filter(w => w.roles.includes(role))
-  function toggle(id) {
-    setVisible(v => v.includes(id) ? v.filter(x => x !== id) : [...v, id])
+function CustomizePanel({ widgets, onSave, onClose, role }) {
+  const [wids, setWids] = useState(widgets.map(w => ({ ...w })))
+  const [editing, setEditing] = useState(null)
+
+  function toggleVisible(id) {
+    setWids(ws => ws.map(w => w.id === id ? { ...w, visible: !w.visible } : w))
   }
+
+  function updateWidget(updated) {
+    setWids(ws => ws.map(w => w.id === updated.id ? updated : w))
+  }
+
+  const available = wids.filter(w => WIDGET_DEFS[w.id]?.roles.includes(role))
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ff, padding: '20px' }}>
-      <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '420px', maxHeight: '80vh', overflow: 'auto', boxShadow: 'var(--shadow-lg)' }}>
-        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: 'var(--panel)', borderRadius: '14px', width: '100%', maxWidth: '440px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,.3)' }}>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>🎛 Customize Dashboard</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
         </div>
-        <div style={{ padding: '14px 20px' }}>
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '12px' }}>Toggle widgets on or off. Drag them on the dashboard to reorder.</div>
+        <div style={{ fontSize: '12px', color: 'var(--muted)', padding: '10px 20px 0' }}>Toggle, resize, or change colors. Drag widgets on the dashboard to reorder.</div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 20px' }}>
           {available.map(w => {
-            const on = visible.includes(w.id)
+            const def = WIDGET_DEFS[w.id]
+            if (!def) return null
             return (
-              <div key={w.id} onClick={() => toggle(w.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', border: `1px solid ${on ? 'var(--brand)' : 'var(--border)'}`, background: on ? 'rgba(204,34,0,.04)' : 'transparent', cursor: 'pointer', marginBottom: '6px', transition: 'all .12s' }}>
-                <span style={{ fontSize: '16px' }}>{w.icon}</span>
-                <div style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{w.label}</div>
-                <div style={{ width: 34, height: 18, borderRadius: '99px', background: on ? 'var(--brand)' : 'var(--border)', position: 'relative', flexShrink: 0, transition: 'background .2s' }}>
-                  <div style={{ position: 'absolute', top: 1, left: on ? 17 : 1, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+              <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', border: `1px solid ${w.visible ? w.color + '55' : 'var(--border)'}`, background: w.visible ? w.color + '08' : 'transparent', marginBottom: '6px' }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: w.color, flexShrink: 0 }} />
+                <span style={{ fontSize: '15px' }}>{def.icon}</span>
+                <div style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{def.label}</div>
+                <div style={{ fontSize: '10px', color: 'var(--muted)', background: 'var(--dim)', padding: '2px 6px', borderRadius: '4px' }}>
+                  {w.size === 'lg' ? 'Full' : 'Half'}
+                </div>
+                <button onClick={() => setEditing(w)}
+                  style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px', color: 'var(--muted)', fontFamily: ff }}>
+                  ✏️
+                </button>
+                <div onClick={() => toggleVisible(w.id)}
+                  style={{ width: 32, height: 18, borderRadius: '99px', background: w.visible ? w.color : 'var(--border)', position: 'relative', flexShrink: 0, cursor: 'pointer', transition: 'background .2s' }}>
+                  <div style={{ position: 'absolute', top: 1, left: w.visible ? 15 : 1, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
                 </div>
               </div>
             )
           })}
         </div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={() => { onSave({ visible, order: visible }); onClose() }}>Save Layout</Btn>
+          <Btn onClick={() => { onSave(wids); onClose() }}>Save Layout</Btn>
         </div>
       </div>
+      {editing && <WidgetSettings widget={editing} onUpdate={updateWidget} onClose={() => setEditing(null)} />}
     </div>
   )
 }
 
-// ── GOAL EDITOR (admin only) ──────────────────────────────────────
-function GoalEditor({ goals, onSave, onClose }) {
-  const [g, setG] = useState({ ...goals })
+// ── GOAL EDITOR ───────────────────────────────────────────────────
+function GoalEditor({ agents, currentAgent, isAdmin, onClose, onSaved }) {
+  const [selId,      setSelId]      = useState(currentAgent.id)
+  const [goalGci,    setGoalGci]    = useState('')
+  const [goalDeals,  setGoalDeals]  = useState('')
+  const [teamGci,    setTeamGci]    = useState('')
+  const [teamDeals,  setTeamDeals]  = useState('')
+  const [saving,     setSaving]     = useState(false)
+  const [loading,    setLoading]    = useState(false)
+  const { toast } = useApp()
+
+  useEffect(() => { loadForAgent(selId) }, [selId])
+
+  async function loadForAgent(id) {
+    setLoading(true)
+    const goals = await loadAgentGoals(id)
+    setGoalGci(goals.goal_gci)
+    setGoalDeals(goals.goal_deals)
+    const tg = await loadTeamGoal()
+    setTeamGci(tg.team_gci)
+    setTeamDeals(tg.team_deals)
+    setLoading(false)
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      await saveAgentGoal(selId, parseFloat(goalGci) || 250000, parseInt(goalDeals) || 50)
+      if (isAdmin) await saveTeamGoal(parseFloat(teamGci) || 2000000, parseInt(teamDeals) || 200)
+      toast('✅ Goals saved')
+      onSaved?.()
+      onClose()
+    } catch(e) {
+      toast('Failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
+  }
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ff, padding: '20px' }}>
-      <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '380px', boxShadow: 'var(--shadow-lg)' }}>
-        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ background: 'var(--panel)', borderRadius: '14px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,.3)' }}>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>🎯 Edit Goals</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
         </div>
         <div style={{ padding: '16px 20px' }}>
-          <Field label="Agent Annual GCI Goal ($)">
-            <Input value={g.agent_gci} onChange={v => setG(x => ({ ...x, agent_gci: parseNum(v) }))} type="number" placeholder="250000" />
-          </Field>
-          <Field label="Team Annual GCI Goal ($)">
-            <Input value={g.team_gci} onChange={v => setG(x => ({ ...x, team_gci: parseNum(v) }))} type="number" placeholder="2000000" />
-          </Field>
-          <Field label="Team Deal Count Goal">
-            <Input value={g.team_deals} onChange={v => setG(x => ({ ...x, team_deals: parseNum(v) }))} type="number" placeholder="200" />
-          </Field>
+          {/* Agent selector — admin sees all, agent sees only themselves */}
+          {isAdmin && (
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Agent</div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {agents.map(a => (
+                  <div key={a.id} onClick={() => setSelId(a.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px', borderRadius: '8px', border: `1px solid ${selId === a.id ? 'var(--brand)' : 'var(--border)'}`, background: selId === a.id ? 'rgba(204,34,0,.08)' : 'transparent', cursor: 'pointer' }}>
+                    <Avatar agent={a} size={18} />
+                    <span style={{ fontSize: '11px', fontWeight: 600 }}>{a.name.split(' ')[0]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {loading ? <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '13px' }}>Loading...</div> : (
+            <>
+              {/* Agent goals */}
+              <div style={{ background: 'var(--dim)', borderRadius: '10px', padding: '14px', marginBottom: '14px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', marginBottom: '10px' }}>
+                  {isAdmin ? agents.find(a => a.id === selId)?.name + "'s Goals" : 'My Goals'}
+                </div>
+                <Field label="Annual GCI Goal ($)">
+                  <Input value={goalGci} onChange={setGoalGci} type="number" placeholder="250000" />
+                </Field>
+                <Field label="Annual Deal Goal">
+                  <Input value={goalDeals} onChange={setGoalDeals} type="number" placeholder="50" />
+                </Field>
+              </div>
+
+              {/* Team goals — admin only */}
+              {isAdmin && (
+                <div style={{ background: 'var(--dim)', borderRadius: '10px', padding: '14px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', marginBottom: '10px' }}>Team Goals (All Agents)</div>
+                  <Field label="Team Annual GCI Goal ($)">
+                    <Input value={teamGci} onChange={setTeamGci} type="number" placeholder="2000000" />
+                  </Field>
+                  <Field label="Team Annual Deal Goal">
+                    <Input value={teamDeals} onChange={setTeamDeals} type="number" placeholder="200" />
+                  </Field>
+                </div>
+              )}
+            </>
+          )}
         </div>
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={() => { onSave(g); onClose() }}>Save Goals</Btn>
+          <Btn onClick={save} loading={saving}>Save Goals</Btn>
         </div>
       </div>
     </div>
@@ -239,70 +355,66 @@ function GoalEditor({ goals, onSave, onClose }) {
 
 // ── AGENT VIEW ADMIN CONTROL ──────────────────────────────────────
 function AgentViewControl({ agents, onClose }) {
-  const [sel, setSel]  = useState(agents[0]?.id || '')
-  const [vis, setVis]  = useState([])
-  const { toast }      = useApp()
+  const [sel,   setSel]   = useState(agents[0]?.id || '')
+  const [wids,  setWids]  = useState([])
+  const [saving,setSaving]= useState(false)
+  const { toast } = useApp()
 
   useEffect(() => {
     if (!sel) return
     const a = agents.find(x => x.id === sel)
     if (!a) return
-    const p = getPrefs(sel, a.role)
-    setVis(p.visible || [])
+    loadDashPrefs(sel).then(p => setWids(p.widgets || DEFAULT_WIDGETS))
   }, [sel])
 
-  const selAgent = agents.find(a => a.id === sel)
-  const available = WIDGET_DEFS.filter(w => selAgent && w.roles.includes(selAgent.role))
+  const selAgent  = agents.find(a => a.id === sel)
+  const available = wids.filter(w => WIDGET_DEFS[w.id]?.roles.includes(selAgent?.role || 'agent'))
 
-  function save() {
-    const a = agents.find(x => x.id === sel)
-    if (!a) return
-    savePrefs(sel, { visible: vis, order: vis })
-    toast(`✅ Dashboard saved for ${a.name}`)
+  async function save() {
+    setSaving(true)
+    await saveDashPrefs(sel, wids)
+    toast(`✅ Dashboard saved for ${selAgent?.name}`)
+    setSaving(false)
     onClose()
   }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ff, padding: '20px' }}>
-      <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '500px', maxHeight: '85vh', overflow: 'auto', boxShadow: 'var(--shadow-lg)' }}>
-        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>⚙️ Manage Agent Dashboards</div>
+      <div style={{ background: 'var(--panel)', borderRadius: '14px', width: '100%', maxWidth: '480px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,.3)' }}>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>👥 Manage Agent Dashboards</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
         </div>
-        <div style={{ padding: '14px 20px' }}>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        <div style={{ padding: '12px 20px 0' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {agents.map(a => (
               <div key={a.id} onClick={() => setSel(a.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', border: `1px solid ${sel === a.id ? 'var(--brand)' : 'var(--border)'}`, background: sel === a.id ? 'rgba(204,34,0,.08)' : 'transparent', cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '8px', border: `1px solid ${sel === a.id ? 'var(--brand)' : 'var(--border)'}`, background: sel === a.id ? 'rgba(204,34,0,.08)' : 'transparent', cursor: 'pointer' }}>
                 <Avatar agent={a} size={20} />
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{a.name.split(' ')[0]}</span>
+                <span style={{ fontSize: '12px', fontWeight: 600 }}>{a.name.split(' ')[0]}</span>
               </div>
             ))}
           </div>
-          {selAgent && (
-            <>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>
-                Widgets visible to {selAgent.name}
-              </div>
-              {available.map(w => {
-                const on = vis.includes(w.id)
-                return (
-                  <div key={w.id} onClick={() => setVis(v => on ? v.filter(x => x !== w.id) : [...v, w.id])}
-                    style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', border: `1px solid ${on ? 'var(--brand)' : 'var(--border)'}`, background: on ? 'rgba(204,34,0,.04)' : 'transparent', cursor: 'pointer', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '15px' }}>{w.icon}</span>
-                    <div style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{w.label}</div>
-                    <div style={{ width: 32, height: 18, borderRadius: '99px', background: on ? 'var(--brand)' : 'var(--border)', position: 'relative', flexShrink: 0 }}>
-                      <div style={{ position: 'absolute', top: 1, left: on ? 15 : 1, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
-                    </div>
-                  </div>
-                )
-              })}
-            </>
-          )}
         </div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 20px' }}>
+          {available.map(w => {
+            const def = WIDGET_DEFS[w.id]
+            if (!def) return null
+            return (
+              <div key={w.id} onClick={() => setWids(ws => ws.map(x => x.id === w.id ? { ...x, visible: !x.visible } : x))}
+                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', border: `1px solid ${w.visible ? w.color + '55' : 'var(--border)'}`, background: w.visible ? w.color + '08' : 'transparent', marginBottom: '6px', cursor: 'pointer' }}>
+                <span style={{ fontSize: '15px' }}>{def.icon}</span>
+                <div style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{def.label}</div>
+                <div style={{ width: 32, height: 18, borderRadius: '99px', background: w.visible ? (w.color || 'var(--brand)') : 'var(--border)', position: 'relative', flexShrink: 0, transition: 'background .2s' }}>
+                  <div style={{ position: 'absolute', top: 1, left: w.visible ? 15 : 1, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={save}>Save for {selAgent?.name?.split(' ')[0]}</Btn>
+          <Btn onClick={save} loading={saving}>Save for {selAgent?.name?.split(' ')[0]}</Btn>
         </div>
       </div>
     </div>
@@ -310,7 +422,7 @@ function AgentViewControl({ agents, onClose }) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// MAIN DASHBOARD
+// MAIN DASHBOARD COMPONENT
 // ════════════════════════════════════════════════════════════════
 export function Dashboard() {
   const navigate  = useNavigate()
@@ -318,44 +430,79 @@ export function Dashboard() {
   const { toast } = useApp()
   const year = new Date().getFullYear().toString()
 
-  const [data,        setData]        = useState({})
-  const [loading,     setLoading]     = useState(true)
-  const [agentFilter, setAgentFilter] = useState('')
-  const [yearFilter,  setYearFilter]  = useState(year)
-  const [goals,       setGoals]       = useState(getGoals)
-  const [prefs,       setPrefs]       = useState(null)
-  const [agents,      setAgents]      = useState([])
-  const [popup,       setPopup]       = useState(null) // which detail popup is open
-  const [showCustomize, setShowCustomize]   = useState(false)
-  const [showGoalEditor, setShowGoalEditor] = useState(false)
-  const [showAgentView,  setShowAgentView]  = useState(false)
-  const [dragId,      setDragId]      = useState(null)
-  const [dragOverId,  setDragOverId]  = useState(null)
+  // State
+  const [data,         setData]         = useState({})
+  const [loading,      setLoading]      = useState(true)
+  const [widgets,      setWidgets]      = useState([])
+  const [agentGoals,   setAgentGoals]   = useState({ goal_gci: 250000, goal_deals: 50 })
+  const [teamGoals,    setTeamGoals]    = useState({ team_gci: 2000000, team_deals: 200 })
+  const [agents,       setAgents]       = useState([])
+  const [agentFilter,  setAgentFilter]  = useState('')
+  const [yearFilter,   setYearFilter]   = useState(year)
+  const [popup,        setPopup]        = useState(null)
+  const [showCustomize,setShowCustomize]= useState(false)
+  const [showGoals,    setShowGoals]    = useState(false)
+  const [showAgentView,setShowAgentView]= useState(false)
+  const [dragId,       setDragId]       = useState(null)
+  const [savingPrefs,  setSavingPrefs]  = useState(false)
 
+  // ── LOAD PREFS AND GOALS FROM DB ──────────────────────────────
   useEffect(() => {
     if (!agent) return
-    setPrefs(getPrefs(agent.id, agent.role))
+    loadDashPrefs(agent.id).then(p => setWidgets(p.widgets || DEFAULT_WIDGETS))
+    loadAgentGoals(agent.id).then(setAgentGoals)
+    loadTeamGoal().then(setTeamGoals)
   }, [agent?.id])
 
-  const show = useCallback((id) => prefs?.visible?.includes(id), [prefs])
+  // ── SAVE WIDGETS TO DB ────────────────────────────────────────
+  async function persistWidgets(newWidgets) {
+    setWidgets(newWidgets)
+    setSavingPrefs(true)
+    try {
+      await saveDashPrefs(agent.id, newWidgets)
+    } catch(e) {
+      toast('Could not save layout: ' + e.message, '#DC2626')
+    } finally { setSavingPrefs(false) }
+  }
 
-  // ── LOAD ALL DATA ────────────────────────────────────────────
-  const load = useCallback(async () => {
+  // ── DRAG TO REORDER ───────────────────────────────────────────
+  const dragOver = useRef(null)
+
+  function onDragStart(id) { setDragId(id) }
+  function onDragEnter(id) { dragOver.current = id }
+
+  function onDragEnd() {
+    if (!dragId || !dragOver.current || dragId === dragOver.current) {
+      setDragId(null); dragOver.current = null; return
+    }
+    const newW = [...widgets]
+    const fromIdx = newW.findIndex(w => w.id === dragId)
+    const toIdx   = newW.findIndex(w => w.id === dragOver.current)
+    if (fromIdx < 0 || toIdx < 0) { setDragId(null); return }
+    const [moved] = newW.splice(fromIdx, 1)
+    newW.splice(toIdx, 0, moved)
+    persistWidgets(newW)
+    setDragId(null)
+    dragOver.current = null
+    toast('✅ Layout saved')
+  }
+
+  // ── LOAD DATA ─────────────────────────────────────────────────
+  const loadData = useCallback(async () => {
     if (!agent) return
     setLoading(true)
     try {
-      const viewAgentId = agentFilter || ((isAdmin || canManage) ? null : agent.id)
-      const filter = (arr) => viewAgentId ? arr.filter(x => x.agent_id === viewAgentId) : arr
+      const viewId = agentFilter || ((isAdmin || canManage) ? null : agent.id)
+      const filter = arr => viewId ? arr.filter(x => x.agent_id === viewId) : arr
 
-      const [rawDeals, rawContacts, rawTasks, rawListings, rawOH, rawAnn, rawAgents, rawOffers, rawGifts] = await Promise.all([
+      const [rawDeals, rawContacts, rawTasks, rawListings, rawOH, rawAnn, rawAgents, rawGifts] = await Promise.all([
         supabase.from('deals').select('id,stage,gci,production,ao_date,close_date,expected_close_date,addr,client_name,agent_id,side,agents(id,name,color)').then(r => r.data || []),
         supabase.from('contacts').select('id,first_name,last_name,status,source,agent_id,created_at,phone').then(r => r.data || []),
         supabase.from('tasks').select('id,title,status,priority,due_date,agent_id,agents(id,name,color)').then(r => r.data || []),
         supabase.from('listings').select('id,addr,city,status,list_price,agent_id,agents(id,name,color)').then(r => r.data || []),
-        supabase.from('open_houses').select('id,listing_addr,date,start_time,end_time,agent_id,agents(id,name,color)').then(r => r.data || []),
+        supabase.from('open_houses').select('id,listing_addr,date,start_time,agent_id,agents(id,name,color)').then(r => r.data || []),
         supabase.from('announcements').select('*,agents(id,name,color)').order('pinned', { ascending: false }).limit(5).then(r => r.data || []),
         supabase.from('agents').select('*').eq('active', true).order('name').then(r => r.data || []),
-        supabase.from('offers').select('id,listing_addr,status,gci,production,agent_id,side').then(r => r.data || []),
         supabase.from('gifts').select('id,client_name,status,agent_id').then(r => r.data || []),
       ])
 
@@ -369,140 +516,418 @@ export function Dashboard() {
       const weekEnd  = new Date(); weekEnd.setDate(weekEnd.getDate() + 7)
       const weekStr  = weekEnd.toISOString().slice(0, 10)
 
-      // Year filter
       const yearDeals   = myDeals.filter(d => d.ao_date?.startsWith(yearFilter))
       const closedDeals = yearDeals.filter(d => d.stage === 'Closed')
       const activeDeals = myDeals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
-
-      // GCI
       const closedGCI   = closedDeals.reduce((s, d) => s + parseNum(d.gci), 0)
       const pipelineGCI = activeDeals.reduce((s, d) => s + parseNum(d.gci), 0)
 
-      // Team GCI
+      // Team GCI — always all agents, for team_goal widget
       const teamClosed = rawDeals.filter(d => d.ao_date?.startsWith(yearFilter) && d.stage === 'Closed')
       const teamGCI    = teamClosed.reduce((s, d) => s + parseNum(d.gci), 0)
       const teamDeals  = teamClosed.length
 
-      // Accepted offers (AO) — stage is 'Offer Accapted'
-      const acceptedOffers     = myDeals.filter(d => d.stage === 'Offer Accapted')
-      const acceptedOffersProd = acceptedOffers.reduce((s, d) => s + parseNum(d.production), 0)
-
-      // Under Contract
-      const underContract     = myDeals.filter(d => d.stage === 'Under Contract')
-      const underContractProd = underContract.reduce((s, d) => s + parseNum(d.production), 0)
-
-      // Today tasks
-      const todayTasks   = myTasks.filter(t => t.status !== 'done' && (isDueToday(t.due_date) || isOverdue(t.due_date))).sort((a, b) => isOverdue(a.due_date) ? -1 : 1)
+      const todayTasks  = myTasks.filter(t => t.status !== 'done' && (isDueToday(t.due_date) || isOverdue(t.due_date)))
       const overdueTasks = myTasks.filter(t => t.status !== 'done' && isOverdue(t.due_date))
+      const hotLeads    = myContacts.filter(c => c.status === 'Hot' || c.status === 'Warm').sort((a, b) => a.status === 'Hot' ? -1 : 1)
 
-      // Hot leads
-      const hotLeads = myContacts.filter(c => c.status === 'Hot' || c.status === 'Warm').sort((a, b) => a.status === 'Hot' ? -1 : 1)
-
-      // Upcoming closings 30 days
       const upcoming = myDeals.filter(d => {
         const date = d.expected_close_date || d.close_date
         if (!date) return false
         const days = getDaysUntil(date)
         return days !== null && days >= 0 && days <= 30 && d.stage !== 'Closed'
-      }).sort((a, b) => getDaysUntil(a.expected_close_date || a.close_date) - getDaysUntil(b.expected_close_date || b.close_date))
+      }).sort((a, b) => getDaysUntil(a.expected_close_date||a.close_date) - getDaysUntil(b.expected_close_date||b.close_date))
 
-      // Active listings
       const activeListings = myListings.filter(l => l.status === 'Active')
+      const upcomingOH     = myOH.filter(oh => oh.date >= todayStr && oh.date <= weekStr)
 
-      // Open houses this week
-      const upcomingOH = myOH.filter(oh => oh.date >= todayStr && oh.date <= weekStr)
-
-      // GCI by month
       const monthlyGCI = Array.from({ length: 12 }, (_, m) => {
         const ms = `${yearFilter}-${String(m+1).padStart(2,'0')}`
         const gci = myDeals.filter(d => d.ao_date?.startsWith(ms) && d.stage === 'Closed').reduce((s, d) => s + parseNum(d.gci), 0)
         return { label: 'JFMAMJJASOND'[m], value: gci }
       })
 
-      // Leaderboard
       const leaderboard = rawAgents.map(a => {
-        const ad = rawDeals.filter(d => d.agent_id === a.id && d.ao_date?.startsWith(yearFilter))
-        const gci    = ad.filter(d => d.stage === 'Closed').reduce((s, d) => s + parseNum(d.gci), 0)
-        const closed = ad.filter(d => d.stage === 'Closed').length
-        const active = ad.filter(d => !['Closed','Deal Fell Through'].includes(d.stage)).length
-        return { agent: a, gci, closed, active, total: ad.length }
+        const ad  = rawDeals.filter(d => d.agent_id === a.id && d.ao_date?.startsWith(yearFilter))
+        const gci = ad.filter(d => d.stage === 'Closed').reduce((s, d) => s + parseNum(d.gci), 0)
+        return { agent: a, gci, closed: ad.filter(d => d.stage === 'Closed').length, active: ad.filter(d => !['Closed','Deal Fell Through'].includes(d.stage)).length }
       }).sort((a, b) => b.gci - a.gci)
 
-      // Pipeline by stage
       const pipeByStage = DEAL_STAGES.map(s => ({
         ...s,
         deals: activeDeals.filter(d => d.stage === s.value),
         gci:   activeDeals.filter(d => d.stage === s.value).reduce((sum, d) => sum + parseNum(d.gci), 0),
       }))
 
-      // Pending gifts
-      const pendingGifts = rawGifts.filter(g => !['Delivered'].includes(g.status))
+      const acceptedOffers   = myDeals.filter(d => d.stage === 'Offer Accapted')
+      const underContract    = myDeals.filter(d => d.stage === 'Under Contract')
+      const pendingGifts     = rawGifts.filter(g => !['Delivered'].includes(g.status))
 
       setAgents(rawAgents)
       setData({
         closedGCI, pipelineGCI, closedDeals, activeDeals, yearDeals,
-        teamGCI, teamDeals, todayTasks, overdueTasks,
-        hotLeads, upcoming, activeListings, upcomingOH,
-        monthlyGCI, leaderboard, pipeByStage,
-        announcements: rawAnn, pendingGifts, allTasks: myTasks,
-        contactCount: myContacts.length, hotCount: hotLeads.length,
-        acceptedOffers, acceptedOffersProd, underContract, underContractProd,
-        allDeals: myDeals, allListings: myListings, allContacts: myContacts,
+        teamGCI, teamDeals, todayTasks, overdueTasks, hotLeads,
+        upcoming, activeListings, upcomingOH, monthlyGCI, leaderboard,
+        pipeByStage, announcements: rawAnn, pendingGifts,
+        acceptedOffers, underContract,
+        contactCount: myContacts.length,
       })
     } catch(e) {
-      toast('Error loading dashboard: ' + e.message, '#DC2626')
+      toast('Dashboard error: ' + e.message, '#DC2626')
     } finally { setLoading(false) }
   }, [agent?.id, agentFilter, yearFilter, isAdmin, canManage])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { loadData() }, [loadData])
 
-  // ── DRAG TO REORDER ──────────────────────────────────────────
-  function handleDragStart(id) { setDragId(id) }
-  function handleDragOver(id)  { setDragOverId(id) }
-  function handleDrop(targetId) {
-    if (!dragId || dragId === targetId) { setDragId(null); setDragOverId(null); return }
-    const newOrder = [...(prefs?.order || prefs?.visible || [])]
-    const fromIdx  = newOrder.indexOf(dragId)
-    const toIdx    = newOrder.indexOf(targetId)
-    if (fromIdx < 0 || toIdx < 0) { setDragId(null); setDragOverId(null); return }
-    newOrder.splice(fromIdx, 1)
-    newOrder.splice(toIdx, 0, dragId)
-    const newPrefs = { ...prefs, order: newOrder, visible: newOrder.filter(id => prefs.visible.includes(id)) }
-    setPrefs(newPrefs)
-    savePrefs(agent.id, newPrefs)
-    setDragId(null); setDragOverId(null)
-  }
-
-  function savePrefsAndUpdate(p) {
-    setPrefs(p)
-    savePrefs(agent.id, p)
-    toast('✅ Dashboard saved')
-  }
-
-  function saveGoalsAndUpdate(g) {
-    setGoals(g)
-    saveGoals(g)
-    toast('✅ Goals updated')
-  }
-
-  if (!agent || !prefs) return <div style={{ fontFamily: ff }}><Loading /></div>
+  const stageHex = s => DEAL_STAGES.find(x => x.value === s)?.hex || '#c4c4c4'
+  const show = id => widgets.find(w => w.id === id)?.visible
+  const wColor = id => widgets.find(w => w.id === id)?.color || '#CC2200'
+  const wSize  = id => widgets.find(w => w.id === id)?.size  || 'md'
+  const visibleOrdered = widgets.filter(w => w.visible && WIDGET_DEFS[w.id]?.roles.includes(agent?.role || 'agent'))
 
   const greeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'
   const years = Array.from({ length: 10 }, (_, i) => (new Date().getFullYear() - i).toString())
-  const orderedVisible = (prefs.order || prefs.visible || []).filter(id => prefs.visible?.includes(id))
 
-  // Stage color helper
-  const stageHex = (s) => DEAL_STAGES.find(x => x.value === s)?.hex || '#c4c4c4'
+  if (!agent || !widgets.length) return <div style={{ fontFamily: ff }}><Loading /></div>
+
+  // ── RENDER A WIDGET ───────────────────────────────────────────
+  function renderWidget(w) {
+    const def   = WIDGET_DEFS[w.id]
+    const color = w.color || '#CC2200'
+    const isLg  = w.size === 'lg'
+
+    const shell = (content) => (
+      <div key={w.id}
+        draggable
+        onDragStart={() => onDragStart(w.id)}
+        onDragEnter={() => onDragEnter(w.id)}
+        onDragEnd={onDragEnd}
+        onDragOver={e => e.preventDefault()}
+        style={{
+          gridColumn:    isLg ? 'span 2' : 'span 1',
+          background:    'var(--panel)',
+          borderRadius:  '12px',
+          border:        `1px solid var(--border)`,
+          borderTop:     `3px solid ${color}`,
+          display:       'flex',
+          flexDirection: 'column',
+          overflow:      'hidden',
+          opacity:       dragId === w.id ? 0.4 : 1,
+          transition:    'opacity .15s, box-shadow .15s',
+          cursor:        'grab',
+        }}>
+        <div style={{ padding: '11px 14px 9px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '14px' }}>{def?.icon}</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{def?.label}</span>
+          </div>
+          <span style={{ fontSize: '10px', color: 'var(--border)', userSelect: 'none', letterSpacing: '1px' }}>⋮⋮</span>
+        </div>
+        <div style={{ flex: 1, padding: '12px 14px', overflow: 'hidden' }}>{content}</div>
+      </div>
+    )
+
+    // ── GCI GOAL ──
+    if (w.id === 'gci_goal') return shell(
+      <div onClick={() => setPopup('gci_goal')} style={{ display: 'flex', alignItems: 'center', gap: '14px', cursor: 'pointer' }}>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <GCIRing value={data.closedGCI} goal={agentGoals.goal_gci} color={color} />
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: '14px', fontWeight: 900, color: 'var(--text)' }}>{pct(data.closedGCI, agentGoals.goal_gci)}%</span>
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: '20px', fontWeight: 800, color: '#10B981' }}>{fmt$(data.closedGCI)}</div>
+          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>of {fmt$(agentGoals.goal_gci)} goal · {data.closedDeals?.length || 0} closed</div>
+          <div style={{ fontSize: '11px', color: color, marginTop: '3px' }}>+ {fmt$(data.pipelineGCI)} pipeline</div>
+        </div>
+      </div>
+    )
+
+    // ── TEAM GOAL ──
+    if (w.id === 'team_goal' && (isAdmin || canManage)) return shell(
+      <div onClick={() => setPopup('team_goal')} style={{ display: 'flex', alignItems: 'center', gap: '14px', cursor: 'pointer' }}>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <GCIRing value={data.teamGCI} goal={teamGoals.team_gci} color={color} />
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: '14px', fontWeight: 900, color: 'var(--text)' }}>{pct(data.teamGCI, teamGoals.team_gci)}%</span>
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: '20px', fontWeight: 800, color: color }}>{fmt$(data.teamGCI)}</div>
+          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>of {fmt$(teamGoals.team_gci)} · {data.teamDeals}/{teamGoals.team_deals} deals</div>
+        </div>
+      </div>
+    )
+
+    // ── QUICK STATS ──
+    if (w.id === 'quick_stats') return shell(
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+        {[
+          { label: 'Active Deals',    value: data.activeDeals?.length || 0,    popup: 'active_deals',   c: '#3B82F6' },
+          { label: 'Accepted Offers', value: data.acceptedOffers?.length || 0, popup: 'accepted_offers',c: '#10B981' },
+          { label: 'Under Contract',  value: data.underContract?.length || 0,  popup: 'under_contract', c: '#9D50DD' },
+          { label: 'Closed GCI',      value: fmt$(data.closedGCI),             popup: 'gci_goal',       c: '#F5A623' },
+          { label: 'Hot Leads',       value: data.contactCount || 0,           popup: 'hot_leads',      c: '#DC2626' },
+          { label: 'Active Listings', value: data.activeListings?.length || 0, popup: 'active_listings',c: '#14B8A6' },
+        ].map(s => (
+          <div key={s.label} onClick={() => setPopup(s.popup)}
+            style={{ padding: '10px', background: 'var(--dim)', borderRadius: '8px', cursor: 'pointer', borderLeft: `3px solid ${s.c}` }}
+            onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
+            onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>{s.value}</div>
+            <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px' }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+    )
+
+    // ── PIPELINE ──
+    if (w.id === 'pipeline') return shell(
+      <div>
+        {data.pipeByStage?.filter(s => s.deals.length > 0).map(s => (
+          <div key={s.value} onClick={() => setPopup('stage_' + s.value)}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.opacity = '0.7'} onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.hex, flexShrink: 0 }} />
+            <div style={{ flex: 1, fontSize: '12px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)' }}>{s.deals.length}</div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: s.hex }}>{fmt$(s.gci)}</div>
+          </div>
+        ))}
+        {!data.pipeByStage?.some(s => s.deals.length > 0) && <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '12px' }}>No active deals</div>}
+        <div onClick={() => navigate('/pipeline')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '8px' }}>View Pipeline →</div>
+      </div>
+    )
+
+    // ── TODAY'S TASKS ──
+    if (w.id === 'todays_tasks') return shell(
+      <div>
+        {data.todayTasks?.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>🎉 All clear!</div>}
+        {data.todayTasks?.slice(0, 5).map(t => (
+          <div key={t.id} onClick={() => navigate('/tasks/' + t.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: isOverdue(t.due_date) ? '#DC2626' : color }} />
+            <div style={{ flex: 1, fontSize: '12px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+            {isOverdue(t.due_date) && <span style={{ fontSize: '9px', color: '#DC2626', fontWeight: 700 }}>LATE</span>}
+          </div>
+        ))}
+        {data.todayTasks?.length > 5 && <div onClick={() => setPopup('todays_tasks')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '6px' }}>+{data.todayTasks.length - 5} more →</div>}
+        <div onClick={() => navigate('/tasks/new')} style={{ marginTop: '8px', padding: '6px', border: '1px dashed var(--border)', borderRadius: '6px', textAlign: 'center', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer' }}>+ Quick Add Task</div>
+      </div>
+    )
+
+    // ── HOT LEADS ──
+    if (w.id === 'hot_leads') return shell(
+      <div>
+        {data.hotLeads?.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No hot leads</div>}
+        {data.hotLeads?.slice(0, 5).map(c => (
+          <div key={c.id} onClick={() => navigate('/contacts/' + c.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: c.status === 'Hot' ? '#DC2626' : '#F97316', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
+              {initials((c.first_name || '') + ' ' + (c.last_name || ''))}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
+              {c.phone && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{c.phone}</div>}
+            </div>
+            <Pill label={c.status} color={c.status === 'Hot' ? '#DC2626' : '#F97316'} />
+          </div>
+        ))}
+        {data.hotLeads?.length > 5 && <div onClick={() => setPopup('hot_leads')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '6px' }}>+{data.hotLeads.length - 5} more →</div>}
+      </div>
+    )
+
+    // ── ACTIVE DEALS ──
+    if (w.id === 'active_deals') return shell(
+      <div>
+        {data.activeDeals?.slice(0, 4).map(d => (
+          <div key={d.id} onClick={() => navigate('/production/' + d.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.addr}</div>
+              {d.client_name && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{d.client_name}</div>}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</div>
+              <Pill label={d.stage} color={stageHex(d.stage)} />
+            </div>
+          </div>
+        ))}
+        <div onClick={() => setPopup('active_deals')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '8px' }}>View all {data.activeDeals?.length} →</div>
+      </div>
+    )
+
+    // ── UPCOMING CLOSINGS ──
+    if (w.id === 'upcoming_close') return shell(
+      <div>
+        {data.upcoming?.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No closings in 30 days</div>}
+        {data.upcoming?.slice(0, 4).map(d => {
+          const days = getDaysUntil(d.expected_close_date || d.close_date)
+          return (
+            <div key={d.id} onClick={() => navigate('/production/' + d.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+              <div style={{ width: 32, height: 32, borderRadius: '8px', background: days <= 7 ? '#FEF2F2' : '#F0FDF4', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: days <= 7 ? '#DC2626' : '#10B981' }}>{days}</div>
+                <div style={{ fontSize: '8px', color: days <= 7 ? '#DC2626' : '#10B981' }}>days</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.addr}</div>
+                <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{fmtDate(d.expected_close_date || d.close_date)}</div>
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</div>
+            </div>
+          )
+        })}
+        {data.upcoming?.length > 4 && <div onClick={() => setPopup('upcoming_close')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '6px' }}>+{data.upcoming.length - 4} more →</div>}
+      </div>
+    )
+
+    // ── ACTIVE LISTINGS ──
+    if (w.id === 'active_listings') return shell(
+      <div>
+        {data.activeListings?.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No active listings</div>}
+        {data.activeListings?.slice(0, 5).map(l => (
+          <div key={l.id} onClick={() => navigate('/listings/' + l.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.addr}</div>
+              {l.city && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{l.city}</div>}
+            </div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: color }}>{fmt$(l.list_price)}</div>
+          </div>
+        ))}
+        <div onClick={() => setPopup('active_listings')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '8px' }}>View all listings →</div>
+      </div>
+    )
+
+    // ── LEADERBOARD ──
+    if (w.id === 'leaderboard' && (isAdmin || canManage)) return shell(
+      <div>
+        {data.leaderboard?.filter(r => r.gci > 0 || r.closed > 0).slice(0, 6).map((row, i) => (
+          <div key={row.agent.id} onClick={() => { setAgentFilter(row.agent.id); setPopup('gci_goal') }}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            <div style={{ fontSize: '14px', minWidth: '22px' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</div>
+            <Avatar agent={row.agent} size={26} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.agent.name}</div>
+              <div style={{ height: '3px', background: 'var(--dim)', borderRadius: '99px', marginTop: '3px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: row.agent.color || '#CC2200', width: `${pct(row.gci, agentGoals.goal_gci)}%` }} />
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#10B981' }}>{fmt$(row.gci)}</div>
+              <div style={{ fontSize: '9px', color: 'var(--muted)' }}>{row.closed} closed</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+
+    // ── GCI CHART ──
+    if (w.id === 'gci_chart') return shell(
+      <div>
+        <div style={{ marginBottom: '8px' }}>
+          <span style={{ fontSize: '18px', fontWeight: 800, color: '#10B981' }}>{fmt$(data.closedGCI)}</span>
+          <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '6px' }}>closed {yearFilter}</span>
+        </div>
+        <MiniBar data={data.monthlyGCI} color={color} />
+      </div>
+    )
+
+    // ── OPEN HOUSES ──
+    if (w.id === 'open_houses') return shell(
+      <div>
+        {data.upcomingOH?.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No open houses this week</div>}
+        {data.upcomingOH?.map(oh => (
+          <div key={oh.id} onClick={() => navigate('/openhouse/' + oh.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{oh.listing_addr}</div>
+              <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{fmtDate(oh.date)} {oh.start_time && `· ${oh.start_time}`}</div>
+            </div>
+            {oh.agents && <Avatar agent={oh.agents} size={20} />}
+          </div>
+        ))}
+      </div>
+    )
+
+    // ── GIFTS PENDING ──
+    if (w.id === 'gifts_pending' && (isAdmin || canManage)) return shell(
+      <div>
+        {data.pendingGifts?.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>All delivered ✅</div>}
+        {data.pendingGifts?.slice(0, 5).map(g => (
+          <div key={g.id} onClick={() => navigate('/gifts/' + g.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            <div style={{ flex: 1, fontSize: '12px', color: 'var(--text)' }}>{g.client_name}</div>
+            <Pill label={g.status} color="#9d50dd" />
+          </div>
+        ))}
+        {data.pendingGifts?.length > 5 && <div onClick={() => setPopup('gifts_pending')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '6px' }}>+{data.pendingGifts.length - 5} more →</div>}
+      </div>
+    )
+
+    // ── QUICK ADD ──
+    if (w.id === 'quick_add') return shell(
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        {[
+          { label: '+ Lead',    path: '/contacts/new',   c: '#0EA5E9' },
+          { label: '+ Deal',    path: '/production/new', c: '#10B981' },
+          { label: '+ Task',    path: '/tasks/new',      c: '#8B5CF6' },
+          { label: '+ Listing', path: '/listings/new',   c: '#F5A623' },
+          { label: '+ Offer',   path: '/offers/new',     c: '#6366F1' },
+          { label: '+ OH',      path: '/openhouse/new',  c: '#14B8A6' },
+          { label: '+ Gift',    path: '/gifts/new',      c: '#EC4899' },
+          { label: '+ Event',   path: '/calendar/new',   c: '#CC2200' },
+        ].map(item => (
+          <button key={item.path} onClick={() => navigate(item.path)}
+            style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${item.c}33`, background: item.c + '11', color: item.c, fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+            {item.label}
+          </button>
+        ))}
+      </div>
+    )
+
+    // ── OVERDUE ALERT ──
+    if (w.id === 'overdue_alert') return shell(
+      <div onClick={() => setPopup('overdue_alert')} style={{ cursor: 'pointer' }}>
+        {data.overdueTasks?.length === 0
+          ? <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>✅ No overdue tasks</div>
+          : <div style={{ background: '#FEF2F2', borderRadius: '8px', padding: '12px', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid #FECACA' }}>
+              <span style={{ fontSize: '20px' }}>⚠️</span>
+              <div style={{ fontWeight: 700, color: '#DC2626', fontSize: '13px' }}>{data.overdueTasks?.length} overdue task{data.overdueTasks?.length > 1 ? 's' : ''} — click to view</div>
+            </div>
+        }
+      </div>
+    )
+
+    // ── ANNOUNCEMENTS ──
+    if (w.id === 'announcements') return shell(
+      <div>
+        {data.announcements?.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No announcements</div>}
+        {data.announcements?.map(a => (
+          <div key={a.id} onClick={() => navigate('/announcements/' + a.id)}
+            style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{a.title}</div>
+            {a.body && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.body}</div>}
+          </div>
+        ))}
+      </div>
+    )
+
+    return null
+  }
 
   return (
     <div style={{ fontFamily: ff }}>
 
-      {/* ── TOP BAR ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+      {/* TOP BAR */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text)' }}>{greeting}, {agent?.name?.split(' ')[0]} 👋</div>
           <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
             {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {savingPrefs && <span style={{ marginLeft: '8px', color: 'var(--brand)', fontSize: '11px' }}>💾 Saving layout...</span>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -517,489 +942,159 @@ export function Dashboard() {
               {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           )}
-          <button onClick={load} style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--muted)', cursor: 'pointer', fontSize: '13px', fontFamily: ff }}>↻</button>
-          {isAdmin && <Btn size="sm" variant="secondary" onClick={() => setShowGoalEditor(true)}>🎯 Goals</Btn>}
+          <button onClick={loadData} style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--muted)', cursor: 'pointer', fontSize: '13px', fontFamily: ff }} title="Refresh">↻</button>
+          <Btn size="sm" variant="secondary" onClick={() => setShowGoals(true)}>🎯 Goals</Btn>
           {isAdmin && <Btn size="sm" variant="secondary" onClick={() => setShowAgentView(true)}>👥 Agent Views</Btn>}
           <Btn size="sm" variant="secondary" onClick={() => setShowCustomize(true)}>🎛 Customize</Btn>
         </div>
       </div>
 
-      {/* Overdue alert banner */}
-      {show('overdue_alert') && data.overdueTasks?.length > 0 && (
-        <div onClick={() => setPopup('overdue_alert')}
-          style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 'var(--radius)', padding: '10px 16px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', borderLeft: '4px solid #DC2626' }}>
-          <span>⚠️</span>
-          <div style={{ flex: 1, fontSize: '13px', fontWeight: 700, color: '#DC2626' }}>
-            {data.overdueTasks.length} overdue task{data.overdueTasks.length > 1 ? 's' : ''} — click to view
-          </div>
-        </div>
-      )}
-
-      {/* Pinned announcements */}
-      {show('announcements') && data.announcements?.filter(a => a.pinned).map(a => (
-        <div key={a.id} style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 'var(--radius)', padding: '10px 16px', marginBottom: '10px', borderLeft: '4px solid #F5A623', display: 'flex', gap: '10px', cursor: 'pointer' }}
-          onClick={() => navigate('/announcements')}>
-          <span>📣</span>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '13px', color: '#92400E' }}>{a.title}</div>
-            {a.body && <div style={{ fontSize: '12px', color: '#B45309', marginTop: '2px' }}>{a.body}</div>}
-          </div>
-        </div>
-      ))}
-
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}><Loading /></div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px', alignItems: 'start' }}>
-          {orderedVisible.map(wid => {
-            const def = WIDGET_DEFS.find(x => x.id === wid)
-            if (!def) return null
-            const dragProps = {
-              id: wid, onDragStart: handleDragStart,
-              onDragOver: handleDragOver, onDrop: handleDrop,
-              isDragging: dragId === wid,
-            }
-
-            // ── GCI GOAL WIDGET ──
-            if (wid === 'gci_goal') return (
-              <Widget key={wid} {...dragProps} title="My GCI Goal" icon="🎯">
-                <div onClick={() => setPopup('gci_goal')} style={{ display: 'flex', alignItems: 'center', gap: '14px', cursor: 'pointer' }}>
-                  <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <GCIRing value={data.closedGCI} goal={goals.agent_gci} color="#CC2200" />
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1px' }}>
-                      <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--text)' }}>{pct(data.closedGCI, goals.agent_gci)}%</div>
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '20px', fontWeight: 800, color: '#10B981' }}>{fmt$(data.closedGCI)}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>of {fmt$(goals.agent_gci)} goal · {data.closedDeals?.length || 0} closed</div>
-                    <div style={{ fontSize: '11px', color: '#F5A623', marginTop: '3px' }}>+ {fmt$(data.pipelineGCI)} pipeline</div>
-                  </div>
-                </div>
-              </Widget>
-            )
-
-            // ── TEAM GOAL WIDGET ──
-            if (wid === 'team_goal' && (isAdmin || canManage)) return (
-              <Widget key={wid} {...dragProps} title="Team Goal" icon="🏆">
-                <div onClick={() => setPopup('team_goal')} style={{ display: 'flex', alignItems: 'center', gap: '14px', cursor: 'pointer' }}>
-                  <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <GCIRing value={data.teamGCI} goal={goals.team_gci} color="#F5A623" />
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                      <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--text)' }}>{pct(data.teamGCI, goals.team_gci)}%</div>
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '20px', fontWeight: 800, color: '#F5A623' }}>{fmt$(data.teamGCI)}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>of {fmt$(goals.team_gci)} · {data.teamDeals}/{goals.team_deals} deals</div>
-                  </div>
-                </div>
-              </Widget>
-            )
-
-            // ── QUICK STATS WIDGET ──
-            if (wid === 'quick_stats') return (
-              <Widget key={wid} {...dragProps} title="Quick Stats" icon="📊" sub={yearFilter}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                  {[
-                    { label: 'Active Deals',     value: data.activeDeals?.length || 0,    color: '#3B82F6', popup: 'active_deals',    nav: '/production' },
-                    { label: 'Accepted Offers',  value: data.acceptedOffers?.length || 0, color: '#00c875', popup: 'accepted_offers',  nav: '/production' },
-                    { label: 'Under Contract',   value: data.underContract?.length || 0,  color: '#9d50dd', popup: 'under_contract',   nav: '/production' },
-                    { label: 'Hot Leads',        value: data.hotCount || 0,               color: '#DC2626', popup: 'hot_leads',        nav: '/contacts' },
-                    { label: 'Active Listings',  value: data.activeListings?.length || 0, color: '#10B981', popup: 'active_listings',  nav: '/listings' },
-                    { label: 'Closed GCI',       value: fmt$(data.closedGCI),             color: '#F5A623', popup: 'gci_goal',         nav: '/production' },
-                  ].map(s => (
-                    <div key={s.label} onClick={() => setPopup(s.popup)}
-                      style={{ padding: '10px 12px', background: 'var(--dim)', borderRadius: '8px', cursor: 'pointer', borderTop: `3px solid ${s.color}`, transition: 'box-shadow .12s' }}
-                      onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
-                      onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
-                      <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>{s.value}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px' }}>{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </Widget>
-            )
-
-            // ── PIPELINE WIDGET ──
-            if (wid === 'pipeline') return (
-              <Widget key={wid} {...dragProps} title="Pipeline by Stage" icon="🔀">
-                <div>
-                  {data.pipeByStage?.filter(s => s.deals.length > 0).map(s => (
-                    <div key={s.value} onClick={() => setPopup(`stage_${s.value}`)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 0', cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
-                      onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.hex, flexShrink: 0 }} />
-                      <div style={{ flex: 1, fontSize: '12px', color: 'var(--text)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</div>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', flexShrink: 0 }}>{s.deals.length}</div>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: s.hex, flexShrink: 0 }}>{fmt$(s.gci)}</div>
-                      <div style={{ width: '60px', height: '5px', background: 'var(--dim)', borderRadius: '99px', overflow: 'hidden', flexShrink: 0 }}>
-                        <div style={{ height: '100%', background: s.hex, width: `${pct(s.deals.length, data.activeDeals?.length || 1)}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                  {!data.pipeByStage?.some(s => s.deals.length > 0) && <div style={{ fontSize: '12px', color: 'var(--muted)', textAlign: 'center', padding: '16px 0' }}>No active deals</div>}
-                  <button onClick={() => navigate('/pipeline')} style={{ marginTop: '8px', fontSize: '11px', color: 'var(--brand)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: ff, padding: 0 }}>View Pipeline →</button>
-                </div>
-              </Widget>
-            )
-
-            // ── TODAY'S TASKS WIDGET ──
-            if (wid === 'todays_tasks') return (
-              <Widget key={wid} {...dragProps} title="Today's Tasks" icon="✅" sub={`(${data.todayTasks?.length || 0})`}>
-                <div>
-                  {data.todayTasks?.length === 0 && <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--muted)', fontSize: '12px' }}>🎉 All clear!</div>}
-                  {data.todayTasks?.slice(0, 5).map(t => (
-                    <div key={t.id} onClick={() => navigate('/tasks/' + t.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: isOverdue(t.due_date) ? '#DC2626' : '#F97316' }} />
-                      <div style={{ flex: 1, fontSize: '12px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                      {isOverdue(t.due_date) && <span style={{ fontSize: '10px', color: '#DC2626', fontWeight: 700 }}>LATE</span>}
-                    </div>
-                  ))}
-                  {data.todayTasks?.length > 5 && (
-                    <div onClick={() => setPopup('todays_tasks')} style={{ fontSize: '11px', color: 'var(--brand)', cursor: 'pointer', marginTop: '6px' }}>
-                      +{data.todayTasks.length - 5} more — view all
-                    </div>
-                  )}
-                  <button onClick={() => navigate('/tasks/new')} style={{ marginTop: '8px', width: '100%', padding: '6px', border: '1px dashed var(--border)', borderRadius: '6px', background: 'transparent', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer', fontFamily: ff }}>+ Quick Add Task</button>
-                </div>
-              </Widget>
-            )
-
-            // ── HOT LEADS WIDGET ──
-            if (wid === 'hot_leads') return (
-              <Widget key={wid} {...dragProps} title="Hot & Warm Leads" icon="🔥" sub={`(${data.hotLeads?.length || 0})`}>
-                <div>
-                  {data.hotLeads?.length === 0 && <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--muted)', fontSize: '12px' }}>No hot leads</div>}
-                  {data.hotLeads?.slice(0, 5).map(c => (
-                    <div key={c.id} onClick={() => navigate('/contacts/' + c.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: c.status === 'Hot' ? '#DC2626' : '#F97316', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
-                        {initials(c.first_name + ' ' + (c.last_name || ''))}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
-                        {c.phone && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{c.phone}</div>}
-                      </div>
-                      <Pill label={c.status} color={c.status === 'Hot' ? '#DC2626' : '#F97316'} />
-                    </div>
-                  ))}
-                  {data.hotLeads?.length > 5 && (
-                    <div onClick={() => setPopup('hot_leads')} style={{ fontSize: '11px', color: 'var(--brand)', cursor: 'pointer', marginTop: '6px' }}>
-                      +{data.hotLeads.length - 5} more — view all
-                    </div>
-                  )}
-                </div>
-              </Widget>
-            )
-
-            // ── ACTIVE DEALS WIDGET ──
-            if (wid === 'active_deals') return (
-              <Widget key={wid} {...dragProps} title="Active Deals" icon="💼" sub={`(${data.activeDeals?.length || 0})`}>
-                <div>
-                  {data.activeDeals?.slice(0, 4).map(d => (
-                    <div key={d.id} onClick={() => navigate('/production/' + d.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.addr}</div>
-                        {d.client_name && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{d.client_name}</div>}
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</div>
-                        <Pill label={d.stage} color={stageHex(d.stage)} />
-                      </div>
-                    </div>
-                  ))}
-                  <div onClick={() => setPopup('active_deals')} style={{ fontSize: '11px', color: 'var(--brand)', cursor: 'pointer', marginTop: '8px' }}>View all {data.activeDeals?.length} active deals →</div>
-                </div>
-              </Widget>
-            )
-
-            // ── UPCOMING CLOSINGS WIDGET ──
-            if (wid === 'upcoming_close') return (
-              <Widget key={wid} {...dragProps} title="Upcoming Closings" icon="📅" sub="30 days">
-                <div>
-                  {data.upcoming?.length === 0 && <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--muted)', fontSize: '12px' }}>No closings in 30 days</div>}
-                  {data.upcoming?.slice(0, 4).map(d => {
-                    const days = getDaysUntil(d.expected_close_date || d.close_date)
-                    return (
-                      <div key={d.id} onClick={() => navigate('/production/' + d.id)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                        <div style={{ width: 34, height: 34, borderRadius: '8px', background: days <= 7 ? '#FEF2F2' : '#F0FDF4', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <div style={{ fontSize: '13px', fontWeight: 800, color: days <= 7 ? '#DC2626' : '#10B981' }}>{days}</div>
-                          <div style={{ fontSize: '8px', color: days <= 7 ? '#DC2626' : '#10B981' }}>days</div>
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.addr}</div>
-                          <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{fmtDate(d.expected_close_date || d.close_date)}</div>
-                        </div>
-                        <div style={{ fontSize: '12px', fontWeight: 700, color: '#10B981', flexShrink: 0 }}>{fmt$(d.gci)}</div>
-                      </div>
-                    )
-                  })}
-                  {data.upcoming?.length > 4 && <div onClick={() => setPopup('upcoming_close')} style={{ fontSize: '11px', color: 'var(--brand)', cursor: 'pointer', marginTop: '6px' }}>+{data.upcoming.length - 4} more →</div>}
-                </div>
-              </Widget>
-            )
-
-            // ── ACTIVE LISTINGS WIDGET ──
-            if (wid === 'active_listings') return (
-              <Widget key={wid} {...dragProps} title="Active Listings" icon="🏡" sub={`(${data.activeListings?.length || 0})`}>
-                <div>
-                  {data.activeListings?.length === 0 && <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--muted)', fontSize: '12px' }}>No active listings</div>}
-                  {data.activeListings?.slice(0, 5).map(l => (
-                    <div key={l.id} onClick={() => navigate('/listings/' + l.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.addr}</div>
-                        {l.city && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{l.city}</div>}
-                      </div>
-                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--brand)', flexShrink: 0 }}>{fmt$(l.list_price)}</div>
-                    </div>
-                  ))}
-                  <div onClick={() => setPopup('active_listings')} style={{ fontSize: '11px', color: 'var(--brand)', cursor: 'pointer', marginTop: '8px' }}>View all listings →</div>
-                </div>
-              </Widget>
-            )
-
-            // ── OPEN HOUSES WIDGET ──
-            if (wid === 'open_houses') return (
-              <Widget key={wid} {...dragProps} title="Open Houses This Week" icon="🚪">
-                <div>
-                  {data.upcomingOH?.length === 0 && <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--muted)', fontSize: '12px' }}>No open houses this week</div>}
-                  {data.upcomingOH?.map(oh => (
-                    <div key={oh.id} onClick={() => navigate('/openhouse/' + oh.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{oh.listing_addr}</div>
-                        <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{fmtDate(oh.date)} {oh.start_time && `· ${oh.start_time}`}</div>
-                      </div>
-                      {oh.agents && <Avatar agent={oh.agents} size={20} />}
-                    </div>
-                  ))}
-                </div>
-              </Widget>
-            )
-
-            // ── LEADERBOARD WIDGET ──
-            if (wid === 'leaderboard' && (isAdmin || canManage)) return (
-              <Widget key={wid} {...dragProps} title={`Leaderboard ${yearFilter}`} icon="🥇">
-                <div>
-                  {data.leaderboard?.filter(r => r.gci > 0 || r.total > 0).slice(0, 6).map((row, i) => (
-                    <div key={row.agent.id} onClick={() => { setAgentFilter(row.agent.id); setPopup('gci_goal') }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                      <div style={{ fontSize: '14px', minWidth: '20px' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</div>
-                      <Avatar agent={row.agent} size={26} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.agent.name}</div>
-                        <div style={{ height: '3px', background: 'var(--dim)', borderRadius: '99px', marginTop: '3px', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', background: row.agent.color || '#CC2200', width: `${pct(row.gci, goals.agent_gci)}%` }} />
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: '12px', fontWeight: 800, color: '#10B981' }}>{fmt$(row.gci)}</div>
-                        <div style={{ fontSize: '9px', color: 'var(--muted)' }}>{row.closed} closed</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Widget>
-            )
-
-            // ── GCI CHART WIDGET ──
-            if (wid === 'gci_chart') return (
-              <Widget key={wid} {...dragProps} title={`GCI by Month ${yearFilter}`} icon="📈">
-                <div>
-                  <div style={{ marginBottom: '8px' }}>
-                    <span style={{ fontSize: '18px', fontWeight: 800, color: '#10B981' }}>{fmt$(data.closedGCI)}</span>
-                    <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '6px' }}>closed {yearFilter}</span>
-                  </div>
-                  <MiniBar data={data.monthlyGCI} color="#CC2200" />
-                </div>
-              </Widget>
-            )
-
-            // ── GIFTS PENDING WIDGET ──
-            if (wid === 'gifts_pending' && (isAdmin || canManage)) return (
-              <Widget key={wid} {...dragProps} title="Gifts Pending" icon="🎁" sub={`(${data.pendingGifts?.length || 0})`}>
-                <div>
-                  {data.pendingGifts?.length === 0 && <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--muted)', fontSize: '12px' }}>All delivered ✅</div>}
-                  {data.pendingGifts?.slice(0, 5).map(g => (
-                    <div key={g.id} onClick={() => navigate('/gifts/' + g.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                      <div style={{ flex: 1, fontSize: '12px', color: 'var(--text)' }}>{g.client_name}</div>
-                      <Pill label={g.status} color="#9d50dd" />
-                    </div>
-                  ))}
-                  {data.pendingGifts?.length > 5 && <div onClick={() => setPopup('gifts_pending')} style={{ fontSize: '11px', color: 'var(--brand)', cursor: 'pointer', marginTop: '6px' }}>+{data.pendingGifts.length - 5} more →</div>}
-                </div>
-              </Widget>
-            )
-
-            // ── QUICK ADD WIDGET ──
-            if (wid === 'quick_add') return (
-              <Widget key={wid} {...dragProps} title="Quick Add" icon="⚡">
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {[
-                    { label: '+ Lead',    path: '/contacts/new',   color: '#0EA5E9' },
-                    { label: '+ Deal',    path: '/production/new', color: '#10B981' },
-                    { label: '+ Task',    path: '/tasks/new',      color: '#8B5CF6' },
-                    { label: '+ Listing', path: '/listings/new',   color: '#F5A623' },
-                    { label: '+ Offer',   path: '/offers/new',     color: '#6366F1' },
-                    { label: '+ OH',      path: '/openhouse/new',  color: '#14B8A6' },
-                    { label: '+ Gift',    path: '/gifts/new',      color: '#EC4899' },
-                    { label: '+ Event',   path: '/calendar/new',   color: '#CC2200' },
-                  ].map(item => (
-                    <button key={item.path} onClick={() => navigate(item.path)}
-                      style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${item.color}33`, background: item.color + '11', color: item.color, fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </Widget>
-            )
-
-            return null
-          })}
+          {visibleOrdered.map(w => renderWidget(w))}
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════ */}
-      {/* DETAIL POPUPS — click any widget stat to open these  */}
-      {/* ══════════════════════════════════════════════════════ */}
+      {/* ══════════════════════ DETAIL POPUPS ══════════════════════ */}
 
       {/* GCI Goal Detail */}
-      <DetailPopup open={popup === 'gci_goal'} onClose={() => setPopup(null)} title="Closed Deals — GCI Detail" icon="🎯" width={600}>
-        <div style={{ marginBottom: '12px', padding: '12px 14px', background: 'var(--dim)', borderRadius: '8px', display: 'flex', gap: '20px' }}>
-          <div><div style={{ fontSize: '20px', fontWeight: 800, color: '#10B981' }}>{fmt$(data.closedGCI)}</div><div style={{ fontSize: '11px', color: 'var(--muted)' }}>Closed GCI {yearFilter}</div></div>
+      <DetailPopup open={popup === 'gci_goal'} onClose={() => setPopup(null)} title="Closed Deals — GCI Detail" icon="🎯">
+        <div style={{ display: 'flex', gap: '16px', marginBottom: '14px', padding: '12px', background: 'var(--dim)', borderRadius: '8px' }}>
+          <div><div style={{ fontSize: '20px', fontWeight: 800, color: '#10B981' }}>{fmt$(data.closedGCI)}</div><div style={{ fontSize: '11px', color: 'var(--muted)' }}>Closed GCI</div></div>
           <div><div style={{ fontSize: '20px', fontWeight: 800, color: '#F5A623' }}>{fmt$(data.pipelineGCI)}</div><div style={{ fontSize: '11px', color: 'var(--muted)' }}>Pipeline GCI</div></div>
           <div><div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text)' }}>{data.closedDeals?.length || 0}</div><div style={{ fontSize: '11px', color: 'var(--muted)' }}>Closed Deals</div></div>
         </div>
         {data.closedDeals?.map(d => (
-          <DetailRow key={d.id} left={d.addr} sub={`${d.client_name || ''} · ${d.side || ''} · ${fmtDate(d.ao_date)}`} right={fmt$(d.gci)} color="#10B981" onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
+          <DetailRow key={d.id} left={d.addr} sub={`${d.client_name || '—'} · ${d.side || ''} · ${fmtDate(d.ao_date)}`}
+            right={fmt$(d.gci)} onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
         ))}
         {!data.closedDeals?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No closed deals in {yearFilter}</div>}
       </DetailPopup>
 
       {/* Team Goal Detail */}
-      <DetailPopup open={popup === 'team_goal'} onClose={() => setPopup(null)} title="Team Goal Detail" icon="🏆" width={640}>
-        <div style={{ marginBottom: '12px', padding: '12px 14px', background: 'var(--dim)', borderRadius: '8px', display: 'flex', gap: '20px' }}>
-          <div><div style={{ fontSize: '20px', fontWeight: 800, color: '#F5A623' }}>{fmt$(data.teamGCI)}</div><div style={{ fontSize: '11px', color: 'var(--muted)' }}>Team GCI {yearFilter}</div></div>
-          <div><div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text)' }}>{data.teamDeals}</div><div style={{ fontSize: '11px', color: 'var(--muted)' }}>Deals Closed</div></div>
-          <div><div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text)' }}>{pct(data.teamGCI, goals.team_gci)}%</div><div style={{ fontSize: '11px', color: 'var(--muted)' }}>Goal Progress</div></div>
-        </div>
+      <DetailPopup open={popup === 'team_goal'} onClose={() => setPopup(null)} title="Team Goal — All Agents" icon="🏆">
         {data.leaderboard?.map((row, i) => (
           <DetailRow key={row.agent.id}
-            left={<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</span><Avatar agent={row.agent} size={24} /><span>{row.agent.name}</span></div>}
-            sub={`${row.closed} closed · ${row.active} active`}
-            right={fmt$(row.gci)} color="#10B981" />
+            left={<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span>{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</span><Avatar agent={row.agent} size={24} /><span style={{ fontWeight: 600 }}>{row.agent.name}</span></div>}
+            sub={`${row.closed} closed · ${row.active} active`} right={fmt$(row.gci)} />
         ))}
       </DetailPopup>
 
       {/* Active Deals Detail */}
       <DetailPopup open={popup === 'active_deals'} onClose={() => setPopup(null)} title="All Active Deals" icon="💼" width={640}>
-        <div style={{ marginBottom: '10px', fontSize: '12px', color: 'var(--muted)' }}>{data.activeDeals?.length} active deals · {fmt$(data.pipelineGCI)} pipeline GCI</div>
+        <div style={{ marginBottom: '10px', fontSize: '12px', color: 'var(--muted)' }}>{data.activeDeals?.length} deals · {fmt$(data.pipelineGCI)} pipeline GCI</div>
         {data.activeDeals?.map(d => (
           <DetailRow key={d.id} left={d.addr} sub={`${d.client_name || '—'} · ${d.side || ''}`}
-            right={<div style={{ textAlign: 'right' }}><div style={{ fontSize: '12px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</div><Pill label={d.stage} color={stageHex(d.stage)} /></div>}
+            right={fmt$(d.gci)} badge={<Pill label={d.stage} color={stageHex(d.stage)} />}
             onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
         ))}
         {!data.activeDeals?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No active deals</div>}
       </DetailPopup>
 
       {/* Accepted Offers Detail */}
-      <DetailPopup open={popup === 'accepted_offers'} onClose={() => setPopup(null)} title="Accepted Offers (AO)" icon="✅" width={600}>
-        <div style={{ marginBottom: '10px', fontSize: '12px', color: 'var(--muted)' }}>{data.acceptedOffers?.length} accepted offers · {fmt$(data.acceptedOffersProd)} total production</div>
+      <DetailPopup open={popup === 'accepted_offers'} onClose={() => setPopup(null)} title="Accepted Offers (AO)" icon="✅">
         {data.acceptedOffers?.map(d => (
-          <DetailRow key={d.id} left={d.addr} sub={d.client_name || '—'} right={fmt$(d.production)} color="#00c875" onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
+          <DetailRow key={d.id} left={d.addr} sub={d.client_name || '—'}
+            right={fmt$(d.production)} onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
         ))}
         {!data.acceptedOffers?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No accepted offers</div>}
       </DetailPopup>
 
       {/* Under Contract Detail */}
-      <DetailPopup open={popup === 'under_contract'} onClose={() => setPopup(null)} title="Under Contract" icon="📝" width={600}>
-        <div style={{ marginBottom: '10px', fontSize: '12px', color: 'var(--muted)' }}>{data.underContract?.length} under contract · {fmt$(data.underContractProd)} total production</div>
+      <DetailPopup open={popup === 'under_contract'} onClose={() => setPopup(null)} title="Under Contract" icon="📝">
         {data.underContract?.map(d => (
-          <DetailRow key={d.id} left={d.addr} sub={d.client_name || '—'} right={fmt$(d.production)} color="#9d50dd" onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
+          <DetailRow key={d.id} left={d.addr} sub={d.client_name || '—'}
+            right={fmt$(d.production)} onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
         ))}
         {!data.underContract?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No deals under contract</div>}
       </DetailPopup>
 
       {/* Hot Leads Detail */}
-      <DetailPopup open={popup === 'hot_leads'} onClose={() => setPopup(null)} title="Hot & Warm Leads" icon="🔥" width={560}>
-        <div style={{ marginBottom: '10px', fontSize: '12px', color: 'var(--muted)' }}>{data.hotLeads?.length} hot and warm leads</div>
+      <DetailPopup open={popup === 'hot_leads'} onClose={() => setPopup(null)} title="Hot & Warm Leads" icon="🔥">
         {data.hotLeads?.map(c => (
           <DetailRow key={c.id} left={`${c.first_name} ${c.last_name || ''}`} sub={c.phone || c.source || ''}
-            right={<Pill label={c.status} color={c.status === 'Hot' ? '#DC2626' : '#F97316'} />}
+            badge={<Pill label={c.status} color={c.status === 'Hot' ? '#DC2626' : '#F97316'} />}
             onClick={() => { navigate('/contacts/' + c.id); setPopup(null) }} />
         ))}
+        {!data.hotLeads?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No hot leads</div>}
       </DetailPopup>
 
       {/* Active Listings Detail */}
-      <DetailPopup open={popup === 'active_listings'} onClose={() => setPopup(null)} title="Active Listings" icon="🏡" width={560}>
+      <DetailPopup open={popup === 'active_listings'} onClose={() => setPopup(null)} title="Active Listings" icon="🏡">
         {data.activeListings?.map(l => (
-          <DetailRow key={l.id} left={l.addr} sub={l.city || ''} right={fmt$(l.list_price)} color="var(--brand)" onClick={() => { navigate('/listings/' + l.id); setPopup(null) }} />
+          <DetailRow key={l.id} left={l.addr} sub={l.city || ''}
+            right={fmt$(l.list_price)} onClick={() => { navigate('/listings/' + l.id); setPopup(null) }} />
         ))}
         {!data.activeListings?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No active listings</div>}
       </DetailPopup>
 
       {/* Today's Tasks Detail */}
-      <DetailPopup open={popup === 'todays_tasks'} onClose={() => setPopup(null)} title="Today's Tasks" icon="✅" width={520}>
+      <DetailPopup open={popup === 'todays_tasks'} onClose={() => setPopup(null)} title="Today's Tasks" icon="✅">
         {data.todayTasks?.map(t => (
-          <DetailRow key={t.id} left={t.title} sub={isOverdue(t.due_date) ? 'OVERDUE' : 'Due today'}
-            right={<Pill label={isOverdue(t.due_date) ? '⚠️ Late' : '📅 Today'} color={isOverdue(t.due_date) ? '#DC2626' : '#F97316'} />}
+          <DetailRow key={t.id} left={t.title} sub={isOverdue(t.due_date) ? '⚠️ Overdue' : 'Due today'}
+            badge={<Pill label={t.priority} color={t.priority === 'urgent' ? '#DC2626' : '#F97316'} />}
             onClick={() => { navigate('/tasks/' + t.id); setPopup(null) }} />
         ))}
         {!data.todayTasks?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>Nothing due today!</div>}
       </DetailPopup>
 
-      {/* Overdue Alert Detail */}
-      <DetailPopup open={popup === 'overdue_alert'} onClose={() => setPopup(null)} title="Overdue Tasks" icon="⚠️" width={520}>
+      {/* Overdue Tasks Detail */}
+      <DetailPopup open={popup === 'overdue_alert'} onClose={() => setPopup(null)} title="Overdue Tasks" icon="⚠️">
         {data.overdueTasks?.map(t => (
           <DetailRow key={t.id} left={t.title} sub={`Due ${fmtDate(t.due_date)}`}
-            right={<Pill label="OVERDUE" color="#DC2626" />}
+            badge={<Pill label="OVERDUE" color="#DC2626" />}
             onClick={() => { navigate('/tasks/' + t.id); setPopup(null) }} />
         ))}
+        {!data.overdueTasks?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No overdue tasks!</div>}
       </DetailPopup>
 
       {/* Upcoming Closings Detail */}
-      <DetailPopup open={popup === 'upcoming_close'} onClose={() => setPopup(null)} title="Upcoming Closings" icon="📅" width={580}>
+      <DetailPopup open={popup === 'upcoming_close'} onClose={() => setPopup(null)} title="Upcoming Closings (30 days)" icon="📅">
         {data.upcoming?.map(d => {
           const days = getDaysUntil(d.expected_close_date || d.close_date)
           return (
             <DetailRow key={d.id} left={d.addr} sub={`${d.client_name || '—'} · Closes ${fmtDate(d.expected_close_date || d.close_date)}`}
-              right={<div style={{ textAlign: 'right' }}><div style={{ fontSize: '12px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</div><div style={{ fontSize: '10px', color: days <= 7 ? '#DC2626' : 'var(--muted)', fontWeight: days <= 7 ? 700 : 400 }}>{days} days</div></div>}
+              right={fmt$(d.gci)} badge={<Pill label={`${days}d`} color={days <= 7 ? '#DC2626' : '#10B981'} />}
               onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
           )
         })}
-        {!data.upcoming?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No closings in the next 30 days</div>}
+        {!data.upcoming?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No closings in 30 days</div>}
       </DetailPopup>
 
       {/* Pipeline Stage Popups */}
       {DEAL_STAGES.map(s => (
-        <DetailPopup key={s.value} open={popup === `stage_${s.value}`} onClose={() => setPopup(null)} title={`${s.label} — Deals`} icon="🔀" width={580}>
+        <DetailPopup key={s.value} open={popup === 'stage_' + s.value} onClose={() => setPopup(null)} title={`${s.label}`} icon="🔀">
           {data.pipeByStage?.find(x => x.value === s.value)?.deals?.map(d => (
-            <DetailRow key={d.id} left={d.addr} sub={`${d.client_name || '—'} · ${d.side || ''} · AO ${fmtDate(d.ao_date)}`}
-              right={fmt$(d.gci)} color="#10B981"
-              onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
+            <DetailRow key={d.id} left={d.addr} sub={`${d.client_name || '—'} · ${d.side || ''}`}
+              right={fmt$(d.gci)} onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
           ))}
         </DetailPopup>
       ))}
 
       {/* Gifts Pending Detail */}
-      <DetailPopup open={popup === 'gifts_pending'} onClose={() => setPopup(null)} title="Pending Gifts" icon="🎁" width={480}>
+      <DetailPopup open={popup === 'gifts_pending'} onClose={() => setPopup(null)} title="Pending Gifts" icon="🎁">
         {data.pendingGifts?.map(g => (
-          <DetailRow key={g.id} left={g.client_name} right={<Pill label={g.status} color="#9d50dd" />}
+          <DetailRow key={g.id} left={g.client_name} badge={<Pill label={g.status} color="#9d50dd" />}
             onClick={() => { navigate('/gifts/' + g.id); setPopup(null) }} />
         ))}
       </DetailPopup>
 
       {/* ── OVERLAYS ── */}
-      {showCustomize && <CustomizePanel prefs={prefs} onSave={savePrefsAndUpdate} onClose={() => setShowCustomize(false)} role={agent.role} />}
-      {showGoalEditor && isAdmin && <GoalEditor goals={goals} onSave={saveGoalsAndUpdate} onClose={() => setShowGoalEditor(false)} />}
-      {showAgentView  && isAdmin && <AgentViewControl agents={agents} onClose={() => setShowAgentView(false)} />}
+      {showCustomize && (
+        <CustomizePanel widgets={widgets} role={agent.role}
+          onSave={newW => { persistWidgets(newW); toast('✅ Layout saved') }}
+          onClose={() => setShowCustomize(false)} />
+      )}
+      {showGoals && (
+        <GoalEditor agents={agents} currentAgent={agent} isAdmin={isAdmin}
+          onSaved={() => { loadAgentGoals(agent.id).then(setAgentGoals); loadTeamGoal().then(setTeamGoals) }}
+          onClose={() => setShowGoals(false)} />
+      )}
+      {showAgentView && isAdmin && (
+        <AgentViewControl agents={agents} onClose={() => setShowAgentView(false)} />
+      )}
     </div>
   )
 }
