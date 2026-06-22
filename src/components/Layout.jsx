@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import { formatTime } from '../lib/time'
@@ -130,9 +131,9 @@ export function Layout({ page, setPage, agent: agentProp, children }) {
               )
             }
             if (item.hidden) return null
-            const active = page === item.id
+            const active = location.pathname === (item.id === 'dash' ? '/' : '/' + item.id)
             return (
-              <button key={item.id} onClick={() => setPage(item.id)}
+              <button key={item.id} onClick={() => navigate(item.id === 'dash' ? '/' : '/' + item.id)}
                 style={{
                   width:'100%', display:'flex', alignItems:'center', gap:'10px',
                   padding:'9px 10px', borderRadius:'8px', border:'none',
