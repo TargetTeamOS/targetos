@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTasks } from '../lib/hooks/useTasks'
 import { useApp } from '../context/AppContext'
@@ -9,6 +10,8 @@ const PRIORITY_COLORS = { urgent:'#DC2626', high:'#D97706', normal:'#0EA5E9', lo
 const EMPTY_FORM = { title:'', priority:'normal', due_date:'', notes:'' }
 
 export function Tasks({ highlightId }) {
+  const navigate = useNavigate()
+  const { id: urlId } = useParams()
   const { agent } = useAuth()
   const { toast } = useApp()
   const [filter, setFilter]   = useState('pending')

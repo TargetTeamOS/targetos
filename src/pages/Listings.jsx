@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useListings } from '../lib/hooks/useListings'
 import { useAgents } from '../lib/hooks/useAgents'
@@ -11,6 +12,8 @@ const STATUS_COLORS = { 'Active':'#16A34A','Accepted offer':'#784bd1','Under Con
 const PROPERTY_TYPES = ['New Construction','Land','Single Family','Condo','Commercial','Duplex','2 Family','3 Family','4 Family','High Ranch']
 
 export function Listings() {
+  const navigate = useNavigate()
+  const { id: urlId } = useParams()
   const { agent, isAdmin } = useAuth()
   const { toast } = useApp()
   const { agents } = useAgents()
@@ -112,7 +115,7 @@ export function Listings() {
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:'12px' }}>
           {listings.map(l=>(
             <div key={l.id} style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'14px', overflow:'hidden', cursor:'pointer' }}
-              onClick={()=>{setSelected(l);setForm({...defaultForm(),...l,list_price:l.list_price||''});setShowAdd(false)}}>
+              onClick={()=>{navigate('/listings/'+l.id);setSelected(l);setForm({...defaultForm(),...l,list_price:l.list_price||''});setShowAdd(false)}}>
               {/* Status bar */}
               <div style={{ height:4, background:STATUS_COLORS[l.status]||'#94A3B8' }}/>
               <div style={{ padding:'14px 16px' }}>

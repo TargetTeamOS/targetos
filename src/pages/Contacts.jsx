@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useContacts } from '../lib/hooks/useContacts'
 import { useAgents } from '../lib/hooks/useAgents'
@@ -13,6 +14,8 @@ const STATUS_COLORS = { New:'#0EA5E9',Hot:'#DC2626',Warm:'#D97706',Cold:'#94A3B8
 const EMPTY_FORM = { first_name:'', last_name:'', phone:'', email:'', address:'', city:'', state:'NY', zip:'', status:'New', source:'', tags:'', notes:'' }
 
 export function Contacts() {
+  const navigate = useNavigate()
+  const { id: urlId } = useParams()
   const { agent, isAdmin } = useAuth()
   const { toast } = useApp()
   const [search, setSearch]       = useState('')
@@ -22,6 +25,14 @@ export function Contacts() {
   const [form, setForm]           = useState(EMPTY_FORM)
   const [errors, setErrors]       = useState({})
   const [saving, setSaving]       = useState(false)
+
+  // Auto-open contact from URL param
+  useEffect(() => {
+    if (urlId && contacts.length > 0) {
+      const c = contacts.find(x => x.id === urlId)
+      if (c) openEdit(c)
+    }
+  }, [urlId, contacts.length])
 
   const { contacts, loading, add, update, remove } = useContacts({
     search: search.length > 1 ? search : undefined,
@@ -71,6 +82,7 @@ export function Contacts() {
   }
 
   function openEdit(contact) {
+    navigate('/contacts/' + contact.id)
     setForm({
       ...EMPTY_FORM,
       ...contact,
@@ -162,7 +174,7 @@ export function Contacts() {
         <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'14px', padding:'18px', overflowY:'auto' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
             <div style={{ fontSize:'15px', fontWeight:800 }}>{selected ? 'Edit Contact' : 'New Contact'}</div>
-            <button onClick={() => { setSelected(null); setShowAdd(false) }}
+            <button onClick={() => { setSelected(null); setShowAdd(false); navigate('/contacts') }}
               style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'18px' }}>✕</button>
           </div>
 

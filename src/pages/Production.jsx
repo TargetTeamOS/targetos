@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useDeals } from '../lib/hooks/useDeals'
 import { useAgents } from '../lib/hooks/useAgents'
@@ -84,6 +85,8 @@ function EditCell({ value, onChange, type='text', prefix='' }) {
 }
 
 export function Production() {
+  const navigate = useNavigate()
+  const { id: urlId } = useParams()
   const { agent, isAdmin } = useAuth()
   const { toast } = useApp()
   const { agents } = useAgents()
