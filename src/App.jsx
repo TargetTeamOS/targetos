@@ -115,6 +115,7 @@ function AppShell() {
             <Route path="/tasks"          element={<Tasks/>}/>
             <Route path="/tasks/:id"      element={<Tasks/>}/>
             <Route path="/calendar"       element={<Calendar/>}/>
+            <Route path="/calendar/:id"       element={<Calendar/>}/>
             <Route path="/offers"         element={<Offers/>}/>
             <Route path="/offers/:id"     element={<Offers/>}/>
             <Route path="/transactions"   element={<Transactions/>}/>
@@ -124,15 +125,21 @@ function AppShell() {
             <Route path="/gifts"          element={<Gifts/>}/>
             <Route path="/gifts/:id"      element={<Gifts/>}/>
             <Route path="/calls"          element={<Calls/>}/>
+            <Route path="/calls/:id"          element={<Calls/>}/>
             <Route path="/notes"          element={<Notes/>}/>
+            <Route path="/notes/:id"          element={<Notes/>}/>
             <Route path="/signs"          element={<Signs/>}/>
+            <Route path="/signs/:id"          element={<Signs/>}/>
             <Route path="/announcements"  element={<Announcements/>}/>
+            <Route path="/announcements/:id"  element={<Announcements/>}/>
             <Route path="/listingprep"    element={<ListingPrep/>}/>
             <Route path="/listingprep/:id" element={<ListingPrep/>}/>
             <Route path="/automations"    element={<Automations/>}/>
+            <Route path="/automations/:id"    element={<Automations/>}/>
             <Route path="/briefing"       element={<DailyBriefing/>}/>
             <Route path="/email"          element={<Email/>}/>
             <Route path="/designer"       element={<EmailDesigner/>}/>
+            <Route path="/designer/:id"       element={<EmailDesigner/>}/>
             <Route path="/pipeline"       element={<Pipeline/>}/>
             <Route path="/settings"       element={<Settings/>}/>
             <Route path="/admin"          element={<Admin/>}/>
