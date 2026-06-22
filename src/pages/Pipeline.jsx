@@ -1,86 +1,98 @@
-import React, { useState } from 'react'
-import { useAuth } from '../context/AuthContext'
-import { useDeals } from '../lib/hooks'
-import { useApp } from '../context/AppContext'
-import { fmt$, initials } from '../lib/utils'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Pipeline Page
+// Kanban-style deal pipeline view grouped by stage.
+// ═══════════════════════════════════════════════════════════════
 
-const PIPELINE_STAGES = [
-  { key:'Negotiations',   label:'Negotiations',   color:'#037f4c' },
-  { key:'Offer Accapted', label:'Offer Accepted',  color:'#00c875' },
-  { key:'Under Shtar',    label:'Under Shtar',     color:'#bb3354' },
-  { key:'Under Contract', label:'Under Contract',  color:'#757575' },
-]
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { useApp } from '../context/AppContext'
+import { useDeals } from '../lib/hooks'
+import { fmt$, parseNum } from '../lib/utils'
+import { DEAL_STAGES } from '../lib/constants'
+import { PageHeader, Loading, Empty, Avatar, Pill, Btn } from '../components/UI'
+
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 export function Pipeline() {
-  const { agent, isAdmin } = useAuth()
+  const navigate  = useNavigate()
+  const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
-  const { deals, loading, update } = useDeals()
-  const [dragging, setDragging] = useState(null)
-  const [dragOver, setDragOver] = useState(null)
 
-  async function moveStage(dealId, newStage) {
+  const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
+  const { deals, loading, update } = useDeals(filters)
+
+  const activeStages = DEAL_STAGES.filter(s => !['Closed','Deal Fell Through'].includes(s.value))
+
+  async function moveDeal(dealId, newStage) {
     try {
       await update(dealId, { stage: newStage })
-      toast(`→ ${newStage}`)
-    } catch(e) { toast('Error: '+e.message,'#DC2626') }
+      toast(`✅ Moved to ${newStage}`)
+    } catch(e) {
+      toast('Failed: ' + e.message, '#DC2626')
+    }
   }
 
-  const activePipeline = deals.filter(d => PIPELINE_STAGES.map(s=>s.key).includes(d.stage))
-  const totalPendingGCI = activePipeline.reduce((s,d)=>s+(d.gci||0),0)
+  if (loading) return <div style={{ padding: '28px', fontFamily: ff }}><Loading /></div>
 
   return (
-    <div>
-      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px' }}>
-        <div>
-          <div style={{ fontSize:'18px',fontWeight:900 }}>📈 Pipeline</div>
-          <div style={{ fontSize:'12px',color:'var(--muted)',marginTop:'2px' }}>{activePipeline.length} active deals · {fmt$(totalPendingGCI)} pending GCI</div>
-        </div>
-      </div>
+    <div style={{ fontFamily: ff }}>
+      <PageHeader
+        title="Pipeline"
+        sub="Drag-free deal pipeline — click a card to view or move"
+        actions={<Btn onClick={() => navigate('/production/new')}>+ Add Deal</Btn>}
+      />
 
-      {loading && <div style={{ padding:'28px',textAlign:'center',color:'var(--muted)' }}>Loading...</div>}
+      <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '16px' }}>
+        {activeStages.map(stage => {
+          const stageDeals = deals.filter(d => d.stage === stage.value)
+          const stageGCI   = stageDeals.reduce((s, d) => s + parseNum(d.gci), 0)
 
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'10px',overflowX:'auto' }}>
-        {PIPELINE_STAGES.map(stage=>{
-          const stageDeals = activePipeline.filter(d=>d.stage===stage.key)
-          const stageGCI   = stageDeals.reduce((s,d)=>s+(d.gci||0),0)
           return (
-            <div key={stage.key}
-              onDragOver={e=>{e.preventDefault();setDragOver(stage.key)}}
-              onDragLeave={()=>setDragOver(null)}
-              onDrop={e=>{e.preventDefault();if(dragging&&dragging!==stage.key){moveStage(e.dataTransfer.getData('dealId'),stage.key)};setDragOver(null)}}
-              style={{ background:'var(--dim)',borderRadius:'12px',padding:'10px',minHeight:'200px',border:`2px solid ${dragOver===stage.key?stage.color:'transparent'}`,transition:'border-color .15s' }}>
-              {/* Column header */}
-              <div style={{ marginBottom:'10px',paddingBottom:'8px',borderBottom:'2px solid '+stage.color }}>
-                <div style={{ fontSize:'11px',fontWeight:800,color:stage.color,textTransform:'uppercase',letterSpacing:'.5px' }}>{stage.label}</div>
-                <div style={{ fontSize:'11px',color:'var(--muted)',marginTop:'2px' }}>{stageDeals.length} deals · {fmt$(stageGCI)}</div>
-              </div>
-              {/* Cards */}
-              {stageDeals.map(deal=>(
-                <div key={deal.id}
-                  draggable
-                  onDragStart={e=>{e.dataTransfer.setData('dealId',deal.id);setDragging(stage.key)}}
-                  onDragEnd={()=>setDragging(null)}
-                  style={{ background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'10px',padding:'11px',marginBottom:'8px',cursor:'grab',transition:'box-shadow .15s' }}
-                  onMouseEnter={e=>e.currentTarget.style.boxShadow='0 4px 12px rgba(0,0,0,.12)'}
-                  onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}>
-                  <div style={{ fontSize:'12px',fontWeight:700,marginBottom:'4px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{deal.addr}</div>
-                  {deal.client_name&&<div style={{ fontSize:'11px',color:'var(--muted)',marginBottom:'5px' }}>{deal.client_name}</div>}
-                  <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
-                    <span style={{ fontSize:'12px',fontWeight:700,color:'#CC2200' }}>{fmt$(deal.gci)}</span>
-                    <span style={{ fontSize:'10px',color:'var(--muted)',background:'var(--dim)',borderRadius:'20px',padding:'2px 8px' }}>{deal.side||'Buyer'}</span>
-                  </div>
-                  {/* Move to next stage */}
-                  <div style={{ display:'flex',gap:'4px',marginTop:'7px',flexWrap:'wrap' }}>
-                    {PIPELINE_STAGES.filter(s=>s.key!==stage.key).map(s=>(
-                      <button key={s.key} onClick={()=>moveStage(deal.id,s.key)}
-                        style={{ fontSize:'9px',fontWeight:700,padding:'2px 7px',borderRadius:'20px',border:`1px solid ${s.color}40`,background:s.color+'10',color:s.color,cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif' }}>
-                        → {s.label.split(' ')[0]}
-                      </button>
-                    ))}
-                  </div>
+            <div key={stage.value}
+              style={{ minWidth: '240px', width: '240px', background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+
+              {/* Column Header */}
+              <div style={{ padding: '12px 14px', borderBottom: '2px solid ' + stage.hex, borderRadius: 'var(--radius) var(--radius) 0 0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{stage.label}</div>
+                  <span style={{ background: stage.hex + '22', color: stage.hex, fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: '99px' }}>{stageDeals.length}</span>
                 </div>
-              ))}
-              {stageDeals.length===0&&<div style={{ padding:'16px',textAlign:'center',color:'var(--muted)',fontSize:'11px',border:'1.5px dashed var(--border)',borderRadius:'9px' }}>Drop here</div>}
+                <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>{fmt$(stageGCI)} GCI</div>
+              </div>
+
+              {/* Cards */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '60vh' }}>
+                {stageDeals.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '20px', color: 'var(--muted)', fontSize: '12px' }}>Empty</div>
+                )}
+                {stageDeals.map(deal => (
+                  <div key={deal.id}
+                    onClick={() => navigate('/production/' + deal.id)}
+                    style={{ background: 'var(--dim)', borderRadius: '8px', padding: '12px', cursor: 'pointer', border: '1px solid var(--border)', transition: 'box-shadow .12s' }}
+                    onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.addr}</div>
+                    {deal.client_name && <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px' }}>{deal.client_name}</div>}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#10B981' }}>{fmt$(deal.gci)}</div>
+                      {deal.agents && <Avatar agent={deal.agents} size={22} />}
+                    </div>
+                    {deal.side && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>{deal.side}</div>}
+
+                    {/* Move buttons */}
+                    <div style={{ display: 'flex', gap: '4px', marginTop: '8px', flexWrap: 'wrap' }}>
+                      {activeStages.filter(s => s.value !== stage.value).map(s => (
+                        <button key={s.value}
+                          onClick={(e) => { e.stopPropagation(); moveDeal(deal.id, s.value) }}
+                          style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${s.hex}44`, background: s.hex + '11', color: s.hex, cursor: 'pointer', fontFamily: ff, fontWeight: 600 }}>
+                          → {s.label.split(' ')[0]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )
         })}

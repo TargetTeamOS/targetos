@@ -1,109 +1,187 @@
-import React, { useState } from 'react'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Calls Log Page
+// Track all inbound/outbound calls with outcomes and notes.
+// ═══════════════════════════════════════════════════════════════
+
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useCalls } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmtDate } from '../lib/utils'
+import { useCalls, useAgents } from '../lib/hooks'
+import { fmtDateTime, fmtPhone } from '../lib/utils'
+import {
+  PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
+  SearchInput, Avatar, ModalActions, Loading, Empty, Confirm
+} from '../components/UI'
 
-const OUTCOMES = ['Answered','Voicemail','No Answer','Wrong Number','Callback Scheduled']
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
+
 const DIRECTIONS = ['Outbound','Inbound']
-const EMPTY = { contact_name:'', phone:'', direction:'Outbound', outcome:'Answered', duration:'', notes:'', called_at: new Date().toISOString().split('T')[0] }
+const OUTCOMES   = ['No Answer','Voicemail','Connected','Callback Requested','Not Interested','Hot Lead','Appointment Set']
+
+const BLANK = {
+  contact_name: '', phone: '', direction: 'Outbound', outcome: '',
+  duration: '', notes: '', called_at: ''
+}
 
 export function Calls() {
-  const { agent } = useAuth()
+  const navigate = useNavigate()
+  const { id: urlId } = useParams()
+  const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
-  const { calls, loading, add, remove } = useCalls({ agentId: agent?.id })
-  const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm]       = useState(EMPTY)
-  const [saving, setSaving]   = useState(false)
 
-  const set = (k,v) => setForm(f=>({...f,[k]:v}))
+  const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
+  const { calls, loading, add, update, remove } = useCalls(filters)
+  const { agents } = useAgents()
 
-  async function handleAdd() {
-    if(!form.phone.trim()&&!form.contact_name.trim()) { toast('Name or phone required','#DC2626'); return }
-    setSaving(true)
-    try {
-      await add({ ...form, agent_id: agent?.id, called_at: new Date().toISOString() })
-      toast('✅ Call logged!'); setShowAdd(false); setForm(EMPTY)
-    } catch(e) { toast('Error: '+e.message,'#DC2626') }
-    finally { setSaving(false) }
+  const [search,  setSearch]  = useState('')
+  const [selected,setSelected] = useState(null)
+  const [form,    setForm]    = useState(BLANK)
+  const [saving,  setSaving]  = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  useEffect(() => {
+    if (urlId && calls.length > 0 && urlId !== 'new') {
+      const c = calls.find(x => x.id === urlId)
+      if (c) openCall(c)
+    }
+  }, [urlId, calls.length])
+
+  function openCall(c) {
+    navigate('/calls/' + c.id, { replace: true })
+    setSelected(c)
+    setForm({ ...BLANK, ...c })
   }
 
-  const outcomeColors = { Answered:'#16A34A', Voicemail:'#0EA5E9', 'No Answer':'#94A3B8', 'Wrong Number':'#DC2626', 'Callback Scheduled':'#D97706' }
+  function openAdd() {
+    setSelected(null)
+    setForm({ ...BLANK, agent_id: agent?.id, called_at: new Date().toISOString() })
+    navigate('/calls/new', { replace: true })
+  }
 
-  const today = calls.filter(c=>c.called_at?.split('T')[0]===new Date().toISOString().split('T')[0]).length
+  function closePanel() {
+    setSelected(null)
+    navigate('/calls', { replace: true })
+  }
+
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
+
+  async function saveCall() {
+    setSaving(true)
+    try {
+      if (selected) {
+        const updated = await update(selected.id, form)
+        setSelected(updated)
+        toast('✅ Call saved')
+      } else {
+        await add({ ...form, agent_id: form.agent_id || agent?.id, called_at: new Date().toISOString() })
+        toast('✅ Call logged')
+        closePanel()
+      }
+    } catch(e) {
+      toast('Save failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
+  }
+
+  async function deleteCall() {
+    try {
+      await remove(selected.id)
+      toast('Call deleted')
+      closePanel()
+    } catch(e) {
+      toast('Delete failed: ' + e.message, '#DC2626')
+    } finally { setConfirmDelete(false) }
+  }
+
+  const filtered = calls.filter(c => {
+    if (search && !c.contact_name?.toLowerCase().includes(search.toLowerCase()) && !c.phone?.includes(search)) return false
+    return true
+  })
+
+  const outcomeColor = (o) => {
+    if (o === 'Hot Lead' || o === 'Appointment Set') return '#00c875'
+    if (o === 'No Answer' || o === 'Not Interested') return '#df2f4a'
+    return '#9aadbd'
+  }
 
   return (
-    <div>
-      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px',flexWrap:'wrap',gap:'8px' }}>
-        <div>
-          <div style={{ fontSize:'18px',fontWeight:900 }}>📞 Calls</div>
-          <div style={{ fontSize:'12px',color:'var(--muted)',marginTop:'2px' }}>{today} today · {calls.length} total</div>
-        </div>
-        <button onClick={()=>setShowAdd(s=>!s)} style={btnStyle}>+ Log Call</button>
+    <div style={{ fontFamily: ff }}>
+      <PageHeader title="Call Log" sub={`${calls.length} calls logged`} actions={<Btn onClick={openAdd}>+ Log Call</Btn>} />
+
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search name, phone..." style={{ flex: 1 }} />
       </div>
 
-      {/* Stats */}
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'8px',marginBottom:'14px' }}>
-        {[['Today',today,'#CC2200'],['Answered',calls.filter(c=>c.outcome==='Answered').length,'#16A34A'],['Voicemail',calls.filter(c=>c.outcome==='Voicemail').length,'#0EA5E9'],['Callbacks',calls.filter(c=>c.outcome==='Callback Scheduled').length,'#D97706']].map(([k,v,c])=>(
-          <div key={k} style={{ background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'10px',padding:'11px' }}>
-            <div style={{ fontSize:'9px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.7px',marginBottom:'4px' }}>{k}</div>
-            <div style={{ fontSize:'18px',fontWeight:900,color:c }}>{v}</div>
-          </div>
-        ))}
-      </div>
+      {loading && <Loading />}
+      {!loading && filtered.length === 0 && (
+        <Empty icon="📞" title="No calls logged" sub="Log your first call." action={<Btn onClick={openAdd}>+ Log Call</Btn>} />
+      )}
 
-      {/* Quick log form */}
-      {showAdd&&(
-        <div style={{ background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'12px',padding:'16px',marginBottom:'14px' }}>
-          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'8px',marginBottom:'8px' }}>
-            <input value={form.contact_name} onChange={e=>set('contact_name',e.target.value)} placeholder="Contact name"
-              style={inp}/>
-            <input value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="(845) 555-1234"
-              style={inp}/>
-            <select value={form.direction} onChange={e=>set('direction',e.target.value)} style={inp}>
-              {DIRECTIONS.map(d=><option key={d}>{d}</option>)}
-            </select>
-            <select value={form.outcome} onChange={e=>set('outcome',e.target.value)} style={inp}>
-              {OUTCOMES.map(o=><option key={o}>{o}</option>)}
-            </select>
-          </div>
-          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:'8px' }}>
-            <input value={form.duration} onChange={e=>set('duration',e.target.value)} placeholder="Duration (e.g. 4m 30s)" style={inp}/>
-            <input value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Notes..." style={inp}/>
-            <button onClick={handleAdd} disabled={saving} style={{ ...btnStyle,opacity:saving?.7:1 }}>{saving?'Logging…':'Log Call'}</button>
-          </div>
+      {!loading && filtered.length > 0 && (
+        <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead>
+              <tr style={{ background: 'var(--dim)' }}>
+                {['Contact','Phone','Direction','Outcome','Duration','Notes','Agent','Date'].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(c => (
+                <tr key={c.id} onClick={() => openCall(c)}
+                  style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
+                  onMouseLeave={e => e.currentTarget.style.background = ''}>
+                  <td style={{ padding: '11px 12px', fontWeight: 600 }}>{c.contact_name || '—'}</td>
+                  <td style={{ padding: '11px 12px', color: 'var(--muted)' }}>{fmtPhone(c.phone)}</td>
+                  <td style={{ padding: '11px 12px' }}><Pill label={c.direction} color={c.direction === 'Inbound' ? '#007eb5' : '#fdab3d'} /></td>
+                  <td style={{ padding: '11px 12px' }}>{c.outcome ? <Pill label={c.outcome} color={outcomeColor(c.outcome)} /> : '—'}</td>
+                  <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{c.duration || '—'}</td>
+                  <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.notes || '—'}</td>
+                  <td style={{ padding: '11px 12px' }}>{c.agents ? <Avatar agent={c.agents} size={22} /> : '—'}</td>
+                  <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{fmtDateTime(c.called_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {loading && <div style={{ padding:'24px',textAlign:'center',color:'var(--muted)' }}>Loading...</div>}
+      <Modal open={!!(selected || urlId === 'new')} onClose={closePanel} title={selected ? 'Edit Call' : 'Log Call'} width={480}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <Field label="Contact Name">
+            <Input value={form.contact_name} onChange={v => set('contact_name', v)} placeholder="John Smith" />
+          </Field>
+          <Field label="Phone">
+            <Input value={form.phone} onChange={v => set('phone', v)} placeholder="(845) 555-1234" type="tel" />
+          </Field>
+          <Field label="Direction">
+            <Select value={form.direction} onChange={v => set('direction', v)} options={DIRECTIONS} />
+          </Field>
+          <Field label="Outcome">
+            <Select value={form.outcome} onChange={v => set('outcome', v)} options={OUTCOMES} placeholder="How did it go?" />
+          </Field>
+          <Field label="Duration">
+            <Input value={form.duration} onChange={v => set('duration', v)} placeholder="5 min" />
+          </Field>
+          {(isAdmin || canManage) && (
+            <Field label="Agent">
+              <Select value={form.agent_id || ''} onChange={v => set('agent_id', v)} options={agents.map(a => ({ value: a.id, label: a.name }))} placeholder="Agent" />
+            </Field>
+          )}
+        </div>
+        <Field label="Notes">
+          <Textarea value={form.notes} onChange={v => set('notes', v)} placeholder="What was discussed?" rows={3} />
+        </Field>
+        <ModalActions>
+          {selected && <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>}
+          <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
+          <Btn onClick={saveCall} loading={saving}>{selected ? 'Save' : 'Log Call'}</Btn>
+        </ModalActions>
+      </Modal>
 
-      <div style={{ background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px',overflow:'hidden' }}>
-        {calls.length===0&&!loading&&<div style={{ padding:'32px',textAlign:'center',color:'var(--muted)',fontSize:'13px' }}><div style={{ fontSize:'28px',marginBottom:'8px' }}>📞</div>No calls logged yet</div>}
-        {calls.map(c=>(
-          <div key={c.id} style={{ display:'flex',alignItems:'center',gap:'12px',padding:'11px 16px',borderBottom:'1px solid var(--border)' }}>
-            <div style={{ width:36,height:36,borderRadius:'50%',background:(outcomeColors[c.outcome]||'#94A3B8')+'15',border:`2px solid ${outcomeColors[c.outcome]||'#94A3B8'}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'16px',flexShrink:0 }}>
-              {c.direction==='Inbound'?'📲':'📞'}
-            </div>
-            <div style={{ flex:1,minWidth:0 }}>
-              <div style={{ fontSize:'13px',fontWeight:700 }}>{c.contact_name||c.phone}</div>
-              <div style={{ fontSize:'11px',color:'var(--muted)',marginTop:'2px' }}>
-                {c.phone&&c.contact_name&&<span>{c.phone} · </span>}
-                <span style={{ color:outcomeColors[c.outcome]||'#94A3B8',fontWeight:600 }}>{c.outcome}</span>
-                {c.duration&&<span> · {c.duration}</span>}
-                {c.notes&&<span> · {c.notes}</span>}
-              </div>
-            </div>
-            <div style={{ fontSize:'10px',color:'var(--muted)',flexShrink:0,whiteSpace:'nowrap' }}>{fmtDate(c.called_at)}</div>
-            <button onClick={async()=>{try{await remove(c.id);toast('Deleted')}catch(e){toast(e.message,'#DC2626')}}}
-              style={{ background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'13px',opacity:.4 }}
-              onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='.4'}>✕</button>
-          </div>
-        ))}
-      </div>
+      <Confirm open={confirmDelete} message="Delete this call log?" onConfirm={deleteCall} onCancel={() => setConfirmDelete(false)} />
     </div>
   )
 }
-
-const inp      = { width:'100%',background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'12px',fontFamily:'Inter,system-ui,sans-serif',padding:'8px 10px',outline:'none',boxSizing:'border-box' }
-const btnStyle = { background:'#CC2200',border:'none',borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:700,padding:'9px 15px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif' }

@@ -1,236 +1,289 @@
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Listings Page
+// Active listings management with full detail view.
+// ═══════════════════════════════════════════════════════════════
+
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useListings } from '../lib/hooks'
-import { useAgents } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmt$, fmtDate } from '../lib/utils'
-import { updateListing } from '../lib/db'
+import { useListings, useAgents } from '../lib/hooks'
+import { fmt$, fmtDate, matchSearch } from '../lib/utils'
+import { LISTING_STATUSES, LISTING_PROPERTY_TYPES, LISTING_DEAL_TYPES } from '../lib/constants'
+import {
+  PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
+  SearchInput, Avatar, ModalActions, Loading, Empty, Tabs,
+  SectionTitle, StatCard, Confirm
+} from '../components/UI'
 
-const STATUSES = ['Active','Accepted offer','Under Contract','Off Market','Expired','Temporary off market','Seller not selling','Sold']
-const STATUS_COLORS = { 'Active':'#16A34A','Accepted offer':'#784bd1','Under Contract':'#007eb5','Off Market':'#fdab3d','Expired':'#df2f4a','Sold':'#ffcb00','Temporary off market':'#579bfc','Seller not selling':'#333333' }
-const PROPERTY_TYPES = ['New Construction','Land','Single Family','Condo','Commercial','Duplex','2 Family','3 Family','4 Family','High Ranch']
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
+
+const BLANK = {
+  addr: '', city: '', state: 'NY', zip: '', status: 'Active',
+  list_price: '', property_type: '', deal_type: 'MLS', beds: '', baths: '',
+  sqft: '', tax: '', door_lock: '', mls_link: '', buyers_agent_pct: '',
+  seller_name: '', list_date: '', ad_budget: '2000', notes: ''
+}
 
 export function Listings() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
-  const { agent, isAdmin } = useAuth()
+  const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
+
+  const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
+  const { listings, loading, add, update, remove } = useListings(filters)
   const { agents } = useAgents()
-  const [search, setSearch]   = useState('')
-  const [filterStatus, setFS] = useState('Active')
+
+  const [search,  setSearch]  = useState('')
+  const [statusF, setStatusF] = useState('Active')
+  const [selected,setSelected] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
-  const [selected, setSelected] = useState(null)
-  const [saving, setSaving]   = useState(false)
-  const [form, setForm]       = useState(defaultForm())
+  const [form,    setForm]    = useState(BLANK)
+  const [saving,  setSaving]  = useState(false)
+  const [tab,     setTab]     = useState('info')
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const { listings, loading, add, update, remove } = useListings({
-    agentId: isAdmin ? undefined : agent?.id,
-    status: filterStatus || undefined,
-    search: search.length > 1 ? search : undefined,
-  })
+  useEffect(() => {
+    if (urlId && listings.length > 0 && urlId !== 'new') {
+      const l = listings.find(x => x.id === urlId)
+      if (l) openListing(l)
+    }
+    if (urlId === 'new') { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); setShowAdd(true) }
+  }, [urlId, listings.length])
 
-  function defaultForm() {
-    return { addr:'', city:'', state:'NY', zip:'', status:'Active', list_price:'', property_type:'',
-      deal_type:'MLS', beds:'', baths:'', sqft:'', tax:'', door_lock:'', mls_link:'',
-      buyers_agent_pct:'', seller_name:'', list_date:'', notes:'', agent_id: agent?.id || '' }
+  function openListing(l) {
+    navigate('/listings/' + l.id, { replace: true })
+    setSelected(l)
+    setForm({ ...BLANK, ...l })
+    setShowAdd(false)
+    setTab('info')
   }
 
-  async function handleSave() {
-    if (!form.addr.trim()) { toast('Address required','#DC2626'); return }
+  function openAdd() {
+    setSelected(null)
+    setForm({ ...BLANK, agent_id: agent?.id })
+    setShowAdd(true)
+    navigate('/listings/new', { replace: true })
+  }
+
+  function closePanel() {
+    setSelected(null)
+    setShowAdd(false)
+    navigate('/listings', { replace: true })
+  }
+
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
+
+  async function saveListing() {
+    if (!form.addr.trim()) { toast('Address is required', '#DC2626'); return }
     setSaving(true)
     try {
-      const payload = { ...form, agent_id: form.agent_id || agent?.id, list_price: parseFloat(form.list_price)||null, ad_budget:2000, spend:[], showings:[], interests:[] }
       if (selected) {
-        await update(selected.id, payload)
-        toast('✅ Listing updated!')
-        setSelected(null)
+        const updated = await update(selected.id, form)
+        setSelected(updated)
+        toast('✅ Listing saved')
       } else {
-        await add(payload)
-        toast('✅ Listing added!')
-        setShowAdd(false)
+        const created = await add({ ...form, agent_id: form.agent_id || agent?.id })
+        toast('✅ Listing added')
+        navigate('/listings/' + created.id)
+        closePanel()
       }
-      setForm(defaultForm())
-    } catch(e) { toast('Error: '+e.message,'#DC2626') }
-    finally { setSaving(false) }
+    } catch(e) {
+      toast('Save failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
   }
 
-  async function updateStatus(id, status) {
+  async function deleteListing() {
     try {
-      await update(id, { status })
-      toast(`Status → ${status}`)
-    } catch(e) { toast('Error: '+e.message,'#DC2626') }
+      await remove(selected.id)
+      toast('Listing deleted')
+      closePanel()
+    } catch(e) {
+      toast('Delete failed: ' + e.message, '#DC2626')
+    } finally { setConfirmDelete(false) }
   }
 
-  const set = (k,v) => setForm(f=>({...f,[k]:v}))
-  const activeListings = listings.filter(l=>l.status==='Active').length
-  const aoListings     = listings.filter(l=>l.status==='Accepted offer').length
-  const ucListings     = listings.filter(l=>l.status==='Under Contract').length
+  const filtered = listings.filter(l => {
+    if (statusF && l.status !== statusF) return false
+    if (search  && !matchSearch(l, search, ['addr','city','seller_name','notes'])) return false
+    return true
+  })
+
+  const statusColor = (s) => LISTING_STATUSES.find(x => x.value === s)?.hex || '#c4c4c4'
+
+  const active   = listings.filter(l => l.status === 'Active').length
+  const uc       = listings.filter(l => l.status === 'Under Contract' || l.status === 'Accepted offer').length
+  const totalVal = listings.filter(l => l.status === 'Active').reduce((s, l) => s + (parseFloat(l.list_price) || 0), 0)
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px', flexWrap:'wrap', gap:'8px' }}>
-        <div>
-          <div style={{ fontSize:'18px', fontWeight:900 }}>🏠 Listings</div>
-          <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>
-            {activeListings} active · {aoListings} AO · {ucListings} UC
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:'7px', flexWrap:'wrap' }}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search address..."
-            style={inp}/>
-          <select value={filterStatus} onChange={e=>setFS(e.target.value)} style={sel}>
-            <option value="">All Statuses</option>
-            {STATUSES.map(s=><option key={s}>{s}</option>)}
-          </select>
-          <button onClick={()=>{setShowAdd(true);setSelected(null);setForm(defaultForm())}} style={btnRed}>
-            + Add Listing
-          </button>
-        </div>
+    <div style={{ fontFamily: ff }}>
+      <PageHeader
+        title="Listings"
+        sub={`${active} active · ${uc} under contract`}
+        actions={<Btn onClick={openAdd}>+ Add Listing</Btn>}
+      />
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
+        <StatCard label="Active Listings" value={active} accent="#00c875" icon="🏡" />
+        <StatCard label="Under Contract" value={uc} accent="#784bd1" icon="📝" />
+        <StatCard label="Active Volume" value={fmt$(totalVal)} accent="#F5A623" icon="💰" />
       </div>
 
-      {/* Status filter pills */}
-      <div style={{ display:'flex', gap:'6px', marginBottom:'12px', flexWrap:'wrap' }}>
-        {['Active','Accepted offer','Under Contract'].map(s=>(
-          <div key={s} onClick={()=>setFS(f=>f===s?'':s)}
-            style={{ fontSize:'11px', fontWeight:700, padding:'5px 12px', borderRadius:'20px', cursor:'pointer',
-              background:filterStatus===s?(STATUS_COLORS[s]+'20'):'var(--dim)',
-              border:`1.5px solid ${filterStatus===s?STATUS_COLORS[s]:'var(--border)'}`,
-              color:filterStatus===s?STATUS_COLORS[s]:'var(--muted)' }}>
-            {s} ({listings.filter(l=>l.status===s).length})
-          </div>
-        ))}
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search address, seller..." style={{ flex: 1, minWidth: '200px' }} />
+        <select value={statusF} onChange={e => setStatusF(e.target.value)}
+          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+          <option value="">All Statuses</option>
+          {LISTING_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
       </div>
 
-      {/* Listing cards */}
-      {loading ? <div style={{ padding:'32px', textAlign:'center', color:'var(--muted)', fontSize:'13px' }}>Loading...</div>
-      : listings.length === 0
-      ? <div style={{ padding:'48px', textAlign:'center', color:'var(--muted)', background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'14px' }}>
-          <div style={{ fontSize:'32px', marginBottom:'12px' }}>🏠</div>
-          <div style={{ fontWeight:700, marginBottom:'6px' }}>No listings</div>
-          <button onClick={()=>setShowAdd(true)} style={btnRed}>Add First Listing</button>
-        </div>
-      : (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:'12px' }}>
-          {listings.map(l=>(
-            <div key={l.id} style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'14px', overflow:'hidden', cursor:'pointer' }}
-              onClick={()=>{navigate('/listings/'+l.id);setSelected(l);setForm({...defaultForm(),...l,list_price:l.list_price||''});setShowAdd(false)}}>
-              {/* Status bar */}
-              <div style={{ height:4, background:STATUS_COLORS[l.status]||'#94A3B8' }}/>
-              <div style={{ padding:'14px 16px' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'6px' }}>
-                  <div style={{ fontSize:'13px', fontWeight:800, flex:1, marginRight:'8px' }}>{l.addr}</div>
-                  <span style={{ fontSize:'10px', fontWeight:700, padding:'2px 8px', borderRadius:'20px', background:(STATUS_COLORS[l.status]||'#94A3B8')+'18', color:STATUS_COLORS[l.status]||'#94A3B8', flexShrink:0, whiteSpace:'nowrap' }}>
-                    {l.status}
-                  </span>
+      {loading && <Loading />}
+      {!loading && filtered.length === 0 && (
+        <Empty icon="🏡" title="No listings" sub="Add your first listing." action={<Btn onClick={openAdd}>+ Add Listing</Btn>} />
+      )}
+
+      {/* Listing Cards */}
+      {!loading && filtered.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px' }}>
+          {filtered.map(l => (
+            <div key={l.id} onClick={() => openListing(l)}
+              style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: selected?.id === l.id ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '16px', cursor: 'pointer', transition: 'box-shadow .15s' }}
+              onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
+              onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)', flex: 1, paddingRight: '8px' }}>
+                  {l.addr}
+                  {l.city && <span style={{ color: 'var(--muted)', fontWeight: 400 }}>, {l.city}</span>}
                 </div>
-                <div style={{ fontSize:'11px', color:'var(--muted)', marginBottom:'8px' }}>
-                  {l.city && <span>{l.city}, </span>}{l.state}
-                  {l.property_type && <span> · {l.property_type}</span>}
-                </div>
-                <div style={{ fontSize:'20px', fontWeight:900, color:'#CC2200', marginBottom:'8px' }}>{fmt$(l.list_price)}</div>
-                <div style={{ display:'flex', gap:'12px', fontSize:'12px', color:'var(--muted)', marginBottom:'10px' }}>
-                  {l.beds  && <span>🛏 {l.beds} bed</span>}
-                  {l.baths && <span>🚿 {l.baths} bath</span>}
-                  {l.sqft  && <span>📐 {l.sqft} sqft</span>}
-                </div>
-                {/* Quick status change */}
-                <div style={{ display:'flex', gap:'5px', flexWrap:'wrap' }} onClick={e=>e.stopPropagation()}>
-                  {STATUSES.slice(0,4).map(s=>(
-                    <button key={s} onClick={()=>updateStatus(l.id,s)}
-                      style={{ fontSize:'9px', fontWeight:700, padding:'3px 8px', borderRadius:'20px', border:`1.5px solid ${l.status===s?(STATUS_COLORS[s]||'#CC2200'):'var(--border)'}`,
-                        background:l.status===s?(STATUS_COLORS[s]||'#CC2200')+'15':'transparent',
-                        color:l.status===s?(STATUS_COLORS[s]||'#CC2200'):'var(--muted)', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
+                <Pill label={l.status} color={statusColor(l.status)} />
               </div>
+
+              <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--brand)', marginBottom: '8px' }}>
+                {fmt$(l.list_price)}
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: 'var(--muted)' }}>
+                {l.beds && <span>🛏 {l.beds} bed</span>}
+                {l.baths && <span>🛁 {l.baths} bath</span>}
+                {l.sqft && <span>📐 {l.sqft} sqft</span>}
+              </div>
+
+              {l.property_type && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '6px' }}>{l.property_type} · {l.deal_type}</div>}
+
+              {l.agents && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '8px' }}>
+                  <Avatar agent={l.agents} size={18} />
+                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{l.agents.name}</span>
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {/* Add/Edit modal */}
-      {(showAdd || selected) && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:999, padding:'16px' }}
-          onClick={e=>{if(e.target===e.currentTarget){setShowAdd(false);setSelected(null)}}}>
-          <div style={{ background:'var(--panel)', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'520px', maxHeight:'90vh', overflowY:'auto' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'18px' }}>
-              <div style={{ fontSize:'16px', fontWeight:800 }}>{selected?'Edit Listing':'Add Listing'}</div>
-              <button onClick={()=>{setShowAdd(false);setSelected(null)}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'20px' }}>✕</button>
+      {/* Detail Modal */}
+      <Modal open={!!(selected || showAdd)} onClose={closePanel} title={selected ? selected.addr : 'New Listing'} width={620}>
+        <Tabs tabs={[
+          { id: 'info', label: 'Property Info' },
+          { id: 'details', label: 'Details' },
+          { id: 'notes', label: 'Notes' },
+        ]} active={tab} onChange={setTab} />
+
+        {tab === 'info' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Address" required>
+                <Input value={form.addr} onChange={v => set('addr', v)} placeholder="123 Main St" />
+              </Field>
+              <Field label="City">
+                <Input value={form.city} onChange={v => set('city', v)} placeholder="Monsey" />
+              </Field>
+              <Field label="Status">
+                <Select value={form.status} onChange={v => set('status', v)} options={LISTING_STATUSES} />
+              </Field>
+              <Field label="List Price">
+                <Input value={form.list_price} onChange={v => set('list_price', v)} placeholder="500000" type="number" />
+              </Field>
+              <Field label="Property Type">
+                <Select value={form.property_type} onChange={v => set('property_type', v)} options={LISTING_PROPERTY_TYPES} placeholder="Type" />
+              </Field>
+              <Field label="Deal Type">
+                <Select value={form.deal_type} onChange={v => set('deal_type', v)} options={LISTING_DEAL_TYPES} />
+              </Field>
+              <Field label="Seller Name">
+                <Input value={form.seller_name} onChange={v => set('seller_name', v)} placeholder="John Smith" />
+              </Field>
+              <Field label="List Date">
+                <Input value={form.list_date} onChange={v => set('list_date', v)} type="date" />
+              </Field>
             </div>
-            <F label="Address *" value={form.addr} onChange={v=>set('addr',v)} ph="47 Prairie Ave"/>
-            <div style={{ display:'grid', gridTemplateColumns:'2fr 60px 80px', gap:'8px' }}>
-              <F label="City" value={form.city} onChange={v=>set('city',v)} ph="Suffern"/>
-              <F label="State" value={form.state} onChange={v=>set('state',v)} ph="NY"/>
-              <F label="Zip" value={form.zip} onChange={v=>set('zip',v)} ph="10901"/>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-              <div><label style={lblStyle}>Status</label>
-                <select value={form.status} onChange={e=>set('status',e.target.value)} style={{ ...sel, width:'100%' }}>
-                  {STATUSES.map(s=><option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <F label="List Price $" value={form.list_price} onChange={v=>set('list_price',v)} type="number" ph="599000"/>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'8px' }}>
-              <F label="Beds" value={form.beds} onChange={v=>set('beds',v)} ph="4"/>
-              <F label="Baths" value={form.baths} onChange={v=>set('baths',v)} ph="2.5"/>
-              <F label="Sqft" value={form.sqft} onChange={v=>set('sqft',v)} ph="1,568"/>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-              <F label="Tax" value={form.tax} onChange={v=>set('tax',v)} ph="$13,377/yr"/>
-              <F label="Door Lock Code" value={form.door_lock} onChange={v=>set('door_lock',v)} ph="1234"/>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-              <div><label style={lblStyle}>Property Type</label>
-                <select value={form.property_type} onChange={e=>set('property_type',e.target.value)} style={{ ...sel, width:'100%' }}>
-                  <option value="">Select...</option>
-                  {PROPERTY_TYPES.map(t=><option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div><label style={lblStyle}>Agent</label>
-                <select value={form.agent_id} onChange={e=>set('agent_id',e.target.value)} style={{ ...sel, width:'100%' }}>
-                  {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </div>
-            </div>
-            <F label="Seller Name" value={form.seller_name} onChange={v=>set('seller_name',v)} ph="John Smith"/>
-            <F label="MLS Link" value={form.mls_link} onChange={v=>set('mls_link',v)} ph="https://..."/>
-            <F label="Buyers Agent %" value={form.buyers_agent_pct} onChange={v=>set('buyers_agent_pct',v)} ph="2.5%"/>
-            <F label="Notes" value={form.notes} onChange={v=>set('notes',v)} rows={3} ph="Any notes..."/>
-            <div style={{ display:'flex', gap:'8px', marginTop:'12px' }}>
-              {selected && (
-                <button onClick={async()=>{if(!confirm('Delete?'))return;try{await remove(selected.id);toast('Deleted');setSelected(null)}catch(e){toast(e.message,'#DC2626')}}}
-                  style={{ flex:1, background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)', borderRadius:'10px', color:'#DC2626', fontSize:'12px', fontWeight:700, padding:'11px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
-                  Delete
-                </button>
-              )}
-              <button onClick={handleSave} disabled={saving}
-                style={{ flex:2, background:'#CC2200', border:'none', borderRadius:'10px', color:'#fff', fontSize:'13px', fontWeight:700, padding:'11px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', opacity:saving?.7:1 }}>
-                {saving?'Saving…':selected?'Save Changes':'Add Listing'}
-              </button>
+            {(isAdmin || canManage) && (
+              <Field label="Agent">
+                <Select value={form.agent_id || ''} onChange={v => set('agent_id', v)} options={agents.map(a => ({ value: a.id, label: a.name }))} placeholder="Assign agent" />
+              </Field>
+            )}
+          </div>
+        )}
+
+        {tab === 'details' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Bedrooms">
+                <Input value={form.beds} onChange={v => set('beds', v)} placeholder="4" />
+              </Field>
+              <Field label="Bathrooms">
+                <Input value={form.baths} onChange={v => set('baths', v)} placeholder="2" />
+              </Field>
+              <Field label="Sqft">
+                <Input value={form.sqft} onChange={v => set('sqft', v)} placeholder="2000" />
+              </Field>
+              <Field label="Tax">
+                <Input value={form.tax} onChange={v => set('tax', v)} placeholder="Annual tax" />
+              </Field>
+              <Field label="Buyers Agent %">
+                <Input value={form.buyers_agent_pct} onChange={v => set('buyers_agent_pct', v)} placeholder="2.5%" />
+              </Field>
+              <Field label="Ad Budget">
+                <Input value={form.ad_budget} onChange={v => set('ad_budget', v)} placeholder="2000" type="number" />
+              </Field>
+              <Field label="Door Lock Code">
+                <Input value={form.door_lock} onChange={v => set('door_lock', v)} placeholder="Lock code" />
+              </Field>
+              <Field label="MLS Link">
+                <Input value={form.mls_link} onChange={v => set('mls_link', v)} placeholder="https://..." />
+              </Field>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {tab === 'notes' && (
+          <Field label="Notes">
+            <Textarea value={form.notes} onChange={v => set('notes', v)} placeholder="Listing notes..." rows={8} />
+          </Field>
+        )}
+
+        <ModalActions>
+          {selected && (
+            <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>
+          )}
+          {selected?.mls_link && (
+            <Btn variant="secondary" onClick={() => window.open(selected.mls_link, '_blank')}>🔗 MLS</Btn>
+          )}
+          <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
+          <Btn onClick={saveListing} loading={saving}>{selected ? 'Save Changes' : 'Add Listing'}</Btn>
+        </ModalActions>
+      </Modal>
+
+      <Confirm
+        open={confirmDelete}
+        message={`Delete ${selected?.addr}? This cannot be undone.`}
+        onConfirm={deleteListing}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }
-
-function F({ label, value, onChange, ph='', type='text', rows }) {
-  return (
-    <div style={{ marginBottom:'10px' }}>
-      {label && <label style={lblStyle}>{label}</label>}
-      {rows ? <textarea value={value||''} onChange={e=>onChange(e.target.value)} placeholder={ph} rows={rows} style={{ ...inp, resize:'vertical', lineHeight:1.6 }}/>
-             : <input type={type} value={value||''} onChange={e=>onChange(e.target.value)} placeholder={ph} style={inp}/>}
-    </div>
-  )
-}
-
-const inp      = { width:'100%', background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'8px 10px', outline:'none', boxSizing:'border-box' }
-const sel      = { background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'8px 10px', outline:'none' }
-const btnRed   = { background:'#CC2200', border:'none', borderRadius:'9px', color:'#fff', fontSize:'12px', fontWeight:700, padding:'9px 15px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }
-const lblStyle = { display:'block', fontSize:'9px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:'4px' }

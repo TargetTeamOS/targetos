@@ -1,387 +1,388 @@
-import React, { useState } from 'react'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Production Sheet
+// The main deal tracking board. Mirrors the Monday.com
+// Production Sheet exactly — all stages, sides, statuses.
+// ═══════════════════════════════════════════════════════════════
+
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useDeals } from '../lib/hooks'
-import { useAgents } from '../lib/hooks'
 import { useApp } from '../context/AppContext'
-import { fmt$, fmtDate } from '../lib/utils'
+import { useDeals, useAgents } from '../lib/hooks'
+import { db } from '../lib/db'
+import { fmt$, fmtDate, fmtDateShort, parseNum, matchSearch, totalGCI, closedDeals } from '../lib/utils'
+import {
+  DEAL_STAGES, CTC_STAGES, DEAL_SIDES, SALE_TYPES, PROPERTY_TYPES,
+  BUYER_TYPES, SALES_SOURCES, COMMAND_STATUSES, SIGN_STATUSES,
+  COMMISSION_STATUSES, AGENT_COMMISSION_STATUSES, REFERRAL_AGENTS
+} from '../lib/constants'
+import {
+  PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
+  SearchInput, Avatar, ModalActions, Loading, Empty, Tabs,
+  SectionTitle, StatCard, Grid, Confirm, Divider, InlineEdit
+} from '../components/UI'
 
-const STAGES = [
-  { label:'Negotiations',      color:'#037f4c' },
-  { label:'Offer Accapted',    color:'#00c875' },
-  { label:'Under Shtar',       color:'#bb3354' },
-  { label:'Under Contract',    color:'#757575' },
-  { label:'Closed',            color:'#225091' },
-  { label:'Deal Fell Through', color:'#ff007f' },
-]
-const CTC_STAGES = ['Inspection scheduled','Mortgage process','Appraisal ordered','Conditional Approval','Clear to close','Closing scheduled','Issue','Canceled','Closed']
-const SIDES = ['Buyer','Listing','Dual','Dual  Buyer','Dual Listing','Seller','Rental','Flip']
-const PROPERTY_TYPES = ['Condo','Single Family','Multi Family','New Construction','Land','Co-Op','Summer Home','Commercial']
-const SALE_TYPES = ['On Market','Off Market','FSBO']
-const SOURCES = ['Past Client Repeat','Past Client Referral','SOI','Referral','System Call','Social Media','Sign Call','Farm','Cold Calls','Sign','Zillow','Israel','Office Referral','Approached','Other']
-const COMMISSION_STATUSES = ['Working on it','Done','Stuck']
-const CMD_STATUSES = ['Working on it','Done','Stuck','Waiting for approval','No command','Contact Info needed','Sent not signed','Not Yet','Client has been notified']
-const SIGN_STATUSES = ['Under Contract Sent','Sold Sign Sent']
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-const GROUPS = [
-  { id:'ao',       title:'ACCEPTED OFFERS',         stages:['Offer Accapted'] },
-  { id:'shtar',    title:'UNDER SHTAR',              stages:['Under Shtar'] },
-  { id:'contract', title:'UNDER CONTRACT',           stages:['Under Contract'] },
-  { id:'sold',     title:'Sold',                     stages:['Closed'] },
-  { id:'fell',     title:'Deal Fell Through',        stages:['Deal Fell Through'] },
-]
-
-const STAGE_C = s => STAGES.find(x=>x.label===s)?.color || '#c4c4c4'
-
-function Pill({ value, options, onChange }) {
-  const [open, setOpen] = useState(false)
-  const opt = (options || []).find(o => (o.label||o) === value)
-  const color = opt?.color || '#c4c4c4'
-  if (!onChange) return (
-    <span style={{ background:color+'20', border:`1px solid ${color}40`, borderRadius:'4px', padding:'2px 7px', fontSize:'10px', fontWeight:600, color, whiteSpace:'nowrap' }}>{value||'—'}</span>
-  )
-  return (
-    <div style={{ position:'relative' }}>
-      <div onClick={()=>setOpen(o=>!o)} style={{ cursor:'pointer', background:color+'20', border:`1px solid ${color}40`, borderRadius:'4px', padding:'2px 7px', fontSize:'10px', fontWeight:600, color, whiteSpace:'nowrap', userSelect:'none' }}>
-        {value||'—'}
-      </div>
-      {open && (
-        <div style={{ position:'fixed', zIndex:200, background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'10px', boxShadow:'0 8px 24px rgba(0,0,0,.2)', minWidth:'160px', maxHeight:'220px', overflowY:'auto' }}
-          onMouseLeave={()=>setOpen(false)}>
-          {(options||[]).map(o => {
-            const lbl = o.label||o; const c = o.color||'#94A3B8'
-            return (
-              <div key={lbl} onClick={()=>{onChange(lbl);setOpen(false)}}
-                style={{ padding:'7px 12px', cursor:'pointer', display:'flex', alignItems:'center', gap:'8px', fontSize:'12px', fontWeight:600 }}
-                onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'}
-                onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                <div style={{ width:8, height:8, borderRadius:'2px', background:c }}/>
-                {lbl}
-              </div>
-            )
-          })}
-          <div onClick={()=>{onChange('');setOpen(false)}} style={{ padding:'6px 12px', cursor:'pointer', fontSize:'11px', color:'var(--muted)', borderTop:'1px solid var(--border)' }}>Clear</div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function EditCell({ value, onChange, type='text', prefix='' }) {
-  const [editing, setEditing] = useState(false)
-  const [val, setVal] = useState(value||'')
-  if (!editing) return (
-    <div onClick={()=>{setVal(value||'');setEditing(true)}} style={{ cursor:'text', fontSize:'12px', color:value?'var(--text)':'var(--muted)', padding:'1px 3px', borderRadius:'4px', minWidth:'50px' }}
-      onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-      {value?(prefix+(type==='number'?Number(value).toLocaleString():value)):'—'}
-    </div>
-  )
-  return (
-    <input type={type} value={val} onChange={e=>setVal(e.target.value)} autoFocus
-      onBlur={()=>{onChange(val);setEditing(false)}}
-      onKeyDown={e=>{if(e.key==='Enter'){onChange(val);setEditing(false)}if(e.key==='Escape')setEditing(false)}}
-      style={{ width:'100%', background:'var(--inp)', border:'1.5px solid #CC2200', borderRadius:'4px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'2px 6px', outline:'none' }}/>
-  )
+const BLANK = {
+  addr: '', unit: '', client_name: '', client_legal_name: '', client_email: '',
+  client_phone: '', atty_name: '', atty_email: '', side: 'Buyer',
+  stage: 'Negotiations', ctc: '', command: '', sign: '', sale_type: 'On Market',
+  property_type: '', referral_agent: 'None', sales_source: '', production: '',
+  gci: '', commission_received: '', agent_commission_sent: '',
+  ao_date: '', contract_date: '', expected_close_date: '', close_date: '',
+  notes: ''
 }
 
 export function Production() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
-  const { agent, isAdmin } = useAuth()
+  const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
+
+  const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
+  const { deals, loading, add, update, remove } = useDeals(filters)
   const { agents } = useAgents()
-  const [filterYear, setFilterYear]   = useState('2026')
-  const [filterAgent, setFilterAgent] = useState(isAdmin ? '' : agent?.id)
-  const [search, setSearch]           = useState('')
-  const [showAdd, setShowAdd]         = useState(false)
-  const [expanded, setExpanded]       = useState({ ao:true, shtar:true, contract:true, sold:true, fell:false })
-  const [form, setForm]               = useState(defaultForm())
-  const [saving, setSaving]           = useState(false)
 
-  const { deals, loading, add, update, remove } = useDeals({
-    agentId: filterAgent || undefined,
-    year: filterYear || undefined,
-  })
+  const [search,  setSearch]  = useState('')
+  const [stageF,  setStageF]  = useState('')
+  const [agentF,  setAgentF]  = useState('')
+  const [yearF,   setYearF]   = useState(new Date().getFullYear().toString())
+  const [selected,setSelected] = useState(null)
+  const [showAdd, setShowAdd] = useState(false)
+  const [form,    setForm]    = useState(BLANK)
+  const [saving,  setSaving]  = useState(false)
+  const [tab,     setTab]     = useState('deal')
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
-  function defaultForm() {
-    return { addr:'', agent_id:agent?.id||'', side:'Buyer', stage:'Offer Accapted', production:'', gci:'',
-      ao_date:'', contract_date:'', expected_close_date:'', close_date:'', property_type:'', sale_type:'On Market',
-      sales_source:'', client_name:'', client_legal_name:'', client_email:'', client_phone:'',
-      atty_name:'', atty_email:'', unit:'', ctc:'', command:'', sign:'', commission_received:'', agent_commission_sent:'', referral_agent:'', notes:'' }
+  useEffect(() => {
+    if (urlId && deals.length > 0 && urlId !== 'new') {
+      const d = deals.find(x => x.id === urlId)
+      if (d) openDeal(d)
+    }
+    if (urlId === 'new') { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); setShowAdd(true) }
+  }, [urlId, deals.length])
+
+  function openDeal(d) {
+    navigate('/production/' + d.id, { replace: true })
+    setSelected(d)
+    setForm({ ...BLANK, ...d })
+    setShowAdd(false)
+    setTab('deal')
+  }
+
+  function openAdd() {
+    setSelected(null)
+    setForm({ ...BLANK, agent_id: agent?.id })
+    setShowAdd(true)
+    navigate('/production/new', { replace: true })
+  }
+
+  function closePanel() {
+    setSelected(null)
+    setShowAdd(false)
+    navigate('/production', { replace: true })
+  }
+
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
+
+  async function saveDeal() {
+    if (!form.addr.trim()) { toast('Address is required', '#DC2626'); return }
+    setSaving(true)
+    try {
+      if (selected) {
+        const updated = await update(selected.id, form)
+        setSelected(updated)
+        toast('✅ Deal saved')
+      } else {
+        const created = await add({ ...form, agent_id: form.agent_id || agent?.id })
+        toast('✅ Deal added')
+        navigate('/production/' + created.id)
+        closePanel()
+      }
+    } catch(e) {
+      toast('Save failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
+  }
+
+  async function deleteDeal() {
+    try {
+      await remove(selected.id)
+      toast('Deal deleted')
+      closePanel()
+    } catch(e) {
+      toast('Delete failed: ' + e.message, '#DC2626')
+    } finally { setConfirmDelete(false) }
+  }
+
+  // Quick inline stage update
+  async function quickUpdate(deal, field, value) {
+    try {
+      await update(deal.id, { [field]: value })
+      toast('✅ Updated')
+    } catch(e) {
+      toast('Update failed: ' + e.message, '#DC2626')
+    }
   }
 
   const filtered = deals.filter(d => {
-    if (search && !d.addr?.toLowerCase().includes(search.toLowerCase()) && !(d.client_name||'').toLowerCase().includes(search.toLowerCase())) return false
+    if (stageF  && d.stage    !== stageF)  return false
+    if (agentF  && d.agent_id !== agentF)  return false
+    if (search  && !matchSearch(d, search, ['addr','client_name','atty_name'])) return false
+    if (yearF   && d.ao_date  && !d.ao_date.startsWith(yearF)) return false
     return true
   })
 
-  async function updateField(id, field, value) {
-    try {
-      await update(id, { [field]: value })
-    } catch(e) { toast('Save failed: '+e.message, '#DC2626') }
-  }
+  const stageColor = (s) => DEAL_STAGES.find(x => x.value === s)?.hex || '#c4c4c4'
 
-  async function handleAdd() {
-    if (!form.addr.trim()) { toast('Address required', '#DC2626'); return }
-    setSaving(true)
-    try {
-      const payload = { ...form, agent_id: form.agent_id || agent?.id,
-        production: parseFloat(form.production)||0, gci: parseFloat(form.gci)||0 }
-      await add(payload)
-      toast('✅ Deal added!')
-      setShowAdd(false)
-      setForm(defaultForm())
-    } catch(e) { toast('Error: '+e.message, '#DC2626') }
-    finally { setSaving(false) }
-  }
+  // Stats
+  const activeDeals = filtered.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
+  const closedDealsArr = filtered.filter(d => d.stage === 'Closed')
+  const totalGCIAll = filtered.reduce((s, d) => s + parseNum(d.gci), 0)
+  const closedGCI   = closedDealsArr.reduce((s, d) => s + parseNum(d.gci), 0)
 
-  const closedDeals = filtered.filter(d=>d.stage==='Closed')
-  const totalGCI    = closedDeals.reduce((s,d)=>s+(d.gci||0),0)
-  const totalProd   = closedDeals.reduce((s,d)=>s+(d.production||0),0)
-  const activeDeals = filtered.filter(d=>['Offer Accapted','Under Shtar','Under Contract'].includes(d.stage))
-  const pendingGCI  = activeDeals.reduce((s,d)=>s+(d.gci||0),0)
-
-  const COLS = [
-    {id:'addr',w:'220px',label:'Address'},{id:'agent',w:'90px',label:'Agent'},{id:'prod',w:'90px',label:'Prod $'},
-    {id:'gci',w:'85px',label:'GCI $'},{id:'stage',w:'120px',label:'Stage'},{id:'side',w:'95px',label:'Side'},
-    {id:'ctc',w:'125px',label:'CTC'},{id:'cmd',w:'115px',label:'Command'},{id:'sign',w:'105px',label:'Sign'},
-    {id:'comm_r',w:'85px',label:'Comm R'},{id:'comm_s',w:'85px',label:'Comm S'},
-    {id:'type',w:'90px',label:'Type'},{id:'ao',w:'95px',label:'A/O Date'},{id:'close',w:'95px',label:'Close'},
-    {id:'src',w:'110px',label:'Source'},{id:'client',w:'110px',label:'Client'},
-  ]
-  const COLS_TMPL = COLS.map(c=>c.w).join(' ')
-
-  if (loading) return <div style={{ padding:'40px', textAlign:'center', color:'var(--muted)' }}>⏳ Loading...</div>
+  const years = []
+  for (let y = new Date().getFullYear(); y >= 2015; y--) years.push(y.toString())
 
   return (
-    <div style={{ fontFamily:'Inter,system-ui,sans-serif' }}>
-      {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px', flexWrap:'wrap', gap:'8px' }}>
-        <div style={{ fontSize:'18px', fontWeight:900 }}>📊 Production Board</div>
-        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
-          <select value={filterYear} onChange={e=>setFilterYear(e.target.value)} style={sel}>
-            {['2026','2025','2024','2023','2022',''].map(y=><option key={y} value={y}>{y||'All Years'}</option>)}
+    <div style={{ fontFamily: ff }}>
+      <PageHeader
+        title="Production Sheet"
+        sub={`${filtered.length} deals · ${fmt$(totalGCIAll)} GCI`}
+        actions={
+          <Btn onClick={openAdd}>+ Add Deal</Btn>
+        }
+      />
+
+      {/* Stats Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+        <StatCard label="Total Deals" value={filtered.length} icon="📊" />
+        <StatCard label="Active" value={activeDeals.length} accent="#037f4c" icon="⚡" />
+        <StatCard label="Closed GCI" value={fmt$(closedGCI)} accent="#00c875" icon="✅" />
+        <StatCard label="Pipeline GCI" value={fmt$(totalGCIAll - closedGCI)} accent="#F5A623" icon="🔀" />
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search address, client..." style={{ flex: 1, minWidth: '200px' }} />
+        <select value={yearF} onChange={e => setYearF(e.target.value)}
+          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+          <option value="">All Years</option>
+          {years.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <select value={stageF} onChange={e => setStageF(e.target.value)}
+          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+          <option value="">All Stages</option>
+          {DEAL_STAGES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+        {(isAdmin || canManage) && (
+          <select value={agentF} onChange={e => setAgentF(e.target.value)}
+            style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+            <option value="">All Agents</option>
+            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
-          {isAdmin && (
-            <select value={filterAgent} onChange={e=>setFilterAgent(e.target.value)} style={sel}>
-              <option value="">All Agents</option>
-              {agents.map(a=><option key={a.id} value={a.id}>{a.name.split(' ')[0]}</option>)}
-            </select>
-          )}
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{ ...sel, width:'130px' }}/>
-          <button onClick={()=>setShowAdd(true)} style={btn}>+ Add Deal</button>
-        </div>
+        )}
       </div>
 
-      {/* Stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:'8px', marginBottom:'12px' }}>
-        {[
-          ['Closed', closedDeals.length, '#225091'],
-          ['Volume', fmt$(totalProd), '#16A34A'],
-          ['Closed GCI', fmt$(totalGCI), '#CC2200'],
-          ['Active', activeDeals.length, '#D97706'],
-          ['Pending GCI', fmt$(pendingGCI), '#7C3AED'],
-        ].map(([k,v,c])=>(
-          <div key={k} style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'10px', padding:'11px 13px' }}>
-            <div style={{ fontSize:'9px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:'3px' }}>{k}</div>
-            <div style={{ fontSize:'17px', fontWeight:900, color:c }}>{v}</div>
-          </div>
-        ))}
-      </div>
+      {loading && <Loading />}
+      {!loading && filtered.length === 0 && (
+        <Empty icon="📊" title="No deals yet" sub="Add your first deal to track production." action={<Btn onClick={openAdd}>+ Add Deal</Btn>} />
+      )}
 
-      {/* Board */}
-      <div style={{ overflowX:'auto' }}>
-        {GROUPS.map(grp => {
-          const grpDeals = filtered.filter(d => grp.stages.includes(d.stage))
-          const isOpen   = expanded[grp.id]
-          const grpGCI   = grpDeals.reduce((s,d)=>s+(d.gci||0),0)
-          return (
-            <div key={grp.id} style={{ marginBottom:'10px', border:'1px solid var(--border)', borderRadius:'10px', overflow:'hidden' }}>
-              <div onClick={()=>setExpanded(p=>({...p,[grp.id]:!p[grp.id]}))}
-                style={{ display:'flex', alignItems:'center', gap:'10px', padding:'9px 14px', background:'var(--dim)', cursor:'pointer' }}>
-                <span style={{ fontSize:'11px', color:'var(--muted)' }}>{isOpen?'▾':'▸'}</span>
-                <span style={{ fontSize:'12px', fontWeight:800 }}>{grp.title}</span>
-                <span style={{ fontSize:'11px', color:'var(--muted)', background:'var(--panel)', borderRadius:'99px', padding:'1px 9px' }}>{grpDeals.length}</span>
-                {grpDeals.length>0 && <span style={{ fontSize:'11px', color:'var(--muted)' }}>GCI: <strong style={{ color:'#CC2200' }}>{fmt$(grpGCI)}</strong></span>}
-              </div>
-              {isOpen && (
-                <>
-                  <div style={{ display:'grid', gridTemplateColumns:COLS_TMPL, background:'var(--dim)', borderBottom:'1px solid var(--border)', minWidth:'1600px' }}>
-                    {COLS.map(c=>(
-                      <div key={c.id} style={{ padding:'6px 8px', fontSize:'9px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.5px', borderRight:'1px solid var(--border)', whiteSpace:'nowrap' }}>{c.label}</div>
-                    ))}
-                  </div>
-                  {grpDeals.length===0
-                    ? <div style={{ padding:'14px', textAlign:'center', color:'var(--muted)', fontSize:'12px' }}>No deals</div>
-                    : grpDeals.map((d,di)=>(
-                      <div key={d.id} style={{ display:'grid', gridTemplateColumns:COLS_TMPL, borderBottom:'1px solid var(--border)', background:di%2?'rgba(0,0,0,.01)':'transparent', minWidth:'1600px' }}
-                        onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'}
-                        onMouseLeave={e=>e.currentTarget.style.background=di%2?'rgba(0,0,0,.01)':'transparent'}>
-                        {/* Address */}
-                        <div style={{ padding:'7px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center', gap:'5px', minWidth:0 }}>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:'12px', fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.addr}</div>
-                            {d.unit&&<div style={{ fontSize:'10px', color:'var(--muted)' }}>Unit {d.unit}</div>}
-                          </div>
-                          <button onClick={async()=>{if(!confirm('Delete?'))return;try{await remove(d.id);toast('Deleted')}catch(e){toast(e.message,'#DC2626')}}}
-                            style={{ background:'none', border:'none', cursor:'pointer', color:'#DC2626', fontSize:'11px', opacity:.3, flexShrink:0 }}
-                            onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='.3'}>✕</button>
-                        </div>
-                        {/* Agent */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <select value={d.agent_id||''} onChange={e=>updateField(d.id,'agent_id',e.target.value)}
-                            style={{ background:'transparent', border:'none', color:'var(--text)', fontSize:'11px', fontFamily:'Inter,system-ui,sans-serif', cursor:'pointer', outline:'none', width:'100%' }}>
-                            <option value="">—</option>
-                            {agents.map(a=><option key={a.id} value={a.id}>{a.name.split(' ')[0]}</option>)}
-                          </select>
-                        </div>
-                        {/* Production */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <EditCell value={d.production} onChange={v=>updateField(d.id,'production',parseFloat(v)||0)} type="number" prefix="$"/>
-                        </div>
-                        {/* GCI */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <EditCell value={d.gci} onChange={v=>updateField(d.id,'gci',parseFloat(v)||0)} type="number" prefix="$"/>
-                        </div>
-                        {/* Stage */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <Pill value={d.stage} options={STAGES} onChange={v=>updateField(d.id,'stage',v)}/>
-                        </div>
-                        {/* Side */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <Pill value={d.side} options={SIDES} onChange={v=>updateField(d.id,'side',v)}/>
-                        </div>
-                        {/* CTC */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <Pill value={d.ctc} options={CTC_STAGES} onChange={v=>updateField(d.id,'ctc',v)}/>
-                        </div>
-                        {/* Command */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <Pill value={d.command} options={CMD_STATUSES} onChange={v=>updateField(d.id,'command',v)}/>
-                        </div>
-                        {/* Sign */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <Pill value={d.sign} options={SIGN_STATUSES} onChange={v=>updateField(d.id,'sign',v)}/>
-                        </div>
-                        {/* Comm Received */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <Pill value={d.commission_received} options={COMMISSION_STATUSES} onChange={v=>updateField(d.id,'commission_received',v)}/>
-                        </div>
-                        {/* Comm Sent */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <Pill value={d.agent_commission_sent} options={COMMISSION_STATUSES} onChange={v=>updateField(d.id,'agent_commission_sent',v)}/>
-                        </div>
-                        {/* Property Type */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <select value={d.property_type||''} onChange={e=>updateField(d.id,'property_type',e.target.value)}
-                            style={{ background:'transparent', border:'none', color:'var(--text)', fontSize:'11px', fontFamily:'Inter,system-ui,sans-serif', cursor:'pointer', outline:'none', width:'100%' }}>
-                            <option value="">—</option>
-                            {PROPERTY_TYPES.map(t=><option key={t}>{t}</option>)}
-                          </select>
-                        </div>
-                        {/* AO Date */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <input type="date" value={d.ao_date||''} onChange={e=>updateField(d.id,'ao_date',e.target.value)}
-                            style={{ background:'transparent', border:'none', color:'var(--text)', fontSize:'11px', fontFamily:'Inter,system-ui,sans-serif', cursor:'pointer', outline:'none', width:'100%' }}/>
-                        </div>
-                        {/* Close Date */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <input type="date" value={d.close_date||''} onChange={e=>updateField(d.id,'close_date',e.target.value)}
-                            style={{ background:'transparent', border:'none', color:'var(--text)', fontSize:'11px', fontFamily:'Inter,system-ui,sans-serif', cursor:'pointer', outline:'none', width:'100%' }}/>
-                        </div>
-                        {/* Source */}
-                        <div style={{ padding:'5px 8px', borderRight:'1px solid var(--border)', display:'flex', alignItems:'center' }}>
-                          <select value={d.sales_source||''} onChange={e=>updateField(d.id,'sales_source',e.target.value)}
-                            style={{ background:'transparent', border:'none', color:'var(--text)', fontSize:'11px', fontFamily:'Inter,system-ui,sans-serif', cursor:'pointer', outline:'none', width:'100%' }}>
-                            <option value="">—</option>
-                            {SOURCES.map(s=><option key={s}>{s}</option>)}
-                          </select>
-                        </div>
-                        {/* Client */}
-                        <div style={{ padding:'5px 8px', display:'flex', alignItems:'center' }}>
-                          <EditCell value={d.client_name} onChange={v=>updateField(d.id,'client_name',v)} placeholder="Client name"/>
-                        </div>
-                      </div>
-                    ))
-                  }
-                </>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Add deal modal */}
-      {showAdd && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:999, padding:'16px' }}
-          onClick={e=>{if(e.target===e.currentTarget)setShowAdd(false)}}>
-          <div style={{ background:'var(--panel)', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'580px', maxHeight:'90vh', overflowY:'auto' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'18px' }}>
-              <div style={{ fontSize:'16px', fontWeight:800 }}>Add Deal</div>
-              <button onClick={()=>setShowAdd(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'20px' }}>✕</button>
-            </div>
-            <F label="Address *" value={form.addr} onChange={v=>setForm(f=>({...f,addr:v}))} ph="47 Prairie Ave, Suffern NY"/>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'8px' }}>
-              <div><label style={lbl}>Agent</label>
-                <select value={form.agent_id} onChange={e=>setForm(f=>({...f,agent_id:e.target.value}))} style={{ ...sel, width:'100%' }}>
-                  {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </div>
-              <div><label style={lbl}>Stage</label>
-                <select value={form.stage} onChange={e=>setForm(f=>({...f,stage:e.target.value}))} style={{ ...sel, width:'100%' }}>
-                  {STAGES.map(s=><option key={s.label}>{s.label}</option>)}
-                </select>
-              </div>
-              <div><label style={lbl}>Side</label>
-                <select value={form.side} onChange={e=>setForm(f=>({...f,side:e.target.value}))} style={{ ...sel, width:'100%' }}>
-                  {SIDES.map(s=><option key={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-              <F label="Production $" value={form.production} onChange={v=>setForm(f=>({...f,production:v}))} type="number" ph="599000"/>
-              <F label="GCI $" value={form.gci} onChange={v=>setForm(f=>({...f,gci:v}))} type="number" ph="17970"/>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'8px' }}>
-              <F label="A/O Date" value={form.ao_date} onChange={v=>setForm(f=>({...f,ao_date:v}))} type="date"/>
-              <F label="Contract Date" value={form.contract_date} onChange={v=>setForm(f=>({...f,contract_date:v}))} type="date"/>
-              <F label="Close Date" value={form.close_date} onChange={v=>setForm(f=>({...f,close_date:v}))} type="date"/>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-              <F label="Client Name" value={form.client_name} onChange={v=>setForm(f=>({...f,client_name:v}))} ph="John Smith"/>
-              <F label="Client Phone" value={form.client_phone} onChange={v=>setForm(f=>({...f,client_phone:v}))} ph="(845) 555-1234"/>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-              <F label="Attorney" value={form.atty_name} onChange={v=>setForm(f=>({...f,atty_name:v}))} ph="Law office"/>
-              <div><label style={lbl}>Source</label>
-                <select value={form.sales_source} onChange={e=>setForm(f=>({...f,sales_source:e.target.value}))} style={{ ...sel, width:'100%' }}>
-                  <option value="">Select...</option>
-                  {SOURCES.map(s=><option key={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{ display:'flex', gap:'8px', marginTop:'14px' }}>
-              <button onClick={()=>setShowAdd(false)} style={{ flex:1, background:'var(--dim)', border:'1px solid var(--border)', borderRadius:'10px', color:'var(--text)', fontSize:'13px', fontWeight:600, padding:'12px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>Cancel</button>
-              <button onClick={handleAdd} disabled={saving} style={{ flex:2, background:'#CC2200', border:'none', borderRadius:'10px', color:'#fff', fontSize:'13px', fontWeight:700, padding:'12px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', opacity:saving?.7:1 }}>
-                {saving?'Adding…':'Add Deal'}
-              </button>
-            </div>
+      {/* Deals Table */}
+      {!loading && filtered.length > 0 && (
+        <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: 'var(--dim)' }}>
+                  {['Address','Client','Agent','Stage','Side','Production','GCI','A/O Date','Command'].map(h => (
+                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((d, i) => (
+                  <tr key={d.id} onClick={() => openDeal(d)}
+                    style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: selected?.id === d.id ? 'rgba(204,34,0,.04)' : '' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--hov)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = selected?.id === d.id ? 'rgba(204,34,0,.04)' : '' }}>
+                    <td style={{ padding: '11px 12px', fontWeight: 600, color: 'var(--text)', maxWidth: '180px' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.addr}</div>
+                      {d.unit && <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Unit {d.unit}</div>}
+                    </td>
+                    <td style={{ padding: '11px 12px', color: 'var(--muted)', maxWidth: '140px' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client_name || '—'}</div>
+                    </td>
+                    <td style={{ padding: '11px 12px' }}>
+                      {d.agents ? <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Avatar agent={d.agents} size={22} /><span style={{ fontSize: '12px', color: 'var(--muted)' }}>{d.agents.name?.split(' ')[0]}</span></div> : '—'}
+                    </td>
+                    <td style={{ padding: '11px 12px' }}>
+                      <Pill label={d.stage} color={stageColor(d.stage)} />
+                    </td>
+                    <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{d.side || '—'}</td>
+                    <td style={{ padding: '11px 12px', fontWeight: 600, color: 'var(--text)' }}>{fmt$(d.production)}</td>
+                    <td style={{ padding: '11px 12px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</td>
+                    <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{fmtDateShort(d.ao_date)}</td>
+                    <td style={{ padding: '11px 12px' }}>
+                      {d.command ? <Pill label={d.command} color={COMMAND_STATUSES.find(x => x.value === d.command)?.hex || '#c4c4c4'} /> : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
-    </div>
-  )
-}
 
-function F({ label, value, onChange, ph='', type='text' }) {
-  return (
-    <div style={{ marginBottom:'10px' }}>
-      {label && <label style={lbl}>{label}</label>}
-      <input type={type} value={value||''} onChange={e=>onChange(e.target.value)} placeholder={ph}
-        style={{ width:'100%', background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'8px 10px', outline:'none', boxSizing:'border-box' }}/>
+      {/* Detail Modal */}
+      <Modal open={!!(selected || showAdd)} onClose={closePanel} title={selected ? selected.addr : 'New Deal'} width={680}>
+        <Tabs tabs={[
+          { id: 'deal', label: 'Deal Info' },
+          { id: 'contacts', label: 'Client / Atty' },
+          { id: 'status', label: 'Status & Dates' },
+          { id: 'finance', label: 'Finance' },
+          { id: 'notes', label: 'Notes' },
+        ]} active={tab} onChange={setTab} />
+
+        {/* DEAL INFO TAB */}
+        {tab === 'deal' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Address" required>
+                <Input value={form.addr} onChange={v => set('addr', v)} placeholder="123 Main St" />
+              </Field>
+              <Field label="Unit">
+                <Input value={form.unit} onChange={v => set('unit', v)} placeholder="Apt 2B" />
+              </Field>
+              <Field label="Side">
+                <Select value={form.side} onChange={v => set('side', v)} options={DEAL_SIDES} />
+              </Field>
+              <Field label="Stage">
+                <Select value={form.stage} onChange={v => set('stage', v)} options={DEAL_STAGES} />
+              </Field>
+              <Field label="Sale Type">
+                <Select value={form.sale_type} onChange={v => set('sale_type', v)} options={SALE_TYPES} />
+              </Field>
+              <Field label="Property Type">
+                <Select value={form.property_type} onChange={v => set('property_type', v)} options={PROPERTY_TYPES} placeholder="Select type" />
+              </Field>
+              <Field label="Sales Source">
+                <Select value={form.sales_source} onChange={v => set('sales_source', v)} options={SALES_SOURCES} placeholder="How did this come in?" />
+              </Field>
+              <Field label="Referral Agent">
+                <Select value={form.referral_agent} onChange={v => set('referral_agent', v)} options={REFERRAL_AGENTS} />
+              </Field>
+            </div>
+            {(isAdmin || canManage) && (
+              <Field label="Assigned Agent">
+                <Select value={form.agent_id || ''} onChange={v => set('agent_id', v)} options={agents.map(a => ({ value: a.id, label: a.name }))} placeholder="Assign to agent" />
+              </Field>
+            )}
+          </div>
+        )}
+
+        {/* CLIENT / ATTY TAB */}
+        {tab === 'contacts' && (
+          <div>
+            <SectionTitle>Client Info</SectionTitle>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Client Name">
+                <Input value={form.client_name} onChange={v => set('client_name', v)} placeholder="John Smith" />
+              </Field>
+              <Field label="Client Legal Name">
+                <Input value={form.client_legal_name} onChange={v => set('client_legal_name', v)} placeholder="Legal name for closing docs" />
+              </Field>
+              <Field label="Client Phone">
+                <Input value={form.client_phone} onChange={v => set('client_phone', v)} placeholder="(845) 555-1234" type="tel" />
+              </Field>
+              <Field label="Client Email">
+                <Input value={form.client_email} onChange={v => set('client_email', v)} placeholder="client@email.com" type="email" />
+              </Field>
+            </div>
+            <SectionTitle>Attorney</SectionTitle>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Attorney Name">
+                <Input value={form.atty_name} onChange={v => set('atty_name', v)} placeholder="Attorney name" />
+              </Field>
+              <Field label="Attorney Email">
+                <Input value={form.atty_email} onChange={v => set('atty_email', v)} placeholder="atty@law.com" type="email" />
+              </Field>
+            </div>
+          </div>
+        )}
+
+        {/* STATUS & DATES TAB */}
+        {tab === 'status' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Command">
+                <Select value={form.command} onChange={v => set('command', v)} options={COMMAND_STATUSES.filter(c => c.value)} placeholder="Command status" />
+              </Field>
+              <Field label="Contract to Close">
+                <Select value={form.ctc} onChange={v => set('ctc', v)} options={CTC_STAGES} placeholder="CTC stage" />
+              </Field>
+              <Field label="Sign Status">
+                <Select value={form.sign} onChange={v => set('sign', v)} options={SIGN_STATUSES} placeholder="Sign status" />
+              </Field>
+              <Field label="A/O Date">
+                <Input value={form.ao_date} onChange={v => set('ao_date', v)} type="date" />
+              </Field>
+              <Field label="Contract Date">
+                <Input value={form.contract_date} onChange={v => set('contract_date', v)} type="date" />
+              </Field>
+              <Field label="Expected Closing">
+                <Input value={form.expected_close_date} onChange={v => set('expected_close_date', v)} type="date" />
+              </Field>
+              <Field label="Close Date">
+                <Input value={form.close_date} onChange={v => set('close_date', v)} type="date" />
+              </Field>
+            </div>
+          </div>
+        )}
+
+        {/* FINANCE TAB */}
+        {tab === 'finance' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Production $">
+                <Input value={form.production} onChange={v => set('production', v)} placeholder="500000" type="number" />
+              </Field>
+              <Field label="GCI $">
+                <Input value={form.gci} onChange={v => set('gci', v)} placeholder="15000" type="number" />
+              </Field>
+              <Field label="Commission Received">
+                <Select value={form.commission_received} onChange={v => set('commission_received', v)} options={COMMISSION_STATUSES} placeholder="Status" />
+              </Field>
+              <Field label="Agent Commission Sent">
+                <Select value={form.agent_commission_sent} onChange={v => set('agent_commission_sent', v)} options={AGENT_COMMISSION_STATUSES} placeholder="Status" />
+              </Field>
+            </div>
+          </div>
+        )}
+
+        {/* NOTES TAB */}
+        {tab === 'notes' && (
+          <Field label="Notes">
+            <Textarea value={form.notes} onChange={v => set('notes', v)} placeholder="Deal notes..." rows={8} />
+          </Field>
+        )}
+
+        <ModalActions>
+          {selected && (
+            <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>
+          )}
+          <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
+          <Btn onClick={saveDeal} loading={saving}>{selected ? 'Save Changes' : 'Add Deal'}</Btn>
+        </ModalActions>
+      </Modal>
+
+      <Confirm
+        open={confirmDelete}
+        message={`Delete deal at ${selected?.addr}? This cannot be undone.`}
+        onConfirm={deleteDeal}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }
-const sel = { background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'8px 10px', outline:'none' }
-const btn = { background:'#CC2200', border:'none', borderRadius:'8px', color:'#fff', fontSize:'12px', fontWeight:700, padding:'8px 14px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }
-const lbl = { display:'block', fontSize:'9px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:'4px' }

@@ -1,152 +1,244 @@
-/* ═══════════════════════════════════════════════════════════════
-   TargetOS V2 — Utility Functions
-   ═══════════════════════════════════════════════════════════════ */
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Utilities
+// All shared formatting, calculation, and helper functions
+// ═══════════════════════════════════════════════════════════════
 
 // ── CURRENCY ────────────────────────────────────────────────────
 export function fmt$(n) {
   if (!n && n !== 0) return '—'
   const num = parseFloat(n)
   if (isNaN(num)) return '—'
-  if (Math.abs(num) >= 1000000) return '$' + (num/1000000).toFixed(1) + 'M'
-  if (Math.abs(num) >= 1000)    return '$' + (num/1000).toFixed(0) + 'K'
-  return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 0 })
+  if (num >= 1_000_000) return '$' + (num / 1_000_000).toFixed(2).replace(/\.00$/, '') + 'M'
+  if (num >= 1_000)     return '$' + (num / 1_000).toFixed(0) + 'K'
+  return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
-export function fmt$Full(n) {
+export function fmtFull$(n) {
   if (!n && n !== 0) return '—'
-  return '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  const num = parseFloat(n)
+  if (isNaN(num)) return '—'
+  return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
 // ── DATES ────────────────────────────────────────────────────────
 export function fmtDate(d) {
   if (!d) return '—'
-  try {
-    const date = new Date(d + 'T00:00:00')
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  } catch { return d }
+  const date = new Date(d + (d.length === 10 ? 'T00:00:00' : ''))
+  if (isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export function fmtDateShort(d) {
   if (!d) return '—'
-  try {
-    const date = new Date(d + 'T00:00:00')
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  } catch { return d }
+  const date = new Date(d + (d.length === 10 ? 'T00:00:00' : ''))
+  if (isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })
 }
 
-export function fmtDateTime(ts) {
-  if (!ts) return '—'
-  try {
-    const d = new Date(ts)
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' at ' +
-           d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  } catch { return ts }
+export function fmtTime(d) {
+  if (!d) return ''
+  const date = new Date(d)
+  if (isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
-export function fmtTime(t) {
-  if (!t) return ''
-  try {
-    const [h, m] = t.split(':')
-    const hour = parseInt(h)
-    const ampm = hour >= 12 ? 'PM' : 'AM'
-    const h12  = hour % 12 || 12
-    return `${h12}:${m} ${ampm}`
-  } catch { return t }
+export function fmtDateTime(d) {
+  if (!d) return '—'
+  const date = new Date(d)
+  if (isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+         date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
-export function getDaysAgo(ts) {
-  if (!ts) return '—'
-  try {
-    const diff = Date.now() - new Date(ts).getTime()
-    const days = Math.floor(diff / 86400000)
-    if (days === 0) {
-      const hours = Math.floor(diff / 3600000)
-      if (hours === 0) return 'Just now'
-      return `${hours}h ago`
-    }
-    if (days === 1) return 'Yesterday'
-    if (days < 7)  return `${days}d ago`
-    if (days < 30) return `${Math.floor(days/7)}w ago`
-    if (days < 365)return `${Math.floor(days/30)}mo ago`
-    return `${Math.floor(days/365)}y ago`
-  } catch { return '—' }
+export function getDaysAgo(d) {
+  if (!d) return null
+  const diff = Date.now() - new Date(d).getTime()
+  return Math.floor(diff / 86400000)
+}
+
+export function getDaysUntil(d) {
+  if (!d) return null
+  const diff = new Date(d + 'T00:00:00').getTime() - Date.now()
+  return Math.ceil(diff / 86400000)
+}
+
+export function isOverdue(d) {
+  if (!d) return false
+  return new Date(d + 'T00:00:00').getTime() < Date.now()
+}
+
+export function isDueToday(d) {
+  if (!d) return false
+  const today = new Date().toISOString().slice(0, 10)
+  return d === today
+}
+
+export function isDueSoon(d, days = 3) {
+  if (!d) return false
+  const until = getDaysUntil(d)
+  return until !== null && until >= 0 && until <= days
+}
+
+export function toISODate(d) {
+  if (!d) return ''
+  if (typeof d === 'string' && d.length === 10) return d
+  const date = new Date(d)
+  if (isNaN(date.getTime())) return ''
+  return date.toISOString().slice(0, 10)
 }
 
 export function today() {
-  return new Date().toISOString().split('T')[0]
+  return new Date().toISOString().slice(0, 10)
 }
 
-export function todayPlus(days) {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return d.toISOString().split('T')[0]
-}
-
-export function isOverdue(dateStr) {
-  if (!dateStr) return false
-  return dateStr < today()
-}
-
-export function isDueToday(dateStr) {
-  if (!dateStr) return false
-  return dateStr === today()
-}
-
-// ── TEXT ─────────────────────────────────────────────────────────
+// ── NAMES & INITIALS ─────────────────────────────────────────────
 export function initials(name) {
   if (!name) return '?'
-  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+  return name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('')
 }
 
-export function capitalize(s) {
-  if (!s) return ''
-  return s.charAt(0).toUpperCase() + s.slice(1)
+// Alias for backward compatibility
+export const getInitials = initials
+
+export function fullName(first, last) {
+  return [first, last].filter(Boolean).join(' ').trim() || 'Unknown'
 }
 
-export function truncate(s, n = 40) {
-  if (!s) return ''
-  return s.length > n ? s.slice(0, n) + '…' : s
+// ── PERCENTAGES ──────────────────────────────────────────────────
+export function pct(val, total) {
+  if (!total || total === 0) return 0
+  return Math.min(100, Math.round((val / total) * 100))
 }
 
-export function phoneFormat(p) {
+export function fmtPct(val, total) {
+  return pct(val, total) + '%'
+}
+
+// ── PHONE ────────────────────────────────────────────────────────
+export function fmtPhone(p) {
   if (!p) return ''
   const digits = p.replace(/\D/g, '')
   if (digits.length === 10) return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`
-  if (digits.length === 11) return `+${digits[0]} (${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`
+  if (digits.length === 11 && digits[0] === '1') return `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`
   return p
 }
 
+export function phoneHref(p) {
+  if (!p) return '#'
+  return 'tel:' + p.replace(/\D/g, '')
+}
+
+// ── STRINGS ──────────────────────────────────────────────────────
+export function truncate(str, len = 40) {
+  if (!str) return ''
+  return str.length > len ? str.slice(0, len) + '…' : str
+}
+
+export function titleCase(str) {
+  if (!str) return ''
+  return str.replace(/\w\S*/g, t => t[0].toUpperCase() + t.slice(1).toLowerCase())
+}
+
+export function slugify(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+}
+
 // ── NUMBERS ──────────────────────────────────────────────────────
-export function pct(value, total) {
-  if (!total) return 0
-  return Math.min(Math.round((value / total) * 100), 100)
+export function parseNum(v) {
+  if (!v && v !== 0) return 0
+  const n = parseFloat(String(v).replace(/[^0-9.-]/g, ''))
+  return isNaN(n) ? 0 : n
 }
 
-export function clamp(n, min, max) {
-  return Math.min(Math.max(n, min), max)
+// ── COLORS ───────────────────────────────────────────────────────
+export function agentColor(agent) {
+  return agent?.color || '#CC2200'
 }
 
-// ── TIME OF DAY ──────────────────────────────────────────────────
-export function timeOfDay() {
-  const h = new Date().getHours()
-  if (h < 12) return 'morning'
-  if (h < 17) return 'afternoon'
-  return 'evening'
+export function statusColor(statuses, value) {
+  const found = statuses?.find(s => s.value === value || s.label === value)
+  return found?.hex || found?.color || '#94A3B8'
 }
 
-// ── COLOR ────────────────────────────────────────────────────────
-export function hexWithAlpha(hex, alpha) {
-  return hex + Math.round(alpha * 255).toString(16).padStart(2, '0')
+// ── SORT ─────────────────────────────────────────────────────────
+export function sortBy(arr, key, dir = 'asc') {
+  return [...arr].sort((a, b) => {
+    const av = a[key] ?? ''
+    const bv = b[key] ?? ''
+    if (av < bv) return dir === 'asc' ? -1 : 1
+    if (av > bv) return dir === 'asc' ? 1 : -1
+    return 0
+  })
 }
 
-// ── VALIDATION ───────────────────────────────────────────────────
-export function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+// ── SEARCH / FILTER ──────────────────────────────────────────────
+export function matchSearch(obj, query, keys) {
+  if (!query) return true
+  const q = query.toLowerCase()
+  return keys.some(k => String(obj[k] || '').toLowerCase().includes(q))
 }
 
-export function isValidPhone(phone) {
-  return phone.replace(/\D/g, '').length >= 10
+// ── DEBOUNCE ─────────────────────────────────────────────────────
+export function debounce(fn, ms = 300) {
+  let timer
+  return (...args) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => fn(...args), ms)
+  }
 }
 
-// Aliases for backward compatibility
-export const getInitials = initials
+// ── GROUPING ─────────────────────────────────────────────────────
+export function groupBy(arr, key) {
+  return arr.reduce((acc, item) => {
+    const k = item[key] || 'Unknown'
+    if (!acc[k]) acc[k] = []
+    acc[k].push(item)
+    return acc
+  }, {})
+}
+
+// ── DEAL GCI HELPERS ─────────────────────────────────────────────
+export function totalGCI(deals) {
+  return deals.reduce((sum, d) => sum + parseNum(d.gci), 0)
+}
+
+export function totalProduction(deals) {
+  return deals.reduce((sum, d) => sum + parseNum(d.production), 0)
+}
+
+export function dealsInStage(deals, stage) {
+  return deals.filter(d => d.stage === stage)
+}
+
+export function closedDeals(deals) {
+  return deals.filter(d => d.stage === 'Closed')
+}
+
+export function activeDeals(deals) {
+  return deals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
+}
+
+// ── COPY TO CLIPBOARD ────────────────────────────────────────────
+export async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// ── LOCAL STORAGE ────────────────────────────────────────────────
+export function lsGet(key, fallback = null) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback }
+  catch { return fallback }
+}
+
+export function lsSet(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)) } catch {}
+}
+
+// ── UUID ─────────────────────────────────────────────────────────
+export function newId() {
+  return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)
+}

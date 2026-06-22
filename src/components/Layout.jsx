@@ -1,140 +1,122 @@
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Desktop Sidebar Layout
+// ═══════════════════════════════════════════════════════════════
+
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
+import { Avatar } from './UI'
+
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 const NAV = [
-  { section: 'MAIN' },
-  { id: '/',            icon: '🏠', label: 'Dashboard'       },
-  { id: '/contacts',    icon: '👥', label: 'Contacts'        },
-  { id: '/production',  icon: '📊', label: 'Production'      },
-  { id: '/listings',    icon: '🏡', label: 'Listings'        },
-  { id: '/pipeline',    icon: '📈', label: 'Pipeline'        },
-  { section: 'TRANSACTIONS' },
-  { id: '/transactions',icon: '📋', label: 'Transactions'    },
-  { id: '/offers',      icon: '📝', label: 'Offers'          },
-  { id: '/gifts',       icon: '🎁', label: 'Gifts'           },
-  { section: 'TOOLS' },
-  { id: '/tasks',       icon: '✓',  label: 'Tasks'           },
-  { id: '/calls',       icon: '📞', label: 'Phone & Calls'   },
-  { id: '/email',       icon: '✉',  label: 'Email Blast'     },
-  { id: '/designer',    icon: '🎨', label: 'Email Designer'  },
-  { section: 'OPERATIONS' },
-  { id: '/openhouse',   icon: '🏠', label: 'Open House'      },
-  { id: '/listingprep', icon: '📋', label: 'Listing Prep'    },
-  { id: '/signs',       icon: '🪧', label: 'Sign Tracker'    },
-  { id: '/calendar',    icon: '📅', label: 'Calendar'        },
-  { section: 'TEAM' },
-  { id: '/announcements',icon:'📣', label: 'Announcements'   },
-  { id: '/briefing',    icon: '📧', label: 'Daily Briefing'  },
-  { id: '/automations', icon: '⚡', label: 'Automations'     },
-  { section: 'ADMIN', adminOnly: true },
-  { id: '/admin',       icon: '👑', label: 'Admin Panel',    adminOnly: true },
-  { id: '/activitylog', icon: '📋', label: 'Activity Log',   adminOnly: true },
-  { section: 'SETTINGS' },
-  { id: '/settings',    icon: '⚙',  label: 'Settings'        },
+  { id: '',             label: 'Dashboard',     icon: '🏠', roles: ['admin','secretary','agent'] },
+  { id: 'contacts',     label: 'Contacts',      icon: '👥', roles: ['admin','secretary','agent'] },
+  { id: 'production',   label: 'Production',    icon: '📊', roles: ['admin','secretary','agent'] },
+  { id: 'pipeline',     label: 'Pipeline',      icon: '🔀', roles: ['admin','secretary','agent'] },
+  { id: 'listings',     label: 'Listings',      icon: '🏡', roles: ['admin','secretary','agent'] },
+  { id: 'offers',       label: 'Offers',        icon: '📝', roles: ['admin','secretary','agent'] },
+  { id: 'transactions', label: 'Transactions',  icon: '💼', roles: ['admin','secretary'] },
+  { id: 'tasks',        label: 'Tasks',         icon: '✅', roles: ['admin','secretary','agent'] },
+  { id: 'calendar',     label: 'Calendar',      icon: '📅', roles: ['admin','secretary','agent'] },
+  { id: 'openhouse',    label: 'Open House',    icon: '🚪', roles: ['admin','secretary','agent'] },
+  { id: 'gifts',        label: 'Gifts',         icon: '🎁', roles: ['admin','secretary'] },
+  { id: 'calls',        label: 'Calls',         icon: '📞', roles: ['admin','secretary','agent'] },
+  { id: 'signs',        label: 'Signs',         icon: '🪧', roles: ['admin','secretary'] },
+  { id: 'listingprep',  label: 'Listing Prep',  icon: '🔧', roles: ['admin','secretary','agent'] },
+  { DIVIDER: true },
+  { id: 'announcements',label: 'Announcements', icon: '📣', roles: ['admin','secretary','agent'] },
+  { id: 'briefing',     label: 'Daily Briefing',icon: '☀️',  roles: ['admin','secretary','agent'] },
+  { id: 'email',        label: 'Email',         icon: '📧', roles: ['admin','secretary'] },
+  { id: 'automations',  label: 'Automations',   icon: '⚡', roles: ['admin'] },
+  { DIVIDER: true },
+  { id: 'activitylog',  label: 'Activity Log',  icon: '📋', roles: ['admin'] },
+  { id: 'admin',        label: 'Admin',         icon: '⚙️',  roles: ['admin'] },
+  { id: 'settings',     label: 'Settings',      icon: '🔧', roles: ['admin','secretary','agent'] },
 ]
 
 export function Layout({ children }) {
   const navigate  = useNavigate()
   const location  = useLocation()
   const { agent, isAdmin, signOut } = useAuth()
-  const { state, dispatch } = useApp()
-  const collapsed = state.sidebarCollapsed
+  const { state, setSidebarCollapsed, setTheme } = useApp()
+  const collapsed = state.collapsed
 
-  function go(path) { navigate(path) }
+  const role = agent?.role || 'agent'
 
-  const activePath = location.pathname
+  const go = (id) => navigate('/' + id)
+  const isActive = (id) => location.pathname === '/' + id || (id === '' && location.pathname === '/')
+
+  const W = collapsed ? 60 : 220
 
   return (
-    <div className="app-shell">
-      {/* Sidebar */}
-      <div className="sidebar" style={{ width: collapsed ? '56px' : '220px', minWidth: collapsed ? '56px' : '220px' }}>
+    <div style={{ display: 'flex', height: '100vh', fontFamily: ff }}>
+      {/* SIDEBAR */}
+      <aside style={{ width: W, minWidth: W, background: 'var(--sidebar)', display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0, transition: 'width .2s', overflow: 'hidden', flexShrink: 0 }}>
+
         {/* Logo */}
-        <div style={{ padding: collapsed ? '16px 10px' : '18px 16px', borderBottom:'1px solid rgba(255,255,255,.06)', display:'flex', alignItems:'center', gap:'10px' }}>
+        <div style={{ padding: collapsed ? '18px 0' : '18px 16px', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between', borderBottom: '1px solid rgba(255,255,255,.08)', flexShrink: 0 }}>
           {!collapsed && (
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:'18px', fontWeight:900, color:'#fff', letterSpacing:'-.3px' }}>
-                Target<span style={{ color:'#F5A623' }}>OS</span>
-              </div>
-              <div style={{ fontSize:'9px', color:'rgba(255,255,255,.3)', textTransform:'uppercase', letterSpacing:'1.5px', marginTop:'2px' }}>
-                Target Team
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '8px', background: '#CC2200', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 900, color: '#fff' }}>T</div>
+              <div style={{ color: '#fff', fontWeight: 800, fontSize: '16px', letterSpacing: '-.02em' }}>Target<span style={{ color: '#F5A623' }}>OS</span></div>
             </div>
           )}
-          <button onClick={() => dispatch({ type:'TOGGLE_SIDEBAR' })}
-            style={{ background:'rgba(255,255,255,.06)', border:'none', borderRadius:'7px', color:'rgba(255,255,255,.5)', width:'28px', height:'28px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:'12px', flexShrink:0 }}>
+          <button onClick={() => setSidebarCollapsed(!collapsed)}
+            style={{ background: 'rgba(255,255,255,.08)', border: 'none', borderRadius: '6px', color: 'rgba(255,255,255,.7)', cursor: 'pointer', padding: '5px 8px', fontSize: '12px', fontFamily: ff }}>
             {collapsed ? '→' : '←'}
           </button>
         </div>
 
-        {/* Nav */}
-        <nav style={{ flex:1, padding:'8px 8px', overflowY:'auto', overflowX:'hidden' }}>
+        {/* Nav Items */}
+        <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0', scrollbarWidth: 'none' }}>
           {NAV.map((item, i) => {
-            if (item.section) {
-              if (item.adminOnly && !isAdmin) return null
-              if (collapsed) return <div key={i} style={{ height:'1px', background:'rgba(255,255,255,.06)', margin:'6px 4px' }}/>
-              return (
-                <div key={i} style={{ fontSize:'9px', fontWeight:700, color:'rgba(255,255,255,.25)', textTransform:'uppercase', letterSpacing:'1.2px', padding:'12px 8px 4px' }}>
-                  {item.section}
-                </div>
-              )
-            }
+            if (item.DIVIDER) return <div key={i} style={{ height: '1px', background: 'rgba(255,255,255,.06)', margin: '6px 0' }} />
+            if (!item.roles.includes(role)) return null
 
-            if (item.adminOnly && !isAdmin) return null
-
-            const isActive = activePath === item.id || (item.id !== '/' && activePath.startsWith(item.id))
-
+            const active = isActive(item.id)
             return (
               <button key={item.id} onClick={() => go(item.id)}
-                title={collapsed ? item.label : undefined}
-                style={{
-                  width:'100%', display:'flex', alignItems:'center', gap:'9px',
-                  padding: collapsed ? '9px 0' : '8px 9px',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  borderRadius:'8px', border:'none',
-                  background: isActive ? 'rgba(204,34,0,.25)' : 'transparent',
-                  color: isActive ? '#fff' : 'rgba(255,255,255,.6)',
-                  fontSize:'12px', fontWeight: isActive ? 700 : 500,
-                  cursor:'pointer', marginBottom:'1px', textAlign:'left',
-                  fontFamily:'Inter,system-ui,sans-serif',
-                  borderLeft: isActive ? '2px solid #CC2200' : '2px solid transparent',
-                  transition:'all .12s',
-                }}>
-                <span style={{ fontSize:'14px', width:'18px', textAlign:'center', flexShrink:0 }}>{item.icon}</span>
-                {!collapsed && <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.label}</span>}
+                title={collapsed ? item.label : ''}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: collapsed ? '10px 0' : '9px 14px', justifyContent: collapsed ? 'center' : 'flex-start', border: 'none', background: active ? 'rgba(204,34,0,.3)' : 'transparent', color: active ? '#fff' : 'rgba(255,255,255,.65)', fontSize: '13px', fontWeight: active ? 700 : 500, cursor: 'pointer', borderRadius: '0', fontFamily: ff, borderLeft: active ? '3px solid #CC2200' : '3px solid transparent', transition: 'all .12s' }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,.05)' }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}>
+                <span style={{ fontSize: '16px', flexShrink: 0, width: '20px', textAlign: 'center' }}>{item.icon}</span>
+                {!collapsed && item.label}
               </button>
             )
           })}
         </nav>
 
-        {/* Agent info + sign out */}
-        <div style={{ padding: collapsed ? '10px 6px' : '12px 10px', borderTop:'1px solid rgba(255,255,255,.06)' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'9px' }}>
-            <div style={{ width:32, height:32, borderRadius:'50%', background:agent?.color||'#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'12px', fontWeight:800, color:'#fff', flexShrink:0 }}>
-              {agent?.name?.[0]||'?'}
-            </div>
-            {!collapsed && (
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:'12px', fontWeight:700, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{agent?.name}</div>
-                <div style={{ fontSize:'10px', color:'rgba(255,255,255,.4)', textTransform:'capitalize' }}>{agent?.role}</div>
+        {/* Agent Info */}
+        <div style={{ padding: collapsed ? '12px 0' : '12px 14px', borderTop: '1px solid rgba(255,255,255,.08)', flexShrink: 0 }}>
+          {!collapsed && agent && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+              <Avatar agent={agent} size={32} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#fff', fontSize: '12px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.name}</div>
+                <div style={{ color: 'rgba(255,255,255,.4)', fontSize: '10px', textTransform: 'capitalize' }}>{agent.role}</div>
               </div>
-            )}
-            {!collapsed && (
-              <button onClick={signOut} title="Sign out"
-                style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(255,255,255,.3)', fontSize:'13px', padding:'4px', flexShrink:0 }}
-                onMouseEnter={e => e.currentTarget.style.color='rgba(255,255,255,.7)'}
-                onMouseLeave={e => e.currentTarget.style.color='rgba(255,255,255,.3)'}>
-                ↩
-              </button>
-            )}
-          </div>
+            </div>
+          )}
+          {collapsed && agent && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+              <Avatar agent={agent} size={28} />
+            </div>
+          )}
+          <button onClick={signOut}
+            style={{ width: '100%', background: 'rgba(255,255,255,.06)', border: 'none', borderRadius: '6px', color: 'rgba(255,255,255,.5)', fontSize: '11px', padding: '7px', cursor: 'pointer', fontFamily: ff, textAlign: 'center' }}>
+            {collapsed ? '↩' : 'Sign out'}
+          </button>
         </div>
-      </div>
+      </aside>
 
-      {/* Main content */}
-      <main className="main-content">
-        {children}
+      {/* MAIN CONTENT */}
+      <main style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '28px 28px' }}>
+          {children}
+        </div>
       </main>
     </div>
   )

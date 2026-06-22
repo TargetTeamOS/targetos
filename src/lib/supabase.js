@@ -1,15 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
-const URL = 'https://sgrnyvdsyahmypibjarx.supabase.co'
-const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNncm55dmRzeWFobXlwaWJqYXJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc3NjY3MzQsImV4cCI6MjA2MzM0MjczNH0.Q3d8EUVN9MFXL-GluEKQHjnXTRHvMJgXp9tFBbMFaOM'
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export const supabase = createClient(URL, KEY, {
-  auth: {
-    autoRefreshToken:   true,
-    persistSession:     true,
-    detectSessionInUrl: true,
-  },
-  realtime: {
-    params: { eventsPerSecond: 10 },
-  },
+export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  realtime: { params: { eventsPerSecond: 10 } },
+  auth: { persistSession: true, autoRefreshToken: true }
 })

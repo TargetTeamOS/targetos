@@ -1,5 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Auth Context
+// Per-agent authentication. Loads the agent record from the
+// agents table using auth_user_id after Supabase login.
+// ═══════════════════════════════════════════════════════════════
+
+import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { db } from '../lib/db'
 
 const AuthContext = createContext(null)
 
@@ -8,54 +15,37 @@ export function AuthProvider({ children }) {
   const [agent,   setAgent]   = useState(null)
   const [loading, setLoading] = useState(true)
 
+  async function loadAgent(supabaseUser) {
+    if (!supabaseUser) { setAgent(null); return }
+    try {
+      // Primary: look up by auth_user_id
+      let agentData = await db.agents.getByAuthId(supabaseUser.id)
+      // Fallback: look up by email (for first-time setup)
+      if (!agentData) agentData = await db.agents.getByEmail(supabaseUser.email)
+      setAgent(agentData || null)
+    } catch {
+      setAgent(null)
+    }
+  }
+
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
-      if (session?.user) loadAgent(session.user)
-      else setLoading(false)
+      loadAgent(session?.user ?? null).finally(() => setLoading(false))
     })
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
-      if (session?.user) await loadAgent(session.user)
-      else { setAgent(null); setLoading(false) }
+      loadAgent(session?.user ?? null)
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  async function loadAgent(authUser) {
-    try {
-      const { data, error } = await supabase
-        .from('agents')
-        .select('*')
-        .eq('auth_user_id', authUser.id)
-        .single()
-
-      if (error || !data) {
-        // Try by email as fallback
-        const { data: byEmail } = await supabase
-          .from('agents')
-          .select('*')
-          .eq('email', authUser.email)
-          .single()
-        setAgent(byEmail || null)
-      } else {
-        setAgent(data)
-      }
-    } catch(e) {
-      console.error('loadAgent error:', e)
-      setAgent(null)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   async function signIn(email, password) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
+    return data
   }
 
   async function signOut() {
@@ -64,16 +54,16 @@ export function AuthProvider({ children }) {
     setAgent(null)
   }
 
-  async function updatePassword(password) {
-    const { error } = await supabase.auth.updateUser({ password })
-    if (error) throw error
+  async function refreshAgent() {
+    if (user) await loadAgent(user)
   }
 
-  const isAdmin     = agent?.role === 'admin' || agent?.role === 'secretary'
+  const isAdmin     = agent?.role === 'admin'
   const isSecretary = agent?.role === 'secretary'
+  const canManage   = isAdmin || isSecretary
 
   return (
-    <AuthContext.Provider value={{ user, agent, loading, isAdmin, isSecretary, signIn, signOut, updatePassword }}>
+    <AuthContext.Provider value={{ user, agent, loading, signIn, signOut, refreshAgent, isAdmin, isSecretary, canManage }}>
       {children}
     </AuthContext.Provider>
   )

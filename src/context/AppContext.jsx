@@ -1,45 +1,52 @@
-import React, { createContext, useContext, useReducer, useCallback } from 'react'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — App Context
+// Theme, toast notifications, sidebar state
+// ═══════════════════════════════════════════════════════════════
+
+import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react'
+import { lsGet, lsSet } from '../lib/utils'
 
 const AppContext = createContext(null)
 
 const initialState = {
-  theme:   localStorage.getItem('tos_theme') || 'light',
-  toast:   null,
-  sidebarCollapsed: false,
+  theme:     lsGet('tos_theme', 'light'),
+  collapsed: lsGet('tos_sidebar', false),
+  toast:     null,
 }
 
 function reducer(state, action) {
-  switch(action.type) {
-    case 'SET_THEME':
-      localStorage.setItem('tos_theme', action.theme)
-      document.documentElement.setAttribute('data-theme', action.theme)
-      return { ...state, theme: action.theme }
-    case 'SHOW_TOAST':
-      return { ...state, toast: { msg: action.msg, color: action.color } }
-    case 'CLEAR_TOAST':
-      return { ...state, toast: null }
-    case 'TOGGLE_SIDEBAR':
-      return { ...state, sidebarCollapsed: !state.sidebarCollapsed }
-    default:
-      return state
+  switch (action.type) {
+    case 'SET_THEME':     return { ...state, theme: action.theme }
+    case 'SET_COLLAPSED': return { ...state, collapsed: action.collapsed }
+    case 'SET_TOAST':     return { ...state, toast: action.toast }
+    default: return state
   }
 }
 
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState)
 
-  // Apply saved theme on mount
-  React.useEffect(() => {
+  // Persist theme and sidebar to localStorage
+  useEffect(() => { lsSet('tos_theme', state.theme) }, [state.theme])
+  useEffect(() => { lsSet('tos_sidebar', state.collapsed) }, [state.collapsed])
+
+  // Apply theme to document
+  useEffect(() => {
     document.documentElement.setAttribute('data-theme', state.theme)
+  }, [state.theme])
+
+  const setTheme = useCallback((t) => dispatch({ type: 'SET_THEME', theme: t }), [])
+  const setSidebarCollapsed = useCallback((v) => dispatch({ type: 'SET_COLLAPSED', collapsed: v }), [])
+
+  const showToast = useCallback((msg, color = '#10B981', duration = 3000) => {
+    dispatch({ type: 'SET_TOAST', toast: { msg, color } })
+    setTimeout(() => dispatch({ type: 'SET_TOAST', toast: null }), duration)
   }, [])
 
-  const toast = useCallback((msg, color, duration = 3000) => {
-    dispatch({ type: 'SHOW_TOAST', msg, color: color || '#1B2B4B' })
-    setTimeout(() => dispatch({ type: 'CLEAR_TOAST' }), duration)
-  }, [])
+  const toast = useCallback((msg, color) => showToast(msg, color), [showToast])
 
   return (
-    <AppContext.Provider value={{ state, dispatch, toast }}>
+    <AppContext.Provider value={{ state, setTheme, setSidebarCollapsed, showToast, toast }}>
       {children}
     </AppContext.Provider>
   )

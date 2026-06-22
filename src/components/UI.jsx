@@ -1,73 +1,128 @@
-/* ═══════════════════════════════════════════════════════════════
-   TargetOS V2 — Shared UI Components
-   Used across every page. Write once, use everywhere.
-   ═══════════════════════════════════════════════════════════════ */
-import React from 'react'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — UI Component Library
+// All shared UI primitives used across every page.
+// No external component library — fully custom.
+// ═══════════════════════════════════════════════════════════════
 
-// ── STAT CARD ─────────────────────────────────────────────────────
-export function StatCard({ label, value, sub, color = '#CC2200', icon }) {
+import React, { useState, useEffect, useRef } from 'react'
+import { initials } from '../lib/utils'
+
+const s = (styles) => styles
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
+
+// ── SPINNER ──────────────────────────────────────────────────────
+export function Spinner({ size = 20, color = 'var(--brand)' }) {
   return (
-    <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'12px', padding:'13px 15px' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'6px' }}>
-        <div style={{ fontSize:'9px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.8px' }}>{label}</div>
-        {icon && <span style={{ fontSize:'14px' }}>{icon}</span>}
-      </div>
-      <div style={{ fontSize:'20px', fontWeight:900, color, marginBottom:'2px' }}>{value}</div>
-      {sub && <div style={{ fontSize:'10px', color:'var(--muted)' }}>{sub}</div>}
+    <div style={{ width: size, height: size, border: `2px solid ${color}22`, borderTop: `2px solid ${color}`, borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
+  )
+}
+
+// ── LOADING SCREEN ───────────────────────────────────────────────
+export function Loading({ text = 'Loading...' }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '200px', gap: '10px', fontFamily: ff, color: 'var(--muted)', fontSize: '13px' }}>
+      <Spinner size={18} color="var(--muted)" />
+      {text}
     </div>
   )
 }
 
-// ── PROGRESS BAR ──────────────────────────────────────────────────
-export function ProgressBar({ value, max, color = '#CC2200', height = 8, label, showPct = true }) {
-  const pct = Math.min(Math.round((value / Math.max(max, 1)) * 100), 100)
-  const done = pct >= 100
+// ── EMPTY STATE ──────────────────────────────────────────────────
+export function Empty({ icon = '📭', title = 'Nothing here yet', sub = null, action = null }) {
   return (
-    <div>
-      {(label || showPct) && (
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'5px' }}>
-          {label && <span style={{ fontSize:'11px', color:'var(--muted)' }}>{label}</span>}
-          {showPct && <span style={{ fontSize:'11px', fontWeight:700, color: done ? '#16A34A' : color }}>{pct}%</span>}
-        </div>
-      )}
-      <div style={{ background:'var(--dim)', borderRadius:'99px', height, overflow:'hidden' }}>
-        <div style={{
-          background: done ? '#16A34A' : `linear-gradient(90deg, ${color}, ${color}99)`,
-          borderRadius:'99px', height, width: pct + '%',
-          transition: 'width .4s ease'
-        }}/>
-      </div>
+    <div style={{ textAlign: 'center', padding: '60px 20px', fontFamily: ff }}>
+      <div style={{ fontSize: '40px', marginBottom: '12px' }}>{icon}</div>
+      <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text)', marginBottom: '6px' }}>{title}</div>
+      {sub && <div style={{ fontSize: '13px', color: 'var(--muted)', maxWidth: '300px', margin: '0 auto 16px' }}>{sub}</div>}
+      {action}
     </div>
   )
 }
 
-// ── STATUS PILL ───────────────────────────────────────────────────
+// ── AVATAR ───────────────────────────────────────────────────────
+export function Avatar({ agent, size = 32, style: extraStyle = {} }) {
+  const name  = agent?.name || agent?.first_name || '?'
+  const color = agent?.color || '#CC2200'
+  const ini   = initials(name)
+  return (
+    <div style={{ width: size, height: size, borderRadius: '50%', background: color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.35, fontWeight: 700, fontFamily: ff, flexShrink: 0, ...extraStyle }}>
+      {ini}
+    </div>
+  )
+}
+
+// ── PILL / STATUS BADGE ──────────────────────────────────────────
 export function Pill({ label, color = '#94A3B8', size = 'sm' }) {
-  const sizes = { sm: { fontSize:'10px', padding:'2px 9px' }, md: { fontSize:'11px', padding:'3px 11px' }, lg: { fontSize:'12px', padding:'4px 14px' } }
-  const s = sizes[size] || sizes.sm
+  if (!label) return null
+  const pad = size === 'sm' ? '3px 8px' : '5px 12px'
+  const fs  = size === 'sm' ? '11px' : '12px'
   return (
-    <span style={{ display:'inline-flex', alignItems:'center', background:color+'18', color, border:`1px solid ${color}30`, borderRadius:'99px', fontWeight:700, fontFamily:'Inter,system-ui,sans-serif', ...s }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: pad, borderRadius: '99px', background: color + '22', color: color, fontSize: fs, fontWeight: 600, fontFamily: ff, whiteSpace: 'nowrap', border: `1px solid ${color}44` }}>
       {label}
     </span>
   )
 }
 
-// ── MODAL ─────────────────────────────────────────────────────────
-export function Modal({ title, onClose, children, width = '480px', subtitle }) {
+// ── STAT CARD ────────────────────────────────────────────────────
+export function StatCard({ label, value, sub = null, icon = null, accent = 'var(--brand)', trend = null }) {
   return (
-    <div
-      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:'16px', backdropFilter:'blur(2px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div style={{ background:'var(--panel)', borderRadius:'18px', padding:'0', width:'100%', maxWidth:width, maxHeight:'90vh', overflowY:'auto', boxShadow:'0 20px 60px rgba(0,0,0,.25)', animation:'slideUp .2s ease' }}>
-        <div style={{ padding:'20px 22px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center', position:'sticky', top:0, background:'var(--panel)', zIndex:1, borderRadius:'18px 18px 0 0' }}>
-          <div>
-            <div style={{ fontSize:'15px', fontWeight:800 }}>{title}</div>
-            {subtitle && <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px' }}>{subtitle}</div>}
-          </div>
-          <button onClick={onClose} style={{ background:'var(--dim)', border:'1px solid var(--border)', borderRadius:'50%', width:'28px', height:'28px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'var(--muted)', fontSize:'14px', lineHeight:1 }}>✕</button>
+    <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', padding: '20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow)', position: 'relative', overflow: 'hidden', fontFamily: ff }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: accent, borderRadius: '12px 12px 0 0' }} />
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '6px' }}>{label}</div>
+          <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text)', lineHeight: 1.1 }}>{value}</div>
+          {sub && <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>{sub}</div>}
+          {trend !== null && (
+            <div style={{ fontSize: '11px', marginTop: '6px', color: trend >= 0 ? '#10B981' : '#DC2626', fontWeight: 600 }}>
+              {trend >= 0 ? '▲' : '▼'} {Math.abs(trend)}% vs last month
+            </div>
+          )}
         </div>
-        <div style={{ padding:'20px 22px' }}>
+        {icon && <div style={{ fontSize: '24px', opacity: 0.7 }}>{icon}</div>}
+      </div>
+    </div>
+  )
+}
+
+// ── PROGRESS BAR ─────────────────────────────────────────────────
+export function ProgressBar({ value, max, color = 'var(--brand)', height = 8, showPct = true, label = null }) {
+  const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0
+  return (
+    <div style={{ fontFamily: ff }}>
+      {(label || showPct) && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+          {label && <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{label}</span>}
+          {showPct && <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{pct}%</span>}
+        </div>
+      )}
+      <div style={{ height, borderRadius: 99, background: 'var(--dim)', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 99, transition: 'width .4s ease' }} />
+      </div>
+    </div>
+  )
+}
+
+// ── MODAL ────────────────────────────────────────────────────────
+export function Modal({ open, onClose, title, children, width = 540, noPad = false }) {
+  useEffect(() => {
+    const fn = (e) => { if (e.key === 'Escape') onClose?.() }
+    if (open) document.addEventListener('keydown', fn)
+    return () => document.removeEventListener('keydown', fn)
+  }, [open, onClose])
+
+  if (!open) return null
+  return (
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose?.() }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(2px)', fontFamily: ff }}>
+      <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: width, maxHeight: '90vh', overflow: 'auto', boxShadow: 'var(--shadow-lg)', animation: 'fadeUp .15s ease' }}>
+        {title && (
+          <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>{title}</div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)', padding: '4px 8px', borderRadius: '6px' }}>✕</button>
+          </div>
+        )}
+        <div style={noPad ? {} : { padding: '20px 24px 24px' }}>
           {children}
         </div>
       </div>
@@ -75,191 +130,293 @@ export function Modal({ title, onClose, children, width = '480px', subtitle }) {
   )
 }
 
-// ── FORM FIELD ────────────────────────────────────────────────────
-export function Field({ label, required, children, hint }) {
+// ── FORM FIELD ───────────────────────────────────────────────────
+export function Field({ label, children, required = false, hint = null }) {
   return (
-    <div style={{ marginBottom:'12px' }}>
+    <div style={{ marginBottom: '14px', fontFamily: ff }}>
       {label && (
-        <label style={{ display:'block', fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:'5px' }}>
-          {label}{required && <span style={{ color:'#CC2200', marginLeft:'2px' }}>*</span>}
+        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+          {label}{required && <span style={{ color: 'var(--brand)', marginLeft: '3px' }}>*</span>}
         </label>
       )}
       {children}
-      {hint && <div style={{ fontSize:'10px', color:'var(--muted)', marginTop:'4px' }}>{hint}</div>}
+      {hint && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '3px' }}>{hint}</div>}
     </div>
   )
 }
 
-// ── INPUT ─────────────────────────────────────────────────────────
-export function Input({ label, required, hint, ...props }) {
+// ── INPUT ────────────────────────────────────────────────────────
+export function Input({ value, onChange, placeholder, type = 'text', disabled = false, style: extra = {}, onKeyDown = null }) {
   return (
-    <Field label={label} required={required} hint={hint}>
-      <input style={{ width:'100%', background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'13px', fontFamily:'Inter,system-ui,sans-serif', padding:'9px 11px', outline:'none', boxSizing:'border-box' }} {...props}/>
-    </Field>
+    <input
+      type={type}
+      value={value ?? ''}
+      onChange={(e) => onChange?.(e.target.value)}
+      placeholder={placeholder}
+      disabled={disabled}
+      onKeyDown={onKeyDown}
+      style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, outline: 'none', boxSizing: 'border-box', opacity: disabled ? 0.6 : 1, ...extra }}
+    />
   )
 }
 
-// ── SELECT ────────────────────────────────────────────────────────
-export function Select({ label, required, hint, children, ...props }) {
+// ── SELECT ───────────────────────────────────────────────────────
+export function Select({ value, onChange, options, placeholder = 'Select...', disabled = false, style: extra = {} }) {
   return (
-    <Field label={label} required={required} hint={hint}>
-      <select style={{ width:'100%', background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'13px', fontFamily:'Inter,system-ui,sans-serif', padding:'9px 11px', outline:'none', cursor:'pointer' }} {...props}>
-        {children}
-      </select>
-    </Field>
+    <select
+      value={value ?? ''}
+      onChange={(e) => onChange?.(e.target.value)}
+      disabled={disabled}
+      style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--inp)', color: value ? 'var(--text)' : 'var(--muted)', fontSize: '13px', fontFamily: ff, outline: 'none', appearance: 'none', boxSizing: 'border-box', opacity: disabled ? 0.6 : 1, cursor: 'pointer', ...extra }}>
+      <option value="">{placeholder}</option>
+      {options.map(opt => {
+        const val   = typeof opt === 'string' ? opt : (opt.value ?? opt.id)
+        const label = typeof opt === 'string' ? opt : (opt.label ?? opt.name ?? opt.value)
+        return <option key={val} value={val}>{label}</option>
+      })}
+    </select>
   )
 }
 
-// ── TEXTAREA ──────────────────────────────────────────────────────
-export function Textarea({ label, required, hint, rows = 3, ...props }) {
+// ── TEXTAREA ─────────────────────────────────────────────────────
+export function Textarea({ value, onChange, placeholder, rows = 3, disabled = false }) {
   return (
-    <Field label={label} required={required} hint={hint}>
-      <textarea rows={rows} style={{ width:'100%', background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'13px', fontFamily:'Inter,system-ui,sans-serif', padding:'9px 11px', outline:'none', boxSizing:'border-box', resize:'vertical', lineHeight:'1.6' }} {...props}/>
-    </Field>
+    <textarea
+      value={value ?? ''}
+      onChange={(e) => onChange?.(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
+      disabled={disabled}
+      style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, outline: 'none', resize: 'vertical', boxSizing: 'border-box', opacity: disabled ? 0.6 : 1 }}
+    />
   )
 }
 
-// ── MODAL ACTIONS ─────────────────────────────────────────────────
-export function ModalActions({ onCancel, onSave, saving, saveLabel = 'Save', danger, onDanger, dangerLabel = 'Delete' }) {
-  return (
-    <div style={{ display:'flex', gap:'8px', paddingTop:'14px', borderTop:'1px solid var(--border)', marginTop:'14px' }}>
-      {onDanger && (
-        <button onClick={onDanger}
-          style={{ background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)', borderRadius:'10px', color:'#DC2626', fontSize:'12px', fontWeight:700, padding:'10px 16px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
-          {dangerLabel}
-        </button>
-      )}
-      <div style={{ flex:1 }}/>
-      <button onClick={onCancel}
-        style={{ background:'var(--dim)', border:'1px solid var(--border)', borderRadius:'10px', color:'var(--text)', fontSize:'13px', fontWeight:600, padding:'10px 20px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
-        Cancel
-      </button>
-      <button onClick={onSave} disabled={saving}
-        style={{ background:'linear-gradient(135deg,#CC2200,#E8650A)', border:'none', borderRadius:'10px', color:'#fff', fontSize:'13px', fontWeight:700, padding:'10px 24px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', opacity:saving?.7:1 }}>
-        {saving ? 'Saving…' : saveLabel}
-      </button>
-    </div>
-  )
-}
-
-// ── PAGE HEADER ───────────────────────────────────────────────────
-export function PageHeader({ title, subtitle, icon, actions }) {
-  return (
-    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'18px', flexWrap:'wrap', gap:'10px' }}>
-      <div>
-        <div style={{ fontSize:'20px', fontWeight:900, display:'flex', alignItems:'center', gap:'8px' }}>
-          {icon && <span>{icon}</span>}
-          {title}
-        </div>
-        {subtitle && <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'3px' }}>{subtitle}</div>}
-      </div>
-      {actions && <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>{actions}</div>}
-    </div>
-  )
-}
-
-// ── PRIMARY BUTTON ────────────────────────────────────────────────
-export function Btn({ children, onClick, disabled, variant = 'primary', size = 'md', icon, style: extraStyle }) {
-  const variants = {
-    primary:   { background:'linear-gradient(135deg,#CC2200,#E8650A)', color:'#fff', border:'none' },
-    secondary: { background:'var(--dim)', color:'var(--text)', border:'1px solid var(--border)' },
-    ghost:     { background:'transparent', color:'var(--muted)', border:'1px solid var(--border)' },
-    danger:    { background:'rgba(220,38,38,.1)', color:'#DC2626', border:'1px solid rgba(220,38,38,.2)' },
-    success:   { background:'rgba(22,163,74,.1)', color:'#16A34A', border:'1px solid rgba(22,163,74,.2)' },
+// ── BUTTON ───────────────────────────────────────────────────────
+export function Btn({ children, onClick, variant = 'primary', size = 'md', disabled = false, loading = false, style: extra = {}, type = 'button' }) {
+  const colors = {
+    primary:   { bg: 'var(--brand)', text: '#fff', hover: '#AA1C00' },
+    secondary: { bg: 'var(--dim)', text: 'var(--text)', hover: 'var(--border)' },
+    danger:    { bg: '#DC2626', text: '#fff', hover: '#B91C1C' },
+    success:   { bg: '#10B981', text: '#fff', hover: '#059669' },
+    ghost:     { bg: 'transparent', text: 'var(--muted)', hover: 'var(--dim)' },
+    outline:   { bg: 'transparent', text: 'var(--brand)', hover: 'var(--brand)' + '11' },
   }
-  const sizes = {
-    sm: { fontSize:'11px', fontWeight:700, padding:'6px 12px', borderRadius:'8px' },
-    md: { fontSize:'12px', fontWeight:700, padding:'9px 16px', borderRadius:'9px' },
-    lg: { fontSize:'14px', fontWeight:700, padding:'12px 22px', borderRadius:'11px' },
-  }
+  const c    = colors[variant] || colors.primary
+  const pads = { sm: '6px 12px', md: '9px 16px', lg: '12px 22px' }
+  const fss  = { sm: '12px', md: '13px', lg: '14px' }
+
   return (
-    <button onClick={onClick} disabled={disabled}
-      style={{ fontFamily:'Inter,system-ui,sans-serif', cursor:disabled?'not-allowed':'pointer', display:'inline-flex', alignItems:'center', gap:'6px', transition:'opacity .15s', opacity:disabled?.6:1, whiteSpace:'nowrap', ...variants[variant], ...sizes[size], ...extraStyle }}>
-      {icon && <span style={{ fontSize:'13px' }}>{icon}</span>}
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled || loading}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: pads[size] || pads.md, background: c.bg, color: c.text, border: variant === 'outline' ? `1px solid var(--brand)` : 'none', borderRadius: 'var(--radius-sm)', fontSize: fss[size] || fss.md, fontWeight: 600, fontFamily: ff, cursor: disabled || loading ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, transition: 'background .15s', whiteSpace: 'nowrap', ...extra }}>
+      {loading ? <Spinner size={14} color={c.text} /> : null}
       {children}
     </button>
   )
 }
 
-// ── AVATAR ────────────────────────────────────────────────────────
-export function Avatar({ name, color, size = 32, style: extra }) {
-  const initials = name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '?'
+// ── PAGE HEADER ──────────────────────────────────────────────────
+export function PageHeader({ title, sub = null, actions = null, back = null }) {
   return (
-    <div style={{ width:size, height:size, borderRadius:'50%', background:color || '#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:Math.round(size * 0.38) + 'px', fontWeight:800, color:'#fff', flexShrink:0, ...extra }}>
-      {initials}
-    </div>
-  )
-}
-
-// ── EMPTY STATE ───────────────────────────────────────────────────
-export function Empty({ icon = '📋', title, subtitle, action }) {
-  return (
-    <div style={{ padding:'48px 24px', textAlign:'center', background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'14px' }}>
-      <div style={{ fontSize:'36px', marginBottom:'12px' }}>{icon}</div>
-      {title    && <div style={{ fontSize:'14px', fontWeight:700, color:'var(--text)',  marginBottom:'6px' }}>{title}</div>}
-      {subtitle && <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'16px' }}>{subtitle}</div>}
-      {action}
-    </div>
-  )
-}
-
-// ── LOADING SPINNER ───────────────────────────────────────────────
-export function Spinner({ size = 20, color = '#CC2200' }) {
-  return (
-    <div style={{ width:size, height:size, border:`2px solid ${color}30`, borderTop:`2px solid ${color}`, borderRadius:'50%', animation:'spin .7s linear infinite', display:'inline-block' }}/>
-  )
-}
-
-// ── LOADING STATE ──────────────────────────────────────────────────
-export function Loading({ text = 'Loading...' }) {
-  return (
-    <div style={{ padding:'32px', textAlign:'center', color:'var(--muted)', fontSize:'13px', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px' }}>
-      <Spinner size={16}/>
-      {text}
-    </div>
-  )
-}
-
-// ── SECTION TITLE ─────────────────────────────────────────────────
-export function SectionTitle({ children, action }) {
-  return (
-    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'11px 14px', borderBottom:'1px solid var(--border)' }}>
-      <div style={{ fontSize:'12px', fontWeight:700 }}>{children}</div>
-      {action}
-    </div>
-  )
-}
-
-// ── TOGGLE SWITCH ─────────────────────────────────────────────────
-export function Toggle({ value, onChange, label, color = '#10B981' }) {
-  return (
-    <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-      <div onClick={() => onChange(!value)}
-        style={{ width:42, height:22, borderRadius:'99px', background:value ? color : 'var(--border)', position:'relative', cursor:'pointer', transition:'background .2s', flexShrink:0 }}>
-        <div style={{ width:18, height:18, borderRadius:'50%', background:'#fff', position:'absolute', top:2, left:value?22:2, transition:'left .2s', boxShadow:'0 1px 4px rgba(0,0,0,.2)' }}/>
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', gap: '12px', flexWrap: 'wrap', fontFamily: ff }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {back && (
+          <button onClick={back} style={{ background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontSize: '13px', color: 'var(--muted)', fontFamily: ff }}>
+            ← Back
+          </button>
+        )}
+        <div>
+          <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text)', margin: 0 }}>{title}</h1>
+          {sub && <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '2px 0 0' }}>{sub}</p>}
+        </div>
       </div>
-      {label && <span style={{ fontSize:'12px', color:'var(--text)', cursor:'pointer' }} onClick={() => onChange(!value)}>{label}</span>}
+      {actions && <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>{actions}</div>}
     </div>
   )
 }
 
-// ── GRID ──────────────────────────────────────────────────────────
-export function Grid({ cols = 2, gap = 10, children }) {
+// ── SECTION TITLE ────────────────────────────────────────────────
+export function SectionTitle({ children, action = null }) {
   return (
-    <div style={{ display:'grid', gridTemplateColumns:`repeat(${cols}, 1fr)`, gap }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', marginTop: '24px', fontFamily: ff }}>
+      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{children}</div>
+      {action}
+    </div>
+  )
+}
+
+// ── TOGGLE ───────────────────────────────────────────────────────
+export function Toggle({ value, onChange, label = null }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontFamily: ff, fontSize: '13px', color: 'var(--text)' }}>
+      <div onClick={() => onChange?.(!value)}
+        style={{ width: '36px', height: '20px', borderRadius: '99px', background: value ? 'var(--brand)' : 'var(--border)', position: 'relative', transition: 'background .2s', flexShrink: 0, cursor: 'pointer' }}>
+        <div style={{ position: 'absolute', top: '2px', left: value ? '18px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+      </div>
+      {label}
+    </label>
+  )
+}
+
+// ── MODAL ACTIONS ────────────────────────────────────────────────
+export function ModalActions({ children }) {
+  return (
+    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
       {children}
     </div>
   )
 }
 
-// ── DIVIDER ───────────────────────────────────────────────────────
-export function Divider({ label }) {
-  if (!label) return <div style={{ height:1, background:'var(--border)', margin:'14px 0' }}/>
+// ── GRID ─────────────────────────────────────────────────────────
+export function Grid({ cols = 2, gap = 14, children }) {
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:'10px', margin:'14px 0' }}>
-      <div style={{ flex:1, height:1, background:'var(--border)' }}/>
-      <span style={{ fontSize:'10px', fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.7px' }}>{label}</span>
-      <div style={{ flex:1, height:1, background:'var(--border)' }}/>
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap }}>
+      {children}
     </div>
+  )
+}
+
+// ── DIVIDER ──────────────────────────────────────────────────────
+export function Divider({ style: extra = {} }) {
+  return <div style={{ height: '1px', background: 'var(--border)', margin: '16px 0', ...extra }} />
+}
+
+// ── SEARCH INPUT ─────────────────────────────────────────────────
+export function SearchInput({ value, onChange, placeholder = 'Search...', style: extra = {} }) {
+  return (
+    <div style={{ position: 'relative', ...extra }}>
+      <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', fontSize: '14px', pointerEvents: 'none' }}>🔍</span>
+      <input
+        type="text"
+        value={value ?? ''}
+        onChange={(e) => onChange?.(e.target.value)}
+        placeholder={placeholder}
+        style={{ width: '100%', padding: '9px 12px 9px 32px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, outline: 'none', boxSizing: 'border-box' }}
+      />
+    </div>
+  )
+}
+
+// ── TABLE ────────────────────────────────────────────────────────
+export function Table({ headers, rows, onRowClick = null, emptyText = 'No data' }) {
+  if (!rows?.length) return <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--muted)', fontSize: '13px', fontFamily: ff }}>{emptyText}</div>
+  return (
+    <div style={{ overflowX: 'auto', fontFamily: ff }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+        <thead>
+          <tr>
+            {headers.map((h, i) => (
+              <th key={i} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} onClick={() => onRowClick?.(row._raw || row)}
+              style={{ borderBottom: '1px solid var(--border)', cursor: onRowClick ? 'pointer' : 'default', transition: 'background .12s' }}
+              onMouseEnter={e => { if (onRowClick) e.currentTarget.style.background = 'var(--hov)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = '' }}>
+              {row.cells?.map((cell, ci) => (
+                <td key={ci} style={{ padding: '11px 12px', color: 'var(--text)', verticalAlign: 'middle' }}>{cell}</td>
+              )) ?? Object.values(row).filter(k => k !== '_raw').map((cell, ci) => (
+                <td key={ci} style={{ padding: '11px 12px', color: 'var(--text)', verticalAlign: 'middle' }}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── CONFIRM DIALOG ───────────────────────────────────────────────
+export function Confirm({ open, onConfirm, onCancel, message = 'Are you sure?', danger = true }) {
+  if (!open) return null
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ff }}>
+      <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', padding: '28px', maxWidth: '380px', width: '90%', boxShadow: 'var(--shadow-lg)' }}>
+        <div style={{ fontSize: '15px', color: 'var(--text)', marginBottom: '20px', lineHeight: 1.5 }}>{message}</div>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <Btn variant="secondary" onClick={onCancel}>Cancel</Btn>
+          <Btn variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>Confirm</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── CARD ─────────────────────────────────────────────────────────
+export function Card({ children, onClick = null, style: extra = {}, pad = '16px' }) {
+  return (
+    <div onClick={onClick}
+      style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: pad, cursor: onClick ? 'pointer' : 'default', transition: 'box-shadow .15s', ...extra }}
+      onMouseEnter={e => { if (onClick) e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
+      onMouseLeave={e => { if (onClick) e.currentTarget.style.boxShadow = '' }}>
+      {children}
+    </div>
+  )
+}
+
+// ── TABS ─────────────────────────────────────────────────────────
+export function Tabs({ tabs, active, onChange }) {
+  return (
+    <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', marginBottom: '20px', gap: '0', fontFamily: ff }}>
+      {tabs.map(tab => {
+        const id    = typeof tab === 'string' ? tab : tab.id
+        const label = typeof tab === 'string' ? tab : tab.label
+        const isActive = active === id
+        return (
+          <button key={id} onClick={() => onChange?.(id)}
+            style={{ padding: '10px 18px', background: 'none', border: 'none', borderBottom: isActive ? '2px solid var(--brand)' : '2px solid transparent', marginBottom: '-2px', fontSize: '13px', fontWeight: isActive ? 700 : 500, color: isActive ? 'var(--brand)' : 'var(--muted)', cursor: 'pointer', fontFamily: ff, whiteSpace: 'nowrap', transition: 'color .15s' }}>
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── INLINE EDIT FIELD ────────────────────────────────────────────
+export function InlineEdit({ value, onSave, type = 'text', options = null, placeholder = 'Click to edit' }) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(value)
+  const inputRef = useRef(null)
+
+  useEffect(() => { setVal(value) }, [value])
+  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+
+  function save() {
+    setEditing(false)
+    if (val !== value) onSave?.(val)
+  }
+
+  if (!editing) {
+    return (
+      <span onClick={() => setEditing(true)}
+        style={{ cursor: 'pointer', color: value ? 'var(--text)' : 'var(--muted)', fontSize: '13px', fontFamily: ff, borderBottom: '1px dashed var(--border)', paddingBottom: '1px' }}>
+        {value || placeholder}
+      </span>
+    )
+  }
+
+  if (options) {
+    return (
+      <select ref={inputRef} value={val} onChange={e => setVal(e.target.value)} onBlur={save}
+        style={{ fontSize: '13px', fontFamily: ff, border: '1px solid var(--brand)', borderRadius: '4px', padding: '3px 6px', background: 'var(--inp)', color: 'var(--text)' }}>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    )
+  }
+
+  return (
+    <input ref={inputRef} type={type} value={val} onChange={e => setVal(e.target.value)}
+      onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setEditing(false); setVal(value) } }}
+      style={{ fontSize: '13px', fontFamily: ff, border: '1px solid var(--brand)', borderRadius: '4px', padding: '3px 8px', background: 'var(--inp)', color: 'var(--text)', width: '150px' }}
+    />
   )
 }

@@ -1,14 +1,13 @@
-/* ═══════════════════════════════════════════════════════════════
-   TargetOS V2 — Complete Database Layer
-   All Supabase calls in one file.
-   Every function throws on error — pages handle their own errors.
-   ═══════════════════════════════════════════════════════════════ */
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Database Layer
+// All Supabase calls go through here. Every function returns
+// { data, error } and throws on error so callers can catch.
+// Every new record automatically gets a UUID from the database.
+// ═══════════════════════════════════════════════════════════════
+
 import { supabase } from './supabase'
 
-// ── HELPERS ──────────────────────────────────────────────────────
-const q  = (table) => supabase.from(table)
-const ts = ()      => new Date().toISOString()
-
+// ── HELPER ───────────────────────────────────────────────────────
 async function run(promise) {
   const { data, error } = await promise
   if (error) throw error
@@ -16,326 +15,459 @@ async function run(promise) {
 }
 
 // ── AGENTS ───────────────────────────────────────────────────────
-export const agents = {
-  list:   ()       => run(q('agents').select('*').eq('active', true).order('name')),
-  get:    (id)     => run(q('agents').select('*').eq('id', id).single()),
-  update: (id, ch) => run(q('agents').update({ ...ch, updated_at: ts() }).eq('id', id).select().single()),
-}
+export const db = {
+
+agents: {
+  async list() {
+    return run(supabase.from('agents').select('*').eq('active', true).order('name'))
+  },
+  async get(id) {
+    return run(supabase.from('agents').select('*').eq('id', id).single())
+  },
+  async getByAuthId(authId) {
+    return run(supabase.from('agents').select('*').eq('auth_user_id', authId).single())
+  },
+  async getByEmail(email) {
+    return run(supabase.from('agents').select('*').eq('email', email).single())
+  },
+  async update(id, data) {
+    return run(supabase.from('agents').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+},
 
 // ── CONTACTS ─────────────────────────────────────────────────────
-export const contacts = {
-  list: ({ agentId, status, search, limit = 200 } = {}) => {
-    let q2 = q('contacts').select('*, agents(name,color)').order('last_activity', { ascending: false }).limit(limit)
-    if (agentId) q2 = q2.eq('agent_id', agentId)
-    if (status)  q2 = q2.eq('status', status)
-    if (search)  q2 = q2.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`)
-    return run(q2)
+contacts: {
+  async list(filters = {}) {
+    let q = supabase.from('contacts').select('*, agents(id,name,color)')
+    if (filters.agent_id)  q = q.eq('agent_id', filters.agent_id)
+    if (filters.status)    q = q.eq('status', filters.status)
+    if (filters.search)    q = q.or(`first_name.ilike.%${filters.search}%,last_name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,email.ilike.%${filters.search}%`)
+    return run(q.order('last_activity', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }))
   },
-  get:    (id)     => run(q('contacts').select('*, agents(name,color)').eq('id', id).single()),
-  create: (data)   => run(q('contacts').insert([{ ...data, last_activity: ts(), created_at: ts(), updated_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('contacts').update({ ...ch, updated_at: ts(), last_activity: ts() }).eq('id', id).select().single()),
-  delete: (id)     => run(q('contacts').delete().eq('id', id)),
-}
+  async get(id) {
+    return run(supabase.from('contacts').select('*, agents(id,name,color)').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('contacts').insert({ ...data, last_activity: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('contacts').update({ ...data, last_activity: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('contacts').delete().eq('id', id))
+  },
+  async count(agentId) {
+    const { count } = await supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('agent_id', agentId)
+    return count || 0
+  },
+},
 
-// ── DEALS (PRODUCTION) ───────────────────────────────────────────
-export const deals = {
-  list: ({ agentId, stage, year, limit = 500 } = {}) => {
-    let q2 = q('deals').select('*, agents(name,color,email)').order('ao_date', { ascending: false }).limit(limit)
-    if (agentId) q2 = q2.eq('agent_id', agentId)
-    if (stage)   q2 = q2.eq('stage', stage)
-    if (year) {
-      q2 = q2.or(`ao_date.gte.${year}-01-01,close_date.gte.${year}-01-01`)
-      q2 = q2.or(`ao_date.lte.${year}-12-31,close_date.lte.${year}-12-31`)
+// ── DEALS ────────────────────────────────────────────────────────
+deals: {
+  async list(filters = {}) {
+    let q = supabase.from('deals').select('*, agents(id,name,color)')
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
+    if (filters.stage)    q = q.eq('stage', filters.stage)
+    if (filters.year) {
+      q = q.gte('ao_date', `${filters.year}-01-01`).lte('ao_date', `${filters.year}-12-31`)
     }
-    return run(q2)
+    return run(q.order('ao_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }))
   },
-  get:    (id)     => run(q('deals').select('*, agents(name,color)').eq('id', id).single()),
-  create: (data)   => run(q('deals').insert([{ ...data, created_at: ts(), updated_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('deals').update({ ...ch, updated_at: ts() }).eq('id', id).select().single()),
-  delete: (id)     => run(q('deals').delete().eq('id', id)),
-}
+  async get(id) {
+    return run(supabase.from('deals').select('*, agents(id,name,color)').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('deals').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('deals').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('deals').delete().eq('id', id))
+  },
+  async stats(agentId, year) {
+    let q = supabase.from('deals').select('gci, production, stage, ao_date')
+    if (agentId) q = q.eq('agent_id', agentId)
+    if (year) q = q.gte('ao_date', `${year}-01-01`).lte('ao_date', `${year}-12-31`)
+    return run(q)
+  },
+},
 
 // ── LISTINGS ─────────────────────────────────────────────────────
-export const listings = {
-  list: ({ agentId, status, limit = 200 } = {}) => {
-    let q2 = q('listings').select('*, agents(name,color)').order('created_at', { ascending: false }).limit(limit)
-    if (agentId) q2 = q2.eq('agent_id', agentId)
-    if (status)  q2 = q2.eq('status', status)
-    return run(q2)
+listings: {
+  async list(filters = {}) {
+    let q = supabase.from('listings').select('*, agents(id,name,color)')
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
+    if (filters.status)   q = q.eq('status', filters.status)
+    return run(q.order('created_at', { ascending: false }))
   },
-  get:    (id)     => run(q('listings').select('*, agents(name,color)').eq('id', id).single()),
-  create: (data)   => run(q('listings').insert([{ ...data, created_at: ts(), updated_at: ts(), spend: [], showings: [], interests: [] }]).select().single()),
-  update: (id, ch) => run(q('listings').update({ ...ch, updated_at: ts() }).eq('id', id).select().single()),
-  delete: (id)     => run(q('listings').delete().eq('id', id)),
-}
+  async get(id) {
+    return run(supabase.from('listings').select('*, agents(id,name,color)').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('listings').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('listings').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('listings').delete().eq('id', id))
+  },
+},
 
 // ── GIFTS ────────────────────────────────────────────────────────
-export const gifts = {
-  list: ({ agentId, status, type, limit = 300 } = {}) => {
-    let q2 = q('gifts').select('*, agents(name,color)').order('created_at', { ascending: false }).limit(limit)
-    if (agentId) q2 = q2.eq('agent_id', agentId)
-    if (status)  q2 = q2.eq('status', status)
-    if (type)    q2 = q2.eq('type', type)
-    return run(q2)
+gifts: {
+  async list(filters = {}) {
+    let q = supabase.from('gifts').select('*, agents(id,name,color), deals(id,addr)')
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
+    if (filters.status)   q = q.eq('status', filters.status)
+    return run(q.order('created_at', { ascending: false }))
   },
-  get:    (id)     => run(q('gifts').select('*').eq('id', id).single()),
-  create: (data)   => run(q('gifts').insert([{ ...data, created_at: ts(), updated_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('gifts').update({ ...ch, updated_at: ts() }).eq('id', id).select().single()),
-  delete: (id)     => run(q('gifts').delete().eq('id', id)),
-}
+  async get(id) {
+    return run(supabase.from('gifts').select('*, agents(id,name,color)').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('gifts').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('gifts').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('gifts').delete().eq('id', id))
+  },
+},
 
 // ── OFFERS ───────────────────────────────────────────────────────
-export const offers = {
-  list: ({ agentId, status } = {}) => {
-    let q2 = q('offers').select('*, agents(name,color)').order('created_at', { ascending: false })
-    if (agentId) q2 = q2.eq('agent_id', agentId)
-    if (status)  q2 = q2.eq('status', status)
-    return run(q2)
+offers: {
+  async list(filters = {}) {
+    let q = supabase.from('offers').select('*, agents(id,name,color)')
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
+    return run(q.order('created_at', { ascending: false }))
   },
-  get:    (id)     => run(q('offers').select('*').eq('id', id).single()),
-  create: (data)   => run(q('offers').insert([{ ...data, created_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('offers').update(ch).eq('id', id).select().single()),
-  delete: (id)     => run(q('offers').delete().eq('id', id)),
-}
+  async get(id) {
+    return run(supabase.from('offers').select('*, agents(id,name,color)').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('offers').insert({ ...data, created_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('offers').update(data).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('offers').delete().eq('id', id))
+  },
+},
 
 // ── TRANSACTIONS ─────────────────────────────────────────────────
-export const transactions = {
-  list: ({ agentId, status } = {}) => {
-    let q2 = q('transactions').select('*, agents(name,color)').order('created_at', { ascending: false })
-    if (agentId) q2 = q2.eq('agent_id', agentId)
-    if (status)  q2 = q2.eq('status', status)
-    return run(q2)
+transactions: {
+  async list(filters = {}) {
+    let q = supabase.from('transactions').select('*, agents(id,name,color)')
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
+    return run(q.order('created_at', { ascending: false }))
   },
-  get:    (id)     => run(q('transactions').select('*').eq('id', id).single()),
-  create: (data)   => run(q('transactions').insert([{ ...data, created_at: ts(), updated_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('transactions').update({ ...ch, updated_at: ts() }).eq('id', id).select().single()),
-  delete: (id)     => run(q('transactions').delete().eq('id', id)),
-}
+  async get(id) {
+    return run(supabase.from('transactions').select('*, agents(id,name,color)').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('transactions').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('transactions').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('transactions').delete().eq('id', id))
+  },
+},
 
 // ── TASKS ────────────────────────────────────────────────────────
-export const tasks = {
-  list: ({ agentId, status, priority, dueDate, limit = 300 } = {}) => {
-    let q2 = q('tasks').select('*, agents!tasks_agent_id_fkey(name,color)').order('created_at', { ascending: false }).limit(limit)
-    if (agentId)  q2 = q2.eq('agent_id', agentId)
-    if (status)   q2 = q2.eq('status', status)
-    if (priority) q2 = q2.eq('priority', priority)
-    if (dueDate)  q2 = q2.eq('due_date', dueDate)
-    return run(q2)
+tasks: {
+  async list(filters = {}) {
+    let q = supabase.from('tasks').select('*, agents(id,name,color)')
+    if (filters.agent_id)  q = q.eq('agent_id', filters.agent_id)
+    if (filters.status)    q = q.eq('status', filters.status)
+    if (filters.deal_id)   q = q.eq('deal_id', filters.deal_id)
+    if (filters.contact_id)q = q.eq('contact_id', filters.contact_id)
+    return run(q.order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }))
   },
-  get:    (id)     => run(q('tasks').select('*').eq('id', id).single()),
-  create: (data)   => run(q('tasks').insert([{ ...data, created_at: ts(), updated_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('tasks').update({ ...ch, updated_at: ts() }).eq('id', id).select().single()),
-  delete: (id)     => run(q('tasks').delete().eq('id', id)),
-  complete:(id)    => run(q('tasks').update({ status: 'done', completed_at: ts(), updated_at: ts() }).eq('id', id).select().single()),
-}
+  async get(id) {
+    return run(supabase.from('tasks').select('*, agents(id,name,color)').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('tasks').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('tasks').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+  async complete(id) {
+    return run(supabase.from('tasks').update({ status: 'done', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('tasks').delete().eq('id', id))
+  },
+  async dueToday(agentId) {
+    const today = new Date().toISOString().slice(0, 10)
+    let q = supabase.from('tasks').select('*, agents(id,name,color)').eq('due_date', today).neq('status', 'done')
+    if (agentId) q = q.eq('agent_id', agentId)
+    return run(q.order('priority'))
+  },
+},
 
 // ── CALLS ────────────────────────────────────────────────────────
-export const calls = {
-  list: ({ agentId, contactId, limit = 200 } = {}) => {
-    let q2 = q('calls').select('*, agents(name,color)').order('called_at', { ascending: false }).limit(limit)
-    if (agentId)   q2 = q2.eq('agent_id', agentId)
-    if (contactId) q2 = q2.eq('contact_id', contactId)
-    return run(q2)
+calls: {
+  async list(filters = {}) {
+    let q = supabase.from('calls').select('*, agents(id,name,color)')
+    if (filters.agent_id)  q = q.eq('agent_id', filters.agent_id)
+    if (filters.contact_id)q = q.eq('contact_id', filters.contact_id)
+    return run(q.order('called_at', { ascending: false }))
   },
-  get:    (id)   => run(q('calls').select('*').eq('id', id).single()),
-  create: (data) => run(q('calls').insert([{ ...data, called_at: ts() }]).select().single()),
-  delete: (id)   => run(q('calls').delete().eq('id', id)),
-}
-
-// ── CALENDAR EVENTS ───────────────────────────────────────────────
-export const calendar = {
-  list: ({ agentId, startDate, endDate, limit = 200 } = {}) => {
-    let q2 = q('calendar_events').select('*, agents(name,color)').order('start_date').order('start_time').limit(limit)
-    if (agentId)   q2 = q2.eq('agent_id', agentId)
-    if (startDate) q2 = q2.gte('start_date', startDate)
-    if (endDate)   q2 = q2.lte('start_date', endDate)
-    return run(q2)
+  async get(id) {
+    return run(supabase.from('calls').select('*, agents(id,name,color)').eq('id', id).single())
   },
-  get:    (id)     => run(q('calendar_events').select('*').eq('id', id).single()),
-  create: (data)   => run(q('calendar_events').insert([{ ...data, created_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('calendar_events').update(ch).eq('id', id).select().single()),
-  delete: (id)     => run(q('calendar_events').delete().eq('id', id)),
-}
-
-// ── OPEN HOUSES ───────────────────────────────────────────────────
-export const openHouses = {
-  list: ({ agentId } = {}) => {
-    let q2 = q('open_houses').select('*, agents(name,color)').order('date', { ascending: false })
-    if (agentId) q2 = q2.eq('agent_id', agentId)
-    return run(q2)
+  async create(data) {
+    return run(supabase.from('calls').insert({ ...data, called_at: data.called_at || new Date().toISOString() }).select().single())
   },
-  get:    (id)   => run(q('open_houses').select('*').eq('id', id).single()),
-  create: (data) => run(q('open_houses').insert([{ ...data, created_at: ts() }]).select().single()),
-  delete: (id)   => run(q('open_houses').delete().eq('id', id)),
-}
-
-export const visitors = {
-  list:   (ohId)   => run(q('oh_visitors').select('*').eq('open_house_id', ohId).order('visited_at', { ascending: false })),
-  create: (data)   => run(q('oh_visitors').insert([{ ...data, visited_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('oh_visitors').update(ch).eq('id', id).select().single()),
-  delete: (id)     => run(q('oh_visitors').delete().eq('id', id)),
-}
-
-// ── ANNOUNCEMENTS ─────────────────────────────────────────────────
-export const announcements = {
-  list: () => run(q('announcements').select('*, agents(name,color)').order('pinned', { ascending: false }).order('created_at', { ascending: false })),
-  get:    (id)     => run(q('announcements').select('*').eq('id', id).single()),
-  create: (data)   => run(q('announcements').insert([{ ...data, created_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('announcements').update(ch).eq('id', id).select().single()),
-  delete: (id)     => run(q('announcements').delete().eq('id', id)),
-}
-
-// ── SIGNS ─────────────────────────────────────────────────────────
-export const signs = {
-  list: ({ agentId } = {}) => {
-    let q2 = q('signs').select('*, agents(name,color)').order('created_at', { ascending: false })
-    if (agentId) q2 = q2.eq('agent_id', agentId)
-    return run(q2)
+  async update(id, data) {
+    return run(supabase.from('calls').update(data).eq('id', id).select().single())
   },
-  get:    (id)     => run(q('signs').select('*').eq('id', id).single()),
-  create: (data)   => run(q('signs').insert([{ ...data, created_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('signs').update(ch).eq('id', id).select().single()),
-  delete: (id)     => run(q('signs').delete().eq('id', id)),
-}
-
-// ── LISTING PREP ──────────────────────────────────────────────────
-export const listingPrep = {
-  list: ({ agentId } = {}) => {
-    let q2 = q('listing_prep').select('*, agents(name,color)').order('created_at', { ascending: false })
-    if (agentId) q2 = q2.eq('agent_id', agentId)
-    return run(q2)
+  async delete(id) {
+    return run(supabase.from('calls').delete().eq('id', id))
   },
-  get:    (id)     => run(q('listing_prep').select('*').eq('id', id).single()),
-  create: (data)   => run(q('listing_prep').insert([{ ...data, created_at: ts(), updated_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('listing_prep').update({ ...ch, updated_at: ts() }).eq('id', id).select().single()),
-  delete: (id)     => run(q('listing_prep').delete().eq('id', id)),
-}
+},
 
-// ── EMAIL TEMPLATES ───────────────────────────────────────────────
-export const emailTemplates = {
-  list: () => run(q('email_templates').select('*, agents(name)').order('created_at', { ascending: false })),
-  get:    (id)     => run(q('email_templates').select('*').eq('id', id).single()),
-  create: (data)   => run(q('email_templates').insert([{ ...data, created_at: ts(), updated_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('email_templates').update({ ...ch, updated_at: ts() }).eq('id', id).select().single()),
-  delete: (id)     => run(q('email_templates').delete().eq('id', id)),
-}
-
-// ── AUTOMATIONS ───────────────────────────────────────────────────
-export const automations = {
-  list: () => run(q('automations').select('*').order('created_at', { ascending: false })),
-  get:    (id)     => run(q('automations').select('*').eq('id', id).single()),
-  create: (data)   => run(q('automations').insert([{ ...data, created_at: ts(), updated_at: ts() }]).select().single()),
-  update: (id, ch) => run(q('automations').update({ ...ch, updated_at: ts() }).eq('id', id).select().single()),
-  delete: (id)     => run(q('automations').delete().eq('id', id)),
-}
-
-// ── BRIEFING PREFS ────────────────────────────────────────────────
-export const briefingPrefs = {
-  get:    (agentId) => run(q('briefing_prefs').select('*').eq('agent_id', agentId).single()),
-  upsert: (data)    => run(q('briefing_prefs').upsert(data, { onConflict: 'agent_id' }).select().single()),
-}
-
-// ── AUDIT LOG ─────────────────────────────────────────────────────
-export const auditLog = {
-  list: ({ agentId, tableName, limit = 100 } = {}) => {
-    let q2 = q('audit_log').select('*, agents(name,color)').order('created_at', { ascending: false }).limit(limit)
-    if (agentId)   q2 = q2.eq('agent_id', agentId)
-    if (tableName) q2 = q2.eq('table_name', tableName)
-    return run(q2)
+// ── CALENDAR EVENTS ──────────────────────────────────────────────
+calendar: {
+  async list(filters = {}) {
+    let q = supabase.from('calendar_events').select('*, agents(id,name,color)')
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
+    if (filters.from)     q = q.gte('start_date', filters.from)
+    if (filters.to)       q = q.lte('start_date', filters.to)
+    return run(q.order('start_date').order('start_time'))
   },
-  create: (data) => run(q('audit_log').insert([{ ...data, created_at: ts() }]).select().single()),
-}
+  async get(id) {
+    return run(supabase.from('calendar_events').select('*').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('calendar_events').insert({ ...data, created_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('calendar_events').update(data).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('calendar_events').delete().eq('id', id))
+  },
+},
 
-// ── NAMED EXPORTS (backward compatibility) ────────────────────────
-export const getAgents      = () => agents.list()
-export const updateAgent    = (id,ch) => agents.update(id,ch)
+// ── OPEN HOUSES ──────────────────────────────────────────────────
+openHouses: {
+  async list(filters = {}) {
+    let q = supabase.from('open_houses').select('*, agents(id,name,color), listings(id,addr)')
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
+    if (filters.active !== undefined) q = q.eq('active', filters.active)
+    return run(q.order('date', { ascending: false }))
+  },
+  async get(id) {
+    return run(supabase.from('open_houses').select('*, agents(id,name,color), oh_visitors(*)').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('open_houses').insert({ ...data, created_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('open_houses').update(data).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('open_houses').delete().eq('id', id))
+  },
+},
 
-export const getContacts    = (f) => contacts.list(f)
-export const createContact  = (d) => contacts.create(d)
-export const updateContact  = (id,ch) => contacts.update(id,ch)
-export const deleteContact  = (id) => contacts.delete(id)
+// ── OPEN HOUSE VISITORS ──────────────────────────────────────────
+visitors: {
+  async list(openHouseId) {
+    return run(supabase.from('oh_visitors').select('*').eq('open_house_id', openHouseId).order('visited_at', { ascending: false }))
+  },
+  async create(data) {
+    return run(supabase.from('oh_visitors').insert({ ...data, visited_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('oh_visitors').update(data).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('oh_visitors').delete().eq('id', id))
+  },
+},
 
-export const getDeals       = (f) => deals.list(f)
-export const createDeal     = (d) => deals.create(d)
-export const updateDeal     = (id,ch) => deals.update(id,ch)
-export const deleteDeal     = (id) => deals.delete(id)
+// ── ANNOUNCEMENTS ────────────────────────────────────────────────
+announcements: {
+  async list() {
+    return run(supabase.from('announcements').select('*, agents(id,name,color)').order('pinned', { ascending: false }).order('created_at', { ascending: false }))
+  },
+  async create(data) {
+    return run(supabase.from('announcements').insert({ ...data, created_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('announcements').update(data).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('announcements').delete().eq('id', id))
+  },
+},
 
-export const getListings    = (f) => listings.list(f)
-export const createListing  = (d) => listings.create(d)
-export const updateListing  = (id,ch) => listings.update(id,ch)
-export const deleteListing  = (id) => listings.delete(id)
+// ── SIGNS ────────────────────────────────────────────────────────
+signs: {
+  async list(filters = {}) {
+    let q = supabase.from('signs').select('*, agents(id,name,color)')
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
+    return run(q.order('created_at', { ascending: false }))
+  },
+  async get(id) {
+    return run(supabase.from('signs').select('*').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('signs').insert({ ...data, created_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('signs').update(data).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('signs').delete().eq('id', id))
+  },
+},
 
-export const getGifts       = (f) => gifts.list(f)
-export const createGift     = (d) => gifts.create(d)
-export const updateGift     = (id,ch) => gifts.update(id,ch)
-export const deleteGift     = (id) => gifts.delete(id)
+// ── LISTING PREP ─────────────────────────────────────────────────
+listingPrep: {
+  async list(filters = {}) {
+    let q = supabase.from('listing_prep').select('*, agents(id,name,color), listings(id,addr)')
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
+    return run(q.order('created_at', { ascending: false }))
+  },
+  async get(id) {
+    return run(supabase.from('listing_prep').select('*, listings(id,addr)').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('listing_prep').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('listing_prep').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('listing_prep').delete().eq('id', id))
+  },
+},
 
-export const getOffers      = (f) => offers.list(f)
-export const createOffer    = (d) => offers.create(d)
-export const updateOffer    = (id,ch) => offers.update(id,ch)
-export const deleteOffer    = (id) => offers.delete(id)
+// ── EMAIL TEMPLATES ──────────────────────────────────────────────
+emailTemplates: {
+  async list() {
+    return run(supabase.from('email_templates').select('*').order('created_at', { ascending: false }))
+  },
+  async get(id) {
+    return run(supabase.from('email_templates').select('*').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('email_templates').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('email_templates').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('email_templates').delete().eq('id', id))
+  },
+},
 
-export const getTransactions   = (f) => transactions.list(f)
-export const createTransaction = (d) => transactions.create(d)
-export const updateTransaction = (id,ch) => transactions.update(id,ch)
-export const deleteTransaction = (id) => transactions.delete(id)
+// ── AUTOMATIONS ──────────────────────────────────────────────────
+automations: {
+  async list() {
+    return run(supabase.from('automations').select('*, agents(id,name)').order('name'))
+  },
+  async get(id) {
+    return run(supabase.from('automations').select('*').eq('id', id).single())
+  },
+  async create(data) {
+    return run(supabase.from('automations').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+  },
+  async update(id, data) {
+    return run(supabase.from('automations').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  },
+  async delete(id) {
+    return run(supabase.from('automations').delete().eq('id', id))
+  },
+},
 
-export const getTasks       = (f) => tasks.list(f)
-export const createTask     = (d) => tasks.create(d)
-export const updateTask     = (id,ch) => tasks.update(id,ch)
-export const deleteTask     = (id) => tasks.delete(id)
-export const completeTask   = (id) => tasks.complete(id)
+// ── AUDIT LOG ────────────────────────────────────────────────────
+auditLog: {
+  async list(filters = {}) {
+    let q = supabase.from('audit_log').select('*, agents(id,name)')
+    if (filters.agent_id)   q = q.eq('agent_id', filters.agent_id)
+    if (filters.table_name) q = q.eq('table_name', filters.table_name)
+    if (filters.record_id)  q = q.eq('record_id', filters.record_id)
+    return run(q.order('created_at', { ascending: false }).limit(filters.limit || 200))
+  },
+  async log(agentId, tableName, recordId, action, extra = {}) {
+    try {
+      await supabase.from('audit_log').insert({
+        agent_id: agentId, table_name: tableName, record_id: recordId,
+        action, ...extra, created_at: new Date().toISOString()
+      })
+    } catch { /* audit log should never crash the app */ }
+  },
+},
 
-export const getCalls       = (f) => calls.list(f)
-export const createCall     = (d) => calls.create(d)
-export const deleteCall     = (id) => calls.delete(id)
+// ── BRIEFING PREFS ───────────────────────────────────────────────
+briefingPrefs: {
+  async get(agentId) {
+    const { data } = await supabase.from('briefing_prefs').select('*').eq('agent_id', agentId).single()
+    return data
+  },
+  async upsert(agentId, prefs) {
+    return run(supabase.from('briefing_prefs').upsert({ agent_id: agentId, ...prefs, updated_at: new Date().toISOString() }).select().single())
+  },
+},
 
-export const getCalendarEvents    = (f) => calendar.list(f)
-export const createCalendarEvent  = (d) => calendar.create(d)
-export const updateCalendarEvent  = (id,ch) => calendar.update(id,ch)
-export const deleteCalendarEvent  = (id) => calendar.delete(id)
+} // end db
 
-export const getOpenHouses    = (f) => openHouses.list(f)
-export const createOpenHouse  = (d) => openHouses.create(d)
-export const deleteOpenHouse  = (id) => openHouses.delete(id)
+// ── NAMED EXPORTS (backward compat) ─────────────────────────────
+export const createContact    = (d) => db.contacts.create(d)
+export const getContacts      = (f) => db.contacts.list(f)
+export const updateContact    = (id, d) => db.contacts.update(id, d)
+export const deleteContact    = (id) => db.contacts.delete(id)
 
-export const getVisitors      = (id) => visitors.list(id)
-export const createVisitor    = (d) => visitors.create(d)
-export const updateVisitor    = (id,ch) => visitors.update(id,ch)
-export const deleteVisitor    = (id) => visitors.delete(id)
+export const createDeal       = (d) => db.deals.create(d)
+export const getDeals         = (f) => db.deals.list(f)
+export const updateDeal       = (id, d) => db.deals.update(id, d)
+export const deleteDeal       = (id) => db.deals.delete(id)
 
-export const getAnnouncements    = () => announcements.list()
-export const createAnnouncement  = (d) => announcements.create(d)
-export const updateAnnouncement  = (id,ch) => announcements.update(id,ch)
-export const deleteAnnouncement  = (id) => announcements.delete(id)
+export const createListing    = (d) => db.listings.create(d)
+export const getListings      = (f) => db.listings.list(f)
+export const updateListing    = (id, d) => db.listings.update(id, d)
+export const deleteListing    = (id) => db.listings.delete(id)
 
-export const getSigns       = (f) => signs.list(f)
-export const createSign     = (d) => signs.create(d)
-export const updateSign     = (id,ch) => signs.update(id,ch)
-export const deleteSign     = (id) => signs.delete(id)
+export const createTask       = (d) => db.tasks.create(d)
+export const getTasks         = (f) => db.tasks.list(f)
+export const updateTask       = (id, d) => db.tasks.update(id, d)
+export const completeTask     = (id) => db.tasks.complete(id)
+export const deleteTask       = (id) => db.tasks.delete(id)
 
-export const getListingPreps    = (f) => listingPrep.list(f)
-export const createListingPrep  = (d) => listingPrep.create(d)
-export const updateListingPrep  = (id,ch) => listingPrep.update(id,ch)
-export const deleteListingPrep  = (id) => listingPrep.delete(id)
+export const createGift       = (d) => db.gifts.create(d)
+export const getGifts         = (f) => db.gifts.list(f)
+export const updateGift       = (id, d) => db.gifts.update(id, d)
+export const deleteGift       = (id) => db.gifts.delete(id)
 
-export const getEmailTemplates    = () => emailTemplates.list()
-export const createEmailTemplate  = (d) => emailTemplates.create(d)
-export const updateEmailTemplate  = (id,ch) => emailTemplates.update(id,ch)
-export const deleteEmailTemplate  = (id) => emailTemplates.delete(id)
+export const createOffer      = (d) => db.offers.create(d)
+export const getOffers        = (f) => db.offers.list(f)
+export const updateOffer      = (id, d) => db.offers.update(id, d)
+export const deleteOffer      = (id) => db.offers.delete(id)
 
-export const getAutomations    = () => automations.list()
-export const upsertAutomation  = (d) => automations.create(d)
-export const updateAutomation  = (id,ch) => automations.update(id,ch)
-export const deleteAutomation  = (id) => automations.delete(id)
+export const createCall       = (d) => db.calls.create(d)
+export const getCalls         = (f) => db.calls.list(f)
+export const updateCall       = (id, d) => db.calls.update(id, d)
+export const deleteCall       = (id) => db.calls.delete(id)
 
-export const getBriefingPrefs  = (aid) => briefingPrefs.get(aid)
-export const upsertBriefingPrefs=(d)  => briefingPrefs.upsert(d)
+export const getAgents        = () => db.agents.list()
+export const getAgent         = (id) => db.agents.get(id)
+export const updateAgent      = (id, d) => db.agents.update(id, d)
 
-export const getAuditLog    = (f) => auditLog.list(f)
+export const createAnnouncement = (d) => db.announcements.create(d)
+export const getAnnouncements   = () => db.announcements.list()
+export const updateAnnouncement = (id, d) => db.announcements.update(id, d)
+export const deleteAnnouncement = (id) => db.announcements.delete(id)
 
-// ── NOTES (alias for tasks with priority=note) ────────────────────
-export const getNotes   = (f={}) => tasks.list({...f, priority:'note'})
-export const createNote = (d)    => tasks.create({...d, priority:'note', status:'pinned'})
-export const updateNote = (id,ch)=> tasks.update(id,ch)
-export const deleteNote = (id)   => tasks.delete(id)
+export const logAudit = (agentId, table, recordId, action, extra) =>
+  db.auditLog.log(agentId, table, recordId, action, extra)
