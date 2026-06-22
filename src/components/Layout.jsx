@@ -7,6 +7,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { Avatar } from './UI'
+import { NotificationBell } from './NotificationBell'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -91,6 +92,7 @@ export function Layout({ children }) {
 
         {/* Agent Info */}
         <div style={{ padding: collapsed ? '12px 0' : '12px 14px', borderTop: '1px solid rgba(255,255,255,.08)', flexShrink: 0 }}>
+          {!collapsed && <div style={{ marginBottom: '8px' }}><NotificationBell /></div>}
           {!collapsed && agent && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
               <Avatar agent={agent} size={32} />
