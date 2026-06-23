@@ -149,6 +149,165 @@ async function executeAction(action, context, triggerData, agents) {
       break
     }
 
+    case 'remove_tag': {
+      if (triggerData.contact_id && cfg.tag) {
+        const { data: c } = await supabase.from('contacts').select('tags').eq('id', triggerData.contact_id).single()
+        const tags = (c?.tags || []).filter(t => t !== cfg.tag)
+        await supabase.from('contacts').update({ tags, updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
+      }
+      break
+    }
+
+    case 'notify_all_agents': {
+      const { data: allAgents } = await supabase.from('agents').select('id').eq('active', true)
+      const notifications = (allAgents || []).map(a => ({
+        agent_id:   a.id,
+        title:      interpolate(cfg.title || 'Team Notification', context),
+        body:       interpolate(cfg.body  || '', context),
+        type:       'info',
+        read:       false,
+        created_at: new Date().toISOString(),
+      }))
+      if (notifications.length) await supabase.from('notifications').insert(notifications)
+      break
+    }
+
+    case 'notify_admin': {
+      const { data: admins } = await supabase.from('agents').select('id').eq('role', 'admin').eq('active', true)
+      const notifications = (admins || []).map(a => ({
+        agent_id:   a.id,
+        title:      interpolate(cfg.title || 'Admin Alert', context),
+        body:       interpolate(cfg.body  || '', context),
+        type:       'alert',
+        read:       false,
+        created_at: new Date().toISOString(),
+      }))
+      if (notifications.length) await supabase.from('notifications').insert(notifications)
+      break
+    }
+
+    case 'create_followup': {
+      const agentId = resolveAgent(cfg.assign_to, triggerData, agents)
+      const due = new Date()
+      due.setDate(due.getDate() + (parseInt(cfg.due_days) || 7))
+      await supabase.from('tasks').insert({
+        title:      interpolate('Follow up with ' + (context.contact_name || 'contact'), context),
+        agent_id:   agentId,
+        created_by: agentId,
+        contact_id: triggerData.contact_id || null,
+        deal_id:    triggerData.deal_id    || null,
+        due_date:   due.toISOString().slice(0, 10),
+        priority:   'normal',
+        status:     'pending',
+        notes:      interpolate(cfg.notes || '', context),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      break
+    }
+
+    case 'set_followup_date': {
+      if (triggerData.contact_id) {
+        const due = new Date()
+        due.setDate(due.getDate() + (parseInt(cfg.days) || 7))
+        await supabase.from('contacts').update({ next_followup: due.toISOString().slice(0, 10), updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
+      }
+      break
+    }
+
+    case 'log_call': {
+      if (triggerData.contact_id && triggerData.agent_id) {
+        await supabase.from('calls').insert({
+          agent_id:     triggerData.agent_id,
+          contact_id:   triggerData.contact_id,
+          contact_name: context.contact_name || '',
+          direction:    'Outbound',
+          outcome:      'Auto-logged',
+          notes:        interpolate(cfg.notes || 'Auto-logged call via automation', context),
+          called_at:    new Date().toISOString(),
+        })
+        await supabase.from('contacts').update({ last_reached: new Date().toISOString().slice(0, 10), updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
+      }
+      break
+    }
+
+    case 'create_note': {
+      if (triggerData.contact_id && triggerData.agent_id) {
+        await supabase.from('audit_log').insert({
+          agent_id:   triggerData.agent_id,
+          table_name: 'contacts',
+          record_id:  triggerData.contact_id,
+          action:     'note',
+          field_name: 'general',
+          new_value:  interpolate(cfg.body || 'Auto-generated note', context),
+          metadata:   { description: 'Auto-note from automation', type: 'general' },
+          created_at: new Date().toISOString(),
+        })
+      }
+      break
+    }
+
+    case 'update_contact_field': {
+      if (triggerData.contact_id && cfg.field && cfg.value) {
+        await supabase.from('contacts').update({ [cfg.field]: interpolate(cfg.value, context), updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
+      }
+      break
+    }
+
+    case 'create_gift': {
+      if (triggerData.agent_id) {
+        const agentId = resolveAgent(cfg.assign_to, triggerData, agents)
+        await supabase.from('gifts').insert({
+          agent_id:    agentId,
+          client_name: context.contact_name || '',
+          description: interpolate(cfg.description || 'Closing gift', context),
+          status:      'Pending',
+          created_at:  new Date().toISOString(),
+          updated_at:  new Date().toISOString(),
+        })
+      }
+      break
+    }
+
+    case 'schedule_event': {
+      if (triggerData.agent_id) {
+        const eventDate = new Date()
+        eventDate.setDate(eventDate.getDate() + (parseInt(cfg.days) || 1))
+        await supabase.from('calendar_events').insert({
+          agent_id:   triggerData.agent_id,
+          title:      interpolate(cfg.title || 'Follow-up event', context),
+          start_date: eventDate.toISOString().slice(0, 10),
+          created_at: new Date().toISOString(),
+        })
+      }
+      break
+    }
+
+    case 'send_sms': {
+      // SMS via Twilio — logs the intent as a call note for now
+      // Full Twilio integration requires TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Vercel env
+      const agentId = resolveAgent(cfg.to, triggerData, agents)
+      if (agentId) {
+        await supabase.from('notifications').insert({
+          agent_id:   agentId,
+          title:      'SMS Automation (Twilio not yet configured)',
+          body:       interpolate(cfg.body || '', context),
+          type:       'info',
+          read:       false,
+          created_at: new Date().toISOString(),
+        })
+      }
+      console.log('[AutomationEngine] SMS action requires Twilio setup — sent as notification instead')
+      break
+    }
+
+    case 'mark_task_done': {
+      if (triggerData.task_id) {
+        await supabase.from('tasks').update({ status: 'done', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', triggerData.task_id)
+      }
+      break
+    }
+
     case 'send_email': {
       const agentId = resolveAgent(cfg.to, triggerData, agents)
       const agentRecord = agents.find(a => a.id === agentId)

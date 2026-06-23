@@ -153,27 +153,48 @@ function matchesTriggerConfig(automation, record, prev) {
 // Call these from specific points in db.js
 
 export const trigger = {
-  newContact:     (record) => dispatch('new_contact', record),
+  newContact: (record) => {
+    dispatch('new_contact', record)
+    if (record.buyer_type) dispatch('new_buyer', record)
+  },
   contactUpdated: (record, prev) => {
     if (prev?.status !== record.status) dispatch('contact_status_change', record, prev)
-    else dispatch('no_activity', record, prev)
+    if (!prev?.pre_approved && record.pre_approved) dispatch('pre_approval_received', record, prev)
+    if (!prev?.agent_id && record.agent_id) dispatch('contact_assigned', record, prev)
+    if (!prev?.source && record.source) dispatch('contact_source_added', record, prev)
   },
-  dealCreated:    (record) => dispatch('deal_created', record),
-  dealUpdated:    (record, prev) => {
+  dealCreated: (record) => dispatch('deal_created', record),
+  dealUpdated: (record, prev) => {
     if (prev?.stage !== record.stage) {
       dispatch('deal_stage_change', record, prev)
-      if (record.stage === 'Offer Accapted') dispatch('offer_accepted', record, prev)
-      if (record.stage === 'Closed')         dispatch('deal_closed',    record, prev)
+      if (record.stage === 'Offer Accapted')    dispatch('offer_accepted',      record, prev)
+      if (record.stage === 'Closed')            dispatch('deal_closed',         record, prev)
+      if (record.stage === 'Under Contract')    dispatch('deal_under_contract', record, prev)
+      if (record.stage === 'Deal Fell Through') dispatch('deal_fell_through',   record, prev)
     }
     dispatch('closing_soon', record, prev)
   },
-  taskCreated:    (record) => dispatch('task_created', record),
-  taskUpdated:    (record, prev) => {
+  taskCreated: (record) => dispatch('task_created', record),
+  taskUpdated: (record, prev) => {
     if (record.status === 'done' && prev?.status !== 'done') dispatch('task_completed', record, prev)
-    if (record.due_date && new Date(record.due_date) < Date.now() && record.status !== 'done') dispatch('task_overdue', record, prev)
+    if (record.due_date && new Date(record.due_date) < new Date() && record.status !== 'done') dispatch('task_overdue', record, prev)
+    if (prev?.priority !== record.priority) dispatch('task_priority_changed', record, prev)
+    if (!prev?.agent_id && record.agent_id) dispatch('task_assigned', record, prev)
   },
+  listingCreated: (record) => dispatch('listing_created', record),
   listingUpdated: (record, prev) => {
-    if (prev?.status !== record.status) dispatch('listing_status_change', record, prev)
+    if (prev?.status !== record.status) {
+      dispatch('listing_status_change', record, prev)
+      if (record.status === 'Sold')    dispatch('listing_sold',    record, prev)
+      if (record.status === 'Expired') dispatch('listing_expired', record, prev)
+    }
+    if (prev?.list_price && record.list_price < prev.list_price) dispatch('listing_price_reduced', record, prev)
   },
   openHouseCreated: (record) => dispatch('open_house_created', record),
+  visitorAdded:     (record) => dispatch('oh_visitor_added', record),
+  eventCreated:     (record) => dispatch('event_created', record),
+  giftCreated:      (record) => dispatch('gift_created', record),
+  giftUpdated:      (record, prev) => {
+    if (prev?.status !== record.status) dispatch('gift_status_change', record, prev)
+  },
 }

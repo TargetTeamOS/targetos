@@ -33,6 +33,8 @@ const TRIGGER_GROUPS = [
       { id: 'closing_soon',          label: 'Deal closing within X days',    icon: '📅', sentence: 'a deal is closing within {days} days', hasDays: true },
       { id: 'no_activity',           label: 'No contact activity for X days',icon: '💤', sentence: 'a contact has no activity for {days} days', hasDays: true },
       { id: 'contact_status_change', label: 'Contact status changes',        icon: '🔄', sentence: 'a contact status changes to {status}', hasStatus: true },
+      { id: 'deal_closed',           label: 'Deal closes',                   icon: '🏁', sentence: 'a deal is closed' },
+      { id: 'offer_accepted',        label: 'Offer accepted (AO)',           icon: '🤝', sentence: 'an offer is accepted' },
     ],
   },
   {
@@ -41,6 +43,12 @@ const TRIGGER_GROUPS = [
       { id: 'new_contact',           label: 'New contact added',             icon: '👤', sentence: 'a new contact is added' },
       { id: 'contact_status_change', label: 'Contact status changes',        icon: '🔄', sentence: 'a contact status changes to {status}', hasStatus: true },
       { id: 'no_activity',           label: 'No activity for X days',        icon: '💤', sentence: 'a contact has no activity for {days} days', hasDays: true },
+      { id: 'contact_assigned',      label: 'Contact assigned to agent',     icon: '👤', sentence: 'a contact is assigned to an agent' },
+      { id: 'birthday_today',        label: 'Contact birthday today',        icon: '🎂', sentence: "it is a contact's birthday" },
+      { id: 'pre_approval_received', label: 'Contact gets pre-approved',     icon: '✅', sentence: 'a contact receives pre-approval' },
+      { id: 'followup_date_reached', label: 'Follow-up date arrives',        icon: '📅', sentence: 'a follow-up date arrives for a contact' },
+      { id: 'contact_source_added',  label: 'Contact source set',            icon: '📌', sentence: 'a contact source is set' },
+      { id: 'new_buyer',             label: 'New buyer added',               icon: '🏠', sentence: 'a new buyer contact is added' },
     ],
   },
   {
@@ -49,22 +57,53 @@ const TRIGGER_GROUPS = [
       { id: 'deal_created',          label: 'New deal added',                icon: '✨', sentence: 'a new deal is created' },
       { id: 'deal_stage_change',     label: 'Deal stage changes',            icon: '📊', sentence: 'a deal stage changes' },
       { id: 'offer_accepted',        label: 'Offer accepted (AO)',           icon: '🤝', sentence: 'an offer is accepted' },
+      { id: 'deal_under_contract',   label: 'Deal goes under contract',      icon: '📝', sentence: 'a deal goes under contract' },
       { id: 'deal_closed',           label: 'Deal closes',                   icon: '🏁', sentence: 'a deal is closed' },
+      { id: 'deal_fell_through',     label: 'Deal falls through',            icon: '💔', sentence: 'a deal falls through' },
       { id: 'closing_soon',          label: 'Closing within X days',         icon: '📅', sentence: 'a deal is closing within {days} days', hasDays: true },
+      { id: 'mortgage_approved',     label: 'Mortgage approved',             icon: '🏦', sentence: 'a mortgage is approved on a deal' },
+      { id: 'inspection_scheduled',  label: 'Inspection scheduled',          icon: '🔍', sentence: 'an inspection is scheduled' },
+      { id: 'title_ordered',         label: 'Title ordered',                 icon: '📋', sentence: 'title is ordered on a deal' },
+      { id: 'deal_gci_above',        label: 'Deal GCI above amount',         icon: '💰', sentence: 'a deal GCI is above an amount' },
     ],
   },
   {
     label: 'Tasks',
     items: [
+      { id: 'task_created',          label: 'Task is created',               icon: '➕', sentence: 'a new task is created' },
       { id: 'task_overdue',          label: 'Task becomes overdue',          icon: '⚠️', sentence: 'a task becomes overdue' },
       { id: 'task_completed',        label: 'Task is completed',             icon: '✅', sentence: 'a task is completed' },
+      { id: 'task_assigned',         label: 'Task assigned to agent',        icon: '👤', sentence: 'a task is assigned to an agent' },
+      { id: 'task_due_today',        label: 'Task is due today',             icon: '📅', sentence: 'a task is due today' },
+      { id: 'task_priority_changed', label: 'Task priority changed',         icon: '🚨', sentence: 'a task priority is changed' },
     ],
   },
   {
     label: 'Listings',
     items: [
-      { id: 'listing_status_change', label: 'Listing status changes',        icon: '🏡', sentence: 'a listing status changes' },
+      { id: 'listing_created',       label: 'New listing added',             icon: '🏡', sentence: 'a new listing is added' },
+      { id: 'listing_status_change', label: 'Listing status changes',        icon: '🔄', sentence: 'a listing status changes' },
+      { id: 'listing_price_reduced', label: 'Listing price reduced',         icon: '💲', sentence: 'a listing price is reduced' },
+      { id: 'listing_expired',       label: 'Listing expires',               icon: '⏰', sentence: 'a listing expires' },
+      { id: 'listing_sold',          label: 'Listing is sold',               icon: '🎉', sentence: 'a listing is sold' },
       { id: 'open_house_created',    label: 'Open house scheduled',          icon: '🚪', sentence: 'an open house is scheduled' },
+      { id: 'open_house_today',      label: 'Open house is today',           icon: '🏠', sentence: 'an open house is happening today' },
+      { id: 'oh_visitor_added',      label: 'Visitor added to open house',   icon: '🙋', sentence: 'a visitor is added to an open house' },
+    ],
+  },
+  {
+    label: 'Calendar & Events',
+    items: [
+      { id: 'event_created',         label: 'Calendar event created',        icon: '📅', sentence: 'a calendar event is created' },
+      { id: 'event_today',           label: 'Event is today',                icon: '⏰', sentence: 'a calendar event is happening today' },
+      { id: 'showing_scheduled',     label: 'Showing scheduled',             icon: '🏠', sentence: 'a showing is scheduled' },
+    ],
+  },
+  {
+    label: 'Gifts',
+    items: [
+      { id: 'gift_status_change',    label: 'Gift status changes',           icon: '🎁', sentence: 'a gift status changes' },
+      { id: 'gift_created',          label: 'New gift added',                icon: '🎀', sentence: 'a new gift is added' },
     ],
   },
 ]
@@ -74,25 +113,47 @@ const TRIGGER_LIST = TRIGGER_GROUPS.flatMap(g => g.items).filter((t, i, arr) => 
 
 const ACTION_GROUPS = [
   {
-    label: 'Notifications',
+    label: 'Notifications & Messages',
     items: [
-      { id: 'send_notification', label: 'Notify someone',             icon: '🔔', sentence: 'notify {agent}' },
-      { id: 'send_email',        label: 'Send email',                 icon: '📧', sentence: 'send an email to {agent}' },
+      { id: 'send_notification',    label: 'Notify someone',               icon: '🔔', sentence: 'notify {agent}' },
+      { id: 'send_email',           label: 'Send email',                   icon: '📧', sentence: 'send an email to {agent}' },
+      { id: 'notify_all_agents',    label: 'Notify all agents',            icon: '📢', sentence: 'notify all agents' },
+      { id: 'notify_admin',         label: 'Notify admin',                 icon: '👑', sentence: 'notify the admin' },
+      { id: 'send_sms',             label: 'Send SMS (Twilio)',             icon: '💬', sentence: 'send an SMS to {agent}' },
     ],
   },
   {
-    label: 'Tasks',
+    label: 'Tasks & Follow-ups',
     items: [
-      { id: 'create_task',       label: 'Create a task',              icon: '✅', sentence: 'create a task for {agent}' },
+      { id: 'create_task',          label: 'Create a task',                icon: '✅', sentence: 'create a task for {agent}' },
+      { id: 'create_followup',      label: 'Schedule a follow-up',         icon: '📅', sentence: 'schedule a follow-up in {days} days' },
+      { id: 'mark_task_done',       label: 'Mark task as done',            icon: '☑️', sentence: 'mark the task as done' },
+      { id: 'log_call',             label: 'Log a call note',              icon: '📞', sentence: 'log a call note' },
+      { id: 'create_note',          label: 'Add a note to contact',        icon: '📝', sentence: 'add a note to the contact' },
     ],
   },
   {
-    label: 'Update Record',
+    label: 'Update Records',
     items: [
-      { id: 'update_contact_status', label: 'Change contact status',  icon: '🔄', sentence: 'change contact status to {status}' },
-      { id: 'update_deal_stage',     label: 'Change deal stage',      icon: '📊', sentence: 'change deal stage to {stage}' },
-      { id: 'assign_agent',          label: 'Assign to agent',        icon: '👤', sentence: 'assign to {agent}' },
-      { id: 'add_tag',               label: 'Add tag to contact',     icon: '🏷', sentence: 'add tag "{tag}" to contact' },
+      { id: 'update_contact_status',label: 'Change contact status',        icon: '🔄', sentence: 'change contact status to {status}' },
+      { id: 'update_deal_stage',    label: 'Change deal stage',            icon: '📊', sentence: 'change deal stage to {stage}' },
+      { id: 'assign_agent',         label: 'Assign to agent',              icon: '👤', sentence: 'assign to {agent}' },
+      { id: 'set_followup_date',    label: 'Set follow-up date',           icon: '📅', sentence: 'set follow-up date to {days} days from now' },
+      { id: 'update_contact_field', label: 'Update contact field',         icon: '✏️', sentence: 'update a contact field' },
+    ],
+  },
+  {
+    label: 'Tags & Labels',
+    items: [
+      { id: 'add_tag',              label: 'Add tag to contact',           icon: '🏷', sentence: 'add tag "{tag}" to contact' },
+      { id: 'remove_tag',           label: 'Remove tag from contact',      icon: '🗑️', sentence: 'remove tag "{tag}" from contact' },
+    ],
+  },
+  {
+    label: 'Create Records',
+    items: [
+      { id: 'create_gift',          label: 'Create a gift order',          icon: '🎁', sentence: 'create a gift order' },
+      { id: 'schedule_event',       label: 'Create a calendar event',      icon: '📅', sentence: 'create a calendar event' },
     ],
   },
 ]
@@ -604,6 +665,36 @@ function CardBuilder({ form, onChange, agents }) {
               {action.type === 'update_deal_stage'    && <div><Lbl>Set Stage To</Lbl><Sel value={cfg.stage} onChange={v => updateAction(idx,'stage',v)} options={DEAL_STAGES} placeholder="Select stage..." /></div>}
               {action.type === 'assign_agent'          && <div><Lbl>Assign To Agent</Lbl><Sel value={cfg.agent_id} onChange={v => updateAction(idx,'agent_id',v)} options={agents.map(a => ({ value:a.id, label:a.name }))} placeholder="Select agent..." /></div>}
               {action.type === 'add_tag'               && <div><Lbl>Tag</Lbl><Inp value={cfg.tag} onChange={v => updateAction(idx,'tag',v)} placeholder="e.g. hot-lead" /></div>}
+              {action.type === 'remove_tag'            && <div><Lbl>Tag to Remove</Lbl><Inp value={cfg.tag} onChange={v => updateAction(idx,'tag',v)} placeholder="e.g. hot-lead" /></div>}
+              {action.type === 'notify_all_agents'     && <div><Lbl>Message</Lbl><textarea value={cfg.body||''} onChange={e => updateAction(idx,'body',e.target.value)} placeholder="Message to all agents..." rows={2} style={{ width:'100%', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, resize:'vertical', boxSizing:'border-box' }} /></div>}
+              {action.type === 'notify_admin'          && <div><Lbl>Message</Lbl><textarea value={cfg.body||''} onChange={e => updateAction(idx,'body',e.target.value)} placeholder="Message to admin..." rows={2} style={{ width:'100%', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, resize:'vertical', boxSizing:'border-box' }} /></div>}
+              {action.type === 'send_sms'              && <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                <div><Lbl>Send To</Lbl><Sel value={cfg.to} onChange={v => updateAction(idx,'to',v)} options={agentOptions} /></div>
+                <div><Lbl>Message</Lbl><textarea value={cfg.body||''} onChange={e => updateAction(idx,'body',e.target.value)} placeholder="SMS message... use {{contact_name}}" rows={2} style={{ width:'100%', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, resize:'vertical', boxSizing:'border-box' }} /></div>
+                <div style={{ background:'var(--dim)', padding:'8px 10px', borderRadius:'7px', fontSize:'11px', color:'var(--muted)' }}>📱 Requires Twilio setup in Settings</div>
+              </div>}
+              {action.type === 'create_followup'       && <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                <div><Lbl>Follow-up in (days)</Lbl><Inp type="number" value={cfg.due_days||7} onChange={v => updateAction(idx,'due_days',v)} placeholder="7" /></div>
+                <div><Lbl>Assign To</Lbl><Sel value={cfg.assign_to} onChange={v => updateAction(idx,'assign_to',v)} options={agentOptions} /></div>
+                <div style={{ gridColumn:'span 2' }}><Lbl>Note (optional)</Lbl><Inp value={cfg.notes} onChange={v => updateAction(idx,'notes',v)} placeholder="Follow-up note..." /></div>
+              </div>}
+              {action.type === 'set_followup_date'     && <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                <div><Lbl>Days from now</Lbl><Inp type="number" value={cfg.days||7} onChange={v => updateAction(idx,'days',v)} placeholder="7" /></div>
+              </div>}
+              {action.type === 'log_call'              && <div><Lbl>Call Notes</Lbl><textarea value={cfg.notes||''} onChange={e => updateAction(idx,'notes',e.target.value)} placeholder="Auto-logged call note..." rows={2} style={{ width:'100%', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, resize:'vertical', boxSizing:'border-box' }} /></div>}
+              {action.type === 'create_note'           && <div><Lbl>Note Content</Lbl><textarea value={cfg.body||''} onChange={e => updateAction(idx,'body',e.target.value)} placeholder="Note text... use {{contact_name}}" rows={2} style={{ width:'100%', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, resize:'vertical', boxSizing:'border-box' }} /></div>}
+              {action.type === 'update_contact_field'  && <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                <div><Lbl>Field</Lbl><Sel value={cfg.field} onChange={v => updateAction(idx,'field',v)} options={[{value:'motivation',label:'Motivation'},{value:'timeline',label:'Timeline'},{value:'financing',label:'Financing'},{value:'budget_max',label:'Max Budget'},{value:'source',label:'Source'}]} placeholder="Select field..." /></div>
+                <div><Lbl>Value</Lbl><Inp value={cfg.value} onChange={v => updateAction(idx,'value',v)} placeholder="New value..." /></div>
+              </div>}
+              {action.type === 'create_gift'           && <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                <div><Lbl>Gift Description</Lbl><Inp value={cfg.description} onChange={v => updateAction(idx,'description',v)} placeholder="Closing gift for {{contact_name}}" /></div>
+                <div><Lbl>Assign To</Lbl><Sel value={cfg.assign_to} onChange={v => updateAction(idx,'assign_to',v)} options={agentOptions} /></div>
+              </div>}
+              {action.type === 'schedule_event'        && <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                <div><Lbl>Event Title</Lbl><Inp value={cfg.title} onChange={v => updateAction(idx,'title',v)} placeholder="Follow-up with {{contact_name}}" /></div>
+                <div><Lbl>Days from now</Lbl><Inp type="number" value={cfg.days||1} onChange={v => updateAction(idx,'days',v)} placeholder="1" /></div>
+              </div>}
             </div>
           )
         })}
