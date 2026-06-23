@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase } from './supabase'
+import { trigger } from './automationDispatcher'
 
 // ── HELPER ───────────────────────────────────────────────────────
 async function run(promise) {
@@ -67,11 +68,13 @@ contacts: {
   async create(data) {
     const result = await run(supabase.from('contacts').insert({ ...data, last_activity: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
     log(data.agent_id, 'contacts', result.id, 'created', { metadata: { description: `${result.first_name} ${result.last_name || ''} added` } })
+    trigger.newContact(result)
     return result
   },
   async update(id, data) {
     const result = await run(supabase.from('contacts').update({ ...data, last_activity: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     log(data.agent_id, 'contacts', id, 'updated', { metadata: { description: `${result.first_name} ${result.last_name || ''} updated` } })
+    trigger.contactUpdated(result, data)
     return result
   },
   async delete(id, agentId) {
@@ -95,6 +98,7 @@ deals: {
   async create(data) {
     const result = await run(supabase.from('deals').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
     log(data.agent_id, 'deals', result.id, 'created', { metadata: { description: `Deal at ${result.addr} added` } })
+    trigger.dealCreated(result)
     return result
   },
   async update(id, data) {
@@ -106,6 +110,7 @@ deals: {
       new_value:  data.stage,
       metadata:   { description: `Deal at ${result.addr} updated` }
     })
+    trigger.dealUpdated(result, data)
     return result
   },
   async delete(id, agentId) {
@@ -138,6 +143,7 @@ listings: {
       new_value:  data.status,
       metadata:   { description: `Listing at ${result.addr} updated` }
     })
+    trigger.listingUpdated(result, data)
     return result
   },
   async delete(id, agentId) {
@@ -241,6 +247,7 @@ tasks: {
   async create(data) {
     const result = await run(supabase.from('tasks').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
     log(data.agent_id || data.created_by, 'tasks', result.id, 'created', { metadata: { description: result.title } })
+    trigger.taskCreated(result)
     return result
   },
   async update(id, data) {
@@ -251,6 +258,7 @@ tasks: {
   async complete(id, agentId) {
     const result = await run(supabase.from('tasks').update({ status: 'done', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     log(agentId, 'tasks', id, 'completed', { field_name: 'status', new_value: 'done', metadata: { description: result.title } })
+    trigger.taskUpdated(result, { status: 'done' })
     return result
   },
   async delete(id, agentId) {
@@ -328,6 +336,7 @@ openHouses: {
   async create(data) {
     const result = await run(supabase.from('open_houses').insert({ ...data, created_at: new Date().toISOString() }).select().single())
     log(data.agent_id, 'open_houses', result.id, 'created', { metadata: { description: `Open house at ${result.listing_addr}` } })
+    trigger.openHouseCreated(result)
     return result
   },
   async update(id, data) {

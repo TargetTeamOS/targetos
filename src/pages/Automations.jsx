@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
 import { fmtDateTime, fmtDate } from '../lib/utils'
 import { TRIGGERS, CONDITIONS, ACTIONS } from '../lib/automationEngine'
+import { invalidateCache } from '../lib/automationDispatcher'
 import { DEAL_STAGES, CONTACT_STATUSES, CONTACT_SOURCES, DEAL_SIDES, LISTING_STATUSES, TASK_PRIORITIES } from '../lib/constants'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea,
@@ -515,6 +516,7 @@ export function Automations() {
         toast('✅ Automation created')
       }
       setShowBuilder(false)
+      invalidateCache()
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
     finally { setSaving(false) }
   }
@@ -523,6 +525,7 @@ export function Automations() {
     try {
       const { data } = await supabase.from('automations').update({ active: !automation.active, updated_at: new Date().toISOString() }).eq('id', automation.id).select().single()
       setAutomations(prev => prev.map(a => a.id === automation.id ? data : a))
+      invalidateCache()
       toast(automation.active ? 'Automation paused' : '✅ Automation activated')
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
