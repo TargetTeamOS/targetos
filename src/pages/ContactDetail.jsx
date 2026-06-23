@@ -155,16 +155,23 @@ function Section({ title, icon, children, collapsible = true }) {
 
 // ── TIMELINE ITEM ─────────────────────────────────────────────────
 const TL_TYPES = {
-  call:    { icon: '📞', color: '#10B981', label: 'Call' },
-  note:    { icon: '📝', color: '#8B5CF6', label: 'Note' },
-  email:   { icon: '📧', color: '#3B82F6', label: 'Email' },
-  sms:     { icon: '💬', color: '#F97316', label: 'SMS' },
-  voice:   { icon: '🎙', color: '#CC2200', label: 'Voice Capture' },
-  status:  { icon: '🔄', color: '#F5A623', label: 'Status Changed' },
-  created: { icon: '✨', color: '#10B981', label: 'Created' },
-  task:    { icon: '✅', color: '#6366F1', label: 'Task' },
-  meeting: { icon: '🤝', color: '#EC4899', label: 'Meeting' },
-  updated: { icon: '✏️', color: '#94A3B8', label: 'Updated' },
+  call:       { icon: '📞', color: '#10B981', label: 'Call' },
+  note:       { icon: '📝', color: '#8B5CF6', label: 'Note' },
+  email:      { icon: '📧', color: '#3B82F6', label: 'Email' },
+  sms:        { icon: '💬', color: '#F97316', label: 'SMS' },
+  voice:      { icon: '🎙', color: '#CC2200', label: 'Voice Capture' },
+  status:     { icon: '🔄', color: '#F5A623', label: 'Status Changed' },
+  created:    { icon: '✨', color: '#10B981', label: 'Contact Created' },
+  task:       { icon: '✅', color: '#6366F1', label: 'Task Created' },
+  meeting:    { icon: '🤝', color: '#EC4899', label: 'Meeting' },
+  updated:    { icon: '✏️', color: '#94A3B8', label: 'Field Updated' },
+  file:       { icon: '📎', color: '#14B8A6', label: 'File Uploaded' },
+  agreement:  { icon: '📋', color: '#10B981', label: 'Agreement Signed' },
+  appointment:{ icon: '📅', color: '#8B5CF6', label: 'Appointment' },
+  gift:       { icon: '🎁', color: '#EC4899', label: 'Gift' },
+  assigned:   { icon: '👤', color: '#0EA5E9', label: 'Agent Assigned' },
+  automation: { icon: '⚡', color: '#CC2200', label: 'Automation Fired' },
+  deleted:    { icon: '🗑️', color: '#DC2626', label: 'Record Deleted' },
 }
 
 function TimelineItem({ item }) {
@@ -260,6 +267,176 @@ function AddToTimeline({ contactId, agentId, onAdded }) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// AGREEMENTS SECTION — Upload real documents per agreement type
+// Stores in Supabase Storage under contacts/{id}/agreements/
+// Logs every upload to the activity timeline
+// ════════════════════════════════════════════════════════════════
+const AGREEMENT_TYPES = [
+  { id: 'buyer',    label: 'Buyer Agreement',    icon: '🏠', color: '#10B981' },
+  { id: 'seller',   label: 'Listing Agreement',  icon: '🏡', color: '#F5A623' },
+  { id: 'referral', label: 'Referral Agreement', icon: '🤝', color: '#8B5CF6' },
+  { id: 'rental',   label: 'Rental Agreement',   icon: '🔑', color: '#3B82F6' },
+  { id: 'other',    label: 'Other Document',     icon: '📄', color: '#94A3B8' },
+]
+
+function AgreementsSection({ contactId, agentId, contactName, onActivityLog }) {
+  const { toast } = useApp()
+  const [docs,      setDocs]      = React.useState([])
+  const [loading,   setLoading]   = React.useState(true)
+  const [uploading, setUploading] = React.useState(null) // which type is uploading
+  const inputRefs = React.useRef({})
+
+  React.useEffect(() => { if (contactId) loadDocs() }, [contactId])
+
+  async function loadDocs() {
+    setLoading(true)
+    try {
+      const { data } = await supabase.storage
+        .from('targetos-files')
+        .list(`contacts/${contactId}/agreements`, { limit: 50, sortBy: { column: 'created_at', order: 'desc' } })
+      setDocs(data || [])
+    } catch { setDocs([]) }
+    finally { setLoading(false) }
+  }
+
+  async function handleUpload(agreementType, file) {
+    if (!file) return
+    if (file.size > 50 * 1024 * 1024) { toast('File too large (max 50MB)', '#DC2626'); return }
+    setUploading(agreementType)
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `contacts/${contactId}/agreements/${agreementType}_${Date.now()}_${safeName}`
+      const { error } = await supabase.storage.from('targetos-files').upload(path, file, { cacheControl: '3600', upsert: false })
+      if (error) throw error
+
+      // Get public URL
+      const { data: urlData } = supabase.storage.from('targetos-files').getPublicUrl(path)
+
+      // Log to activity timeline
+      const typeDef = AGREEMENT_TYPES.find(t => t.id === agreementType)
+      await supabase.from('audit_log').insert({
+        agent_id:   agentId,
+        table_name: 'contacts',
+        record_id:  contactId,
+        action:     'note',
+        field_name: 'agreement',
+        new_value:  `${typeDef?.label || agreementType} uploaded: ${file.name}`,
+        metadata:   {
+          description: `${typeDef?.label} uploaded`,
+          type: 'agreement',
+          file_name: file.name,
+          file_url:  urlData?.publicUrl,
+        },
+        created_at: new Date().toISOString(),
+      })
+
+      toast('✅ ' + (typeDef?.label || 'Document') + ' uploaded')
+      await loadDocs()
+      onActivityLog?.()
+    } catch(e) {
+      toast('Upload failed: ' + e.message, '#DC2626')
+    } finally {
+      setUploading(null)
+      if (inputRefs.current[agreementType]) inputRefs.current[agreementType].value = ''
+    }
+  }
+
+  async function deleteDoc(doc) {
+    try {
+      await supabase.storage.from('targetos-files').remove([`contacts/${contactId}/agreements/${doc.name}`])
+      setDocs(prev => prev.filter(d => d.name !== doc.name))
+      toast('Document deleted')
+    } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+  }
+
+  // Parse type from filename prefix
+  function getTypeFromName(name) {
+    const prefix = name.split('_')[0]
+    return AGREEMENT_TYPES.find(t => t.id === prefix) || AGREEMENT_TYPES[4]
+  }
+
+  function getPublicUrl(name) {
+    const { data } = supabase.storage.from('targetos-files').getPublicUrl(`contacts/${contactId}/agreements/${name}`)
+    return data?.publicUrl
+  }
+
+  const ff2 = 'Inter,system-ui,sans-serif'
+
+  return (
+    <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden', marginBottom: '8px' }}>
+      {/* Header */}
+      <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--dim)' }}>
+        <span style={{ fontSize: '14px' }}>📋</span>
+        <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>Agreements & Documents</span>
+        <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{docs.length} file{docs.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div style={{ padding: '10px 14px' }}>
+
+        {/* Upload buttons by type */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '10px' }}>
+          {AGREEMENT_TYPES.map(type => (
+            <div key={type.id}>
+              <input
+                ref={el => inputRefs.current[type.id] = el}
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(type.id, f) }}
+              />
+              <button
+                onClick={() => inputRefs.current[type.id]?.click()}
+                disabled={uploading === type.id}
+                style={{
+                  width: '100%', padding: '7px 8px', borderRadius: '7px',
+                  border: `1px solid ${type.color}44`, background: type.color + '0e',
+                  color: type.color, fontSize: '11px', fontWeight: 600,
+                  cursor: uploading === type.id ? 'wait' : 'pointer', fontFamily: ff2,
+                  display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center',
+                  opacity: uploading === type.id ? 0.6 : 1,
+                }}>
+                <span>{uploading === type.id ? '⏳' : type.icon}</span>
+                {uploading === type.id ? 'Uploading...' : '+ ' + type.label.replace(' Agreement','').replace(' Document','')}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Uploaded documents */}
+        {loading && <div style={{ fontSize: '12px', color: 'var(--muted)', padding: '6px 0' }}>Loading...</div>}
+        {!loading && docs.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--muted)', fontSize: '12px' }}>
+            No documents uploaded yet.<br />Click a button above to attach an agreement.
+          </div>
+        )}
+        {docs.map(doc => {
+          const typeDef = getTypeFromName(doc.name)
+          const url     = getPublicUrl(doc.name)
+          // Show a cleaner name by removing the prefix+timestamp
+          const parts     = doc.name.split('_')
+          const cleanName = parts.slice(2).join('_') || doc.name
+          return (
+            <div key={doc.name} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '16px', flexShrink: 0 }}>{typeDef.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <a href={url} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: '12px', fontWeight: 600, color: 'var(--brand)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                  {cleanName}
+                </a>
+                <div style={{ fontSize: '10px', color: typeDef.color, fontWeight: 600, marginTop: '1px' }}>{typeDef.label}</div>
+              </div>
+              <a href={url} download={cleanName} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: '12px', color: 'var(--muted)', textDecoration: 'none', flexShrink: 0, padding: '3px 6px', borderRadius: '5px', border: '1px solid var(--border)' }}>↓</a>
+              <button onClick={() => deleteDoc(doc)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontSize: '14px', flexShrink: 0, padding: '3px 4px' }}>✕</button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════
 // RIGHT PANEL — Full featured client service panel
 // Matches and exceeds Brivity's right panel functionality
 // ════════════════════════════════════════════════════════════════
@@ -330,6 +507,14 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       setNewTask({ title: '', due_date: '', priority: 'normal' })
       setAddingTask(false)
       toast('✅ Task created')
+      // Activity lock: log task creation
+      await supabase.from('audit_log').insert({
+        agent_id: agentId, table_name: 'contacts', record_id: contactId,
+        action: 'task', field_name: 'task',
+        new_value: newTask.title,
+        metadata: { description: 'Task created: ' + newTask.title, type: 'task' },
+        created_at: new Date().toISOString(),
+      })
       onRefreshTimeline?.()
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
     finally { setSavingTask(false) }
@@ -352,8 +537,16 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       setNewAppt({ title: '', date: '', time: '', notes: '' })
       setAddingAppt(false)
       toast('✅ Appointment created')
-      // Refresh appts
+      // Activity lock: log appointment
+      await supabase.from('audit_log').insert({
+        agent_id: agentId, table_name: 'contacts', record_id: contactId,
+        action: 'note', field_name: 'appointment',
+        new_value: newAppt.title + (newAppt.date ? ' on ' + newAppt.date : ''),
+        metadata: { description: 'Appointment: ' + newAppt.title, type: 'appointment' },
+        created_at: new Date().toISOString(),
+      })
       supabase.from('calendar_events').select('id,title,start_date,start_time,type').eq('contact_id', contactId).order('start_date').limit(10).then(r => setAppts(r.data || []))
+      onRefreshTimeline?.()
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
     finally { setSavingAppt(false) }
   }
@@ -404,31 +597,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── AGREEMENTS ── */}
-      <RightSection title="Agreements" icon="📋" color="#10B981">
-        <div style={{ display:'flex', flexDirection:'column', gap:'6px', marginBottom:'8px' }}>
-          {agreements.length === 0 && <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'6px' }}>No agreements signed yet</div>}
-          {agreements.map((a, i) => (
-            <div key={i} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'6px 8px', background:'#F0FDF4', borderRadius:'7px', border:'1px solid #BBF7D0' }}>
-              <span style={{ fontSize:'12px' }}>✅</span>
-              <span style={{ fontSize:'12px', fontWeight:600, color:'#166534' }}>{a.type} Agreement</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'5px' }}>
-          {['Buyer','Seller','Referral'].map(type => (
-            <button key={type}
-              onClick={async () => {
-                const tag = type + ' Agreement'
-                const tags = [...(f.tags || []).filter(t => t !== tag), tag]
-                await db.contacts.update(contactId, { tags, agent_id: f.agent_id })
-                toast('✅ ' + type + ' agreement noted')
-              }}
-              style={{ padding:'5px 6px', borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:'11px', fontWeight:600, cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
-              + {type}
-            </button>
-          ))}
-        </div>
-      </RightSection>
+      <AgreementsSection contactId={contactId} agentId={f.agent_id || agent?.id} contactName={f.first_name + ' ' + (f.last_name || '')} onActivityLog={onRefreshTimeline} />
 
       {/* ── APPOINTMENTS ── */}
       <RightSection title="Appointments" icon="📅" color="#8B5CF6"
@@ -719,16 +888,42 @@ export function ContactDetail() {
       }))
 
       logs.forEach(a => {
-        const typeMap = { note: a.metadata?.type || 'note', created: 'created', status: 'status', updated: 'updated' }
-        const type = typeMap[a.action]
-        if (!type || !TL_TYPES[type]) return
+        // Map every audit_log action to a timeline type
+        let type = a.metadata?.type || a.action
+        if (a.action === 'note')    type = a.metadata?.type || 'note'
+        if (a.action === 'created') type = 'created'
+        if (a.action === 'status')  type = 'status'
+        if (a.action === 'updated') type = 'updated'
+        if (a.action === 'assigned') type = 'assigned'
+        if (a.action === 'deleted') type = 'deleted'
+        if (!TL_TYPES[type]) type = 'updated' // fallback — show everything
+
+        let title = a.metadata?.description || ''
+        let body  = ''
+
+        if (a.action === 'status') {
+          title = `Status: ${a.old_value || '—'} → ${a.new_value}`
+        } else if (a.action === 'updated' && a.field_name) {
+          const fieldLabel = a.field_name.replace(/_/g, ' ')
+          if (a.old_value && a.new_value) title = `${fieldLabel}: "${a.old_value}" → "${a.new_value}"`
+          else if (a.new_value)           title = `${fieldLabel} set to "${a.new_value}"`
+          else                            title = `${fieldLabel} cleared`
+        } else if (a.action === 'note') {
+          body = a.new_value || ''
+        } else if (a.action === 'created') {
+          title = 'Contact was created'
+        }
+
         items.push({
           id:         a.id,
           type,
-          title:      a.action === 'status' ? `Status changed: ${a.old_value || '?'} → ${a.new_value}` : a.metadata?.description || '',
-          body:       a.action === 'note' ? a.new_value : '',
+          title,
+          body,
           agent:      a.agents,
           created_at: a.created_at,
+          field:      a.field_name,
+          oldVal:     a.old_value,
+          newVal:     a.new_value,
         })
       })
 
@@ -753,8 +948,22 @@ export function ContactDetail() {
   async function saveField(field, value) {
     if (!contact) return
     try {
+      const prev = contact[field]
       const updated = await db.contacts.update(id, { [field]: value })
-      setContact(prev => ({ ...prev, [field]: value, ...updated }))
+      setContact(c => ({ ...c, [field]: value, ...updated }))
+      // Activity lock: log every field change to timeline
+      await supabase.from('audit_log').insert({
+        agent_id:   contact.agent_id || agent?.id,
+        table_name: 'contacts',
+        record_id:  id,
+        action:     'updated',
+        field_name: field,
+        old_value:  prev !== null && prev !== undefined ? String(prev).slice(0, 200) : null,
+        new_value:  value !== null && value !== undefined ? String(value).slice(0, 200) : null,
+        metadata:   { description: `${field.replace(/_/g,' ')} updated` },
+        created_at: new Date().toISOString(),
+      })
+      loadTimeline()
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
   }
 
