@@ -1,45 +1,106 @@
 // ═══════════════════════════════════════════════════════════════
-// TargetOS V2 — Automations Page
-// Full visual rule builder. Trigger → Conditions → Actions.
-// ZERO imports from automationEngine or automationDispatcher.
-// All data defined locally to prevent any import chain issues.
+// TargetOS V2 — Automations Page (Complete Rebuild)
+//
+// TWO BUILDER MODES:
+// 1. Sentence Builder — Monday.com style: click underlined words
+//    to pick trigger/action inline. Natural language feel.
+// 2. Card Builder — step-by-step cards for complex automations.
+//
+// All data local — zero automation engine imports.
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { invalidateCache } from '../lib/automationDispatcher'
 import { fmtDateTime, fmtDate } from '../lib/utils'
-import { Btn, Loading, Empty, Confirm, Pill, Avatar } from '../components/UI'
+import { Btn, Loading, Empty, Confirm } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-// ── ALL DATA DEFINED LOCALLY — NO EXTERNAL IMPORTS ───────────────
-const TRIGGER_LIST = [
-  { id: 'new_contact',          label: 'New contact added',            icon: '👤', category: 'Contacts' },
-  { id: 'contact_status_change',label: 'Contact status changes',       icon: '🔄', category: 'Contacts' },
-  { id: 'no_activity',          label: 'No contact activity for X days',icon: '💤', category: 'Contacts' },
-  { id: 'deal_stage_change',    label: 'Deal stage changes',           icon: '📊', category: 'Deals'    },
-  { id: 'deal_created',         label: 'New deal added',               icon: '✨', category: 'Deals'    },
-  { id: 'closing_soon',         label: 'Deal closing within X days',   icon: '📅', category: 'Deals'    },
-  { id: 'offer_accepted',       label: 'Offer accepted (AO)',          icon: '🤝', category: 'Deals'    },
-  { id: 'deal_closed',          label: 'Deal closes',                  icon: '🏁', category: 'Deals'    },
-  { id: 'task_overdue',         label: 'Task becomes overdue',         icon: '⚠️', category: 'Tasks'    },
-  { id: 'task_completed',       label: 'Task is completed',            icon: '✅', category: 'Tasks'    },
-  { id: 'listing_status_change',label: 'Listing status changes',       icon: '🏡', category: 'Listings' },
-  { id: 'open_house_created',   label: 'Open house scheduled',         icon: '🚪', category: 'Listings' },
+// ─────────────────────────────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────────────────────────────
+
+const TRIGGER_GROUPS = [
+  {
+    label: 'Most Used',
+    items: [
+      { id: 'new_contact',           label: 'New contact added',             icon: '👤', sentence: 'a new contact is added' },
+      { id: 'deal_stage_change',     label: 'Deal stage changes',            icon: '📊', sentence: 'a deal stage changes' },
+      { id: 'task_overdue',          label: 'Task becomes overdue',          icon: '⚠️', sentence: 'a task becomes overdue' },
+      { id: 'closing_soon',          label: 'Deal closing within X days',    icon: '📅', sentence: 'a deal is closing within {days} days', hasDays: true },
+      { id: 'no_activity',           label: 'No contact activity for X days',icon: '💤', sentence: 'a contact has no activity for {days} days', hasDays: true },
+      { id: 'contact_status_change', label: 'Contact status changes',        icon: '🔄', sentence: 'a contact status changes to {status}', hasStatus: true },
+    ],
+  },
+  {
+    label: 'Contacts',
+    items: [
+      { id: 'new_contact',           label: 'New contact added',             icon: '👤', sentence: 'a new contact is added' },
+      { id: 'contact_status_change', label: 'Contact status changes',        icon: '🔄', sentence: 'a contact status changes to {status}', hasStatus: true },
+      { id: 'no_activity',           label: 'No activity for X days',        icon: '💤', sentence: 'a contact has no activity for {days} days', hasDays: true },
+    ],
+  },
+  {
+    label: 'Deals',
+    items: [
+      { id: 'deal_created',          label: 'New deal added',                icon: '✨', sentence: 'a new deal is created' },
+      { id: 'deal_stage_change',     label: 'Deal stage changes',            icon: '📊', sentence: 'a deal stage changes' },
+      { id: 'offer_accepted',        label: 'Offer accepted (AO)',           icon: '🤝', sentence: 'an offer is accepted' },
+      { id: 'deal_closed',           label: 'Deal closes',                   icon: '🏁', sentence: 'a deal is closed' },
+      { id: 'closing_soon',          label: 'Closing within X days',         icon: '📅', sentence: 'a deal is closing within {days} days', hasDays: true },
+    ],
+  },
+  {
+    label: 'Tasks',
+    items: [
+      { id: 'task_overdue',          label: 'Task becomes overdue',          icon: '⚠️', sentence: 'a task becomes overdue' },
+      { id: 'task_completed',        label: 'Task is completed',             icon: '✅', sentence: 'a task is completed' },
+    ],
+  },
+  {
+    label: 'Listings',
+    items: [
+      { id: 'listing_status_change', label: 'Listing status changes',        icon: '🏡', sentence: 'a listing status changes' },
+      { id: 'open_house_created',    label: 'Open house scheduled',          icon: '🚪', sentence: 'an open house is scheduled' },
+    ],
+  },
 ]
 
-const ACTION_LIST = [
-  { id: 'create_task',           label: 'Create a task',               icon: '✅' },
-  { id: 'send_notification',     label: 'Send in-app notification',    icon: '🔔' },
-  { id: 'update_contact_status', label: 'Update contact status',       icon: '🔄' },
-  { id: 'update_deal_stage',     label: 'Update deal stage',           icon: '📊' },
-  { id: 'assign_agent',          label: 'Assign to agent',             icon: '👤' },
-  { id: 'send_email',            label: 'Send email notification',     icon: '📧' },
-  { id: 'add_tag',               label: 'Add tag to contact',          icon: '🏷' },
+// Flat list for easy lookup
+const TRIGGER_LIST = TRIGGER_GROUPS.flatMap(g => g.items).filter((t, i, arr) => arr.findIndex(x => x.id === t.id) === i)
+
+const ACTION_GROUPS = [
+  {
+    label: 'Notifications',
+    items: [
+      { id: 'send_notification', label: 'Notify someone',             icon: '🔔', sentence: 'notify {agent}' },
+      { id: 'send_email',        label: 'Send email',                 icon: '📧', sentence: 'send an email to {agent}' },
+    ],
+  },
+  {
+    label: 'Tasks',
+    items: [
+      { id: 'create_task',       label: 'Create a task',              icon: '✅', sentence: 'create a task for {agent}' },
+    ],
+  },
+  {
+    label: 'Update Record',
+    items: [
+      { id: 'update_contact_status', label: 'Change contact status',  icon: '🔄', sentence: 'change contact status to {status}' },
+      { id: 'update_deal_stage',     label: 'Change deal stage',      icon: '📊', sentence: 'change deal stage to {stage}' },
+      { id: 'assign_agent',          label: 'Assign to agent',        icon: '👤', sentence: 'assign to {agent}' },
+      { id: 'add_tag',               label: 'Add tag to contact',     icon: '🏷', sentence: 'add tag "{tag}" to contact' },
+    ],
+  },
 ]
+
+const ACTION_LIST = ACTION_GROUPS.flatMap(g => g.items)
+
+const CONTACT_STATUSES = ['New', 'Hot', 'Warm', 'Cold', 'Active', 'Nurturing', 'Under Contract', 'Closed', 'Unresponsive']
+const DEAL_STAGES      = ['Negotiations', 'Offer Accapted', 'Under Shtar', 'Under Contract', 'Closed', 'Deal Fell Through']
 
 const BLANK = {
   name:           '',
@@ -51,218 +112,401 @@ const BLANK = {
   action_nodes:   [],
 }
 
-// ── SIMPLE INLINE STYLE COMPONENTS ───────────────────────────────
-function Card({ children, style }) {
-  return (
-    <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', ...style }}>
-      {children}
-    </div>
-  )
-}
+// ─────────────────────────────────────────────────────────────────
+// SHARED DROPDOWN
+// A searchable dropdown that pops up from any anchor element
+// ─────────────────────────────────────────────────────────────────
+function Dropdown({ options, onSelect, onClose, title, width = 300 }) {
+  const [search, setSearch] = useState('')
+  const ref    = useRef(null)
+  const inputRef = useRef(null)
 
-function Label({ children }) {
-  return (
-    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>
-      {children}
-    </div>
-  )
-}
+  useEffect(() => {
+    inputRef.current?.focus()
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) onClose() }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
-function TextInput({ value, onChange, placeholder, type = 'text' }) {
-  return (
-    <input
-      type={type}
-      value={value || ''}
-      onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
-      style={{ width: '100%', padding: '8px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, boxSizing: 'border-box', outline: 'none' }}
-    />
-  )
-}
+  // Options can be flat array of {id,label,icon,category} or grouped array of {label,items:[...]}
+  const isGrouped = options[0]?.items !== undefined
 
-function TextareaInput({ value, onChange, placeholder, rows = 2 }) {
-  return (
-    <textarea
-      value={value || ''}
-      onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
-      rows={rows}
-      style={{ width: '100%', padding: '8px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, boxSizing: 'border-box', resize: 'vertical', outline: 'none' }}
-    />
-  )
-}
+  const filterItem = item => !search || item.label.toLowerCase().includes(search.toLowerCase())
 
-function SelectInput({ value, onChange, options, placeholder }) {
-  return (
-    <select
-      value={value || ''}
-      onChange={e => onChange(e.target.value)}
-      style={{ width: '100%', padding: '8px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, outline: 'none' }}
-    >
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map(o => (
-        <option key={typeof o === 'string' ? o : o.value} value={typeof o === 'string' ? o : o.value}>
-          {typeof o === 'string' ? o : o.label}
-        </option>
-      ))}
-    </select>
-  )
-}
+  const renderedGroups = isGrouped
+    ? options.map(g => ({ ...g, items: g.items.filter(filterItem) })).filter(g => g.items.length > 0)
+    : [{ label: null, items: options.filter(filterItem) }]
 
-function Toggle({ value, onChange }) {
   return (
-    <div
-      onClick={() => onChange(!value)}
-      style={{ width: 36, height: 20, borderRadius: '99px', background: value ? '#10B981' : 'var(--border)', position: 'relative', cursor: 'pointer', transition: 'background .2s', flexShrink: 0 }}
-    >
-      <div style={{ position: 'absolute', top: 2, left: value ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
-    </div>
-  )
-}
-
-// ── STEP HEADER ───────────────────────────────────────────────────
-function StepHeader({ number, label, color }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-      <div style={{ width: 24, height: 24, borderRadius: '50%', background: color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 800, flexShrink: 0 }}>
-        {number}
+    <div ref={ref} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 2000, background: '#fff', borderRadius: '10px', boxShadow: '0 8px 30px rgba(0,0,0,.18)', width, border: '1px solid #E2E8F0', overflow: 'hidden', fontFamily: ff }}>
+      {title && <div style={{ padding: '10px 14px 6px', fontSize: '11px', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '.06em' }}>{title}</div>}
+      <div style={{ padding: '8px 10px', borderBottom: '1px solid #F1F5F9' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#F8FAFC', borderRadius: '7px', padding: '6px 10px', border: '1px solid #E2E8F0' }}>
+          <span style={{ color: '#94A3B8', fontSize: '13px' }}>🔍</span>
+          <input
+            ref={inputRef}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search..."
+            style={{ border: 'none', background: 'none', outline: 'none', fontSize: '13px', color: '#1E293B', width: '100%', fontFamily: ff }}
+          />
+        </div>
       </div>
-      <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{label}</span>
-    </div>
-  )
-}
-
-// ── TRIGGER STEP ──────────────────────────────────────────────────
-function TriggerStep({ form, onChange }) {
-  const trigger = TRIGGER_LIST.find(t => t.id === form.trigger_type)
-  const needsDays = ['no_activity', 'closing_soon'].includes(form.trigger_type)
-
-  return (
-    <div style={{ marginBottom: '24px' }}>
-      <StepHeader number="1" label="When this happens... (Trigger)" color="#CC2200" />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-        {TRIGGER_LIST.map(t => (
-          <div
-            key={t.id}
-            onClick={() => onChange({ ...form, trigger_type: t.id, trigger_config: {} })}
-            style={{
-              padding: '10px 12px',
-              borderRadius: '8px',
-              border: `2px solid ${form.trigger_type === t.id ? '#CC2200' : 'var(--border)'}`,
-              background: form.trigger_type === t.id ? 'rgba(204,34,0,.06)' : 'var(--dim)',
-              cursor: 'pointer',
-              transition: 'all .12s',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '2px' }}>
-              <span style={{ fontSize: '14px' }}>{t.icon}</span>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: form.trigger_type === t.id ? '#CC2200' : 'var(--text)' }}>{t.label}</span>
-            </div>
-            <div style={{ fontSize: '10px', color: 'var(--muted)', paddingLeft: '21px' }}>{t.category}</div>
+      <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+        {renderedGroups.map((group, gi) => (
+          <div key={gi}>
+            {group.label && <div style={{ padding: '8px 14px 4px', fontSize: '10px', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.06em' }}>{group.label}</div>}
+            {group.items.map(item => (
+              <div
+                key={item.id}
+                onClick={() => { onSelect(item); onClose() }}
+                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', cursor: 'pointer', transition: 'background .1s' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
+                onMouseLeave={e => e.currentTarget.style.background = ''}
+              >
+                <span style={{ fontSize: '16px', flexShrink: 0 }}>{item.icon}</span>
+                <span style={{ fontSize: '13px', color: '#1E293B', fontWeight: 500 }}>{item.label}</span>
+              </div>
+            ))}
           </div>
         ))}
+        {renderedGroups.every(g => g.items.length === 0) && (
+          <div style={{ padding: '20px', textAlign: 'center', color: '#94A3B8', fontSize: '13px' }}>No results</div>
+        )}
       </div>
-      {needsDays && (
-        <div style={{ marginTop: '12px', padding: '12px', background: 'var(--dim)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-          <Label>Number of Days</Label>
-          <TextInput
-            type="number"
-            value={form.trigger_config?.days ?? (form.trigger_type === 'no_activity' ? 14 : 7)}
-            onChange={v => onChange({ ...form, trigger_config: { ...form.trigger_config, days: v } })}
-            placeholder={form.trigger_type === 'no_activity' ? '14' : '7'}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SENTENCE BUILDER
+// The Monday.com-style inline sentence experience
+// "When {trigger} → then {action}"
+// Click any blue underlined word to change it
+// ─────────────────────────────────────────────────────────────────
+function SentenceBuilder({ form, onChange, agents }) {
+  const [openPicker, setOpenPicker] = useState(null) // 'trigger' | 'action_{idx}' | 'days' | etc.
+  const trigger = TRIGGER_LIST.find(t => t.id === form.trigger_type)
+
+  function setTrigger(t) {
+    onChange({ ...form, trigger_type: t.id, trigger_config: { days: 7 }, action_nodes: form.action_nodes })
+    setOpenPicker(null)
+  }
+
+  function addAction(a) {
+    const defaults = { assign_to: 'trigger_agent', notify: 'trigger_agent', priority: 'normal', due_days: 1, to: 'trigger_agent' }
+    onChange({ ...form, action_nodes: [...(form.action_nodes || []), { id: Date.now(), type: a.id, config: { ...defaults } }] })
+    setOpenPicker(null)
+  }
+
+  function updateActionConfig(idx, key, val) {
+    const nodes = form.action_nodes.map((n, i) => i === idx ? { ...n, config: { ...n.config, [key]: val } } : n)
+    onChange({ ...form, action_nodes: nodes })
+  }
+
+  function removeAction(idx) {
+    onChange({ ...form, action_nodes: form.action_nodes.filter((_, i) => i !== idx) })
+  }
+
+  const agentOptions = [
+    { id: 'trigger_agent', label: 'the assigned agent', icon: '👤' },
+    ...agents.map(a => ({ id: a.id, label: a.name, icon: '👤' })),
+  ]
+
+  // Clickable blue underlined word
+  const Chip = ({ label, onClick, dim }) => (
+    <span
+      onClick={onClick}
+      style={{ color: dim ? '#94A3B8' : '#1565C0', textDecoration: 'underline', textDecorationStyle: 'dotted', cursor: 'pointer', fontWeight: 600, padding: '1px 2px', borderRadius: '3px', transition: 'background .1s' }}
+      onMouseEnter={e => e.currentTarget.style.background = '#EFF6FF'}
+      onMouseLeave={e => e.currentTarget.style.background = ''}
+    >
+      {label}
+    </span>
+  )
+
+  const SentenceLine = ({ prefix, children }) => (
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px', fontSize: '18px', color: '#1E293B', fontWeight: 500, lineHeight: 1.7, padding: '8px 0' }}>
+      {prefix && <span style={{ color: '#64748B', fontSize: '16px', fontWeight: 400 }}>{prefix}</span>}
+      {children}
+    </div>
+  )
+
+  return (
+    <div style={{ padding: '28px 32px' }}>
+
+      {/* WHEN */}
+      <SentenceLine prefix="When">
+        <span style={{ position: 'relative' }}>
+          <Chip
+            label={trigger ? trigger.sentence.replace(/{days}/g, form.trigger_config?.days || 7).replace(/{status}/g, form.trigger_config?.to_status || 'any status') : 'this happens'}
+            dim={!trigger}
+            onClick={() => setOpenPicker(openPicker === 'trigger' ? null : 'trigger')}
           />
+          {openPicker === 'trigger' && (
+            <Dropdown
+              options={TRIGGER_GROUPS}
+              onSelect={setTrigger}
+              onClose={() => setOpenPicker(null)}
+              title="Choose a trigger"
+              width={340}
+            />
+          )}
+        </span>
+
+        {/* Inline day editor for no_activity / closing_soon */}
+        {trigger?.hasDays && (
+          <>
+            <span style={{ color: '#64748B', fontSize: '14px' }}>—</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <input
+                type="number"
+                value={form.trigger_config?.days || 7}
+                min={1}
+                max={365}
+                onChange={e => onChange({ ...form, trigger_config: { ...form.trigger_config, days: e.target.value } })}
+                style={{ width: '48px', padding: '2px 6px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '14px', fontWeight: 700, color: '#1565C0', textAlign: 'center', fontFamily: ff }}
+              />
+              <span style={{ fontSize: '14px', color: '#64748B' }}>days</span>
+            </span>
+          </>
+        )}
+
+        {/* Status picker for contact_status_change */}
+        {trigger?.hasStatus && (
+          <>
+            <span style={{ color: '#64748B', fontSize: '14px' }}>to</span>
+            <span style={{ position: 'relative' }}>
+              <Chip
+                label={form.trigger_config?.to_status || 'any status'}
+                onClick={() => setOpenPicker(openPicker === 'trigger_status' ? null : 'trigger_status')}
+              />
+              {openPicker === 'trigger_status' && (
+                <Dropdown
+                  options={[{ label: null, items: [{ id: '', label: 'Any status', icon: '🔄' }, ...CONTACT_STATUSES.map(s => ({ id: s, label: s, icon: '🏷' }))] }]}
+                  onSelect={s => { onChange({ ...form, trigger_config: { ...form.trigger_config, to_status: s.id } }); setOpenPicker(null) }}
+                  onClose={() => setOpenPicker(null)}
+                  width={220}
+                />
+              )}
+            </span>
+          </>
+        )}
+      </SentenceLine>
+
+      {/* Divider arrow */}
+      {trigger && (
+        <div style={{ color: '#94A3B8', fontSize: '20px', padding: '4px 0 4px 4px' }}>↓</div>
+      )}
+
+      {/* ACTIONS */}
+      {(form.action_nodes || []).map((action, idx) => {
+        const def = ACTION_LIST.find(a => a.id === action.type)
+        if (!def) return null
+        const cfg = action.config || {}
+        const pickerKey = `action_${idx}`
+
+        const AgentChip = ({ configKey }) => {
+          const chosen = [{ id: 'trigger_agent', label: 'the assigned agent', icon: '👤' }, ...agents.map(a => ({ id: a.id, label: a.name, icon: '👤' }))].find(a => a.id === cfg[configKey])
+          return (
+            <span style={{ position: 'relative' }}>
+              <Chip
+                label={chosen?.label || 'the assigned agent'}
+                onClick={() => setOpenPicker(openPicker === `${pickerKey}_${configKey}` ? null : `${pickerKey}_${configKey}`)}
+              />
+              {openPicker === `${pickerKey}_${configKey}` && (
+                <Dropdown
+                  options={[{ label: null, items: agentOptions }]}
+                  onSelect={a => { updateActionConfig(idx, configKey, a.id); setOpenPicker(null) }}
+                  onClose={() => setOpenPicker(null)}
+                  width={240}
+                />
+              )}
+            </span>
+          )
+        }
+
+        return (
+          <div key={action.id}>
+            <SentenceLine prefix="→ Then">
+              <span style={{ fontSize: '16px' }}>{def.icon}</span>
+
+              {/* Action type picker */}
+              <span style={{ position: 'relative' }}>
+                <Chip
+                  label={def.label.toLowerCase()}
+                  onClick={() => setOpenPicker(openPicker === pickerKey ? null : pickerKey)}
+                />
+                {openPicker === pickerKey && (
+                  <Dropdown
+                    options={ACTION_GROUPS}
+                    onSelect={a => { const nodes = form.action_nodes.map((n, i) => i === idx ? { ...n, type: a.id } : n); onChange({ ...form, action_nodes: nodes }); setOpenPicker(null) }}
+                    onClose={() => setOpenPicker(null)}
+                    title="Choose an action"
+                    width={300}
+                  />
+                )}
+              </span>
+
+              {/* Action-specific inline fields */}
+              {(action.type === 'send_notification' || action.type === 'send_email' || action.type === 'assign_agent' || action.type === 'create_task') && (
+                <>{action.type !== 'assign_agent' && action.type !== 'create_task' ? null : null}<AgentChip configKey={action.type === 'send_notification' ? 'notify' : action.type === 'send_email' ? 'to' : 'assign_to'} /></>
+              )}
+
+              {action.type === 'create_task' && (
+                <>
+                  <span style={{ color: '#64748B', fontSize: '14px' }}>due in</span>
+                  <input
+                    type="number"
+                    value={cfg.due_days || 1}
+                    min={0}
+                    max={90}
+                    onChange={e => updateActionConfig(idx, 'due_days', e.target.value)}
+                    style={{ width: '44px', padding: '2px 6px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '14px', fontWeight: 700, color: '#1565C0', textAlign: 'center', fontFamily: ff }}
+                  />
+                  <span style={{ color: '#64748B', fontSize: '14px' }}>days</span>
+                </>
+              )}
+
+              {action.type === 'update_contact_status' && (
+                <>
+                  <span style={{ color: '#64748B', fontSize: '14px' }}>to</span>
+                  <span style={{ position: 'relative' }}>
+                    <Chip
+                      label={cfg.status || 'select status'}
+                      dim={!cfg.status}
+                      onClick={() => setOpenPicker(openPicker === `${pickerKey}_status` ? null : `${pickerKey}_status`)}
+                    />
+                    {openPicker === `${pickerKey}_status` && (
+                      <Dropdown
+                        options={[{ label: null, items: CONTACT_STATUSES.map(s => ({ id: s, label: s, icon: '🏷' })) }]}
+                        onSelect={s => { updateActionConfig(idx, 'status', s.id); setOpenPicker(null) }}
+                        onClose={() => setOpenPicker(null)}
+                        width={200}
+                      />
+                    )}
+                  </span>
+                </>
+              )}
+
+              {action.type === 'update_deal_stage' && (
+                <>
+                  <span style={{ color: '#64748B', fontSize: '14px' }}>to</span>
+                  <span style={{ position: 'relative' }}>
+                    <Chip
+                      label={cfg.stage || 'select stage'}
+                      dim={!cfg.stage}
+                      onClick={() => setOpenPicker(openPicker === `${pickerKey}_stage` ? null : `${pickerKey}_stage`)}
+                    />
+                    {openPicker === `${pickerKey}_stage` && (
+                      <Dropdown
+                        options={[{ label: null, items: DEAL_STAGES.map(s => ({ id: s, label: s, icon: '📊' })) }]}
+                        onSelect={s => { updateActionConfig(idx, 'stage', s.id); setOpenPicker(null) }}
+                        onClose={() => setOpenPicker(null)}
+                        width={220}
+                      />
+                    )}
+                  </span>
+                </>
+              )}
+
+              {action.type === 'add_tag' && (
+                <>
+                  <span style={{ color: '#64748B', fontSize: '14px' }}>tag</span>
+                  <input
+                    value={cfg.tag || ''}
+                    onChange={e => updateActionConfig(idx, 'tag', e.target.value)}
+                    placeholder="tag-name"
+                    style={{ padding: '2px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '14px', fontWeight: 700, color: '#1565C0', fontFamily: ff, width: '100px' }}
+                  />
+                </>
+              )}
+
+              {/* Remove action */}
+              <button
+                onClick={() => removeAction(idx)}
+                style={{ marginLeft: '4px', background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontSize: '14px', opacity: 0.6, padding: '2px 4px', borderRadius: '4px' }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '0.6'}
+              >
+                ✕
+              </button>
+            </SentenceLine>
+
+            {/* Extended config for email/notification */}
+            {(action.type === 'send_email' || action.type === 'send_notification') && (
+              <div style={{ marginLeft: '28px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {action.type === 'send_email' && (
+                  <input
+                    value={cfg.subject || ''}
+                    onChange={e => updateActionConfig(idx, 'subject', e.target.value)}
+                    placeholder="Subject: e.g. New lead — {{contact_name}}"
+                    style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '13px', color: '#1E293B', fontFamily: ff, background: '#F8FAFC', outline: 'none' }}
+                  />
+                )}
+                <textarea
+                  value={cfg.body || ''}
+                  onChange={e => updateActionConfig(idx, 'body', e.target.value)}
+                  placeholder={action.type === 'send_email' ? 'Email body... use {{contact_name}}, {{stage}}, {{addr}}' : 'Notification message...'}
+                  rows={2}
+                  style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '13px', color: '#1E293B', fontFamily: ff, resize: 'vertical', background: '#F8FAFC', outline: 'none' }}
+                />
+              </div>
+            )}
+
+            {action.type === 'create_task' && (
+              <div style={{ marginLeft: '28px', marginBottom: '8px' }}>
+                <input
+                  value={cfg.title || ''}
+                  onChange={e => updateActionConfig(idx, 'title', e.target.value)}
+                  placeholder="Task title: e.g. Follow up with {{contact_name}}"
+                  style={{ width: '100%', padding: '7px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '13px', color: '#1E293B', fontFamily: ff, background: '#F8FAFC', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Add action button */}
+      {trigger && (
+        <div style={{ position: 'relative', marginTop: '8px' }}>
+          <button
+            onClick={() => setOpenPicker(openPicker === 'add_action' ? null : 'add_action')}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 16px', borderRadius: '9px', border: '2px dashed #CBD5E1', background: 'transparent', color: '#64748B', fontSize: '14px', fontWeight: 600, cursor: 'pointer', fontFamily: ff, transition: 'all .15s' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.color = '#3B82F6' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.color = '#64748B' }}
+          >
+            <span style={{ fontSize: '18px' }}>＋</span>
+            Add action
+          </button>
+          {openPicker === 'add_action' && (
+            <Dropdown
+              options={ACTION_GROUPS}
+              onSelect={addAction}
+              onClose={() => setOpenPicker(null)}
+              title="Then do this..."
+              width={300}
+            />
+          )}
         </div>
       )}
     </div>
   )
 }
 
-// ── CONDITIONS STEP ───────────────────────────────────────────────
-function ConditionsStep({ form, onChange }) {
-  const conditions = form.conditions || []
-
-  function addCondition() {
-    const newCond = { id: Date.now(), field: 'status', operator: 'equals', value: '' }
-    onChange({ ...form, conditions: [...conditions, newCond] })
-  }
-
-  function updateCond(idx, updates) {
-    const next = conditions.map((c, i) => i === idx ? { ...c, ...updates } : c)
-    onChange({ ...form, conditions: next })
-  }
-
-  function removeCond(idx) {
-    onChange({ ...form, conditions: conditions.filter((_, i) => i !== idx) })
-  }
-
-  return (
-    <div style={{ marginBottom: '24px' }}>
-      <StepHeader number="2" label="Only if... (Conditions — optional)" color="#3B82F6" />
-      {conditions.map((cond, idx) => (
-        <div key={cond.id} style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', marginBottom: '8px', background: 'var(--dim)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-            <div>
-              <Label>Field</Label>
-              <SelectInput
-                value={cond.field}
-                onChange={v => updateCond(idx, { field: v })}
-                options={[
-                  { value: 'status',      label: 'Contact Status' },
-                  { value: 'source',      label: 'Contact Source' },
-                  { value: 'stage',       label: 'Deal Stage' },
-                  { value: 'side',        label: 'Deal Side' },
-                  { value: 'pre_approved',label: 'Pre-Approved' },
-                ]}
-                placeholder="Select field..."
-              />
-            </div>
-            <div>
-              <Label>Operator</Label>
-              <SelectInput
-                value={cond.operator}
-                onChange={v => updateCond(idx, { operator: v })}
-                options={[
-                  { value: 'equals',       label: 'Equals' },
-                  { value: 'not_equals',   label: 'Not equals' },
-                  { value: 'is_empty',     label: 'Is empty' },
-                  { value: 'is_not_empty', label: 'Is not empty' },
-                ]}
-              />
-            </div>
-            <div>
-              <Label>Value</Label>
-              <TextInput
-                value={cond.value}
-                onChange={v => updateCond(idx, { value: v })}
-                placeholder="Value..."
-              />
-            </div>
-          </div>
-          <button
-            onClick={() => removeCond(idx)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontSize: '16px', padding: '4px', flexShrink: 0 }}
-          >
-            ✕
-          </button>
-        </div>
-      ))}
-      <button
-        onClick={addCondition}
-        style={{ padding: '7px 14px', borderRadius: '7px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}
-      >
-        + Add Condition
-      </button>
-    </div>
-  )
-}
-
-// ── ACTIONS STEP ──────────────────────────────────────────────────
-function ActionsStep({ form, onChange, agents }) {
+// ─────────────────────────────────────────────────────────────────
+// CARD BUILDER (original step-by-step grid — now mode 2)
+// ─────────────────────────────────────────────────────────────────
+function CardBuilder({ form, onChange, agents }) {
   const nodes = form.action_nodes || []
 
+  function setTrigger(id) {
+    onChange({ ...form, trigger_type: id, trigger_config: {} })
+  }
+
   function addAction(type) {
-    const newAction = { id: Date.now(), type, config: { assign_to: 'trigger_agent', priority: 'normal', due_days: 1, notify: 'trigger_agent', to: 'trigger_agent' } }
-    onChange({ ...form, action_nodes: [...nodes, newAction] })
+    onChange({ ...form, action_nodes: [...nodes, { id: Date.now(), type, config: { assign_to: 'trigger_agent', notify: 'trigger_agent', priority: 'normal', due_days: 1, to: 'trigger_agent' } }] })
   }
 
   function updateAction(idx, key, val) {
@@ -279,117 +523,117 @@ function ActionsStep({ form, onChange, agents }) {
     ...agents.map(a => ({ value: a.id, label: a.name })),
   ]
 
+  const Sel = ({ value, onChange: oc, options, placeholder }) => (
+    <select value={value || ''} onChange={e => oc(e.target.value)}
+      style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+      {placeholder && <option value="">{placeholder}</option>}
+      {options.map(o => <option key={typeof o === 'string' ? o : o.value} value={typeof o === 'string' ? o : o.value}>{typeof o === 'string' ? o : o.label}</option>)}
+    </select>
+  )
+
+  const Inp = ({ value, onChange: oc, placeholder, type = 'text' }) => (
+    <input type={type} value={value || ''} onChange={e => oc(e.target.value)} placeholder={placeholder}
+      style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, boxSizing: 'border-box' }} />
+  )
+
+  const Lbl = ({ children }) => (
+    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>{children}</div>
+  )
+
   return (
-    <div>
-      <StepHeader number="3" label="Then do this... (Actions)" color="#10B981" />
+    <div style={{ padding: '20px' }}>
 
-      {nodes.map((action, idx) => {
-        const def = ACTION_LIST.find(a => a.id === action.type)
-        if (!def) return null
-        const cfg = action.config || {}
-
-        return (
-          <div key={action.id} style={{ background: 'var(--dim)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px', marginBottom: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '16px' }}>{def.icon}</span>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{def.label}</span>
+      {/* Step 1 — Trigger */}
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+          <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#CC2200', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 800 }}>1</div>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>When this happens... (Trigger)</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+          {TRIGGER_LIST.map(t => (
+            <div key={t.id} onClick={() => setTrigger(t.id)}
+              style={{ padding: '10px 12px', borderRadius: '8px', border: `2px solid ${form.trigger_type === t.id ? '#CC2200' : 'var(--border)'}`, background: form.trigger_type === t.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '2px' }}>
+                <span style={{ fontSize: '14px' }}>{t.icon}</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: form.trigger_type === t.id ? '#CC2200' : 'var(--text)' }}>{t.label}</span>
               </div>
-              <button onClick={() => removeAction(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontSize: '16px' }}>✕</button>
             </div>
+          ))}
+        </div>
+      </div>
 
-            {/* Action-specific fields */}
-            {action.type === 'create_task' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div><Label>Task Title</Label><TextInput value={cfg.title} onChange={v => updateAction(idx, 'title', v)} placeholder="Follow up with {{contact_name}}" /></div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <Label>Priority</Label>
-                    <SelectInput value={cfg.priority} onChange={v => updateAction(idx, 'priority', v)} options={[{ value:'urgent',label:'Urgent' },{ value:'high',label:'High' },{ value:'normal',label:'Normal' },{ value:'low',label:'Low' }]} />
-                  </div>
-                  <div>
-                    <Label>Due in (days)</Label>
-                    <TextInput type="number" value={cfg.due_days} onChange={v => updateAction(idx, 'due_days', v)} placeholder="1" />
-                  </div>
+      {/* Step 2 — Actions */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+          <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#10B981', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 800 }}>2</div>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>Then do this... (Actions)</span>
+        </div>
+
+        {nodes.map((action, idx) => {
+          const def = ACTION_LIST.find(a => a.id === action.type)
+          if (!def) return null
+          const cfg = action.config || {}
+          return (
+            <div key={action.id} style={{ background: 'var(--dim)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '16px' }}>{def.icon}</span>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{def.label}</span>
                 </div>
-                <div><Label>Assign To</Label><SelectInput value={cfg.assign_to} onChange={v => updateAction(idx, 'assign_to', v)} options={agentOptions} /></div>
-                <div><Label>Notes (optional)</Label><TextareaInput value={cfg.notes} onChange={v => updateAction(idx, 'notes', v)} placeholder="Task notes..." /></div>
+                <button onClick={() => removeAction(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontSize: '16px' }}>✕</button>
               </div>
-            )}
+              {action.type === 'create_task' && <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                <div><Lbl>Task Title</Lbl><Inp value={cfg.title} onChange={v => updateAction(idx,'title',v)} placeholder="Follow up with {{contact_name}}" /></div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                  <div><Lbl>Priority</Lbl><Sel value={cfg.priority} onChange={v => updateAction(idx,'priority',v)} options={[{value:'urgent',label:'Urgent'},{value:'high',label:'High'},{value:'normal',label:'Normal'},{value:'low',label:'Low'}]} /></div>
+                  <div><Lbl>Due in (days)</Lbl><Inp type="number" value={cfg.due_days} onChange={v => updateAction(idx,'due_days',v)} placeholder="1" /></div>
+                </div>
+                <div><Lbl>Assign To</Lbl><Sel value={cfg.assign_to} onChange={v => updateAction(idx,'assign_to',v)} options={agentOptions} /></div>
+              </div>}
+              {action.type === 'send_notification' && <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                <div><Lbl>Notify</Lbl><Sel value={cfg.notify} onChange={v => updateAction(idx,'notify',v)} options={agentOptions} /></div>
+                <div><Lbl>Title</Lbl><Inp value={cfg.title} onChange={v => updateAction(idx,'title',v)} placeholder="New lead assigned" /></div>
+                <div><Lbl>Message</Lbl><textarea value={cfg.body||''} onChange={e => updateAction(idx,'body',e.target.value)} placeholder="{{contact_name}} needs a follow up" rows={2} style={{ width:'100%', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, resize:'vertical', boxSizing:'border-box' }} /></div>
+              </div>}
+              {action.type === 'send_email' && <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                <div><Lbl>Send To</Lbl><Sel value={cfg.to} onChange={v => updateAction(idx,'to',v)} options={agentOptions} /></div>
+                <div><Lbl>Subject</Lbl><Inp value={cfg.subject} onChange={v => updateAction(idx,'subject',v)} placeholder="New lead: {{contact_name}}" /></div>
+                <div><Lbl>Message</Lbl><textarea value={cfg.body||''} onChange={e => updateAction(idx,'body',e.target.value)} placeholder="Automated email body..." rows={2} style={{ width:'100%', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, resize:'vertical', boxSizing:'border-box' }} /></div>
+              </div>}
+              {action.type === 'update_contact_status' && <div><Lbl>Set Status To</Lbl><Sel value={cfg.status} onChange={v => updateAction(idx,'status',v)} options={CONTACT_STATUSES} placeholder="Select status..." /></div>}
+              {action.type === 'update_deal_stage'    && <div><Lbl>Set Stage To</Lbl><Sel value={cfg.stage} onChange={v => updateAction(idx,'stage',v)} options={DEAL_STAGES} placeholder="Select stage..." /></div>}
+              {action.type === 'assign_agent'          && <div><Lbl>Assign To Agent</Lbl><Sel value={cfg.agent_id} onChange={v => updateAction(idx,'agent_id',v)} options={agents.map(a => ({ value:a.id, label:a.name }))} placeholder="Select agent..." /></div>}
+              {action.type === 'add_tag'               && <div><Lbl>Tag</Lbl><Inp value={cfg.tag} onChange={v => updateAction(idx,'tag',v)} placeholder="e.g. hot-lead" /></div>}
+            </div>
+          )
+        })}
 
-            {action.type === 'send_notification' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div><Label>Notify</Label><SelectInput value={cfg.notify} onChange={v => updateAction(idx, 'notify', v)} options={agentOptions} /></div>
-                <div><Label>Title</Label><TextInput value={cfg.title} onChange={v => updateAction(idx, 'title', v)} placeholder="New lead assigned" /></div>
-                <div><Label>Message</Label><TextareaInput value={cfg.body} onChange={v => updateAction(idx, 'body', v)} placeholder="{{contact_name}} needs follow up" /></div>
-              </div>
-            )}
-
-            {action.type === 'update_contact_status' && (
-              <div>
-                <Label>Set Status To</Label>
-                <SelectInput value={cfg.status} onChange={v => updateAction(idx, 'status', v)} options={['Hot','Warm','Cold','Active','Nurturing','Closed','Unresponsive']} placeholder="Select status..." />
-              </div>
-            )}
-
-            {action.type === 'update_deal_stage' && (
-              <div>
-                <Label>Set Stage To</Label>
-                <SelectInput value={cfg.stage} onChange={v => updateAction(idx, 'stage', v)} options={['Negotiations','Offer Accapted','Under Shtar','Under Contract','Closed','Deal Fell Through']} placeholder="Select stage..." />
-              </div>
-            )}
-
-            {action.type === 'assign_agent' && (
-              <div>
-                <Label>Assign To Agent</Label>
-                <SelectInput value={cfg.agent_id} onChange={v => updateAction(idx, 'agent_id', v)} options={agents.map(a => ({ value: a.id, label: a.name }))} placeholder="Select agent..." />
-              </div>
-            )}
-
-            {action.type === 'send_email' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div><Label>Send To</Label><SelectInput value={cfg.to} onChange={v => updateAction(idx, 'to', v)} options={agentOptions} /></div>
-                <div><Label>Subject</Label><TextInput value={cfg.subject} onChange={v => updateAction(idx, 'subject', v)} placeholder="Follow up needed" /></div>
-                <div><Label>Message</Label><TextareaInput value={cfg.body} onChange={v => updateAction(idx, 'body', v)} placeholder="This is an automated reminder..." /></div>
-              </div>
-            )}
-
-            {action.type === 'add_tag' && (
-              <div>
-                <Label>Tag</Label>
-                <TextInput value={cfg.tag} onChange={v => updateAction(idx, 'tag', v)} placeholder="hot-lead" />
-              </div>
-            )}
-          </div>
-        )
-      })}
-
-      {/* Add action buttons */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginTop: '8px' }}>
-        {ACTION_LIST.map(a => (
-          <button
-            key={a.id}
-            onClick={() => addAction(a.id)}
-            style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--panel)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: ff, fontSize: '12px', color: 'var(--text)', fontWeight: 500 }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'var(--panel)'}
-          >
-            <span>{a.icon}</span> {a.label}
-          </button>
-        ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+          {ACTION_LIST.map(a => (
+            <button key={a.id} onClick={() => addAction(a.id)}
+              style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--panel)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: ff, fontSize: '12px', color: 'var(--text)', fontWeight: 500 }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--panel)'}>
+              <span>{a.icon}</span>{a.label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
-// ── AUTOMATION CARD ───────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// AUTOMATION CARD (list view)
+// ─────────────────────────────────────────────────────────────────
 function AutomationCard({ automation, onEdit, onToggle, onDelete, onViewRuns }) {
   const trigger = TRIGGER_LIST.find(t => t.id === automation.trigger_type)
-  const actionCount = (automation.action_nodes || []).length
   const isActive = automation.active === true
 
   return (
-    <div style={{ background: 'var(--panel)', borderRadius: '12px', border: `1px solid ${isActive ? '#10B98133' : 'var(--border)'}`, padding: '16px 20px' }}>
+    <div style={{ background: 'var(--panel)', borderRadius: '12px', border: `1px solid ${isActive ? '#10B98133' : 'var(--border)'}`, padding: '16px 20px', transition: 'box-shadow .15s' }}
+      onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
+      onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
         <div style={{ width: 36, height: 36, borderRadius: '10px', background: isActive ? '#10B98118' : 'var(--dim)', border: `1px solid ${isActive ? '#10B98144' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>
           {trigger?.icon || '⚡'}
@@ -399,20 +643,19 @@ function AutomationCard({ automation, onEdit, onToggle, onDelete, onViewRuns }) 
           {automation.description && <div style={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{automation.description}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-          <Toggle value={isActive} onChange={() => onToggle(automation)} />
+          <div onClick={() => onToggle(automation)}
+            style={{ width: 38, height: 20, borderRadius: '99px', background: isActive ? '#10B981' : 'var(--border)', position: 'relative', cursor: 'pointer', transition: 'background .2s' }}>
+            <div style={{ position: 'absolute', top: 2, left: isActive ? 20 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+          </div>
           <span style={{ fontSize: '11px', fontWeight: 600, color: isActive ? '#10B981' : '#94A3B8' }}>{isActive ? 'Active' : 'Inactive'}</span>
         </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
-        {trigger && (
-          <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 600 }}>
-            {trigger.icon} {trigger.label}
-          </span>
-        )}
+        {trigger && <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 600 }}>{trigger.icon} {trigger.label}</span>}
         <span style={{ color: 'var(--muted)', fontSize: '12px' }}>→</span>
         <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', background: '#F0FDF4', color: '#166534', fontWeight: 600 }}>
-          {actionCount} action{actionCount !== 1 ? 's' : ''}
+          {(automation.action_nodes || []).length} action{(automation.action_nodes || []).length !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -431,19 +674,16 @@ function AutomationCard({ automation, onEdit, onToggle, onDelete, onViewRuns }) 
   )
 }
 
-// ── RUN HISTORY ───────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// RUN HISTORY
+// ─────────────────────────────────────────────────────────────────
 function RunHistory({ automation, onClose }) {
   const [runs, setRuns] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!automation?.id) return
-    supabase
-      .from('automation_runs')
-      .select('*')
-      .eq('automation_id', automation.id)
-      .order('created_at', { ascending: false })
-      .limit(50)
+    supabase.from('automation_runs').select('*').eq('automation_id', automation.id).order('created_at', { ascending: false }).limit(50)
       .then(({ data }) => { setRuns(data || []); setLoading(false) })
       .catch(() => { setRuns([]); setLoading(false) })
   }, [automation?.id])
@@ -458,11 +698,7 @@ function RunHistory({ automation, onClose }) {
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 18px' }}>
           {loading && <Loading />}
-          {!loading && runs.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '32px', color: 'var(--muted)', fontSize: '13px' }}>
-              No runs yet — activate this automation to start tracking.
-            </div>
-          )}
+          {!loading && runs.length === 0 && <div style={{ textAlign: 'center', padding: '32px', color: 'var(--muted)', fontSize: '13px' }}>No runs yet — activate this automation to start tracking.</div>}
           {runs.map(run => (
             <div key={run.id} style={{ padding: '10px 12px', borderRadius: '8px', border: `1px solid ${run.status === 'error' ? '#FECACA' : 'var(--border)'}`, background: run.status === 'error' ? '#FEF2F2' : 'var(--dim)', marginBottom: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
@@ -482,9 +718,9 @@ function RunHistory({ automation, onClose }) {
   )
 }
 
-// ════════════════════════════════════════════════════════════════
-// MAIN AUTOMATIONS PAGE
-// ════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────
+// MAIN PAGE
+// ─────────────────────────────────────────────────────────────────
 export function Automations() {
   const { agent, isAdmin } = useAuth()
   const { toast } = useApp()
@@ -495,6 +731,7 @@ export function Automations() {
   const [selected,    setSelected]    = useState(null)
   const [form,        setForm]        = useState({ ...BLANK })
   const [showBuilder, setShowBuilder] = useState(false)
+  const [builderMode, setBuilderMode] = useState('sentence') // 'sentence' | 'card'
   const [viewRuns,    setViewRuns]    = useState(null)
   const [saving,      setSaving]      = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(null)
@@ -509,8 +746,7 @@ export function Automations() {
   async function loadAutomations() {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('automations')
+      const { data, error } = await supabase.from('automations')
         .select('id, name, description, active, trigger_type, action_nodes, conditions, fire_count, last_fired, created_at')
         .order('created_at', { ascending: false })
       if (error) throw error
@@ -518,9 +754,7 @@ export function Automations() {
     } catch(e) {
       toast('Could not load automations: ' + e.message, '#DC2626')
       setAutomations([])
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
 
   function openNew() {
@@ -550,9 +784,9 @@ export function Automations() {
   }
 
   async function save() {
-    if (!form.name.trim())            { toast('Give this automation a name', '#DC2626'); return }
-    if (!form.trigger_type)           { toast('Select a trigger', '#DC2626'); return }
-    if (!form.action_nodes?.length)   { toast('Add at least one action', '#DC2626'); return }
+    if (!form.name.trim())          { toast('Give this automation a name', '#DC2626'); return }
+    if (!form.trigger_type)         { toast('Select a trigger', '#DC2626'); return }
+    if (!form.action_nodes?.length) { toast('Add at least one action', '#DC2626'); return }
     setSaving(true)
     try {
       const payload = {
@@ -580,9 +814,7 @@ export function Automations() {
       closeBuilder()
     } catch(e) {
       toast('Save failed: ' + e.message, '#DC2626')
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
   }
 
   async function toggleActive(automation) {
@@ -593,9 +825,7 @@ export function Automations() {
       setAutomations(prev => prev.map(a => a.id === automation.id ? data : a))
       invalidateCache()
       toast(!nowActive ? '✅ Automation activated' : 'Automation paused')
-    } catch(e) {
-      toast('Failed: ' + e.message, '#DC2626')
-    }
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
 
   async function deleteAutomation() {
@@ -605,11 +835,8 @@ export function Automations() {
       if (error) throw error
       setAutomations(prev => prev.filter(a => a.id !== confirmDel.id))
       toast('Automation deleted')
-    } catch(e) {
-      toast('Delete failed: ' + e.message, '#DC2626')
-    } finally {
-      setConfirmDel(null)
-    }
+    } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+    finally { setConfirmDel(null) }
   }
 
   const activeCount = automations.filter(a => a.active === true).length
@@ -617,27 +844,22 @@ export function Automations() {
 
   return (
     <div style={{ fontFamily: ff }}>
-
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text)' }}>Automations</div>
-          <div style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '2px' }}>
-            {activeCount} active · {totalRuns} total runs
-          </div>
+          <div style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '2px' }}>{activeCount} active · {totalRuns} total runs</div>
         </div>
-        {isAdmin && (
-          <Btn onClick={openNew}>+ New Automation</Btn>
-        )}
+        {isAdmin && <Btn onClick={openNew}>+ New Automation</Btn>}
       </div>
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
         {[
-          { label: 'Total',    value: automations.length,              color: '#3B82F6' },
-          { label: 'Active',   value: activeCount,                     color: '#10B981' },
-          { label: 'Inactive', value: automations.length - activeCount,color: '#94A3B8' },
-          { label: 'Runs',     value: totalRuns,                       color: '#F5A623' },
+          { label: 'Total',    value: automations.length,               color: '#3B82F6' },
+          { label: 'Active',   value: activeCount,                      color: '#10B981' },
+          { label: 'Inactive', value: automations.length - activeCount, color: '#94A3B8' },
+          { label: 'Runs',     value: totalRuns,                        color: '#F5A623' },
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px 16px', borderTop: `3px solid ${s.color}` }}>
             <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text)' }}>{s.value}</div>
@@ -647,88 +869,72 @@ export function Automations() {
       </div>
 
       {loading && <Loading />}
-
       {!loading && automations.length === 0 && (
-        <Empty
-          icon="⚡"
-          title="No automations yet"
+        <Empty icon="⚡" title="No automations yet"
           sub={isAdmin ? 'Create your first automation to start automating your workflow.' : 'Ask your admin to set up automations for the team.'}
-          action={isAdmin && <Btn onClick={openNew}>+ Create Automation</Btn>}
-        />
+          action={isAdmin && <Btn onClick={openNew}>+ Create Automation</Btn>} />
       )}
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {automations.map(a => (
-          <AutomationCard
-            key={a.id}
-            automation={a}
-            onEdit={openEdit}
-            onToggle={toggleActive}
-            onDelete={setConfirmDel}
-            onViewRuns={setViewRuns}
-          />
+          <AutomationCard key={a.id} automation={a} onEdit={openEdit} onToggle={toggleActive} onDelete={setConfirmDel} onViewRuns={setViewRuns} />
         ))}
       </div>
 
       {/* ── BUILDER MODAL ── */}
       {showBuilder && (
-        <div
-          onClick={e => { if (e.target === e.currentTarget) closeBuilder() }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: ff }}
-        >
-          <div style={{ background: 'var(--panel)', borderRadius: '16px', width: '100%', maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,.4)' }}>
+        <div onClick={e => { if (e.target === e.currentTarget) closeBuilder() }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: ff }}>
+          <div style={{ background: builderMode === 'sentence' ? '#fff' : 'var(--panel)', borderRadius: '16px', width: '100%', maxWidth: '860px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,.4)' }}>
 
             {/* Modal header */}
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${builderMode === 'sentence' ? '#E2E8F0' : 'var(--border)'}`, display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
               <div style={{ flex: 1 }}>
-                <input
-                  value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="Automation name..."
-                  style={{ fontSize: '18px', fontWeight: 700, background: 'none', border: 'none', color: 'var(--text)', fontFamily: ff, outline: 'none', width: '100%' }}
-                />
-                <input
-                  value={form.description}
-                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="Description (optional)"
-                  style={{ fontSize: '12px', background: 'none', border: 'none', color: 'var(--muted)', fontFamily: ff, outline: 'none', width: '100%', marginTop: '2px' }}
-                />
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Automation name..."
+                  style={{ fontSize: '18px', fontWeight: 700, background: 'none', border: 'none', color: builderMode === 'sentence' ? '#1E293B' : 'var(--text)', fontFamily: ff, outline: 'none', width: '100%' }} />
+                <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Description (optional)"
+                  style={{ fontSize: '12px', background: 'none', border: 'none', color: '#94A3B8', fontFamily: ff, outline: 'none', width: '100%', marginTop: '2px' }} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                <Toggle value={form.active === true} onChange={v => setForm(f => ({ ...f, active: v }))} />
-                <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{form.active ? 'Active' : 'Inactive'}</span>
-                <button onClick={closeBuilder} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+                {/* Mode toggle */}
+                <div style={{ display: 'flex', background: builderMode === 'sentence' ? '#F1F5F9' : 'var(--dim)', borderRadius: '8px', padding: '3px', gap: '2px' }}>
+                  {[['sentence','✏️ Sentence'],['card','📋 Card']].map(([mode, label]) => (
+                    <button key={mode} onClick={() => setBuilderMode(mode)}
+                      style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: builderMode === mode ? '#fff' : 'transparent', color: builderMode === mode ? '#1E293B' : '#94A3B8', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff, boxShadow: builderMode === mode ? '0 1px 3px rgba(0,0,0,.12)' : 'none', transition: 'all .15s' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/* Active toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div onClick={() => setForm(f => ({ ...f, active: !f.active }))}
+                    style={{ width: 34, height: 18, borderRadius: '99px', background: form.active ? '#10B981' : '#CBD5E1', position: 'relative', cursor: 'pointer', transition: 'background .2s' }}>
+                    <div style={{ position: 'absolute', top: 1, left: form.active ? 17 : 1, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
+                  </div>
+                  <span style={{ fontSize: '12px', color: '#64748B' }}>{form.active ? 'Active' : 'Inactive'}</span>
+                </div>
+                <button onClick={closeBuilder} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#94A3B8' }}>✕</button>
               </div>
             </div>
 
             {/* Modal body */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-              <TriggerStep form={form} onChange={setForm} />
-              <ConditionsStep form={form} onChange={setForm} />
-              <ActionsStep form={form} onChange={setForm} agents={agents} />
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {builderMode === 'sentence'
+                ? <SentenceBuilder form={form} onChange={setForm} agents={agents} />
+                : <CardBuilder     form={form} onChange={setForm} agents={agents} />
+              }
             </div>
 
             {/* Modal footer */}
-            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
+            <div style={{ padding: '14px 20px', borderTop: `1px solid ${builderMode === 'sentence' ? '#E2E8F0' : 'var(--border)'}`, display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
               <Btn variant="secondary" onClick={closeBuilder}>Cancel</Btn>
-              <Btn onClick={save} loading={saving}>
-                {selected ? 'Save Changes' : 'Create Automation'}
-              </Btn>
+              <Btn onClick={save} loading={saving}>{selected ? 'Save Changes' : 'Create Automation'}</Btn>
             </div>
           </div>
         </div>
       )}
 
-      {/* Run history modal */}
-      {viewRuns && <RunHistory automation={viewRuns} onClose={() => setViewRuns(null)} />}
-
-      {/* Delete confirm */}
-      <Confirm
-        open={!!confirmDel}
-        message={`Delete "${confirmDel?.name}"? This cannot be undone.`}
-        onConfirm={deleteAutomation}
-        onCancel={() => setConfirmDel(null)}
-      />
+      {viewRuns    && <RunHistory automation={viewRuns} onClose={() => setViewRuns(null)} />}
+      <Confirm open={!!confirmDel} message={`Delete "${confirmDel?.name}"? This cannot be undone.`} onConfirm={deleteAutomation} onCancel={() => setConfirmDel(null)} />
     </div>
   )
 }
