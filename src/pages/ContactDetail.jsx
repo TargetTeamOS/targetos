@@ -1,29 +1,26 @@
 // ═══════════════════════════════════════════════════════════════
-// TargetOS V2 — Contact Detail Page
-// Full 3-panel contact profile view.
+// TargetOS V2 — Contact Detail Page (Full Rebuild)
 //
-// LEFT PANEL:   All contact details — phone, email, address,
-//               status, source, assigned agent, tags, notes
-// CENTER PANEL: Conversation timeline — calls, emails sent,
-//               SMS, notes, voice captures, all timestamped
-// RIGHT PANEL:  Quick actions, related deals, tasks,
-//               files, activity log
+// LEFT PANEL:   Rich buyer/seller profile — all fields inline
+//               editable, buyer criteria, automation rules,
+//               full date history
+// CENTER PANEL: Conversation timeline
+// RIGHT PANEL:  Quick actions, deals, tasks, files
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
-import { fmtDate, fmtDateTime, fmtPhone, fmt$, initials, phoneHref } from '../lib/utils'
-import { CONTACT_STATUSES, CONTACT_SOURCES, TASK_PRIORITIES } from '../lib/constants'
-import { FileAttachments } from '../components/FileAttachments'
 import {
-  Field, Input, Select, Textarea, Btn, Avatar, Pill,
-  Loading, Confirm, ModalActions, SectionTitle, Divider,
-  Modal, Tabs
-} from '../components/UI'
+  fmtDate, fmtDateTime, fmtPhone, fmt$, initials,
+  phoneHref, getDaysAgo, getDaysUntil, parseNum, today
+} from '../lib/utils'
+import { CONTACT_STATUSES, CONTACT_SOURCES, PROPERTY_TYPES, LOCAL_CITIES } from '../lib/constants'
+import { FileAttachments } from '../components/FileAttachments'
+import { Avatar, Pill, Btn, Loading, Confirm, Field, Input, Select, Textarea, Toggle, Modal, ModalActions, Tabs, Spinner } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -32,67 +29,176 @@ const STATUS_COLORS = {
   Active: '#10B981', Nurturing: '#8B5CF6', 'Under Contract': '#F5A623',
   Closed: '#225091', Unresponsive: '#6B7280',
 }
+const FINANCING_OPTIONS = ['Cash', 'Conventional', 'FHA', 'VA', 'Hard Money', 'Bridge Loan', 'Unknown']
+const TIMELINE_OPTIONS  = ['ASAP', '1-3 months', '3-6 months', '6-12 months', '12+ months', 'Just browsing']
+const MOTIVATION_OPTIONS = ['Upsizing', 'Downsizing', 'Relocating', 'Investment', 'First Home', 'Divorce', 'Estate', 'Other']
+const LANG_OPTIONS      = ['English', 'Hebrew', 'Yiddish', 'Spanish', 'Russian', 'French', 'Other']
+const CONTACT_METHODS   = ['Phone', 'WhatsApp', 'Email', 'SMS', 'In Person']
+const FOLLOWUP_TEMPLATES = [
+  { value: 'check_in',    label: '👋 General check-in' },
+  { value: 'new_listing', label: '🏡 New listing found' },
+  { value: 'price_drop',  label: '💰 Price drop alert' },
+  { value: 'open_house',  label: '🚪 Open house invite' },
+  { value: 'market_update',label: '📊 Market update' },
+]
 
-const TIMELINE_ICONS = {
+// ── INLINE EDIT FIELD ─────────────────────────────────────────────
+function InlineField({ label, value, onChange, type = 'text', options = null, placeholder = '—', multiline = false, prefix = null }) {
+  const [editing, setEditing]   = useState(false)
+  const [draft,   setDraft]     = useState(value)
+  const ref = useRef(null)
+
+  useEffect(() => setDraft(value), [value])
+  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
+
+  function commit() {
+    setEditing(false)
+    if (draft !== value) onChange(draft)
+  }
+
+  const displayVal = value || ''
+
+  return (
+    <div style={{ marginBottom: '10px' }}>
+      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '3px' }}>{label}</div>
+      {editing ? (
+        options ? (
+          <select ref={ref} value={draft || ''} onChange={e => setDraft(e.target.value)} onBlur={commit}
+            style={{ width: '100%', padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--brand)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, outline: 'none' }}>
+            <option value="">—</option>
+            {options.map(o => <option key={typeof o === 'string' ? o : o.value} value={typeof o === 'string' ? o : o.value}>{typeof o === 'string' ? o : o.label}</option>)}
+          </select>
+        ) : multiline ? (
+          <textarea ref={ref} value={draft || ''} onChange={e => setDraft(e.target.value)} onBlur={commit} rows={3}
+            style={{ width: '100%', padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--brand)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+        ) : (
+          <input ref={ref} type={type} value={draft || ''} onChange={e => setDraft(e.target.value)}
+            onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setEditing(false); setDraft(value) } }}
+            style={{ width: '100%', padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--brand)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, outline: 'none', boxSizing: 'border-box' }} />
+        )
+      ) : (
+        <div onClick={() => setEditing(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'text', minHeight: '24px', padding: '2px 4px', borderRadius: '4px', border: '1px solid transparent', transition: 'border-color .1s' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
+          {prefix && <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{prefix}</span>}
+          <span style={{ fontSize: '13px', color: displayVal ? 'var(--text)' : 'var(--muted)', fontWeight: displayVal ? 500 : 400 }}>
+            {displayVal || placeholder}
+          </span>
+          <span style={{ fontSize: '10px', color: 'var(--border)', marginLeft: '2px' }}>✏️</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── MULTI-TAG INPUT ───────────────────────────────────────────────
+function TagInput({ label, values = [], options, onChange }) {
+  const [input, setInput] = useState('')
+
+  function add(val) {
+    if (!val) return
+    const v = val.trim()
+    if (!v || values.includes(v)) return
+    onChange([...values, v])
+    setInput('')
+  }
+
+  function remove(v) { onChange(values.filter(x => x !== v)) }
+
+  return (
+    <div style={{ marginBottom: '10px' }}>
+      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>{label}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '5px' }}>
+        {values.map(v => (
+          <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', background: 'rgba(204,34,0,.1)', color: '#CC2200', borderRadius: '99px', fontSize: '11px', fontWeight: 600 }}>
+            {v}
+            <span onClick={() => remove(v)} style={{ cursor: 'pointer', fontSize: '10px', opacity: 0.7 }}>✕</span>
+          </span>
+        ))}
+      </div>
+      {options ? (
+        <select value="" onChange={e => { add(e.target.value); e.target.value = '' }}
+          style={{ width: '100%', padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--muted)', fontSize: '12px', fontFamily: ff }}>
+          <option value="">+ Add...</option>
+          {options.filter(o => !values.includes(o)).map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(input) } }}
+          placeholder="Type and press Enter..."
+          style={{ width: '100%', padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff, boxSizing: 'border-box' }} />
+      )}
+    </div>
+  )
+}
+
+// ── SECTION HEADER ────────────────────────────────────────────────
+function Section({ title, icon, children, collapsible = true }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div style={{ marginBottom: '2px' }}>
+      <div onClick={() => collapsible && setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: 'var(--dim)', cursor: collapsible ? 'pointer' : 'default', userSelect: 'none', borderRadius: open ? '8px 8px 0 0' : '8px' }}>
+        <span style={{ fontSize: '13px' }}>{icon}</span>
+        <span style={{ flex: 1, fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{title}</span>
+        {collapsible && <span style={{ fontSize: '11px', color: 'var(--muted)', transition: 'transform .2s', transform: open ? 'rotate(0)' : 'rotate(-90deg)' }}>▾</span>}
+      </div>
+      {open && (
+        <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: '12px 14px' }}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── TIMELINE ITEM ─────────────────────────────────────────────────
+const TL_TYPES = {
   call:    { icon: '📞', color: '#10B981', label: 'Call' },
   note:    { icon: '📝', color: '#8B5CF6', label: 'Note' },
   email:   { icon: '📧', color: '#3B82F6', label: 'Email' },
   sms:     { icon: '💬', color: '#F97316', label: 'SMS' },
   voice:   { icon: '🎙', color: '#CC2200', label: 'Voice Capture' },
   status:  { icon: '🔄', color: '#F5A623', label: 'Status Changed' },
-  created: { icon: '✨', color: '#10B981', label: 'Contact Created' },
+  created: { icon: '✨', color: '#10B981', label: 'Created' },
   task:    { icon: '✅', color: '#6366F1', label: 'Task' },
-  file:    { icon: '📎', color: '#14B8A6', label: 'File Attached' },
   meeting: { icon: '🤝', color: '#EC4899', label: 'Meeting' },
+  updated: { icon: '✏️', color: '#94A3B8', label: 'Updated' },
 }
 
-// ── TIMELINE ITEM ─────────────────────────────────────────────────
 function TimelineItem({ item }) {
-  const t = TIMELINE_ICONS[item.type] || { icon: '•', color: '#94A3B8', label: item.type }
+  const t = TL_TYPES[item.type] || { icon: '•', color: '#94A3B8', label: item.type }
   return (
-    <div style={{ display: 'flex', gap: '12px', paddingBottom: '16px', position: 'relative' }}>
-      {/* Line */}
-      <div style={{ position: 'absolute', left: '15px', top: '28px', bottom: 0, width: '2px', background: 'var(--border)' }} />
-      {/* Icon */}
-      <div style={{ width: 30, height: 30, borderRadius: '50%', background: t.color + '18', border: `2px solid ${t.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', flexShrink: 0, zIndex: 1, background: 'var(--panel)' }}>
+    <div style={{ display: 'flex', gap: '10px', paddingBottom: '14px', position: 'relative' }}>
+      <div style={{ position: 'absolute', left: '13px', top: '26px', bottom: 0, width: '2px', background: 'var(--border)' }} />
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--panel)', border: `2px solid ${t.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', flexShrink: 0, zIndex: 1 }}>
         {t.icon}
       </div>
-      {/* Content */}
-      <div style={{ flex: 1, background: 'var(--dim)', borderRadius: '10px', padding: '10px 14px', border: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+      <div style={{ flex: 1, background: 'var(--dim)', borderRadius: '10px', padding: '9px 12px', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px', flexWrap: 'wrap', gap: '4px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: t.color, textTransform: 'uppercase', letterSpacing: '.04em' }}>{t.label}</span>
+            <span style={{ fontSize: '10px', fontWeight: 700, color: t.color, textTransform: 'uppercase', letterSpacing: '.04em' }}>{t.label}</span>
             {item.agent && (
-              <>
-                <span style={{ color: 'var(--border)', fontSize: '10px' }}>·</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Avatar agent={item.agent} size={16} />
-                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{item.agent.name}</span>
-                </div>
-              </>
+              <span style={{ fontSize: '10px', color: 'var(--muted)' }}>· {item.agent.name?.split(' ')[0]}</span>
             )}
           </div>
-          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{fmtDateTime(item.created_at)}</span>
+          <span style={{ fontSize: '10px', color: 'var(--muted)' }}>{fmtDateTime(item.created_at)}</span>
         </div>
-        {item.title && <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>{item.title}</div>}
-        {item.body && <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{item.body}</div>}
-        {item.meta && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>{item.meta}</div>}
-        {item.link && (
-          <a href={item.link} style={{ fontSize: '12px', color: 'var(--brand)', textDecoration: 'none', marginTop: '4px', display: 'block' }}>
-            View details →
-          </a>
-        )}
+        {item.title && <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '2px' }}>{item.title}</div>}
+        {item.body && <div style={{ fontSize: '12px', color: 'var(--text)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{item.body}</div>}
+        {item.meta && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '3px' }}>{item.meta}</div>}
       </div>
     </div>
   )
 }
 
-// ── ADD TO TIMELINE FORM ──────────────────────────────────────────
-function AddTimelineItem({ contactId, agentId, onAdded }) {
-  const [type,    setType]    = useState('note')
-  const [body,    setBody]    = useState('')
-  const [title,   setTitle]   = useState('')
-  const [saving,  setSaving]  = useState(false)
+// ── ADD TO TIMELINE ───────────────────────────────────────────────
+function AddToTimeline({ contactId, agentId, onAdded }) {
+  const [type, setType] = useState('note')
+  const [body, setBody] = useState('')
+  const [title, setTitle] = useState('')
+  const [saving, setSaving] = useState(false)
   const { toast } = useApp()
 
   const TYPES = [
@@ -107,56 +213,45 @@ function AddTimelineItem({ contactId, agentId, onAdded }) {
     if (!body.trim() && !title.trim()) { toast('Write something first', '#DC2626'); return }
     setSaving(true)
     try {
-      // Save as call log if type is call
       if (type === 'call') {
         await db.calls.create({
-          agent_id:     agentId,
-          contact_id:   contactId,
-          contact_name: title,
-          notes:        body,
-          direction:    'Outbound',
-          outcome:      '',
-          called_at:    new Date().toISOString(),
+          agent_id: agentId, contact_id: contactId,
+          contact_name: title, notes: body,
+          direction: 'Outbound', called_at: new Date().toISOString(),
         })
       } else {
-        // Save as audit log note with contact linked
         await supabase.from('audit_log').insert({
-          agent_id:   agentId,
-          table_name: 'contacts',
-          record_id:  contactId,
-          action:     'note',
-          field_name: type,
-          new_value:  body,
-          metadata:   { description: title || body.slice(0, 80), type },
+          agent_id: agentId, table_name: 'contacts', record_id: contactId,
+          action: 'note', field_name: type, new_value: body,
+          metadata: { description: title || body.slice(0, 80), type },
           created_at: new Date().toISOString(),
         })
       }
-      setBody('')
-      setTitle('')
+      setBody(''); setTitle('')
       toast('✅ Saved to timeline')
       onAdded?.()
-    } catch(e) {
-      toast('Failed: ' + e.message, '#DC2626')
-    } finally { setSaving(false) }
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    finally { setSaving(false) }
   }
 
   return (
-    <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px', marginBottom: '16px' }}>
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+    <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '12px', marginBottom: '14px' }}>
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
         {TYPES.map(t => (
           <button key={t.value} onClick={() => setType(t.value)}
-            style={{ padding: '5px 10px', borderRadius: '6px', border: `1px solid ${type === t.value ? 'var(--brand)' : 'var(--border)'}`, background: type === t.value ? 'rgba(204,34,0,.08)' : 'transparent', color: type === t.value ? 'var(--brand)' : 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
+            style={{ padding: '4px 10px', borderRadius: '6px', border: `1px solid ${type === t.value ? 'var(--brand)' : 'var(--border)'}`, background: type === t.value ? 'rgba(204,34,0,.08)' : 'transparent', color: type === t.value ? 'var(--brand)' : 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
             {t.label}
           </button>
         ))}
       </div>
       {type !== 'note' && (
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder={type === 'call' ? 'Contact name / outcome' : 'Subject / title'}
-          style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, marginBottom: '8px', boxSizing: 'border-box' }} />
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder={type === 'call' ? 'Who did you call / outcome...' : 'Subject / title...'}
+          style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, marginBottom: '6px', boxSizing: 'border-box' }} />
       )}
-      <textarea value={body} onChange={e => setBody(e.target.value)} placeholder={type === 'call' ? 'Call notes...' : type === 'email' ? 'Email summary...' : type === 'sms' ? 'Message content...' : 'Write a note...'}
+      <textarea value={body} onChange={e => setBody(e.target.value)}
+        placeholder={type === 'call' ? 'Call notes...' : type === 'email' ? 'Email summary...' : type === 'sms' ? 'Message...' : type === 'meeting' ? 'What was discussed...' : 'Write a note...'}
         rows={3}
-        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, resize: 'vertical', boxSizing: 'border-box', marginBottom: '8px' }} />
+        style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, resize: 'vertical', boxSizing: 'border-box', marginBottom: '8px' }} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Btn onClick={save} loading={saving} size="sm">Save to Timeline</Btn>
       </div>
@@ -173,20 +268,17 @@ export function ContactDetail() {
   const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
 
-  const [contact,    setContact]    = useState(null)
-  const [loading,    setLoading]    = useState(true)
-  const [timeline,   setTimeline]   = useState([])
-  const [tlLoading,  setTlLoading]  = useState(true)
-  const [relDeals,   setRelDeals]   = useState([])
-  const [relTasks,   setRelTasks]   = useState([])
-  const [agents,     setAgents]     = useState([])
-  const [editing,    setEditing]    = useState(false)
-  const [form,       setForm]       = useState({})
-  const [saving,     setSaving]     = useState(false)
-  const [confirmDel, setConfirmDel] = useState(false)
-  const [rightTab,   setRightTab]   = useState('deals')
+  const [contact,   setContact]   = useState(null)
+  const [loading,   setLoading]   = useState(true)
+  const [timeline,  setTimeline]  = useState([])
+  const [tlLoading, setTlLoading] = useState(true)
+  const [relDeals,  setRelDeals]  = useState([])
+  const [relTasks,  setRelTasks]  = useState([])
+  const [agents,    setAgents]    = useState([])
+  const [rightTab,  setRightTab]  = useState('deals')
+  const [confirmDel,setConfirmDel]= useState(false)
+  const [savingAuto,setSavingAuto]= useState(false)
 
-  // ── LOAD CONTACT ─────────────────────────────────────────────
   useEffect(() => {
     if (!id) return
     loadContact()
@@ -200,65 +292,49 @@ export function ContactDetail() {
     try {
       const c = await db.contacts.get(id)
       setContact(c)
-      setForm(c)
     } catch(e) {
       toast('Contact not found', '#DC2626')
       navigate('/contacts')
     } finally { setLoading(false) }
   }
 
-  // ── BUILD TIMELINE FROM MULTIPLE SOURCES ─────────────────────
   async function loadTimeline() {
     setTlLoading(true)
     try {
-      const [calls, auditLogs] = await Promise.all([
+      const [calls, logs] = await Promise.all([
         supabase.from('calls').select('*, agents(id,name,color)').eq('contact_id', id).order('called_at', { ascending: false }).then(r => r.data || []),
         supabase.from('audit_log').select('*, agents(id,name,color)').eq('record_id', id).order('created_at', { ascending: false }).limit(100).then(r => r.data || []),
       ])
 
       const items = []
 
-      // Add calls
-      calls.forEach(c => {
-        items.push({
-          id:         c.id,
-          type:       'call',
-          title:      c.contact_name || 'Call',
-          body:       [c.outcome, c.duration ? `Duration: ${c.duration}` : '', c.notes].filter(Boolean).join('\n'),
-          agent:      c.agents,
-          created_at: c.called_at,
-          meta:       `${c.direction || 'Outbound'} call${c.outcome ? ' · ' + c.outcome : ''}`,
-        })
-      })
+      calls.forEach(c => items.push({
+        id: c.id, type: 'call',
+        title:      c.contact_name || '',
+        body:       [c.notes, c.outcome ? `Outcome: ${c.outcome}` : '', c.duration ? `Duration: ${c.duration}` : ''].filter(Boolean).join('\n'),
+        meta:       `${c.direction || 'Outbound'} call${c.outcome ? ' · ' + c.outcome : ''}`,
+        agent:      c.agents,
+        created_at: c.called_at,
+      }))
 
-      // Add audit log entries
-      auditLogs.forEach(a => {
-        const typeMap = {
-          note:    a.metadata?.type || 'note',
-          created: 'created',
-          status:  'status',
-          updated: null, // skip generic updates
-        }
-        const type = typeMap[a.action] || a.action
-        if (!type || type === null) return
-        if (!TIMELINE_ICONS[type]) return // skip unknown types
-
+      logs.forEach(a => {
+        const typeMap = { note: a.metadata?.type || 'note', created: 'created', status: 'status', updated: 'updated' }
+        const type = typeMap[a.action]
+        if (!type || !TL_TYPES[type]) return
         items.push({
           id:         a.id,
           type,
-          title:      a.action === 'status' ? `Status: ${a.old_value} → ${a.new_value}` : a.metadata?.description || '',
+          title:      a.action === 'status' ? `Status changed: ${a.old_value || '?'} → ${a.new_value}` : a.metadata?.description || '',
           body:       a.action === 'note' ? a.new_value : '',
           agent:      a.agents,
           created_at: a.created_at,
         })
       })
 
-      // Sort all by date descending
       items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       setTimeline(items)
-    } catch(e) {
-      console.error('Timeline load error:', e)
-    } finally { setTlLoading(false) }
+    } catch(e) { console.error('Timeline error:', e) }
+    finally { setTlLoading(false) }
   }
 
   async function loadRelated() {
@@ -269,20 +345,60 @@ export function ContactDetail() {
       ])
       setRelDeals(deals)
       setRelTasks(tasks)
-    } catch { /* silently fail */ }
+    } catch {}
   }
 
-  // ── SAVE CONTACT ─────────────────────────────────────────────
-  async function saveContact() {
-    setSaving(true)
+  // ── AUTOSAVE FIELD ────────────────────────────────────────────
+  async function saveField(field, value) {
+    if (!contact) return
     try {
-      const updated = await db.contacts.update(id, form)
-      setContact(updated)
-      setEditing(false)
-      toast('✅ Contact saved')
-    } catch(e) {
-      toast('Save failed: ' + e.message, '#DC2626')
-    } finally { setSaving(false) }
+      const updated = await db.contacts.update(id, { [field]: value })
+      setContact(prev => ({ ...prev, [field]: value, ...updated }))
+    } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
+  }
+
+  async function saveFields(fields) {
+    if (!contact) return
+    try {
+      const updated = await db.contacts.update(id, fields)
+      setContact(prev => ({ ...prev, ...fields, ...updated }))
+      toast('✅ Saved')
+    } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
+  }
+
+  // ── STATUS QUICK UPDATE ───────────────────────────────────────
+  async function quickStatus(s) {
+    try {
+      const updated = await db.contacts.update(id, { status: s })
+      setContact(prev => ({ ...prev, status: s }))
+      toast(`✅ Status → ${s}`)
+      loadTimeline()
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+  }
+
+  // ── SAVE AUTOMATION ───────────────────────────────────────────
+  async function saveAutomation(fields) {
+    setSavingAuto(true)
+    try {
+      await saveFields(fields)
+      // If auto followup is enabled, create the next task
+      if (fields.auto_followup_on && fields.next_followup) {
+        await db.tasks.create({
+          agent_id:   contact.agent_id || agent?.id,
+          created_by: agent?.id,
+          contact_id: id,
+          title:      `Follow up with ${contact.first_name} ${contact.last_name || ''}`,
+          due_date:   fields.next_followup,
+          priority:   'normal',
+          status:     'pending',
+          notes:      `Auto-created follow-up for ${contact.first_name}`,
+        })
+        toast('✅ Automation saved — follow-up task created')
+      } else {
+        toast('✅ Automation saved')
+      }
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    finally { setSavingAuto(false) }
   }
 
   async function deleteContact() {
@@ -290,187 +406,312 @@ export function ContactDetail() {
       await db.contacts.delete(id, agent?.id)
       toast('Contact deleted')
       navigate('/contacts')
-    } catch(e) {
-      toast('Delete failed: ' + e.message, '#DC2626')
-    } finally { setConfirmDel(false) }
+    } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+    finally { setConfirmDel(false) }
   }
-
-  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
   if (loading) return <div style={{ fontFamily: ff, padding: '28px' }}><Loading /></div>
   if (!contact) return null
 
   const statusColor = STATUS_COLORS[contact.status] || '#94A3B8'
+  const f = contact // shorthand for all field reads
+  const daysSinceContact = f.last_reached ? getDaysAgo(f.last_reached) : null
+  const daysToFollowup   = f.next_followup ? getDaysUntil(f.next_followup) : null
 
   return (
     <div style={{ fontFamily: ff }}>
 
-      {/* ── TOP HEADER BAR ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+      {/* ── TOP HEADER ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <button onClick={() => navigate('/contacts')}
-          style={{ background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer', fontSize: '13px', color: 'var(--muted)', fontFamily: ff }}>
+          style={{ background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontSize: '12px', color: 'var(--muted)', fontFamily: ff }}>
           ← Contacts
         </button>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <div style={{ width: 40, height: 40, borderRadius: '50%', background: statusColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>
-              {initials((contact.first_name || '') + ' ' + (contact.last_name || ''))}
-            </div>
-            <div>
-              <h1 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text)', margin: 0 }}>
-                {contact.first_name} {contact.last_name}
-              </h1>
-              {contact.phone && (
-                <a href={phoneHref(contact.phone)} style={{ fontSize: '13px', color: 'var(--brand)', textDecoration: 'none' }}>
-                  {fmtPhone(contact.phone)}
-                </a>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: statusColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 700, flexShrink: 0 }}>
+            {initials((f.first_name || '') + ' ' + (f.last_name || ''))}
+          </div>
+          <div>
+            <h1 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text)', margin: 0, lineHeight: 1.2 }}>
+              {f.first_name} {f.last_name}
+            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
+              <Pill label={f.status || 'New'} color={statusColor} size="md" />
+              {f.source && <span style={{ fontSize: '11px', color: 'var(--muted)' }}>via {f.source}</span>}
+              {daysSinceContact !== null && (
+                <span style={{ fontSize: '11px', color: daysSinceContact > 14 ? '#DC2626' : 'var(--muted)', fontWeight: daysSinceContact > 14 ? 700 : 400 }}>
+                  {daysSinceContact === 0 ? 'Reached today' : `Last contact ${daysSinceContact}d ago`}
+                </span>
               )}
             </div>
-            <Pill label={contact.status} color={statusColor} size="md" />
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {contact.phone && (
-            <Btn variant="secondary" size="sm" onClick={() => window.open(phoneHref(contact.phone))}>📞 Call</Btn>
-          )}
-          {contact.email && (
-            <Btn variant="secondary" size="sm" onClick={() => window.open('mailto:' + contact.email)}>📧 Email</Btn>
-          )}
-          <Btn size="sm" onClick={() => setEditing(true)}>✏️ Edit</Btn>
+        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+          {f.phone && <Btn variant="secondary" size="sm" onClick={() => window.open(phoneHref(f.phone))}>📞 Call</Btn>}
+          {f.email && <Btn variant="secondary" size="sm" onClick={() => window.open('mailto:' + f.email)}>📧 Email</Btn>}
         </div>
       </div>
 
       {/* ── THREE PANEL LAYOUT ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '16px', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 270px', gap: '14px', alignItems: 'start' }}>
 
         {/* ══════════════════════════════════════════════════════
-            LEFT PANEL — Contact Details
+            LEFT PANEL
         ══════════════════════════════════════════════════════ */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
 
-          {/* Contact Info Card */}
-          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-              Contact Info
+          {/* CONTACT INFO */}
+          <Section title="Contact Info" icon="👤" collapsible={false}>
+            <InlineField label="First Name" value={f.first_name} onChange={v => saveField('first_name', v)} placeholder="First name" />
+            <InlineField label="Last Name" value={f.last_name} onChange={v => saveField('last_name', v)} placeholder="Last name" />
+            <InlineField label="Phone" value={f.phone} onChange={v => saveField('phone', v)} type="tel" placeholder="(845) 555-1234" />
+            <InlineField label="Phone 2" value={f.phone2} onChange={v => saveField('phone2', v)} type="tel" placeholder="Additional phone" />
+            <InlineField label="Email" value={f.email} onChange={v => saveField('email', v)} type="email" placeholder="email@example.com" />
+            <InlineField label="Email 2" value={f.email2} onChange={v => saveField('email2', v)} type="email" placeholder="Additional email" />
+            <InlineField label="Company" value={f.company} onChange={v => saveField('company', v)} placeholder="Company name" />
+            <InlineField label="Preferred Contact" value={f.preferred_contact} onChange={v => saveField('preferred_contact', v)} options={CONTACT_METHODS} />
+            <InlineField label="Language" value={f.language} onChange={v => saveField('language', v)} options={LANG_OPTIONS} />
+            <InlineField label="Birthday" value={f.birthday} onChange={v => saveField('birthday', v)} type="date" />
+          </Section>
+
+          {/* ADDRESS */}
+          <Section title="Address" icon="📍">
+            <InlineField label="Street Address" value={f.address} onChange={v => saveField('address', v)} placeholder="123 Main St" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <InlineField label="City" value={f.city} onChange={v => saveField('city', v)} options={LOCAL_CITIES} placeholder="City" />
+              <InlineField label="Zip" value={f.zip} onChange={v => saveField('zip', v)} placeholder="10952" />
             </div>
-            <div style={{ padding: '12px 14px' }}>
+          </Section>
+
+          {/* STATUS & SOURCE */}
+          <Section title="Status & Source" icon="🏷">
+            <InlineField label="Status" value={f.status} onChange={v => { saveField('status', v); loadTimeline() }} options={CONTACT_STATUSES} />
+            <InlineField label="Source" value={f.source} onChange={v => saveField('source', v)} options={CONTACT_SOURCES} placeholder="How did they find you?" />
+            <InlineField label="Assigned Agent" value={f.agent_id} onChange={v => saveField('agent_id', v)}
+              options={agents.map(a => ({ value: a.id, label: a.name }))} placeholder="Assign to agent" />
+
+            {/* Quick status buttons */}
+            <div style={{ marginTop: '8px' }}>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '6px' }}>Quick Status</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                {['Hot','Warm','Cold','Active','Nurturing','Closed','Unresponsive'].map(s => (
+                  <button key={s} onClick={() => quickStatus(s)}
+                    style={{ padding: '3px 8px', borderRadius: '6px', border: `1px solid ${f.status === s ? STATUS_COLORS[s] : 'var(--border)'}`, background: f.status === s ? STATUS_COLORS[s] + '18' : 'transparent', color: f.status === s ? STATUS_COLORS[s] : 'var(--muted)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Section>
+
+          {/* BUYER CRITERIA */}
+          <Section title="Buyer Criteria" icon="🏡">
+            <InlineField label="Buyer Type" value={f.buyer_type} onChange={v => saveField('buyer_type', v)}
+              options={['Developer','Investor','Home Owner','First Time Buyer','Vacation/Summer Home']} placeholder="Type of buyer" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <InlineField label="Budget Min" value={f.budget_min} onChange={v => saveField('budget_min', parseNum(v))} type="number" prefix="$" placeholder="Min" />
+              <InlineField label="Budget Max" value={f.budget_max} onChange={v => saveField('budget_max', parseNum(v))} type="number" prefix="$" placeholder="Max" />
+              <InlineField label="Beds Min" value={f.beds_min} onChange={v => saveField('beds_min', parseInt(v))} type="number" placeholder="Min beds" />
+              <InlineField label="Baths Min" value={f.baths_min} onChange={v => saveField('baths_min', parseFloat(v))} type="number" placeholder="Min baths" />
+            </div>
+            <TagInput label="Property Types Wanted" values={f.property_types || []} options={['Single Family','Multi Family','Condo','Land','Commercial','New Construction','Co-Op']} onChange={v => saveField('property_types', v)} />
+            <TagInput label="Preferred Locations" values={f.locations || []} options={LOCAL_CITIES} onChange={v => saveField('locations', v)} />
+            <InlineField label="Must Haves" value={f.must_haves} onChange={v => saveField('must_haves', v)} multiline placeholder="What are they firm on?" />
+            <InlineField label="Deal Breakers" value={f.deal_breakers} onChange={v => saveField('deal_breakers', v)} multiline placeholder="What will kill the deal?" />
+            <InlineField label="Financing" value={f.financing} onChange={v => saveField('financing', v)} options={FINANCING_OPTIONS} placeholder="How are they financing?" />
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Pre-Approved</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <div onClick={() => saveField('pre_approved', !f.pre_approved)}
+                  style={{ width: 32, height: 18, borderRadius: '99px', background: f.pre_approved ? '#10B981' : 'var(--border)', position: 'relative', cursor: 'pointer', transition: 'background .2s', flexShrink: 0 }}>
+                  <div style={{ position: 'absolute', top: 1, left: f.pre_approved ? 15 : 1, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
+                </div>
+                <span style={{ fontSize: '12px', color: 'var(--text)' }}>{f.pre_approved ? 'Yes — Pre-Approved' : 'Not pre-approved'}</span>
+              </label>
+            </div>
+            {f.pre_approved && (
+              <InlineField label="Pre-Approval Amount" value={f.pre_approval_amt} onChange={v => saveField('pre_approval_amt', parseNum(v))} type="number" prefix="$" placeholder="Amount approved for" />
+            )}
+            <InlineField label="Timeline" value={f.timeline} onChange={v => saveField('timeline', v)} options={TIMELINE_OPTIONS} placeholder="When do they want to buy?" />
+            <InlineField label="Motivation" value={f.motivation} onChange={v => saveField('motivation', v)} options={MOTIVATION_OPTIONS} placeholder="Why are they buying?" />
+          </Section>
+
+          {/* SELLER INFO */}
+          <Section title="Seller Info" icon="🏠">
+            <InlineField label="Property Address" value={f.property_addr} onChange={v => saveField('property_addr', v)} placeholder="Property they're selling" />
+            <InlineField label="Asking Price" value={f.asking_price} onChange={v => saveField('asking_price', parseNum(v))} type="number" prefix="$" placeholder="Their asking price" />
+            <InlineField label="Reason for Selling" value={f.reason_selling} onChange={v => saveField('reason_selling', v)} multiline placeholder="Why are they selling?" />
+          </Section>
+
+          {/* KEY DATES */}
+          <Section title="Key Dates" icon="📅">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {[
-                { label: '📞 Phone',   value: contact.phone ? fmtPhone(contact.phone) : null, href: contact.phone ? phoneHref(contact.phone) : null },
-                { label: '📧 Email',   value: contact.email, href: contact.email ? 'mailto:' + contact.email : null },
-                { label: '📍 Address', value: [contact.address, contact.city, contact.state, contact.zip].filter(Boolean).join(', ') },
-                { label: '🏷 Status',  value: contact.status, pill: true, color: statusColor },
-                { label: '📌 Source',  value: contact.source },
-                { label: '👤 Agent',   value: contact.agents?.name },
-                { label: '📅 Added',   value: fmtDate(contact.created_at) },
-                { label: '🕐 Last Activity', value: fmtDate(contact.last_activity) },
-              ].filter(row => row.value).map(row => (
-                <div key={row.label} style={{ marginBottom: '10px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '2px' }}>{row.label}</div>
-                  {row.href ? (
-                    <a href={row.href} style={{ fontSize: '13px', color: 'var(--brand)', textDecoration: 'none', fontWeight: 500 }}>{row.value}</a>
-                  ) : row.pill ? (
-                    <Pill label={row.value} color={row.color} />
+                { label: '✨ Created',          value: f.created_at,      readOnly: true,  fmt: fmtDateTime },
+                { label: '🕐 Last Activity',    value: f.last_activity,   readOnly: true,  fmt: fmtDateTime },
+                { label: '📞 Last Reached Out', value: f.last_reached,    field: 'last_reached',   type: 'date' },
+                { label: '📋 Next Follow-Up',   value: f.next_followup,   field: 'next_followup',  type: 'date' },
+                { label: '💤 No Contact Since', value: f.no_contact_since,field: 'no_contact_since',type: 'date' },
+                { label: '📄 AO Date',          value: f.ao_date,         field: 'ao_date',         type: 'date' },
+                { label: '📝 Contract Date',    value: f.contract_date,   field: 'contract_date',   type: 'date' },
+                { label: '🏁 Close Date',       value: f.close_date,      field: 'close_date',      type: 'date' },
+              ].map(row => (
+                <div key={row.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>{row.label}</span>
+                  {row.readOnly ? (
+                    <span style={{ fontSize: '12px', color: 'var(--text)' }}>{row.fmt ? row.fmt(row.value) : fmtDate(row.value)}</span>
                   ) : (
-                    <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 500 }}>{row.value}</div>
+                    <input type="date" value={row.value || ''} onChange={e => saveField(row.field, e.target.value || null)}
+                      style={{ border: '1px solid var(--border)', borderRadius: '5px', padding: '3px 6px', fontSize: '12px', background: 'var(--inp)', color: 'var(--text)', fontFamily: ff, cursor: 'pointer' }} />
                   )}
                 </div>
               ))}
             </div>
-          </div>
+          </Section>
 
-          {/* Notes Card */}
-          {contact.notes && (
-            <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-              <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                Notes
-              </div>
-              <div style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                {contact.notes}
-              </div>
-            </div>
-          )}
+          {/* AUTOMATION */}
+          <Section title="Automation" icon="⚡">
+            <div style={{ marginBottom: '12px', padding: '10px', background: 'var(--dim)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', marginBottom: '8px' }}>Auto Follow-Up</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '8px' }}>
+                <div onClick={() => saveField('auto_followup_on', !f.auto_followup_on)}
+                  style={{ width: 32, height: 18, borderRadius: '99px', background: f.auto_followup_on ? '#10B981' : 'var(--border)', position: 'relative', cursor: 'pointer', transition: 'background .2s', flexShrink: 0 }}>
+                  <div style={{ position: 'absolute', top: 1, left: f.auto_followup_on ? 15 : 1, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
+                </div>
+                <span style={{ fontSize: '12px', color: 'var(--text)' }}>Auto follow-up {f.auto_followup_on ? 'ON' : 'OFF'}</span>
+              </label>
 
-          {/* Tags */}
-          {contact.tags?.length > 0 && (
-            <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', padding: '12px 14px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Tags</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {contact.tags.map(tag => (
-                  <span key={tag} style={{ padding: '3px 8px', background: 'var(--dim)', borderRadius: '99px', fontSize: '11px', color: 'var(--muted)', border: '1px solid var(--border)' }}>{tag}</span>
-                ))}
-              </div>
+              {f.auto_followup_on && (
+                <>
+                  <div style={{ marginBottom: '8px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Follow up every</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input type="number" value={f.auto_followup_days || 7} min={1} max={90}
+                        onChange={e => saveField('auto_followup_days', parseInt(e.target.value))}
+                        style={{ width: '60px', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }} />
+                      <span style={{ fontSize: '12px', color: 'var(--muted)' }}>days</span>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Follow-Up Template</div>
+                    <select value={f.followup_template || ''} onChange={e => saveField('followup_template', e.target.value)}
+                      style={{ width: '100%', padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
+                      <option value="">None — just create task</option>
+                      {FOLLOWUP_TEMPLATES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
-          )}
 
-          {/* Quick Status Change */}
-          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', padding: '12px 14px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Quick Update Status</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {['Hot','Warm','Cold','Active','Nurturing','Closed','Unresponsive'].map(s => (
-                <button key={s} onClick={async () => {
-                  try {
-                    const updated = await db.contacts.update(id, { status: s })
-                    setContact(updated)
-                    setForm(f => ({ ...f, status: s }))
-                    toast(`✅ Status → ${s}`)
-                    loadTimeline()
-                  } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
-                }}
-                  style={{ padding: '4px 10px', borderRadius: '6px', border: `1px solid ${contact.status === s ? STATUS_COLORS[s] : 'var(--border)'}`, background: contact.status === s ? STATUS_COLORS[s] + '18' : 'transparent', color: contact.status === s ? STATUS_COLORS[s] : 'var(--muted)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
-                  {s}
-                </button>
-              ))}
+            {/* Manual follow-up task creator */}
+            <div style={{ padding: '10px', background: 'var(--dim)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', marginBottom: '8px' }}>Create Follow-Up Task</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                <div>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '3px' }}>Next Follow-Up Date</div>
+                  <input type="date" value={f.next_followup || ''} onChange={e => saveField('next_followup', e.target.value || null)}
+                    style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff, boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '3px' }}>Last Reached</div>
+                  <input type="date" value={f.last_reached || ''} onChange={e => saveField('last_reached', e.target.value || null)}
+                    style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff, boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              <Btn size="sm" onClick={async () => {
+                if (!f.next_followup) { toast('Set a follow-up date first', '#DC2626'); return }
+                try {
+                  await db.tasks.create({
+                    agent_id:   f.agent_id || agent?.id,
+                    created_by: agent?.id,
+                    contact_id: id,
+                    title:      `Follow up with ${f.first_name} ${f.last_name || ''}`,
+                    due_date:   f.next_followup,
+                    priority:   f.status === 'Hot' ? 'urgent' : f.status === 'Warm' ? 'high' : 'normal',
+                    status:     'pending',
+                    notes:      `Follow-up for ${f.first_name} — ${f.motivation || ''} ${f.timeline || ''}`.trim(),
+                  })
+                  toast('✅ Follow-up task created')
+                } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+              }} style={{ width: '100%', justifyContent: 'center' }}>
+                ✅ Create Follow-Up Task
+              </Btn>
             </div>
+
+            {/* Upcoming follow-up indicator */}
+            {daysToFollowup !== null && (
+              <div style={{ marginTop: '8px', padding: '8px 10px', background: daysToFollowup < 0 ? '#FEF2F2' : daysToFollowup <= 2 ? '#FFF7ED' : '#F0FDF4', borderRadius: '8px', border: `1px solid ${daysToFollowup < 0 ? '#FECACA' : daysToFollowup <= 2 ? '#FED7AA' : '#BBF7D0'}`, fontSize: '12px', color: daysToFollowup < 0 ? '#DC2626' : daysToFollowup <= 2 ? '#C2410C' : '#166534', fontWeight: 600 }}>
+                {daysToFollowup < 0 ? `⚠️ Follow-up overdue by ${Math.abs(daysToFollowup)} days` : daysToFollowup === 0 ? '📅 Follow-up due today' : `📅 Follow-up in ${daysToFollowup} days`}
+              </div>
+            )}
+          </Section>
+
+          {/* NOTES */}
+          <Section title="Notes" icon="📝">
+            <textarea value={f.notes || ''} onChange={e => setContact(c => ({ ...c, notes: e.target.value }))}
+              onBlur={e => saveField('notes', e.target.value)}
+              placeholder="Notes about this contact..."
+              rows={5}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+          </Section>
+
+          {/* TAGS */}
+          <Section title="Tags" icon="🏷">
+            <TagInput label="" values={f.tags || []} onChange={v => saveField('tags', v)} />
+          </Section>
+
+          {/* DANGER */}
+          <div style={{ background: 'var(--panel)', borderRadius: '8px', border: '1px solid #FECACA', padding: '12px 14px' }}>
+            <Btn variant="danger" size="sm" onClick={() => setConfirmDel(true)} style={{ width: '100%', justifyContent: 'center' }}>🗑 Delete Contact</Btn>
           </div>
         </div>
 
         {/* ══════════════════════════════════════════════════════
-            CENTER PANEL — Conversation Timeline
+            CENTER — CONVERSATION TIMELINE
         ══════════════════════════════════════════════════════ */}
         <div>
           <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>💬 Conversation History</div>
-              <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{timeline.length} entries</div>
+              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{timeline.length} entries</span>
             </div>
             <div style={{ padding: '16px' }}>
-              {/* Add to timeline */}
-              <AddTimelineItem contactId={id} agentId={agent?.id} onAdded={loadTimeline} />
+              <AddToTimeline contactId={id} agentId={agent?.id} onAdded={loadTimeline} />
 
-              {/* Timeline */}
-              {tlLoading && <Loading />}
+              {tlLoading && <div style={{ textAlign: 'center', padding: '20px' }}><Spinner size={20} color="var(--muted)" /></div>}
+
               {!tlLoading && timeline.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '32px 20px', color: 'var(--muted)', fontSize: '13px' }}>
                   <div style={{ fontSize: '32px', marginBottom: '10px' }}>💬</div>
-                  No conversation history yet.<br />
-                  Add a note, call, or email above to start tracking.
+                  No history yet. Add a note above to start tracking.
                 </div>
               )}
-              {timeline.map(item => (
-                <TimelineItem key={item.id + item.type} item={item} />
-              ))}
+
+              {timeline.map(item => <TimelineItem key={item.id + item.type} item={item} />)}
             </div>
           </div>
         </div>
 
         {/* ══════════════════════════════════════════════════════
-            RIGHT PANEL — Actions, Deals, Tasks, Files
+            RIGHT — ACTIONS + DEALS + TASKS + FILES
         ══════════════════════════════════════════════════════ */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
           {/* Quick Actions */}
           <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', padding: '12px 14px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '10px' }}>Quick Actions</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Quick Actions</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
               {[
-                { label: '✅ Create Task',       onClick: () => navigate('/tasks/new') },
-                { label: '📊 Link to Deal',      onClick: () => navigate('/production/new') },
-                { label: '📅 Schedule Event',    onClick: () => navigate('/calendar/new') },
-                { label: '🎁 Add Gift',          onClick: () => navigate('/gifts/new') },
-                { label: '📞 Log Call',          onClick: () => navigate('/calls/new') },
+                { label: '✅ Create Task',       nav: '/tasks/new' },
+                { label: '📊 Add to Deal',       nav: '/production/new' },
+                { label: '📅 Schedule Event',    nav: '/calendar/new' },
+                { label: '🎁 Send Gift',         nav: '/gifts/new' },
+                { label: '📞 Log Call',          nav: '/calls/new' },
+                { label: '🏡 Create Listing',    nav: '/listings/new' },
               ].map(a => (
-                <button key={a.label} onClick={a.onClick}
-                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--text)', fontFamily: ff, transition: 'background .1s' }}
+                <button key={a.label} onClick={() => navigate(a.nav)}
+                  style={{ width: '100%', padding: '7px 10px', textAlign: 'left', background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--text)', fontFamily: ff }}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'var(--dim)'}>
                   {a.label}
@@ -479,50 +720,46 @@ export function ContactDetail() {
             </div>
           </div>
 
-          {/* Related Content Tabs */}
+          {/* Tabs: Deals / Tasks / Files */}
           <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
               {[
-                { id: 'deals',  label: `Deals (${relDeals.length})` },
-                { id: 'tasks',  label: `Tasks (${relTasks.length})` },
-                { id: 'files',  label: 'Files' },
+                { id: 'deals', label: `Deals (${relDeals.length})` },
+                { id: 'tasks', label: `Tasks (${relTasks.length})` },
+                { id: 'files', label: 'Files' },
               ].map(t => (
                 <button key={t.id} onClick={() => setRightTab(t.id)}
-                  style={{ flex: 1, padding: '9px 6px', background: 'none', border: 'none', borderBottom: rightTab === t.id ? '2px solid var(--brand)' : '2px solid transparent', marginBottom: '-1px', fontSize: '11px', fontWeight: rightTab === t.id ? 700 : 500, color: rightTab === t.id ? 'var(--brand)' : 'var(--muted)', cursor: 'pointer', fontFamily: ff }}>
+                  style={{ flex: 1, padding: '9px 4px', background: 'none', border: 'none', borderBottom: rightTab === t.id ? '2px solid var(--brand)' : '2px solid transparent', marginBottom: '-1px', fontSize: '11px', fontWeight: rightTab === t.id ? 700 : 500, color: rightTab === t.id ? 'var(--brand)' : 'var(--muted)', cursor: 'pointer', fontFamily: ff }}>
                   {t.label}
                 </button>
               ))}
             </div>
-            <div style={{ padding: '12px 14px' }}>
-
-              {/* Deals */}
+            <div style={{ padding: '10px 12px' }}>
               {rightTab === 'deals' && (
                 <div>
-                  {relDeals.length === 0 && <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '12px' }}>No deals linked yet</div>}
+                  {relDeals.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No deals linked</div>}
                   {relDeals.map(d => (
                     <div key={d.id} onClick={() => navigate('/production/' + d.id)}
-                      style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                      style={{ padding: '7px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
                       <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.addr}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '3px' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</div>
-                        <Pill label={d.stage} color={DEAL_STAGES_MAP[d.stage] || '#94A3B8'} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</span>
+                        <Pill label={d.stage} color="#9aadbd" />
                       </div>
                     </div>
                   ))}
                   <button onClick={() => navigate('/production/new')}
-                    style={{ width: '100%', marginTop: '8px', padding: '7px', border: '1px dashed var(--border)', borderRadius: '6px', background: 'transparent', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer', fontFamily: ff }}>
+                    style={{ width: '100%', marginTop: '6px', padding: '6px', border: '1px dashed var(--border)', borderRadius: '6px', background: 'transparent', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer', fontFamily: ff }}>
                     + Link Deal
                   </button>
                 </div>
               )}
-
-              {/* Tasks */}
               {rightTab === 'tasks' && (
                 <div>
-                  {relTasks.length === 0 && <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '12px' }}>No tasks for this contact</div>}
+                  {relTasks.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No tasks</div>}
                   {relTasks.map(t => (
                     <div key={t.id} onClick={() => navigate('/tasks/' + t.id)}
-                      style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '7px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: t.status === 'done' ? '#10B981' : '#F97316', flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}</div>
@@ -531,72 +768,18 @@ export function ContactDetail() {
                     </div>
                   ))}
                   <button onClick={() => navigate('/tasks/new')}
-                    style={{ width: '100%', marginTop: '8px', padding: '7px', border: '1px dashed var(--border)', borderRadius: '6px', background: 'transparent', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer', fontFamily: ff }}>
+                    style={{ width: '100%', marginTop: '6px', padding: '6px', border: '1px dashed var(--border)', borderRadius: '6px', background: 'transparent', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer', fontFamily: ff }}>
                     + Add Task
                   </button>
                 </div>
               )}
-
-              {/* Files */}
-              {rightTab === 'files' && (
-                <FileAttachments tableName="contacts" recordId={id} />
-              )}
+              {rightTab === 'files' && <FileAttachments tableName="contacts" recordId={id} />}
             </div>
-          </div>
-
-          {/* Danger Zone */}
-          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid #FECACA', padding: '12px 14px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Danger Zone</div>
-            <Btn variant="danger" size="sm" onClick={() => setConfirmDel(true)} style={{ width: '100%' }}>🗑 Delete Contact</Btn>
           </div>
         </div>
       </div>
 
-      {/* ── EDIT MODAL ── */}
-      <Modal open={editing} onClose={() => setEditing(false)} title="Edit Contact" width={560}>
-        <Tabs tabs={['info','notes']} active={form._tab || 'info'} onChange={t => setForm(f => ({ ...f, _tab: t }))} />
-        {(!form._tab || form._tab === 'info') && (
-          <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <Field label="First Name" required><Input value={form.first_name || ''} onChange={v => set('first_name', v)} placeholder="John" /></Field>
-              <Field label="Last Name"><Input value={form.last_name || ''} onChange={v => set('last_name', v)} placeholder="Smith" /></Field>
-              <Field label="Phone"><Input value={form.phone || ''} onChange={v => set('phone', v)} type="tel" placeholder="(845) 555-1234" /></Field>
-              <Field label="Email"><Input value={form.email || ''} onChange={v => set('email', v)} type="email" placeholder="john@email.com" /></Field>
-            </div>
-            <Field label="Address"><Input value={form.address || ''} onChange={v => set('address', v)} placeholder="123 Main St" /></Field>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <Field label="City"><Input value={form.city || ''} onChange={v => set('city', v)} placeholder="Monsey" /></Field>
-              <Field label="Zip"><Input value={form.zip || ''} onChange={v => set('zip', v)} placeholder="10952" /></Field>
-              <Field label="Status"><Select value={form.status || ''} onChange={v => set('status', v)} options={CONTACT_STATUSES} /></Field>
-              <Field label="Source"><Select value={form.source || ''} onChange={v => set('source', v)} options={CONTACT_SOURCES} placeholder="Source" /></Field>
-            </div>
-            {(isAdmin || canManage) && (
-              <Field label="Assigned Agent">
-                <Select value={form.agent_id || ''} onChange={v => set('agent_id', v)} options={agents.map(a => ({ value: a.id, label: a.name }))} placeholder="Assign agent" />
-              </Field>
-            )}
-          </div>
-        )}
-        {form._tab === 'notes' && (
-          <Field label="Notes"><Textarea value={form.notes || ''} onChange={v => set('notes', v)} rows={8} placeholder="Notes about this contact..." /></Field>
-        )}
-        <ModalActions>
-          <Btn variant="secondary" onClick={() => setEditing(false)}>Cancel</Btn>
-          <Btn onClick={saveContact} loading={saving}>Save Changes</Btn>
-        </ModalActions>
-      </Modal>
-
-      <Confirm open={confirmDel} message={`Delete ${contact.first_name} ${contact.last_name || ''}? This cannot be undone.`} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />
+      <Confirm open={confirmDel} message={`Delete ${f.first_name} ${f.last_name || ''}? Cannot be undone.`} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />
     </div>
   )
-}
-
-// Stage colors for the deals panel
-const DEAL_STAGES_MAP = {
-  'Negotiations':      '#037f4c',
-  'Offer Accapted':    '#00c875',
-  'Under Shtar':       '#bb3354',
-  'Under Contract':    '#757575',
-  'Closed':            '#225091',
-  'Deal Fell Through': '#ff007f',
 }
