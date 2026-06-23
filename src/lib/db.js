@@ -5,7 +5,12 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase } from './supabase'
-import { trigger } from './automationDispatcher'
+
+// Lazy import to avoid circular dependency
+function getTrigger() {
+  try { return require('./automationDispatcher').trigger } catch { return null }
+}
+const trigger = new Proxy({}, { get: (_, k) => (...args) => { try { const t = getTrigger(); if (t?.[k]) t[k](...args) } catch {} } })
 
 // ── HELPER ───────────────────────────────────────────────────────
 async function run(promise) {
