@@ -444,6 +444,8 @@ export function Dashboard() {
   const [showGoals,    setShowGoals]    = useState(false)
   const [showAgentView,setShowAgentView]= useState(false)
   const [dragId,       setDragId]       = useState(null)
+  const [editMode,     setEditMode]     = useState(false)
+  const [pendingWidgets, setPendingWidgets] = useState(null) // staged changes before save
   const [savingPrefs,  setSavingPrefs]  = useState(false)
 
   // ── LOAD PREFS AND GOALS FROM DB ──────────────────────────────
@@ -468,23 +470,50 @@ export function Dashboard() {
   // ── DRAG TO REORDER ───────────────────────────────────────────
   const dragOver = useRef(null)
 
-  function onDragStart(id) { setDragId(id) }
-  function onDragEnter(id) { dragOver.current = id }
+  function onDragStart(id) {
+    if (!editMode) return
+    setDragId(id)
+  }
+  function onDragEnter(e, id) {
+    // Only update if entering the widget root element, not a child
+    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget)) {
+      dragOver.current = id
+    }
+  }
 
   function onDragEnd() {
     if (!dragId || !dragOver.current || dragId === dragOver.current) {
       setDragId(null); dragOver.current = null; return
     }
-    const newW = [...widgets]
+    // Stage changes — don't save until Save Layout is clicked
+    const base = pendingWidgets || widgets
+    const newW = [...base]
     const fromIdx = newW.findIndex(w => w.id === dragId)
     const toIdx   = newW.findIndex(w => w.id === dragOver.current)
     if (fromIdx < 0 || toIdx < 0) { setDragId(null); return }
     const [moved] = newW.splice(fromIdx, 1)
     newW.splice(toIdx, 0, moved)
-    persistWidgets(newW)
+    setPendingWidgets(newW)   // stage only — not saved to DB yet
+    setWidgets(newW)          // update UI immediately
     setDragId(null)
     dragOver.current = null
-    toast('✅ Layout saved')
+  }
+
+  async function saveLayout() {
+    const toSave = pendingWidgets || widgets
+    await persistWidgets(toSave)
+    setPendingWidgets(null)
+    setEditMode(false)
+    toast('✅ Layout saved and locked')
+  }
+
+  function cancelEdit() {
+    // Revert unsaved changes
+    if (pendingWidgets) {
+      loadDashPrefs(agent.id).then(p => setWidgets(p.widgets || DEFAULT_WIDGETS))
+      setPendingWidgets(null)
+    }
+    setEditMode(false)
   }
 
   // ── LOAD DATA ─────────────────────────────────────────────────
@@ -596,34 +625,75 @@ export function Dashboard() {
     const color = w.color || '#CC2200'
     const isLg  = w.size === 'lg'
 
-    const shell = (content) => (
+    const shell = (widgetContent) => (
       <div key={w.id}
-        draggable
+        draggable={editMode}
         onDragStart={() => onDragStart(w.id)}
-        onDragEnter={() => onDragEnter(w.id)}
+        onDragEnter={e => onDragEnter(e, w.id)}
         onDragEnd={onDragEnd}
-        onDragOver={e => e.preventDefault()}
+        onDragOver={e => { if (editMode) e.preventDefault() }}
         style={{
           gridColumn:    isLg ? 'span 2' : 'span 1',
           background:    'var(--panel)',
           borderRadius:  '12px',
-          border:        `1px solid var(--border)`,
-          borderTop:     `3px solid ${color}`,
+          border:        editMode ? `2px dashed ${color}` : `1px solid var(--border)`,
+          borderTop:     editMode ? `2px dashed ${color}` : `3px solid ${color}`,
           display:       'flex',
           flexDirection: 'column',
           overflow:      'hidden',
-          opacity:       dragId === w.id ? 0.4 : 1,
-          transition:    'opacity .15s, box-shadow .15s',
-          cursor:        'grab',
+          opacity:       dragId === w.id ? 0.35 : 1,
+          transition:    'opacity .15s, box-shadow .15s, border .15s',
+          cursor:        editMode ? 'grab' : 'default',
+          position:      'relative',
         }}>
-        <div style={{ padding: '11px 14px 9px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        {/* Widget header */}
+        <div style={{ padding: '11px 14px 9px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: editMode ? color + '0a' : 'transparent' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {editMode && <span style={{ fontSize: '14px', color: 'var(--muted)', cursor: 'grab' }}>⠿</span>}
             <span style={{ fontSize: '14px' }}>{def?.icon}</span>
             <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{def?.label}</span>
           </div>
-          <span style={{ fontSize: '10px', color: 'var(--border)', userSelect: 'none', letterSpacing: '1px' }}>⋮⋮</span>
+          {editMode ? (
+            /* Edit mode controls on each widget */
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Size toggle */}
+              <button onClick={() => {
+                const updated = widgets.map(x => x.id === w.id ? { ...x, size: x.size === 'lg' ? 'md' : 'lg' } : x)
+                setWidgets(updated)
+                setPendingWidgets(updated)
+              }}
+                style={{ padding: '2px 7px', borderRadius: '5px', border: `1px solid ${color}44`, background: color + '11', color: color, fontSize: '10px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+                {w.size === 'lg' ? '◻ Half' : '▭ Full'}
+              </button>
+              {/* Color picker dots */}
+              <div style={{ display: 'flex', gap: '3px' }}>
+                {['#CC2200','#10B981','#3B82F6','#F5A623','#8B5CF6','#EC4899','#14B8A6'].map(c => (
+                  <div key={c} onClick={() => {
+                    const updated = widgets.map(x => x.id === w.id ? { ...x, color: c } : x)
+                    setWidgets(updated)
+                    setPendingWidgets(updated)
+                  }}
+                    style={{ width: 12, height: 12, borderRadius: '50%', background: c, cursor: 'pointer', border: color === c ? '2px solid var(--text)' : '1px solid transparent', transition: 'border .1s' }} />
+                ))}
+              </div>
+              {/* Hide widget */}
+              <button onClick={() => {
+                const updated = widgets.map(x => x.id === w.id ? { ...x, visible: false } : x)
+                setWidgets(updated)
+                setPendingWidgets(updated)
+              }}
+                style={{ padding: '2px 6px', borderRadius: '5px', border: '1px solid #DC262644', background: '#FEF2F2', color: '#DC2626', fontSize: '11px', cursor: 'pointer', fontFamily: ff, fontWeight: 700 }}>
+                ✕
+              </button>
+            </div>
+          ) : (
+            <span style={{ fontSize: '10px', color: 'var(--border)', userSelect: 'none', letterSpacing: '1px' }}>⋮⋮</span>
+          )}
         </div>
-        <div style={{ flex: 1, padding: '12px 14px', overflow: 'hidden' }}>{content}</div>
+        {/* Widget content — dimmed in edit mode so controls are clear */}
+        <div style={{ flex: 1, padding: '12px 14px', overflow: 'hidden', opacity: editMode ? 0.4 : 1, pointerEvents: editMode ? 'none' : 'auto' }}>
+          {widgetContent}
+        </div>
       </div>
     )
 
@@ -931,21 +1001,38 @@ export function Dashboard() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}
-            style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          {(isAdmin || canManage) && (
-            <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)}
-              style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
-              <option value="">All Agents</option>
-              {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+          {/* Filters — hidden during edit mode */}
+          {!editMode && (
+            <>
+              <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}
+                style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              {(isAdmin || canManage) && (
+                <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)}
+                  style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
+                  <option value="">All Agents</option>
+                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              )}
+              <button onClick={loadData} style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--muted)', cursor: 'pointer', fontSize: '13px', fontFamily: ff }} title="Refresh">↻</button>
+              <Btn size="sm" variant="secondary" onClick={() => setShowGoals(true)}>🎯 Goals</Btn>
+              {isAdmin && <Btn size="sm" variant="secondary" onClick={() => setShowAgentView(true)}>👥 Agent Views</Btn>}
+            </>
           )}
-          <button onClick={loadData} style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--muted)', cursor: 'pointer', fontSize: '13px', fontFamily: ff }} title="Refresh">↻</button>
-          <Btn size="sm" variant="secondary" onClick={() => setShowGoals(true)}>🎯 Goals</Btn>
-          {isAdmin && <Btn size="sm" variant="secondary" onClick={() => setShowAgentView(true)}>👥 Agent Views</Btn>}
-          <Btn size="sm" variant="secondary" onClick={() => setShowCustomize(true)}>🎛 Customize</Btn>
+
+          {/* Edit Mode controls */}
+          {editMode ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: '10px' }}>
+              <span style={{ fontSize: '12px', color: '#92400E', fontWeight: 600 }}>🎛 Edit Mode — drag widgets to reorder</span>
+              <Btn size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Btn>
+              <Btn size="sm" onClick={saveLayout} loading={savingPrefs} style={{ background: '#10B981', border: 'none' }}>
+                💾 Save Layout
+              </Btn>
+            </div>
+          ) : (
+            <Btn size="sm" variant="secondary" onClick={() => { setEditMode(true); setPendingWidgets(null) }}>🎛 Edit Layout</Btn>
+          )}
         </div>
       </div>
 
@@ -1082,6 +1169,37 @@ export function Dashboard() {
       </DetailPopup>
 
       {/* ── OVERLAYS ── */}
+      {/* Edit mode — hidden widgets tray */}
+      {editMode && (
+        <div style={{ marginTop: '16px', padding: '14px 16px', background: 'var(--dim)', borderRadius: '12px', border: '2px dashed var(--border)' }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            Hidden Widgets — click to show
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {widgets.filter(w => !w.visible && WIDGET_DEFS[w.id]?.roles.includes(agent.role)).map(w => {
+              const def = WIDGET_DEFS[w.id]
+              if (!def) return null
+              return (
+                <button key={w.id}
+                  onClick={() => {
+                    const updated = widgets.map(x => x.id === w.id ? { ...x, visible: true } : x)
+                    setWidgets(updated)
+                    setPendingWidgets(updated)
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--brand)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+                  <span>{def.icon}</span> + {def.label}
+                </button>
+              )
+            })}
+            {widgets.filter(w => !w.visible && WIDGET_DEFS[w.id]?.roles.includes(agent.role)).length === 0 && (
+              <span style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>All widgets are visible</span>
+            )}
+          </div>
+        </div>
+      )}
+
       {showCustomize && (
         <CustomizePanel widgets={widgets} role={agent.role}
           onSave={newW => { persistWidgets(newW); toast('✅ Layout saved') }}
