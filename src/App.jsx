@@ -43,6 +43,12 @@ import { Route as RoutePage } from './pages/Route'
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null } }
   static getDerivedStateFromError(e) { return { error: e } }
+  componentDidCatch(error, info) {
+    console.error('=== ERROR BOUNDARY CAUGHT ===')
+    console.error('Error:', error.message)
+    console.error('Stack:', error.stack)
+    console.error('Component Stack:', info.componentStack)
+  }
   render() {
     if (this.state.error) return (
       <div style={{ padding: '40px', maxWidth: '500px', margin: '60px auto', fontFamily: 'Inter,system-ui,sans-serif' }}>
