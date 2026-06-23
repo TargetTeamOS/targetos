@@ -5,7 +5,6 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase } from './supabase'
-import { db } from './db'
 
 // ── TRIGGER DEFINITIONS ───────────────────────────────────────────
 export const TRIGGERS = [
@@ -272,7 +271,7 @@ async function executeAction(action, context, triggerData, agents) {
       const agentId = resolveAgent(cfg.assign_to, triggerData, agents)
       const dueDate = new Date()
       dueDate.setDate(dueDate.getDate() + (parseInt(cfg.due_days) || 1))
-      await db.tasks.create({
+      await supabase.from('tasks').insert({
         title:      interpolate(cfg.title || 'Follow up', context),
         agent_id:   agentId,
         created_by: agentId,
@@ -282,6 +281,8 @@ async function executeAction(action, context, triggerData, agents) {
         priority:   cfg.priority || 'normal',
         status:     'pending',
         notes:      interpolate(cfg.notes || '', context),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
       break
     }
@@ -303,14 +304,14 @@ async function executeAction(action, context, triggerData, agents) {
 
     case 'update_contact_status': {
       if (triggerData.contact_id) {
-        await db.contacts.update(triggerData.contact_id, { status: cfg.status })
+        await supabase.from('contacts').update({ status: cfg.status, updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
       }
       break
     }
 
     case 'update_deal_stage': {
       if (triggerData.deal_id) {
-        await db.deals.update(triggerData.deal_id, { stage: cfg.stage })
+        await supabase.from('deals').update({ stage: cfg.stage, updated_at: new Date().toISOString() }).eq('id', triggerData.deal_id)
       }
       break
     }
@@ -320,15 +321,15 @@ async function executeAction(action, context, triggerData, agents) {
         const { data: contact } = await supabase.from('contacts').select('tags').eq('id', triggerData.contact_id).single()
         const tags = contact?.tags || []
         if (!tags.includes(cfg.tag)) {
-          await db.contacts.update(triggerData.contact_id, { tags: [...tags, cfg.tag] })
+          await supabase.from('contacts').update({ tags: [...tags, cfg.tag], updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
         }
       }
       break
     }
 
     case 'assign_agent': {
-      if (triggerData.contact_id) await db.contacts.update(triggerData.contact_id, { agent_id: cfg.agent_id })
-      if (triggerData.deal_id)    await db.deals.update(triggerData.deal_id, { agent_id: cfg.agent_id })
+      if (triggerData.contact_id) await supabase.from('contacts').update({ agent_id: cfg.agent_id, updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
+      if (triggerData.deal_id)    await supabase.from('deals').update({ agent_id: cfg.agent_id, updated_at: new Date().toISOString() }).eq('id', triggerData.deal_id)
       break
     }
 
