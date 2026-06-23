@@ -149,6 +149,46 @@ async function executeAction(action, context, triggerData, agents) {
       break
     }
 
+    case 'send_email': {
+      const agentId = resolveAgent(cfg.to, triggerData, agents)
+      const agentRecord = agents.find(a => a.id === agentId)
+      const AGENT_EMAIL_MAP = {
+        'Lazer Farkas':       'lazer@targetreteam.com',
+        'Mendy Jankovits':    'mendy@targetreteam.com',
+        'Isaac Leibowitz':    'isaac@targetreteam.com',
+        'Yanky Lichtenstein': 'yanky@targetreteam.com',
+        'Gitty Fogel':        'office@targetreteam.com',
+        'Joel Rottenstein':   'joel@targetreteam.com',
+        'Eli Hoffman':        'eli@targetreteam.com',
+        'Avraham Weinberger': 'avraham@targetreteam.com',
+      }
+      const toEmail = agentRecord?.email || AGENT_EMAIL_MAP[agentRecord?.name] || 'office@targetreteam.com'
+      const emailSubject = interpolate(cfg.subject || 'TargetOS Automation Alert', context)
+      const emailBody    = interpolate(cfg.body    || '', context)
+      const emailBodyHtml = emailBody.replace(/\n/g, '<br>')
+      const html = '<html><body style="font-family:Inter,Arial,sans-serif;background:#F0F2F5;padding:20px">'
+        + '<div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden">'
+        + '<div style="background:#1B2B4B;padding:20px 28px"><div style="color:#fff;font-size:18px;font-weight:900">TargetOS</div>'
+        + '<div style="color:rgba(255,255,255,.5);font-size:12px">Automation Alert</div></div>'
+        + '<div style="padding:24px 28px"><div style="font-size:15px;font-weight:700;color:#0F172A;margin-bottom:10px">' + emailSubject + '</div>'
+        + '<div style="font-size:14px;color:#334155;line-height:1.6">' + emailBodyHtml + '</div></div>'
+        + '<div style="padding:18px 28px;background:#F8FAFC;border-top:1px solid #E2E8F0;text-align:center">'
+        + '<a href="https://app.targetreteam.com" style="background:#CC2200;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700">Open TargetOS</a>'
+        + '<div style="margin-top:10px;font-size:11px;color:#94A3B8">Target Team · KW Valley Realty</div>'
+        + '</div></div></body></html>'
+      const emailRes = await fetch('/api/send-email', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: 'TargetOS <office@targetreteam.com>', to: [toEmail], subject: emailSubject, html, reply_to: 'yanky@targetreteam.com' }),
+      })
+      const emailResult = await emailRes.json()
+      if (!emailRes.ok) throw new Error('Email failed: ' + (emailResult.error || 'Unknown'))
+      console.log('[AutomationEngine] Email sent to', toEmail)
+      break
+    }
+
+
+
     default:
       break
   }
