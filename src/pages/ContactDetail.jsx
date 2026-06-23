@@ -20,6 +20,7 @@ import {
 } from '../lib/utils'
 import { CONTACT_STATUSES, CONTACT_SOURCES, PROPERTY_TYPES, LOCAL_CITIES } from '../lib/constants'
 import { FileAttachments } from '../components/FileAttachments'
+import { uploadFile, listFiles, deleteFile, fmtFileSize, fileIcon } from '../lib/storage'
 import { Avatar, Pill, Btn, Loading, Confirm, Field, Input, Select, Textarea, Toggle, Modal, ModalActions, Tabs, Spinner } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
@@ -279,92 +280,107 @@ const AGREEMENT_TYPES = [
   { id: 'other',    label: 'Other Document',     icon: '📄', color: '#94A3B8' },
 ]
 
-function AgreementsSection({ contactId, agentId, contactName, onActivityLog }) {
+function AgreementsSection({ contactId, agentId, onActivityLog }) {
   const { toast } = useApp()
   const [docs,      setDocs]      = React.useState([])
   const [loading,   setLoading]   = React.useState(true)
-  const [uploading, setUploading] = React.useState(null) // which type is uploading
-  const inputRefs = React.useRef({})
+  const [uploading, setUploading] = React.useState(null)
+  const [dragOver,  setDragOver]  = React.useState(false)
+  const inputRef   = React.useRef(null)
+  const ff2 = 'Inter,system-ui,sans-serif'
 
-  React.useEffect(() => { if (contactId) loadDocs() }, [contactId])
+  React.useEffect(() => { if (contactId) load() }, [contactId])
 
-  async function loadDocs() {
+  async function load() {
     setLoading(true)
     try {
-      const { data } = await supabase.storage
+      // List files in contacts/{contactId}/agreements/ folder
+      const { data, error } = await supabase.storage
         .from('targetos-files')
-        .list(`contacts/${contactId}/agreements`, { limit: 50, sortBy: { column: 'created_at', order: 'desc' } })
-      setDocs(data || [])
-    } catch { setDocs([]) }
-    finally { setLoading(false) }
-  }
-
-  async function handleUpload(agreementType, file) {
-    if (!file) return
-    if (file.size > 50 * 1024 * 1024) { toast('File too large (max 50MB)', '#DC2626'); return }
-    setUploading(agreementType)
-    try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const path = `contacts/${contactId}/agreements/${agreementType}_${Date.now()}_${safeName}`
-      const { error } = await supabase.storage.from('targetos-files').upload(path, file, { cacheControl: '3600', upsert: false })
+        .list('contacts/' + contactId + '/agreements', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } })
+      if (error && error.message?.includes('not found')) { setDocs([]); return }
       if (error) throw error
-
-      // Get public URL
-      const { data: urlData } = supabase.storage.from('targetos-files').getPublicUrl(path)
-
-      // Log to activity timeline
-      const typeDef = AGREEMENT_TYPES.find(t => t.id === agreementType)
-      await supabase.from('audit_log').insert({
-        agent_id:   agentId,
-        table_name: 'contacts',
-        record_id:  contactId,
-        action:     'note',
-        field_name: 'agreement',
-        new_value:  `${typeDef?.label || agreementType} uploaded: ${file.name}`,
-        metadata:   {
-          description: `${typeDef?.label} uploaded`,
-          type: 'agreement',
-          file_name: file.name,
-          file_url:  urlData?.publicUrl,
-        },
-        created_at: new Date().toISOString(),
+      // Build full paths and public URLs for each file
+      const files = (data || []).filter(f => f.name !== '.emptyFolderPlaceholder').map(f => {
+        const path = 'contacts/' + contactId + '/agreements/' + f.name
+        const { data: urlData } = supabase.storage.from('targetos-files').getPublicUrl(path)
+        return { name: f.name, path, url: urlData?.publicUrl, size: f.metadata?.size }
       })
-
-      toast('✅ ' + (typeDef?.label || 'Document') + ' uploaded')
-      await loadDocs()
-      onActivityLog?.()
+      setDocs(files)
     } catch(e) {
-      toast('Upload failed: ' + e.message, '#DC2626')
+      setDocs([])
     } finally {
-      setUploading(null)
-      if (inputRefs.current[agreementType]) inputRefs.current[agreementType].value = ''
+      setLoading(false)
     }
   }
 
-  async function deleteDoc(doc) {
-    try {
-      await supabase.storage.from('targetos-files').remove([`contacts/${contactId}/agreements/${doc.name}`])
-      setDocs(prev => prev.filter(d => d.name !== doc.name))
-      toast('Document deleted')
-    } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+  async function handleFiles(fileList, agreementType = 'other') {
+    const files = Array.from(fileList || [])
+    if (!files.length) return
+
+    for (const file of files) {
+      if (file.size > 50 * 1024 * 1024) { toast(file.name + ' is too large (max 50MB)', '#DC2626'); continue }
+      const uploadKey = agreementType + '_' + file.name
+      setUploading(uploadKey)
+      try {
+        // Path: contacts/{id}/agreements/{type}_{timestamp}_{filename}
+        const safeName  = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const fullPath  = agreementType + '_' + Date.now() + '_' + safeName
+        const tablePath = 'contacts/' + contactId + '/agreements'
+
+        // Upload directly to supabase storage with exact path control
+        const exactPath = 'contacts/' + contactId + '/agreements/' + fullPath
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('targetos-files')
+          .upload(exactPath, file, { cacheControl: '3600', upsert: false })
+        if (uploadError) throw uploadError
+
+        // Log to activity timeline
+        const typeDef = AGREEMENT_TYPES.find(t => t.id === agreementType)
+        await supabase.from('audit_log').insert({
+          agent_id:   agentId,
+          table_name: 'contacts',
+          record_id:  contactId,
+          action:     'note',
+          field_name: 'agreement',
+          new_value:  (typeDef?.label || 'Document') + ' uploaded: ' + file.name,
+          metadata:   { description: (typeDef?.label || 'Document') + ' uploaded', type: 'agreement', file_name: file.name },
+          created_at: new Date().toISOString(),
+        })
+
+        toast('✅ ' + (typeDef?.label || 'Document') + ' uploaded')
+        onActivityLog?.()
+      } catch(e) {
+        console.error('Upload error:', e)
+        toast('Upload failed: ' + e.message + ' — Check Supabase Storage policies', '#DC2626')
+      } finally {
+        setUploading(null)
+      }
+    }
+    await load()
+    if (inputRef.current) inputRef.current.value = ''
   }
 
-  // Parse type from filename prefix
-  function getTypeFromName(name) {
+  function onDrop(e, type) {
+    e.preventDefault()
+    setDragOver(false)
+    handleFiles(e.dataTransfer.files, type)
+  }
+
+  function getTypeFromPath(path) {
+    const name   = path.split('/').pop() || ''
     const prefix = name.split('_')[0]
     return AGREEMENT_TYPES.find(t => t.id === prefix) || AGREEMENT_TYPES[4]
   }
 
-  function getPublicUrl(name) {
-    const { data } = supabase.storage.from('targetos-files').getPublicUrl(`contacts/${contactId}/agreements/${name}`)
-    return data?.publicUrl
+  function cleanName(path) {
+    const name  = path.split('/').pop() || path
+    const parts = name.split('_')
+    return parts.length >= 3 ? parts.slice(2).join('_') : name
   }
-
-  const ff2 = 'Inter,system-ui,sans-serif'
 
   return (
     <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden', marginBottom: '8px' }}>
-      {/* Header */}
       <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--dim)' }}>
         <span style={{ fontSize: '14px' }}>📋</span>
         <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>Agreements & Documents</span>
@@ -372,62 +388,103 @@ function AgreementsSection({ contactId, agentId, contactName, onActivityLog }) {
       </div>
       <div style={{ padding: '10px 14px' }}>
 
-        {/* Upload buttons by type */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '10px' }}>
-          {AGREEMENT_TYPES.map(type => (
-            <div key={type.id}>
-              <input
-                ref={el => inputRefs.current[type.id] = el}
-                type="file"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                style={{ display: 'none' }}
-                onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(type.id, f) }}
-              />
+        {/* Drag-and-drop zone */}
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => onDrop(e, 'other')}
+          onClick={() => inputRef.current?.click()}
+          style={{
+            border: '2px dashed ' + (dragOver ? '#CC2200' : 'var(--border)'),
+            borderRadius: '8px',
+            padding: '14px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            marginBottom: '10px',
+            background: dragOver ? 'rgba(204,34,0,.04)' : 'var(--dim)',
+            transition: 'all .15s',
+          }}
+        >
+          <div style={{ fontSize: '20px', marginBottom: '4px' }}>📎</div>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>
+            {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '3px' }}>PDF, Word, JPG, PNG · max 50MB</div>
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+          style={{ display: 'none' }}
+          onChange={e => handleFiles(e.target.files, 'other')}
+        />
+
+        {/* Upload by type buttons */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', marginBottom: '10px' }}>
+          {AGREEMENT_TYPES.map(type => {
+            const isUp = uploading?.startsWith(type.id)
+            return (
               <button
-                onClick={() => inputRefs.current[type.id]?.click()}
-                disabled={uploading === type.id}
+                key={type.id}
+                onClick={() => {
+                  // Create a temp input for this specific type
+                  const inp = document.createElement('input')
+                  inp.type = 'file'
+                  inp.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png'
+                  inp.onchange = e => { const f = e.target.files?.[0]; if (f) handleFiles([f], type.id) }
+                  inp.click()
+                }}
+                disabled={!!uploading}
                 style={{
-                  width: '100%', padding: '7px 8px', borderRadius: '7px',
-                  border: `1px solid ${type.color}44`, background: type.color + '0e',
-                  color: type.color, fontSize: '11px', fontWeight: 600,
-                  cursor: uploading === type.id ? 'wait' : 'pointer', fontFamily: ff2,
+                  padding: '6px 8px', borderRadius: '7px',
+                  border: '1px solid ' + type.color + '44',
+                  background: type.color + '0e', color: type.color,
+                  fontSize: '11px', fontWeight: 600,
+                  cursor: isUp ? 'wait' : 'pointer', fontFamily: ff2,
                   display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center',
-                  opacity: uploading === type.id ? 0.6 : 1,
-                }}>
-                <span>{uploading === type.id ? '⏳' : type.icon}</span>
-                {uploading === type.id ? 'Uploading...' : '+ ' + type.label.replace(' Agreement','').replace(' Document','')}
+                  opacity: !!uploading && !isUp ? 0.5 : 1,
+                }}
+              >
+                <span>{isUp ? '⏳' : type.icon}</span>
+                {isUp ? 'Uploading...' : '+ ' + type.label.replace(' Agreement','').replace(' Document','')}
               </button>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
-        {/* Uploaded documents */}
+        {/* File list */}
         {loading && <div style={{ fontSize: '12px', color: 'var(--muted)', padding: '6px 0' }}>Loading...</div>}
         {!loading && docs.length === 0 && (
           <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--muted)', fontSize: '12px' }}>
-            No documents uploaded yet.<br />Click a button above to attach an agreement.
+            No documents yet — upload an agreement above.
           </div>
         )}
-        {docs.map(doc => {
-          const typeDef = getTypeFromName(doc.name)
-          const url     = getPublicUrl(doc.name)
-          // Show a cleaner name by removing the prefix+timestamp
-          const parts     = doc.name.split('_')
-          const cleanName = parts.slice(2).join('_') || doc.name
+        {docs.map((doc, i) => {
+          const typeDef = getTypeFromPath(doc.path || doc.name || '')
+          const label   = cleanName(doc.path || doc.name || '')
           return (
-            <div key={doc.name} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '16px', flexShrink: 0 }}>{typeDef.icon}</span>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '15px', flexShrink: 0 }}>{typeDef.icon}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <a href={url} target="_blank" rel="noopener noreferrer"
+                <a href={doc.url} target="_blank" rel="noopener noreferrer"
                   style={{ fontSize: '12px', fontWeight: 600, color: 'var(--brand)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                  {cleanName}
+                  {label}
                 </a>
-                <div style={{ fontSize: '10px', color: typeDef.color, fontWeight: 600, marginTop: '1px' }}>{typeDef.label}</div>
+                <div style={{ fontSize: '10px', color: typeDef.color, fontWeight: 600, marginTop: '1px' }}>
+                  {typeDef.label}{doc.size ? ' · ' + fmtFileSize(doc.size) : ''}
+                </div>
               </div>
-              <a href={url} download={cleanName} target="_blank" rel="noopener noreferrer"
-                style={{ fontSize: '12px', color: 'var(--muted)', textDecoration: 'none', flexShrink: 0, padding: '3px 6px', borderRadius: '5px', border: '1px solid var(--border)' }}>↓</a>
-              <button onClick={() => deleteDoc(doc)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontSize: '14px', flexShrink: 0, padding: '3px 4px' }}>✕</button>
+              <a href={doc.url} download={label} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: '11px', color: 'var(--muted)', textDecoration: 'none', flexShrink: 0, padding: '3px 6px', borderRadius: '5px', border: '1px solid var(--border)' }}>↓</a>
+              <button onClick={async () => {
+                try {
+                  await deleteFile(doc.path)
+                  setDocs(prev => prev.filter((_, j) => j !== i))
+                  toast('Document deleted')
+                } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+              }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontSize: '13px', flexShrink: 0, padding: '3px' }}>✕</button>
             </div>
           )
         })}
@@ -435,6 +492,7 @@ function AgreementsSection({ contactId, agentId, contactName, onActivityLog }) {
     </div>
   )
 }
+
 
 // ════════════════════════════════════════════════════════════════
 // RIGHT PANEL — Full featured client service panel
