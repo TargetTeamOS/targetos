@@ -260,6 +260,407 @@ function AddToTimeline({ contactId, agentId, onAdded }) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// RIGHT PANEL — Full featured client service panel
+// Matches and exceeds Brivity's right panel functionality
+// ════════════════════════════════════════════════════════════════
+
+function RightSection({ title, icon, color = 'var(--brand)', children, action = null, defaultOpen = true }) {
+  const [open, setOpen] = React.useState(defaultOpen)
+  return (
+    <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden', marginBottom: '8px' }}>
+      <div onClick={() => setOpen(o => !o)}
+        style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', background: 'var(--dim)' }}>
+        <span style={{ fontSize: '14px' }}>{icon}</span>
+        <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{title}</span>
+        {action && <span onClick={e => { e.stopPropagation(); action.onClick() }}
+          style={{ fontSize: '11px', fontWeight: 700, color: color, background: color + '18', padding: '2px 8px', borderRadius: '6px', cursor: 'pointer', border: `1px solid ${color}33` }}>
+          {action.label}
+        </span>}
+        <span style={{ fontSize: '11px', color: 'var(--muted)', transition: 'transform .2s', transform: open ? 'rotate(0)' : 'rotate(-90deg)' }}>▾</span>
+      </div>
+      {open && <div style={{ padding: '10px 14px' }}>{children}</div>}
+    </div>
+  )
+}
+
+function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, onRefreshTimeline }) {
+  const { toast } = useApp()
+  const [rightTab,      setRightTab]     = React.useState('deals')
+  const [addingTask,    setAddingTask]   = React.useState(false)
+  const [newTask,       setNewTask]      = React.useState({ title: '', due_date: '', priority: 'normal' })
+  const [addingAppt,   setAddingAppt]   = React.useState(false)
+  const [newAppt,      setNewAppt]      = React.useState({ title: '', date: '', time: '', notes: '' })
+  const [savingTask,   setSavingTask]   = React.useState(false)
+  const [savingAppt,  setSavingAppt]   = React.useState(false)
+  const [agreements,   setAgreements]  = React.useState([])
+  const [appts,       setAppts]        = React.useState([])
+  const [calls,       setCalls]        = React.useState([])
+  const [gifts,       setGifts]        = React.useState([])
+  const [autoPlans,   setAutoPlans]   = React.useState([])
+
+  React.useEffect(() => {
+    if (!contactId) return
+    // Load related data
+    supabase.from('calendar_events').select('id,title,start_date,start_time,type').eq('contact_id', contactId).order('start_date').limit(10).then(r => setAppts(r.data || []))
+    supabase.from('calls').select('id,contact_name,direction,outcome,called_at,notes').eq('contact_id', contactId).order('called_at', { ascending: false }).limit(10).then(r => setCalls(r.data || []))
+    supabase.from('gifts').select('id,client_name,status,description').eq('contact_id', contactId).order('created_at', { ascending: false }).limit(10).then(r => setGifts(r.data || []))
+    // Agreements stored as tags/notes for now
+    const tags = f.tags || []
+    setAgreements(tags.filter(t => ['Buyer Agreement', 'Listing Agreement', 'Referral Agreement'].includes(t)).map(t => ({
+      type: t.replace(' Agreement', ''),
+      signed: true,
+    })))
+  }, [contactId])
+
+  async function quickCreateTask() {
+    if (!newTask.title.trim()) { toast('Task title required', '#DC2626'); return }
+    setSavingTask(true)
+    try {
+      await db.tasks.create({
+        agent_id:   f.agent_id || agent?.id,
+        created_by: agent?.id,
+        contact_id: contactId,
+        title:      newTask.title,
+        due_date:   newTask.due_date || null,
+        priority:   newTask.priority,
+        status:     'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      setNewTask({ title: '', due_date: '', priority: 'normal' })
+      setAddingTask(false)
+      toast('✅ Task created')
+      onRefreshTimeline?.()
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    finally { setSavingTask(false) }
+  }
+
+  async function quickCreateAppt() {
+    if (!newAppt.title.trim()) { toast('Title required', '#DC2626'); return }
+    setSavingAppt(true)
+    try {
+      await supabase.from('calendar_events').insert({
+        agent_id:   f.agent_id || agent?.id,
+        contact_id: contactId,
+        title:      newAppt.title,
+        start_date: newAppt.date || new Date().toISOString().slice(0,10),
+        start_time: newAppt.time || null,
+        notes:      newAppt.notes || '',
+        type:       'appointment',
+        created_at: new Date().toISOString(),
+      })
+      setNewAppt({ title: '', date: '', time: '', notes: '' })
+      setAddingAppt(false)
+      toast('✅ Appointment created')
+      // Refresh appts
+      supabase.from('calendar_events').select('id,title,start_date,start_time,type').eq('contact_id', contactId).order('start_date').limit(10).then(r => setAppts(r.data || []))
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    finally { setSavingAppt(false) }
+  }
+
+  const inp = (value, onChange, placeholder, type='text', style={}) => (
+    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+      style={{ width:'100%', padding:'6px 9px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', boxSizing:'border-box', ...style }} />
+  )
+
+  const sel = (value, onChange, options) => (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{ width:'100%', padding:'6px 9px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif' }}>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  )
+
+  const EmptyState = ({ text, action }) => (
+    <div style={{ textAlign:'center', padding:'12px 0', color:'var(--muted)', fontSize:'12px' }}>
+      <div style={{ marginBottom:'6px' }}>{text}</div>
+      {action && <button onClick={action.onClick} style={{ fontSize:'11px', color:'var(--brand)', background:'none', border:'none', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', fontWeight:600 }}>{action.label}</button>}
+    </div>
+  )
+
+  const AddBtn = ({ onClick, label }) => (
+    <button onClick={onClick}
+      style={{ width:'100%', marginTop:'6px', padding:'6px', border:'1px dashed var(--border)', borderRadius:'6px', background:'transparent', color:'var(--muted)', fontSize:'11px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
+      {label}
+    </button>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+
+      {/* ── ASSIGNED TO ── */}
+      <RightSection title="Assigned To" icon="👤" color="#0EA5E9">
+        {f.agents ? (
+          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+            <Avatar agent={f.agents} size={36} />
+            <div>
+              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>{f.agents.name}</div>
+              <div style={{ fontSize:'11px', color:'var(--muted)' }}>Primary Agent</div>
+            </div>
+            <Btn size="sm" variant="secondary" style={{ marginLeft:'auto' }} onClick={() => navigate('/contacts/' + contactId)}>Edit</Btn>
+          </div>
+        ) : (
+          <EmptyState text="No agent assigned" action={{ label: '+ Assign Agent', onClick: () => {} }} />
+        )}
+      </RightSection>
+
+      {/* ── AGREEMENTS ── */}
+      <RightSection title="Agreements" icon="📋" color="#10B981">
+        <div style={{ display:'flex', flexDirection:'column', gap:'6px', marginBottom:'8px' }}>
+          {agreements.length === 0 && <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'6px' }}>No agreements signed yet</div>}
+          {agreements.map((a, i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'6px 8px', background:'#F0FDF4', borderRadius:'7px', border:'1px solid #BBF7D0' }}>
+              <span style={{ fontSize:'12px' }}>✅</span>
+              <span style={{ fontSize:'12px', fontWeight:600, color:'#166534' }}>{a.type} Agreement</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'5px' }}>
+          {['Buyer','Seller','Referral'].map(type => (
+            <button key={type}
+              onClick={async () => {
+                const tag = type + ' Agreement'
+                const tags = [...(f.tags || []).filter(t => t !== tag), tag]
+                await db.contacts.update(contactId, { tags, agent_id: f.agent_id })
+                toast('✅ ' + type + ' agreement noted')
+              }}
+              style={{ padding:'5px 6px', borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:'11px', fontWeight:600, cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
+              + {type}
+            </button>
+          ))}
+        </div>
+      </RightSection>
+
+      {/* ── APPOINTMENTS ── */}
+      <RightSection title="Appointments" icon="📅" color="#8B5CF6"
+        action={{ label: '+ Add', onClick: () => setAddingAppt(true) }}>
+        {appts.length === 0 && <EmptyState text="No appointments yet" action={{ label: '+ Schedule', onClick: () => setAddingAppt(true) }} />}
+        {appts.map(a => (
+          <div key={a.id} onClick={() => navigate('/calendar/' + a.id)}
+            style={{ padding:'7px 0', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
+            <div style={{ fontSize:'12px', fontWeight:600, color:'var(--text)' }}>{a.title}</div>
+            <div style={{ fontSize:'10px', color:'var(--muted)', marginTop:'2px' }}>{fmtDate(a.start_date)}{a.start_time ? ' · ' + a.start_time : ''}</div>
+          </div>
+        ))}
+        {addingAppt && (
+          <div style={{ marginTop:'8px', display:'flex', flexDirection:'column', gap:'6px', padding:'10px', background:'var(--dim)', borderRadius:'8px', border:'1px solid var(--border)' }}>
+            {inp(newAppt.title, v => setNewAppt(p => ({...p, title: v})), 'Appointment title...')}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
+              {inp(newAppt.date, v => setNewAppt(p => ({...p, date: v})), '', 'date')}
+              {inp(newAppt.time, v => setNewAppt(p => ({...p, time: v})), 'Time', 'time')}
+            </div>
+            <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end' }}>
+              <button onClick={() => setAddingAppt(false)} style={{ padding:'5px 10px', border:'1px solid var(--border)', borderRadius:'6px', background:'transparent', color:'var(--muted)', fontSize:'11px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>Cancel</button>
+              <Btn size="sm" onClick={quickCreateAppt} loading={savingAppt}>Save</Btn>
+            </div>
+          </div>
+        )}
+      </RightSection>
+
+      {/* ── TASKS ── */}
+      <RightSection title={`Tasks (${relTasks.length})`} icon="✅" color="#F97316"
+        action={{ label: '+ Add', onClick: () => setAddingTask(true) }}>
+        {relTasks.length === 0 && <EmptyState text="No tasks yet" action={{ label: '+ Create task', onClick: () => setAddingTask(true) }} />}
+        {relTasks.slice(0,5).map(t => (
+          <div key={t.id} onClick={() => navigate('/tasks/' + t.id)}
+            style={{ display:'flex', alignItems:'center', gap:'8px', padding:'6px 0', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
+            <div style={{ width:7, height:7, borderRadius:'50%', background: t.status === 'done' ? '#10B981' : t.priority === 'urgent' ? '#DC2626' : '#F97316', flexShrink:0 }} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:'12px', fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}</div>
+              {t.due_date && <div style={{ fontSize:'10px', color:'var(--muted)' }}>{fmtDate(t.due_date)}</div>}
+            </div>
+          </div>
+        ))}
+        {addingTask && (
+          <div style={{ marginTop:'8px', display:'flex', flexDirection:'column', gap:'6px', padding:'10px', background:'var(--dim)', borderRadius:'8px', border:'1px solid var(--border)' }}>
+            {inp(newTask.title, v => setNewTask(p => ({...p, title: v})), 'Task title... use {{contact_name}}')}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
+              {inp(newTask.due_date, v => setNewTask(p => ({...p, due_date: v})), '', 'date')}
+              {sel(newTask.priority, v => setNewTask(p => ({...p, priority: v})), [
+                {value:'urgent',label:'🔴 Urgent'},{value:'high',label:'🟠 High'},{value:'normal',label:'🔵 Normal'},{value:'low',label:'⚪ Low'}
+              ])}
+            </div>
+            <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end' }}>
+              <button onClick={() => setAddingTask(false)} style={{ padding:'5px 10px', border:'1px solid var(--border)', borderRadius:'6px', background:'transparent', color:'var(--muted)', fontSize:'11px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>Cancel</button>
+              <Btn size="sm" onClick={quickCreateTask} loading={savingTask}>Save</Btn>
+            </div>
+          </div>
+        )}
+        {relTasks.length > 5 && <AddBtn onClick={() => navigate('/tasks')} label={`View all ${relTasks.length} tasks →`} />}
+      </RightSection>
+
+      {/* ── DEALS ── */}
+      <RightSection title={`Deals (${relDeals.length})`} icon="💼" color="#10B981">
+        {relDeals.length === 0 && <EmptyState text="No deals linked" action={{ label: '+ Link Deal', onClick: () => navigate('/production/new') }} />}
+        {relDeals.map(d => (
+          <div key={d.id} onClick={() => navigate('/production/' + d.id)}
+            style={{ padding:'7px 0', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
+            <div style={{ fontSize:'12px', fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.addr}</div>
+            <div style={{ display:'flex', justifyContent:'space-between', marginTop:'3px' }}>
+              <span style={{ fontSize:'11px', fontWeight:700, color:'#10B981' }}>{fmt$(d.gci)}</span>
+              <Pill label={d.stage} color="#9aadbd" />
+            </div>
+          </div>
+        ))}
+        <AddBtn onClick={() => navigate('/production/new')} label="+ Link Deal" />
+      </RightSection>
+
+      {/* ── CALLS LOG ── */}
+      <RightSection title={`Calls (${calls.length})`} icon="📞" color="#3B82F6">
+        {calls.length === 0 && <EmptyState text="No calls logged" action={{ label: '+ Log Call', onClick: () => navigate('/calls/new') }} />}
+        {calls.slice(0,4).map(c => (
+          <div key={c.id} style={{ padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span style={{ fontSize:'12px', fontWeight:600, color:'var(--text)' }}>{c.direction || 'Outbound'}</span>
+              <span style={{ fontSize:'10px', color:'var(--muted)' }}>{fmtDate(c.called_at)}</span>
+            </div>
+            {c.outcome && <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px' }}>{c.outcome}</div>}
+            {c.notes  && <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px', fontStyle:'italic' }}>{c.notes.slice(0,60)}{c.notes.length>60?'…':''}</div>}
+          </div>
+        ))}
+        <AddBtn onClick={() => navigate('/calls/new')} label="+ Log Call" />
+      </RightSection>
+
+      {/* ── GIFTS ── */}
+      <RightSection title={`Gifts (${gifts.length})`} icon="🎁" color="#EC4899">
+        {gifts.length === 0 && <EmptyState text="No gifts yet" action={{ label: '+ Add Gift', onClick: () => navigate('/gifts/new') }} />}
+        {gifts.map(g => (
+          <div key={g.id} onClick={() => navigate('/gifts/' + g.id)}
+            style={{ display:'flex', alignItems:'center', gap:'8px', padding:'6px 0', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
+            <div style={{ flex:1, fontSize:'12px', color:'var(--text)' }}>{g.description || g.client_name}</div>
+            <Pill label={g.status} color="#EC4899" />
+          </div>
+        ))}
+        <AddBtn onClick={() => navigate('/gifts/new')} label="+ Add Gift" />
+      </RightSection>
+
+      {/* ── AUTO PLANS (Automations) ── */}
+      <RightSection title="Auto Plans" icon="⚡" color="#CC2200" defaultOpen={false}>
+        <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'10px', lineHeight:1.5 }}>
+          Apply automations to this contact to send emails, create tasks, and follow ups automatically.
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+          {[
+            { label: '🔔 New Lead Follow-Up',   desc: 'Create task · Send email' },
+            { label: '📅 30-Day Nurture',        desc: 'Weekly check-ins for 30 days' },
+            { label: '🏡 Buyer Search Plan',     desc: 'Match listings · Alert on new' },
+            { label: '🎉 Post-Close Follow-Up',  desc: 'Birthday · Anniversary reminders' },
+          ].map(plan => (
+            <div key={plan.label} style={{ padding:'8px 10px', background:'var(--dim)', borderRadius:'7px', border:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
+              <div>
+                <div style={{ fontSize:'12px', fontWeight:600, color:'var(--text)' }}>{plan.label}</div>
+                <div style={{ fontSize:'10px', color:'var(--muted)', marginTop:'1px' }}>{plan.desc}</div>
+              </div>
+              <button
+                onClick={() => navigate('/automations')}
+                style={{ padding:'4px 8px', borderRadius:'5px', border:'1px solid var(--brand)', background:'transparent', color:'var(--brand)', fontSize:'11px', fontWeight:600, cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', flexShrink:0 }}>
+                Apply
+              </button>
+            </div>
+          ))}
+        </div>
+        <AddBtn onClick={() => navigate('/automations')} label="Manage Automations →" />
+      </RightSection>
+
+      {/* ── LISTING ALERTS ── */}
+      <RightSection title="Listing Alerts" icon="🏡" color="#F5A623" defaultOpen={false}>
+        <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'10px', lineHeight:1.5 }}>
+          Send matching listing alerts to this contact based on their buyer criteria.
+        </div>
+        {f.budget_max && f.locations?.length ? (
+          <div style={{ padding:'10px', background:'#FFF7ED', borderRadius:'8px', border:'1px solid #FED7AA', marginBottom:'8px' }}>
+            <div style={{ fontSize:'12px', fontWeight:700, color:'#92400E' }}>Buyer Profile Set ✓</div>
+            <div style={{ fontSize:'11px', color:'#B45309', marginTop:'3px' }}>
+              Budget up to {fmt$(f.budget_max)} · {f.locations.join(', ')}
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding:'10px', background:'var(--dim)', borderRadius:'8px', border:'1px solid var(--border)', marginBottom:'8px', fontSize:'12px', color:'var(--muted)' }}>
+            Set buyer criteria in the left panel to enable listing alerts.
+          </div>
+        )}
+        <Btn size="sm" variant="secondary" style={{ width:'100%' }}
+          onClick={async () => {
+            await supabase.from('audit_log').insert({
+              agent_id:   f.agent_id || agent?.id,
+              table_name: 'contacts',
+              record_id:  contactId,
+              action:     'note',
+              field_name: 'email',
+              new_value:  'Listing alert sent to ' + (f.email || f.first_name),
+              metadata:   { description: 'Listing alert email', type: 'email' },
+              created_at: new Date().toISOString(),
+            })
+            toast('✅ Listing alert logged — wire up email to send')
+            onRefreshTimeline?.()
+          }}>
+          📧 Send Listing Alert
+        </Btn>
+      </RightSection>
+
+      {/* ── MARKET REPORT ── */}
+      <RightSection title="Market Report" icon="📊" color="#6366F1" defaultOpen={false}>
+        <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'10px', lineHeight:1.5 }}>
+          Send a market update to this contact for their area.
+        </div>
+        {f.locations?.length ? (
+          <div style={{ fontSize:'12px', color:'var(--text)', marginBottom:'8px' }}>
+            <strong>Area:</strong> {f.locations.join(', ')}
+          </div>
+        ) : (
+          <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'8px' }}>Set locations in the buyer criteria section.</div>
+        )}
+        <Btn size="sm" variant="secondary" style={{ width:'100%' }}
+          onClick={async () => {
+            await supabase.from('audit_log').insert({
+              agent_id:   f.agent_id || agent?.id,
+              table_name: 'contacts',
+              record_id:  contactId,
+              action:     'note',
+              field_name: 'email',
+              new_value:  'Market report sent to ' + (f.email || f.first_name),
+              metadata:   { description: 'Market report email', type: 'email' },
+              created_at: new Date().toISOString(),
+            })
+            toast('✅ Market report logged')
+            onRefreshTimeline?.()
+          }}>
+          📊 Send Market Report
+        </Btn>
+      </RightSection>
+
+      {/* ── FILES ── */}
+      <RightSection title="Files" icon="📎" color="#14B8A6" defaultOpen={false}>
+        <FileAttachments tableName="contacts" recordId={contactId} />
+      </RightSection>
+
+      {/* ── QUICK ACTIONS ── */}
+      <RightSection title="Quick Actions" icon="⚡" color="#CC2200" defaultOpen={false}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
+          {[
+            { label: '📧 Send Email',     onClick: () => window.open('mailto:' + (f.email || '')) },
+            { label: '📞 Call',           onClick: () => window.open('tel:' + (f.phone || '')) },
+            { label: '💬 WhatsApp',       onClick: () => window.open('https://wa.me/' + (f.phone||'').replace(/\D/g,'')) },
+            { label: '📊 Add to Deal',   onClick: () => navigate('/production/new') },
+            { label: '🏡 New Listing',   onClick: () => navigate('/listings/new') },
+            { label: '🚪 Open House',    onClick: () => navigate('/openhouse/new') },
+            { label: '📝 Add Note',      onClick: () => {} },
+            { label: '🖨 Print Profile', onClick: () => window.print() },
+          ].map(a => (
+            <button key={a.label} onClick={a.onClick}
+              style={{ padding:'7px 8px', textAlign:'left', background:'var(--dim)', border:'1px solid var(--border)', borderRadius:'7px', cursor:'pointer', fontSize:'11px', fontWeight:600, color:'var(--text)', fontFamily:'Inter,system-ui,sans-serif' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--dim)'}>
+              {a.label}
+            </button>
+          ))}
+        </div>
+      </RightSection>
+
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════
 // MAIN CONTACT DETAIL PAGE
 // ════════════════════════════════════════════════════════════════
 export function ContactDetail() {
@@ -696,87 +1097,7 @@ export function ContactDetail() {
         {/* ══════════════════════════════════════════════════════
             RIGHT — ACTIONS + DEALS + TASKS + FILES
         ══════════════════════════════════════════════════════ */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-
-          {/* Quick Actions */}
-          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', padding: '12px 14px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Quick Actions</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              {[
-                { label: '✅ Create Task',       nav: '/tasks/new' },
-                { label: '📊 Add to Deal',       nav: '/production/new' },
-                { label: '📅 Schedule Event',    nav: '/calendar/new' },
-                { label: '🎁 Send Gift',         nav: '/gifts/new' },
-                { label: '📞 Log Call',          nav: '/calls/new' },
-                { label: '🏡 Create Listing',    nav: '/listings/new' },
-              ].map(a => (
-                <button key={a.label} onClick={() => navigate(a.nav)}
-                  style={{ width: '100%', padding: '7px 10px', textAlign: 'left', background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--text)', fontFamily: ff }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'var(--dim)'}>
-                  {a.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Tabs: Deals / Tasks / Files */}
-          <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
-              {[
-                { id: 'deals', label: `Deals (${relDeals.length})` },
-                { id: 'tasks', label: `Tasks (${relTasks.length})` },
-                { id: 'files', label: 'Files' },
-              ].map(t => (
-                <button key={t.id} onClick={() => setRightTab(t.id)}
-                  style={{ flex: 1, padding: '9px 4px', background: 'none', border: 'none', borderBottom: rightTab === t.id ? '2px solid var(--brand)' : '2px solid transparent', marginBottom: '-1px', fontSize: '11px', fontWeight: rightTab === t.id ? 700 : 500, color: rightTab === t.id ? 'var(--brand)' : 'var(--muted)', cursor: 'pointer', fontFamily: ff }}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            <div style={{ padding: '10px 12px' }}>
-              {rightTab === 'deals' && (
-                <div>
-                  {relDeals.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No deals linked</div>}
-                  {relDeals.map(d => (
-                    <div key={d.id} onClick={() => navigate('/production/' + d.id)}
-                      style={{ padding: '7px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.addr}</div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</span>
-                        <Pill label={d.stage} color="#9aadbd" />
-                      </div>
-                    </div>
-                  ))}
-                  <button onClick={() => navigate('/production/new')}
-                    style={{ width: '100%', marginTop: '6px', padding: '6px', border: '1px dashed var(--border)', borderRadius: '6px', background: 'transparent', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer', fontFamily: ff }}>
-                    + Link Deal
-                  </button>
-                </div>
-              )}
-              {rightTab === 'tasks' && (
-                <div>
-                  {relTasks.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No tasks</div>}
-                  {relTasks.map(t => (
-                    <div key={t.id} onClick={() => navigate('/tasks/' + t.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '7px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: t.status === 'done' ? '#10B981' : '#F97316', flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}</div>
-                        {t.due_date && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{fmtDate(t.due_date)}</div>}
-                      </div>
-                    </div>
-                  ))}
-                  <button onClick={() => navigate('/tasks/new')}
-                    style={{ width: '100%', marginTop: '6px', padding: '6px', border: '1px dashed var(--border)', borderRadius: '6px', background: 'transparent', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer', fontFamily: ff }}>
-                    + Add Task
-                  </button>
-                </div>
-              )}
-              {rightTab === 'files' && <FileAttachments tableName="contacts" recordId={id} />}
-            </div>
-          </div>
-        </div>
+        <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relTasks={relTasks} agents={agents} agent={agent} onRefreshTimeline={loadTimeline} />
       </div>
 
       <Confirm open={confirmDel} message={`Delete ${f.first_name} ${f.last_name || ''}? Cannot be undone.`} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />
