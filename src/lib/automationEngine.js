@@ -28,14 +28,15 @@ export async function runAutomation(automation, triggerData, agents) {
     }
 
     // Log success
-    await supabase.from('automation_runs').insert({
+    console.log('[AutomationEngine] Automation fired successfully:', automation.name, '- actions taken:', affected.length)
+    try { await supabase.from('automation_runs').insert({
       automation_id:    automation.id,
       trigger_type:     automation.trigger_type,
       trigger_data:     triggerData,
       status:           'success',
       records_affected: affected.length,
       created_at:       new Date().toISOString(),
-    })
+    }) } catch(logErr) { console.warn('[AutomationEngine] Could not write run log:', logErr.message) }
 
     // Update fire count
     await supabase.from('automations').update({
@@ -45,14 +46,19 @@ export async function runAutomation(automation, triggerData, agents) {
 
     return { success: true }
   } catch(e) {
-    await supabase.from('automation_runs').insert({
-      automation_id: automation.id,
-      trigger_type:  automation.trigger_type,
-      trigger_data:  triggerData,
-      status:        'error',
-      error:         e.message,
-      created_at:    new Date().toISOString(),
-    })
+    console.error('[AutomationEngine] Automation failed:', automation.name, e.message, e)
+    try {
+      await supabase.from('automation_runs').insert({
+        automation_id: automation.id,
+        trigger_type:  automation.trigger_type,
+        trigger_data:  triggerData,
+        status:        'error',
+        error:         e.message,
+        created_at:    new Date().toISOString(),
+      })
+    } catch(logErr) {
+      console.error('[AutomationEngine] Could not log run (automation_runs table may not exist):', logErr.message)
+    }
     return { success: false, error: e.message }
   }
 }

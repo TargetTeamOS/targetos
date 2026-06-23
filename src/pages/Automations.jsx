@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import { invalidateCache } from '../lib/automationDispatcher'
 import { fmtDateTime, fmtDate } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm, Pill, Avatar } from '../components/UI'
 
@@ -575,6 +576,7 @@ export function Automations() {
         setAutomations(prev => [data, ...prev])
         toast('✅ Automation created')
       }
+      invalidateCache()
       closeBuilder()
     } catch(e) {
       toast('Save failed: ' + e.message, '#DC2626')
@@ -589,6 +591,7 @@ export function Automations() {
       const { data, error } = await supabase.from('automations').update({ active: !nowActive, updated_at: new Date().toISOString() }).eq('id', automation.id).select().single()
       if (error) throw error
       setAutomations(prev => prev.map(a => a.id === automation.id ? data : a))
+      invalidateCache()
       toast(!nowActive ? '✅ Automation activated' : 'Automation paused')
     } catch(e) {
       toast('Failed: ' + e.message, '#DC2626')

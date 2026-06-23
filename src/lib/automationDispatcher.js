@@ -12,7 +12,7 @@ import { runAutomation, checkConditions } from './automationEngine'
 // Cache automations for 60 seconds to avoid repeated DB reads
 let _cache = null
 let _cacheTime = 0
-const CACHE_TTL = 60_000
+const CACHE_TTL = 5_000  // 5 seconds - fast enough for real-time use
 
 async function getActiveAutomations() {
   const now = Date.now()
@@ -38,6 +38,7 @@ export async function dispatch(triggerType, record, previousRecord = null) {
   try {
     const automations = await getActiveAutomations()
     const matching    = automations.filter(a => a.trigger_type === triggerType)
+    console.log(`[AutomationDispatcher] Trigger: ${triggerType} | Active automations: ${automations.length} | Matching: ${matching.length}`)
     if (!matching.length) return
 
     // Build trigger data from the record
