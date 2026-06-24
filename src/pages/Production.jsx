@@ -219,13 +219,17 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
       </td>
 
       {/* Agent */}
-      <td style={{ padding: '9px 12px' }}>
+      <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
         {agent ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <Avatar agent={agent} size={20} />
-            <span style={{ fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{agent.name.split(' ')[0]}</span>
+            <div style={{ width:20, height:20, borderRadius:'50%', background: agent.color || '#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'9px', fontWeight:800, color:'#fff', flexShrink:0 }}>
+              {agent.name.split(' ').map(n => n[0]).join('').slice(0,2)}
+            </div>
+            <span style={{ fontSize: '11px', color: 'var(--text)', whiteSpace: 'nowrap', fontWeight:600 }}>{agent.name.split(' ')[0]}</span>
           </div>
-        ) : <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>}
+        ) : (
+          <span style={{ color: 'var(--muted)', fontSize: '11px', fontStyle:'italic' }}>Unassigned</span>
+        )}
       </td>
 
       {/* Production */}
@@ -391,6 +395,164 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
   )
 }
 
+// ── DEAL CONTACTS PANEL ──────────────────────────────────────────
+// Displays linked contacts for a deal and lets agents add/remove them
+const CONTACT_ROLES = ['Client','Buyer','Seller','Co-Buyer','Co-Seller','Referral Source','Attorney','Other']
+
+function DealContactsPanel({ dealId, agentId }) {
+  const { toast } = useApp()
+  const [linked,    setLinked]    = useState([])   // { id, role, contacts: {...} }
+  const [loading,   setLoading]   = useState(true)
+  const [search,    setSearch]    = useState('')
+  const [results,   setResults]   = useState([])
+  const [searching, setSearching] = useState(false)
+  const [addRole,   setAddRole]   = useState('Client')
+  const searchTimer = useRef(null)
+
+  useEffect(() => { if (dealId) loadLinked() }, [dealId])
+
+  async function loadLinked() {
+    setLoading(true)
+    try {
+      const { data } = await supabase
+        .from('deal_contacts')
+        .select('id, role, contact_id, contacts(id, first_name, last_name, phone, email, status)')
+        .eq('deal_id', dealId)
+        .order('created_at')
+      setLinked(data || [])
+    } catch { setLinked([]) }
+    finally { setLoading(false) }
+  }
+
+  async function searchContacts(q) {
+    if (!q.trim()) { setResults([]); return }
+    setSearching(true)
+    const { data } = await supabase.from('contacts')
+      .select('id, first_name, last_name, phone, email, status')
+      .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
+      .limit(8)
+    setResults(data || [])
+    setSearching(false)
+  }
+
+  function onSearchChange(e) {
+    const q = e.target.value
+    setSearch(q)
+    clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => searchContacts(q), 250)
+  }
+
+  async function addContact(contact) {
+    if (linked.some(l => l.contact_id === contact.id)) {
+      toast('Already linked', '#F5A623'); return
+    }
+    try {
+      await supabase.from('deal_contacts').insert({ deal_id: dealId, contact_id: contact.id, role: addRole })
+      setSearch(''); setResults([])
+      await loadLinked()
+      toast('✅ Contact linked')
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+  }
+
+  async function removeContact(linkId) {
+    try {
+      await supabase.from('deal_contacts').delete().eq('id', linkId)
+      setLinked(prev => prev.filter(l => l.id !== linkId))
+      toast('Contact removed')
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+  }
+
+  async function updateRole(linkId, role) {
+    try {
+      await supabase.from('deal_contacts').update({ role }).eq('id', linkId)
+      setLinked(prev => prev.map(l => l.id === linkId ? { ...l, role } : l))
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+  }
+
+  const STATUS_COLORS = { Hot:'#DC2626', Warm:'#F5A623', Cold:'#3B82F6', Active:'#10B981', New:'#8B5CF6' }
+
+  return (
+    <div>
+      {/* Linked contacts list */}
+      {loading && <div style={{ fontSize:'12px', color:'var(--muted)', padding:'8px 0' }}>Loading...</div>}
+      {!loading && linked.length === 0 && (
+        <div style={{ fontSize:'12px', color:'var(--muted)', fontStyle:'italic', marginBottom:'12px' }}>
+          No contacts linked yet — search below to add.
+        </div>
+      )}
+      {linked.map(link => {
+        const c = link.contacts
+        if (!c) return null
+        return (
+          <div key={link.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'8px 10px', background:'var(--dim)', borderRadius:'8px', border:'1px solid var(--border)', marginBottom:'6px' }}>
+            {/* Avatar circle */}
+            <div style={{ width:32, height:32, borderRadius:'50%', background: STATUS_COLORS[c.status] || '#94A3B8', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:'12px', fontWeight:800, color:'#fff' }}>
+              {(c.first_name?.[0] || '') + (c.last_name?.[0] || '')}
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {c.first_name} {c.last_name}
+              </div>
+              <div style={{ fontSize:'11px', color:'var(--muted)' }}>{c.phone || c.email || '—'}</div>
+            </div>
+            {/* Role selector */}
+            <select value={link.role || 'Client'} onChange={e => updateRole(link.id, e.target.value)}
+              style={{ padding:'3px 6px', borderRadius:'6px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'11px', fontFamily:ff }}>
+              {CONTACT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            {/* Status badge */}
+            {c.status && <span style={{ fontSize:'10px', padding:'1px 6px', borderRadius:'10px', background:(STATUS_COLORS[c.status]||'#94A3B8')+'22', color: STATUS_COLORS[c.status]||'#94A3B8', fontWeight:700, flexShrink:0 }}>{c.status}</span>}
+            {/* Remove */}
+            <button onClick={() => removeContact(link.id)}
+              style={{ background:'none', border:'none', cursor:'pointer', color:'#DC2626', fontSize:'14px', flexShrink:0 }}>✕</button>
+          </div>
+        )
+      })}
+
+      {/* Search to add */}
+      <div style={{ marginTop:'10px', position:'relative' }}>
+        <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.06em' }}>Add Contact</div>
+        <div style={{ display:'flex', gap:'6px', marginBottom:'6px' }}>
+          <input
+            value={search}
+            onChange={onSearchChange}
+            placeholder="Search by name, phone, email..."
+            style={{ flex:1, padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, outline:'none' }}
+          />
+          <select value={addRole} onChange={e => setAddRole(e.target.value)}
+            style={{ padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', fontFamily:ff }}>
+            {CONTACT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        {/* Search results dropdown */}
+        {(results.length > 0 || searching) && (
+          <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'9px', boxShadow:'0 8px 24px rgba(0,0,0,.15)', overflow:'hidden' }}>
+            {searching && <div style={{ padding:'10px 14px', fontSize:'12px', color:'var(--muted)' }}>Searching...</div>}
+            {results.map(c => (
+              <div key={c.id}
+                onClick={() => addContact(c)}
+                style={{ display:'flex', alignItems:'center', gap:'10px', padding:'9px 14px', cursor:'pointer', borderBottom:'1px solid var(--border)' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
+                onMouseLeave={e => e.currentTarget.style.background = ''}
+              >
+                <div style={{ width:28, height:28, borderRadius:'50%', background: STATUS_COLORS[c.status]||'#94A3B8', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'11px', fontWeight:800, color:'#fff', flexShrink:0 }}>
+                  {(c.first_name?.[0]||'') + (c.last_name?.[0]||'')}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:'13px', fontWeight:600, color:'var(--text)' }}>{c.first_name} {c.last_name}</div>
+                  <div style={{ fontSize:'11px', color:'var(--muted)' }}>{c.phone || c.email || '—'}</div>
+                </div>
+                {c.status && <span style={{ fontSize:'10px', color: STATUS_COLORS[c.status]||'#94A3B8', fontWeight:700 }}>{c.status}</span>}
+                <span style={{ fontSize:'11px', color:'var(--brand)', fontWeight:700 }}>+ Add</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── DEAL DETAIL DRAWER ─────────────────────────────────────────────
 function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, canManage }) {
   const [form, setForm] = useState(() => ({ ...BLANK, ...deal }))
@@ -401,13 +563,14 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
   useEffect(() => { setForm({ ...BLANK, ...deal }) }, [deal?.id])
 
   const TABS = [
-    { id: 'deal',     label: '📋 Deal' },
-    { id: 'status',   label: '🔄 Status' },
-    { id: 'contacts', label: '👥 Contacts' },
-    { id: 'finance',  label: '💰 Finance' },
-    { id: 'ctc',      label: '📆 Contract' },
-    { id: 'files',    label: '📎 Files' },
-    { id: 'activity', label: '📜 Activity' },
+    { id: 'deal',          label: '📋 Deal' },
+    { id: 'status',        label: '🔄 Status' },
+    { id: 'contacts',      label: '👥 Contacts' },
+    { id: 'linked',        label: '🔗 Linked Contacts' },
+    { id: 'finance',       label: '💰 Finance' },
+    { id: 'ctc',           label: '📆 Contract' },
+    { id: 'files',         label: '📎 Files' },
+    { id: 'activity',      label: '📜 Activity' },
   ]
 
   const Lbl = ({ children, required }) => (
@@ -483,7 +646,18 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
             <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)', flexShrink: 0 }}>✕</button>
           </div>
           {/* Quick status bar */}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Agent quick selector */}
+            {(isAdmin || canManage) && (
+              <div style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+                <span style={{ fontSize:'10px', color:'var(--muted)', fontWeight:700 }}>Agent:</span>
+                <select value={form.agent_id || ''} onChange={e => set('agent_id', e.target.value)}
+                  style={{ padding:'3px 7px', borderRadius:'6px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'11px', fontFamily:ff }}>
+                  <option value="">— Unassigned —</option>
+                  {agents.map(a => <option key={a.id} value={a.id} style={{ color: a.color }}>{a.name}</option>)}
+                </select>
+              </div>
+            )}
             {[
               { label: 'Stage', value: form.stage, options: DEAL_STAGES, key: 'stage' },
               { label: 'CTC',   value: form.ctc,   options: CTC_STAGES,  key: 'ctc'   },
@@ -676,6 +850,20 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
                 <Field label="Actual Close Date"><Inp k="close_date" type="date" /></Field>
                 <Field label="UC/Process Date"><Inp k="ctc_close_date" type="date" /></Field>
               </Grid2>
+            </div>
+          )}
+
+          {/* ── LINKED CONTACTS TAB ── */}
+          {tab === 'linked' && (
+            <div>
+              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'4px' }}>Linked Contacts</div>
+              <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'14px', lineHeight:1.5 }}>
+                Link contacts from your Contacts board to this deal. Each contact can have a role (Buyer, Seller, Co-Buyer, etc.).
+              </div>
+              {deal?.id
+                ? <DealContactsPanel dealId={deal.id} agentId={deal?.agent_id} />
+                : <div style={{ color:'var(--muted)', fontSize:'13px' }}>Save the deal first to link contacts.</div>
+              }
             </div>
           )}
 

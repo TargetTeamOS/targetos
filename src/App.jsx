@@ -23,6 +23,7 @@ import { Offers }        from './pages/Offers'
 import { Gifts }         from './pages/Gifts'
 import { Calls }         from './pages/Calls'
 import { OpenHouse }     from './pages/OpenHouse'
+import { AgentPerformance } from './pages/AgentPerformance'
 import { Signs }         from './pages/Signs'
 import { Announcements } from './pages/Announcements'
 import { ListingPrep }   from './pages/ListingPrep'
@@ -123,6 +124,7 @@ function AppShell() {
           <Route path="/calls/:id"           element={<Calls />} />
           <Route path="/openhouse"           element={<OpenHouse />} />
           <Route path="/openhouse/:id"       element={<OpenHouse />} />
+          <Route path="/performance" element={<AgentPerformance />} />
           <Route path="/signs"               element={<Signs />} />
           <Route path="/signs/:id"           element={<Signs />} />
           <Route path="/announcements"       element={<Announcements />} />

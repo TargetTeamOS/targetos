@@ -15,6 +15,7 @@ const NAV = [
   { id: '',             label: 'Dashboard',     icon: '🏠', roles: ['admin','secretary','agent'] },
   { id: 'contacts',     label: 'Contacts',      icon: '👥', roles: ['admin','secretary','agent'] },
   { id: 'production',   label: 'Production',    icon: '📊', roles: ['admin','secretary','agent'] },
+  { id: 'performance',  label: 'Performance',   icon: '📈', roles: ['admin','secretary'] },
   { id: 'pipeline',     label: 'Pipeline',      icon: '🔀', roles: ['admin','secretary','agent'] },
   { id: 'listings',     label: 'Listings',      icon: '🏡', roles: ['admin','secretary','agent'] },
   { id: 'offers',       label: 'Offers',        icon: '📝', roles: ['admin','secretary','agent'] },
