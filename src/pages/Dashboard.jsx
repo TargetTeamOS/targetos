@@ -670,6 +670,107 @@ function AgentViewControl({ agents, onClose }) {
 // ════════════════════════════════════════════════════════════════
 // MAIN DASHBOARD COMPONENT
 // ════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// WIDGET CONFIG MODAL — filter/display options per widget
+// ═══════════════════════════════════════════════════════════════
+const WIDGET_CONFIG_OPTIONS = {
+  gci_goal:      { label: 'My GCI Goal',           fields: [{ key:'year', label:'Year', type:'year' }] },
+  team_goal:     { label: 'Team Goal',             fields: [{ key:'year', label:'Year', type:'year' }] },
+  quick_stats:   { label: 'Quick Stats',           fields: [{ key:'year', label:'Year', type:'year' }, { key:'agentFilter', label:'Filter Agent', type:'agent' }] },
+  pipeline:      { label: 'Pipeline by Stage',     fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'sideFilter', label:'Side', type:'select', options:['All','Buyer','Listing','Dual Buyer','Dual Listing','Flip'] }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:8 }] },
+  todays_tasks:  { label: "Today's Tasks",         fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'priorityFilter', label:'Priority', type:'select', options:['All','urgent','high','normal','low'] }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:6 }] },
+  hot_leads:     { label: 'Hot & Warm Leads',      fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'statusFilter', label:'Status', type:'select', options:['All','Hot','Warm','Cold','Active','New'] }, { key:'sourceFilter', label:'Source', type:'select', options:['All','SOI','Zillow','Referral','Farm - Open House','System Call','Past Client Repeat'] }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:6 }] },
+  active_deals:  { label: 'Active Deals',          fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'stageFilter', label:'Stage', type:'select', options:['All','Negotiations','Offer Accapted','Under Shtar','Under Contract'] }, { key:'sideFilter', label:'Side', type:'select', options:['All','Buyer','Listing','Dual Buyer','Dual Listing'] }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:6 }] },
+  upcoming_close:{ label: 'Upcoming Closings',     fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'daysAhead', label:'Days ahead', type:'number', min:7, max:90, default:30 }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:6 }] },
+  active_listings:{ label: 'Active Listings',      fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'statusFilter', label:'Status', type:'select', options:['All','Active','Under Contract','Coming Soon'] }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:6 }] },
+  leaderboard:   { label: 'Team Leaderboard',      fields: [{ key:'year', label:'Year', type:'year' }, { key:'metric', label:'Rank by', type:'select', options:['gci','production','deal_count'], default:'gci' }, { key:'limit', label:'Show top N', type:'number', min:2, max:8, default:5 }] },
+  gci_chart:     { label: 'GCI by Month',          fields: [{ key:'year', label:'Year', type:'year' }, { key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'chartType', label:'Chart style', type:'select', options:['bar','line'], default:'bar' }] },
+  open_houses:   { label: 'Open Houses This Week', fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'daysAhead', label:'Days ahead', type:'number', min:3, max:30, default:7 }] },
+  overdue_alert: { label: 'Overdue Alert',         fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:5 }] },
+  announcements: { label: 'Announcements',         fields: [{ key:'priorityFilter', label:'Priority', type:'select', options:['All','urgent','high','normal','low'] }, { key:'limit', label:'Max items', type:'number', min:2, max:10, default:3 }] },
+  gifts_pending: { label: 'Gifts Pending',         fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'statusFilter', label:'Status', type:'select', options:['All','Pending','Ordered','Delivered'] }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:6 }] },
+}
+
+const YEARS_LIST = []
+for (let y = new Date().getFullYear(); y >= 2020; y--) YEARS_LIST.push(y.toString())
+
+function WidgetConfigModal({ widget, agents, onSave, onClose }) {
+  const def = WIDGET_CONFIG_OPTIONS[widget?.id]
+  const [cfg, setCfg] = useState(() => ({ ...(widget?.config || {}) }))
+  const set = (key, val) => setCfg(prev => ({ ...prev, [key]: val }))
+
+  if (!def) return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', fontFamily:ff }}>
+      <div style={{ background:'var(--panel)', borderRadius:'14px', padding:'28px', textAlign:'center' }}>
+        <div style={{ fontSize:'13px', color:'var(--muted)', marginBottom:'14px' }}>No configuration options for this widget.</div>
+        <Btn variant="secondary" onClick={onClose}>Close</Btn>
+      </div>
+    </div>
+  )
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', fontFamily:ff }}>
+      <div style={{ background:'var(--panel)', borderRadius:'14px', width:'100%', maxWidth:'440px', boxShadow:'0 20px 50px rgba(0,0,0,.3)', overflow:'hidden' }}>
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:'10px' }}>
+          <span style={{ fontSize:'18px' }}>{WIDGET_DEFS[widget.id]?.icon || '⚙️'}</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:'14px', fontWeight:800, color:'var(--text)' }}>Configure — {def.label}</div>
+            <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'1px' }}>Customize what this widget shows</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:'18px', cursor:'pointer', color:'var(--muted)' }}>✕</button>
+        </div>
+        <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:'14px' }}>
+          {def.fields.map(field => (
+            <div key={field.key}>
+              <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'6px' }}>{field.label}</div>
+              {field.type === 'year' && (
+                <select value={cfg[field.key] || new Date().getFullYear().toString()} onChange={e => set(field.key, e.target.value)}
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff }}>
+                  <option value="">All Years</option>
+                  {YEARS_LIST.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              )}
+              {field.type === 'agent' && (
+                <select value={cfg[field.key] || ''} onChange={e => set(field.key, e.target.value)}
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff }}>
+                  <option value="">All Agents</option>
+                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              )}
+              {field.type === 'select' && (
+                <select value={cfg[field.key] || field.default || field.options[0]} onChange={e => set(field.key, e.target.value)}
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff }}>
+                  {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              )}
+              {field.type === 'number' && (
+                <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+                  <input type="range" min={field.min||1} max={field.max||20}
+                    value={parseInt(cfg[field.key])||field.default||field.min||5}
+                    onChange={e => set(field.key, parseInt(e.target.value))}
+                    style={{ flex:1, accentColor:'#CC2200' }} />
+                  <div style={{ width:40, height:32, borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'14px', fontWeight:800, color:'var(--text)', flexShrink:0 }}>
+                    {parseInt(cfg[field.key])||field.default||field.min||5}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          <button onClick={() => setCfg({})}
+            style={{ fontSize:'11px', color:'var(--muted)', background:'none', border:'none', cursor:'pointer', textAlign:'left', padding:0, fontFamily:ff, textDecoration:'underline', marginTop:'-4px' }}>
+            Reset to defaults
+          </button>
+        </div>
+        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={() => { onSave({ ...widget, config: cfg }); onClose() }}>✅ Apply</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Dashboard() {
   const navigate  = useNavigate()
   const { agent, isAdmin, canManage } = useAuth()
@@ -691,8 +792,9 @@ export function Dashboard() {
   const [showAgentView,    setShowAgentView]    = useState(false)
   const [showCustomWidget, setShowCustomWidget] = useState(false)
   const [dragId,       setDragId]       = useState(null)
-  const [editMode,     setEditMode]     = useState(false)
-  const [pendingWidgets, setPendingWidgets] = useState(null) // staged changes before save
+  const [editMode,       setEditMode]       = useState(false)
+  const [pendingWidgets, setPendingWidgets]  = useState(null) // staged changes before save
+  const [configWidget,   setConfigWidget]    = useState(null) // widget being configured
   const [savingPrefs,  setSavingPrefs]  = useState(false)
 
   // ── LOAD PREFS AND GOALS FROM DB ──────────────────────────────
@@ -873,6 +975,8 @@ export function Dashboard() {
     const def   = isCustom ? { ...WIDGET_DEFS.custom, label: w.customConfig?.label || 'Custom Widget', icon: w.customConfig?.icon || '🔲' } : WIDGET_DEFS[w.id]
     const color = w.color || '#CC2200'
     const isLg  = w.size === 'lg'
+    // Widget-level config filters (set via ⚙️ button by admin)
+    const wcfg  = w.config || {}
 
     const shell = (widgetContent) => (
       <div key={w.id}
@@ -936,7 +1040,19 @@ export function Dashboard() {
               </button>
             </div>
           ) : (
-            <span style={{ fontSize: '10px', color: 'var(--border)', userSelect: 'none', letterSpacing: '1px' }}>⋮⋮</span>
+            <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+              {(isAdmin || canManage) && WIDGET_CONFIG_OPTIONS[w.id] && (
+                <button
+                  onClick={e => { e.stopPropagation(); setConfigWidget(w) }}
+                  title="Configure widget"
+                  style={{ background:'none', border:'none', cursor:'pointer', fontSize:'13px', color:'var(--muted)', padding:'2px 4px', borderRadius:'4px', lineHeight:1 }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--hov)'; e.currentTarget.style.color = 'var(--text)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--muted)' }}>
+                  ⚙️
+                </button>
+              )}
+              <span style={{ fontSize: '10px', color: 'var(--border)', userSelect: 'none', letterSpacing: '1px' }}>⋮⋮</span>
+            </div>
           )}
         </div>
         {/* Widget content — dimmed in edit mode so controls are clear */}
@@ -1020,7 +1136,13 @@ export function Dashboard() {
     )
 
     // ── TODAY'S TASKS ──
-    if (w.id === 'todays_tasks') return shell(
+    if (w.id === 'todays_tasks') {
+      const filteredTasks = data.todaysTasks?.filter(t => {
+        if (wcfg.agentFilter    && t.agent_id !== wcfg.agentFilter) return false
+        if (wcfg.priorityFilter && wcfg.priorityFilter !== 'All' && t.priority !== wcfg.priorityFilter) return false
+        return true
+      }).slice(0, wcfg.limit || 6) || []
+      return shell(
       <div>
         {data.todayTasks?.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>🎉 All clear!</div>}
         {data.todayTasks?.slice(0, 5).map(t => (
@@ -1034,10 +1156,17 @@ export function Dashboard() {
         {data.todayTasks?.length > 5 && <div onClick={() => setPopup('todays_tasks')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '6px' }}>+{data.todayTasks.length - 5} more →</div>}
         <div onClick={() => navigate('/tasks/new')} style={{ marginTop: '8px', padding: '6px', border: '1px dashed var(--border)', borderRadius: '6px', textAlign: 'center', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer' }}>+ Quick Add Task</div>
       </div>
-    )
+    ) }
 
     // ── HOT LEADS ──
-    if (w.id === 'hot_leads') return shell(
+    if (w.id === 'hot_leads') {
+      const filteredLeads = data.hotLeads?.filter(c => {
+        if (wcfg.agentFilter && c.agent_id !== wcfg.agentFilter) return false
+        if (wcfg.statusFilter && wcfg.statusFilter !== 'All' && c.status !== wcfg.statusFilter) return false
+        if (wcfg.sourceFilter && wcfg.sourceFilter !== 'All' && c.source !== wcfg.sourceFilter) return false
+        return true
+      }).slice(0, wcfg.limit || 6) || []
+      return shell(
       <div>
         {data.hotLeads?.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No hot leads</div>}
         {data.hotLeads?.slice(0, 5).map(c => (
@@ -1055,10 +1184,17 @@ export function Dashboard() {
         ))}
         {data.hotLeads?.length > 5 && <div onClick={() => setPopup('hot_leads')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '6px' }}>+{data.hotLeads.length - 5} more →</div>}
       </div>
-    )
+    ) }
 
     // ── ACTIVE DEALS ──
-    if (w.id === 'active_deals') return shell(
+    if (w.id === 'active_deals') {
+      const filteredDeals = data.activeDeals?.filter(d => {
+        if (wcfg.agentFilter && d.agent_id !== wcfg.agentFilter) return false
+        if (wcfg.stageFilter && wcfg.stageFilter !== 'All' && d.stage !== wcfg.stageFilter) return false
+        if (wcfg.sideFilter  && wcfg.sideFilter  !== 'All' && d.side  !== wcfg.sideFilter)  return false
+        return true
+      }).slice(0, wcfg.limit || 6) || []
+      return shell(
       <div>
         {data.activeDeals?.slice(0, 4).map(d => (
           <div key={d.id} onClick={() => navigate('/production/' + d.id)}
@@ -1075,7 +1211,7 @@ export function Dashboard() {
         ))}
         <div onClick={() => setPopup('active_deals')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '8px' }}>View all {data.activeDeals?.length} →</div>
       </div>
-    )
+    ) }
 
     // ── UPCOMING CLOSINGS ──
     if (w.id === 'upcoming_close') return shell(
@@ -1461,6 +1597,19 @@ export function Dashboard() {
         <CustomizePanel widgets={widgets} role={agent.role}
           onSave={newW => { persistWidgets(newW); toast('✅ Layout saved') }}
           onClose={() => setShowCustomize(false)} />
+      )}
+
+      {/* Widget config modal */}
+      {configWidget && (
+        <WidgetConfigModal
+          widget={configWidget}
+          agents={agents}
+          onSave={updated => {
+            const newWidgets = widgets.map(w => w.id === updated.id ? updated : w)
+            persistWidgets(newWidgets)
+          }}
+          onClose={() => setConfigWidget(null)}
+        />
       )}
 
       {showCustomWidget && (
