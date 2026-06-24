@@ -17,8 +17,14 @@ function toCSV(rows, columns) {
   const header = columns.map(c => `"${c.label}"`).join(',')
   const lines  = rows.map(row =>
     columns.map(c => {
-      const val = row[c.key]
-      if (val === null || val === undefined) return ''
+      let val
+      if (c.key === '_agent_name') {
+        // Virtual: resolve from nested agents object
+        val = row.agents?.name || row._agent_name || ''
+      } else {
+        val = row[c.key]
+      }
+      if (val === null || val === undefined) return '""'
       const str = String(val).replace(/"/g, '""')
       return `"${str}"`
     }).join(',')
@@ -120,13 +126,25 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     setImporting(true)
     const { allRows } = preview
     let inserted = 0, updated = 0, skipped = 0, errors = []
+    // Load agents once for name→id resolution
+    let agentCache = []
+    try {
+      const { data } = await supabase.from('agents').select('id, name').eq('active', true)
+      agentCache = data || []
+    } catch { /* ignore — agent resolution will just be skipped */ }
 
     for (const row of allRows) {
       // Build record from mapping
       const record = {}
+      let agentNameToResolve = null
       Object.entries(mapping).forEach(([csvH, dbKey]) => {
         if (dbKey && row[csvH] !== undefined) {
           const col = columns.find(c => c.key === dbKey)
+          // _agent_name is virtual — resolve it to agent_id separately
+          if (dbKey === '_agent_name') {
+            agentNameToResolve = row[csvH] || null
+            return
+          }
           let val = row[csvH]
           if (col?.type === 'number') val = parseFloat(val) || null
           if (col?.type === 'date' && val) val = val.slice(0, 10)
@@ -134,6 +152,18 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
           record[dbKey] = val
         }
       })
+      // Resolve agent name → agent_id
+      if (agentNameToResolve) {
+        const name = agentNameToResolve.trim().toLowerCase()
+        // Fuzzy match: try full name, then first name, then last name
+        const found = agentCache.find(a =>
+          a.name.toLowerCase() === name ||
+          a.name.toLowerCase().split(' ')[0] === name ||
+          a.name.toLowerCase().split(' ').pop() === name ||
+          name.includes(a.name.toLowerCase().split(' ')[0])
+        )
+        if (found) record.agent_id = found.id
+      }
 
       if (!record.addr && !record.name && !record.title) {
         const firstVal = Object.values(row)[0]

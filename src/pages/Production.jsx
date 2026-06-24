@@ -33,7 +33,8 @@ const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const EXPORT_COLUMNS = [
   { key: 'addr',                 label: 'Address',              example: '123 Main St, Monsey NY 10952' },
   { key: 'unit',                 label: 'Unit',                 example: '201' },
-  { key: 'side',                 label: 'Side',                 example: 'Buyer', type: 'text' },
+  { key: '_agent_name',          label: 'Agent Name',           example: 'Lazer Farkas', virtual: true },
+  { key: 'side',                 label: 'Side',                 example: 'Buyer' },
   { key: 'stage',                label: 'Stage',                example: 'Offer Accapted' },
   { key: 'sale_type',            label: 'Sale Type',            example: 'On Market' },
   { key: 'property_type',        label: 'Property Type',        example: 'Condo' },
@@ -232,6 +233,19 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
         )}
       </td>
 
+      {/* Linked Contacts — show count badge */}
+      <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
+        {deal._contact_count > 0 ? (
+          <span
+            onClick={() => onOpen({ ...deal, _openTab: 'linked' })}
+            style={{ display:'inline-flex', alignItems:'center', gap:'3px', padding:'2px 7px', borderRadius:'12px', background:'#EFF6FF', color:'#1D4ED8', fontSize:'10px', fontWeight:700, cursor:'pointer', border:'1px solid #BFDBFE' }}>
+            👥 {deal._contact_count}
+          </span>
+        ) : (
+          <span style={{ color:'var(--border)', fontSize:'11px' }}>—</span>
+        )}
+      </td>
+
       {/* Production */}
       <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, fontSize: '12px', color: 'var(--text)', whiteSpace: 'nowrap' }}>
         {deal.production ? fmt$(deal.production) : '—'}
@@ -282,6 +296,11 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
         {fmtDateShort(deal.ao_date) || '—'}
       </td>
 
+      {/* Contract Date */}
+      <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+        {fmtDateShort(deal.contract_date) || '—'}
+      </td>
+
       {/* Expected Close */}
       <td style={{ padding: '9px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}>
         {deal.expected_close_date ? (
@@ -294,11 +313,19 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
         ) : '—'}
       </td>
 
+      {/* Close Date */}
+      <td style={{ padding: '9px 12px', fontSize: '11px', color: '#10B981', fontWeight: deal.close_date ? 600 : 400, whiteSpace: 'nowrap' }}>
+        {fmtDateShort(deal.close_date) || '—'}
+      </td>
+
       {/* Sale Type */}
       <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)' }}>{deal.sale_type || '—'}</td>
 
       {/* Property Type */}
       <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{deal.property_type || '—'}</td>
+
+      {/* Sales Source */}
+      <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{deal.sales_source || '—'}</td>
 
       {/* Commission Received — inline */}
       <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
@@ -362,7 +389,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                {['','Address / Client','Agent','Production','GCI','Stage','Side','Command','CTC','A/O Date','Exp. Close','Sale Type','Prop Type','Commission'].map(h => (
+                {['','Address / Client','Agent','Contacts','Production','GCI','Stage','Side','Command','CTC','A/O Date','Contract','Exp. Close','Close Date','Sale Type','Prop Type','Source','Commission'].map(h => (
                   <th key={h} style={{ padding: '6px 12px', textAlign: h === 'Production' || h === 'GCI' ? 'right' : 'left', fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>
                     {h}
                   </th>
@@ -960,8 +987,21 @@ export function Production() {
     try {
       let q = supabase.from('deals').select('*, agents(id,name,color)').order('ao_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
       if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
-      const { data } = await q
-      setDeals(data || [])
+      const { data: dealsData } = await q
+      const deals = dealsData || []
+
+      // Fetch contact counts for all deals in one query
+      if (deals.length > 0) {
+        const { data: counts } = await supabase
+          .from('deal_contacts')
+          .select('deal_id')
+          .in('deal_id', deals.map(d => d.id))
+        const countMap = {}
+        ;(counts || []).forEach(r => { countMap[r.deal_id] = (countMap[r.deal_id] || 0) + 1 })
+        deals.forEach(d => { d._contact_count = countMap[d.id] || 0 })
+      }
+
+      setDeals(deals)
     } catch(e) { toast('Could not load deals: ' + e.message, '#DC2626') }
     finally { setLoading(false) }
   }
