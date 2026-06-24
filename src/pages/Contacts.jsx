@@ -130,6 +130,18 @@ export function Contacts() {
 
   const statusColor = (s) => CONTACT_STATUSES.find(x => x.value === s)?.color || '#94A3B8'
 
+  async function bulkDelete() {
+    if (!selectedIds.length) return
+    if (!window.confirm(`Delete ${selectedIds.length} contact${selectedIds.length !== 1 ? 's' : ''}? This cannot be undone.`)) return
+    setBulkDel(true)
+    try {
+      await supabase.from('contacts').delete().in('id', selectedIds)
+      setSelectedIds([])
+      toast(`✅ Deleted ${selectedIds.length} contact${selectedIds.length !== 1 ? 's' : ''}`)
+    } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+    finally { setBulkDel(false) }
+  }
+
   return (
     <div style={{ fontFamily: ff }}>
       <PageHeader
@@ -156,6 +168,22 @@ export function Contacts() {
           </select>
         )}
       </div>
+
+      {/* Selection bar */}
+      {selectedIds.length > 0 && (
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 14px', background:'#1B2B4B', borderRadius:'10px', marginBottom:'10px', flexWrap:'wrap' }}>
+          <span style={{ fontSize:'13px', fontWeight:700, color:'#fff' }}>{selectedIds.length} selected</span>
+          <div style={{ flex:1 }} />
+          <button onClick={bulkDelete} disabled={bulkDel}
+            style={{ padding:'5px 12px', borderRadius:'6px', border:'1px solid rgba(220,38,38,.5)', background:'rgba(220,38,38,.2)', color:'#FCA5A5', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            {bulkDel ? '⏳' : '🗑️'} Delete {selectedIds.length}
+          </button>
+          <button onClick={() => setSelectedIds([])}
+            style={{ padding:'5px 10px', borderRadius:'6px', border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'rgba(255,255,255,.7)', fontSize:'12px', cursor:'pointer', fontFamily:ff }}>
+            ✕ Clear
+          </button>
+        </div>
+      )}
 
       {loading && <Loading />}
 

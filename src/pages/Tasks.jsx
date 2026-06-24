@@ -41,7 +41,9 @@ export function Tasks() {
   const { tasks, loading, add, update, complete, remove } = useTasks(filters)
   const { agents } = useAgents()
 
-  const [search,  setSearch]  = useState('')
+  const [search,      setSearch]      = useState('')
+  const [selectedIds, setSelectedIds] = useState([])
+  const [bulkDel,     setBulkDel]     = useState(false)
   const [statusF, setStatusF] = useState('pending')
   const [priorF,  setPriorF]  = useState('')
   const [agentF,  setAgentF]  = useState('')
@@ -187,6 +189,27 @@ export function Tasks() {
     )
   }
 
+  async function bulkDelete() {
+    if (!selectedIds.length) return
+    if (!window.confirm(`Delete ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}?`)) return
+    setBulkDel(true)
+    try {
+      await supabase.from('tasks').delete().in('id', selectedIds)
+      setSelectedIds([])
+      toast(`✅ Deleted ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}`)
+    } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+    finally { setBulkDel(false) }
+  }
+
+  async function bulkComplete() {
+    if (!selectedIds.length) return
+    try {
+      await supabase.from('tasks').update({ status: 'done', updated_at: new Date().toISOString() }).in('id', selectedIds)
+      setSelectedIds([])
+      toast(`✅ Marked ${selectedIds.length} tasks as done`)
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+  }
+
   return (
     <div style={{ fontFamily: ff }}>
       <PageHeader
@@ -216,6 +239,26 @@ export function Tasks() {
           </select>
         )}
       </div>
+
+      {/* Selection bar */}
+      {selectedIds.length > 0 && (
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 14px', background:'#1B2B4B', borderRadius:'10px', marginBottom:'10px', flexWrap:'wrap' }}>
+          <span style={{ fontSize:'13px', fontWeight:700, color:'#fff' }}>{selectedIds.length} task{selectedIds.length !== 1 ? 's' : ''} selected</span>
+          <div style={{ flex:1 }} />
+          <button onClick={bulkComplete}
+            style={{ padding:'5px 12px', borderRadius:'6px', border:'1px solid rgba(16,185,129,.5)', background:'rgba(16,185,129,.2)', color:'#6EE7B7', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            ✅ Mark done
+          </button>
+          <button onClick={bulkDelete} disabled={bulkDel}
+            style={{ padding:'5px 12px', borderRadius:'6px', border:'1px solid rgba(220,38,38,.5)', background:'rgba(220,38,38,.2)', color:'#FCA5A5', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            {bulkDel ? '⏳' : '🗑️'} Delete {selectedIds.length}
+          </button>
+          <button onClick={() => setSelectedIds([])}
+            style={{ padding:'5px 10px', borderRadius:'6px', border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'rgba(255,255,255,.7)', fontSize:'12px', cursor:'pointer', fontFamily:ff }}>
+            ✕ Clear
+          </button>
+        </div>
+      )}
 
       {loading && <Loading />}
       {!loading && filtered.length === 0 && (

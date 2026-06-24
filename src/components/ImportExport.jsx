@@ -135,13 +135,21 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         }
       })
 
-      if (!record.addr && !record.name && !record.title) { errors.push('Skipped row — no identifier'); continue }
+      if (!record.addr && !record.name && !record.title) {
+        const firstVal = Object.values(row)[0]
+        errors.push(`Row skipped — no address/name found (first cell: "${String(firstVal).slice(0,30)}")`)
+        continue
+      }
 
       try {
-        // Check if exists by address/name
+        // Check if exists — for deals match on addr+side (dual deals share address)
+        // For other tables match on the primary identifier field
         const idField = record.addr ? 'addr' : record.name ? 'name' : 'title'
         if (!record[idField]) { errors.push('Skipped row — no identifier field'); continue }
-        const { data: existing } = await supabase.from(table).select('id').eq(idField, record[idField]).maybeSingle()
+        let q = supabase.from(table).select('id').eq(idField, record[idField])
+        // If record has a 'side' field (deals), include it in the match
+        if (record.side) q = q.eq('side', record.side)
+        const { data: existing } = await q.maybeSingle()
         if (existing?.id) {
           if (dupMode === 'skip') {
             skipped++

@@ -759,7 +759,8 @@ export function Production() {
   const [selected, setSelected] = useState(null) // deal being edited, or {} for new
   const [saving,   setSaving]   = useState(false)
   const [viewMode,    setViewMode]    = useState('board') // 'board' | 'table'
-  const [selectedIds, setSelectedIds] = useState([])
+  const [selectedIds,  setSelectedIds]  = useState([])
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   const years = []
   for (let y = new Date().getFullYear(); y >= 2015; y--) years.push(y.toString())
@@ -828,6 +829,30 @@ export function Production() {
       toast('Deal deleted')
       closeDrawer()
     } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+  }
+
+  async function bulkDelete() {
+    if (!selectedIds.length) return
+    if (!window.confirm(`Delete ${selectedIds.length} deal${selectedIds.length !== 1 ? 's' : ''}? This cannot be undone.`)) return
+    setBulkDeleting(true)
+    try {
+      const { error } = await supabase.from('deals').delete().in('id', selectedIds)
+      if (error) throw error
+      setDeals(prev => prev.filter(d => !selectedIds.includes(d.id)))
+      toast(`✅ Deleted ${selectedIds.length} deal${selectedIds.length !== 1 ? 's' : ''}`)
+      setSelectedIds([])
+    } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+    finally { setBulkDeleting(false) }
+  }
+
+  async function bulkUpdateStage(stage) {
+    if (!selectedIds.length) return
+    try {
+      const { error } = await supabase.from('deals').update({ stage, updated_at: new Date().toISOString() }).in('id', selectedIds)
+      if (error) throw error
+      setDeals(prev => prev.map(d => selectedIds.includes(d.id) ? { ...d, stage } : d))
+      toast(`✅ Updated ${selectedIds.length} deals to "${stage}"`)
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
 
   async function quickUpdate(deal, field, value) {
@@ -1016,12 +1041,26 @@ export function Production() {
             </div>
             {/* Spacer */}
             <div style={{ flex: 1 }} />
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+            {/* Bulk actions */}
+            <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Quick stage change */}
+              <select
+                onChange={e => { if (e.target.value) { bulkUpdateStage(e.target.value); e.target.value = '' } }}
+                defaultValue=""
+                style={{ padding: '5px 8px', borderRadius: '7px', border: '1px solid rgba(255,255,255,.2)', background: 'rgba(255,255,255,.1)', color: '#fff', fontSize: '11px', fontFamily: ff, cursor: 'pointer' }}>
+                <option value="" disabled>📊 Change stage...</option>
+                {DEAL_STAGES.map(s => <option key={s.value} value={s.value} style={{ color: '#1E293B', background: '#fff' }}>{s.label}</option>)}
+              </select>
               <button
                 onClick={() => exportSelected(selectedIds, filtered, agents)}
                 style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid rgba(255,255,255,.2)', background: 'transparent', color: '#fff', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
                 ⬇ Export {sel.length}
+              </button>
+              <button
+                onClick={bulkDelete}
+                disabled={bulkDeleting}
+                style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid rgba(220,38,38,.5)', background: 'rgba(220,38,38,.2)', color: '#FCA5A5', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
+                {bulkDeleting ? '⏳' : '🗑️'} Delete {sel.length}
               </button>
               <button
                 onClick={() => setSelectedIds([])}
