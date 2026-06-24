@@ -69,8 +69,9 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
   const [mode,        setMode]        = useState('export') // 'export' | 'import'
   const [preview,     setPreview]     = useState(null)    // { headers, rows }
   const [mapping,     setMapping]     = useState({})      // csvHeader → dbColumn
+  const [dupMode,     setDupMode]     = useState('skip')  // 'skip' | 'update'
   const [importing,   setImporting]   = useState(false)
-  const [importDone,  setImportDone]  = useState(null)    // { inserted, updated, errors }
+  const [importDone,  setImportDone]  = useState(null)    // { inserted, skipped, updated, errors }
   const fileRef = useRef(null)
 
   // ── EXPORT ─────────────────────────────────────────────────────
@@ -118,7 +119,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     if (!preview) return
     setImporting(true)
     const { allRows } = preview
-    let inserted = 0, updated = 0, errors = []
+    let inserted = 0, updated = 0, skipped = 0, errors = []
 
     for (const row of allRows) {
       // Build record from mapping
@@ -139,10 +140,15 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       try {
         // Check if exists by address/name
         const idField = record.addr ? 'addr' : record.name ? 'name' : 'title'
+        if (!record[idField]) { errors.push('Skipped row — no identifier field'); continue }
         const { data: existing } = await supabase.from(table).select('id').eq(idField, record[idField]).maybeSingle()
         if (existing?.id) {
-          await supabase.from(table).update({ ...record, updated_at: new Date().toISOString() }).eq('id', existing.id)
-          updated++
+          if (dupMode === 'skip') {
+            skipped++
+          } else {
+            await supabase.from(table).update({ ...record, updated_at: new Date().toISOString() }).eq('id', existing.id)
+            updated++
+          }
         } else {
           await supabase.from(table).insert({ ...record, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           inserted++
@@ -152,10 +158,10 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       }
     }
 
-    setImportDone({ inserted, updated, errors })
+    setImportDone({ inserted, updated, skipped, errors })
     setImporting(false)
     if (onImport) onImport()
-    toast(`✅ Import complete: ${inserted} added, ${updated} updated${errors.length ? `, ${errors.length} errors` : ''}`)
+    toast(`✅ Import complete: ${inserted} added, ${skipped} skipped, ${updated} updated${errors.length ? `, ${errors.length} errors` : ''}`)
   }
 
   if (!open) {
@@ -268,6 +274,20 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
                 {preview.allRows.length} rows detected. Map each CSV column to a {label.slice(0,-1).toLowerCase()} field.
               </div>
 
+              {/* Duplicate handling */}
+              <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'10px 12px', background:'var(--dim)', borderRadius:'8px', border:'1px solid var(--border)', marginBottom:'14px' }}>
+                <span style={{ fontSize:'14px' }}>🔁</span>
+                <span style={{ fontSize:'12px', fontWeight:700, color:'var(--text)', flex:1 }}>If a record already exists (same address/name):</span>
+                <div style={{ display:'flex', background:'var(--panel)', borderRadius:'7px', padding:'2px', gap:'2px' }}>
+                  {[['skip','⏭ Skip it'],['update','✏️ Update it']].map(([m,l]) => (
+                    <button key={m} onClick={() => setDupMode(m)}
+                      style={{ padding:'4px 10px', borderRadius:'5px', border:'none', background: dupMode===m ? '#CC2200' : 'transparent', color: dupMode===m ? '#fff' : 'var(--muted)', fontSize:'11px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Mapping rows */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
                 {preview.headers.map(h => (
@@ -327,6 +347,10 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '24px', fontWeight: 900, color: '#10B981' }}>{importDone.inserted}</div>
                     <div style={{ fontSize: '11px', color: 'var(--muted)' }}>New records</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '24px', fontWeight: 900, color: '#F5A623' }}>{importDone.skipped}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Skipped</div>
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '24px', fontWeight: 900, color: '#3B82F6' }}>{importDone.updated}</div>
