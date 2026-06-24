@@ -15,9 +15,20 @@ import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
 import { fmtDate, matchSearch } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm, Pill, Avatar } from '../components/UI'
+import { ImportExport } from '../components/ImportExport'
 import { useAgents } from '../lib/hooks'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+
+const SIGNS_EXPORT_COLS = [
+  { key: 'addr',           label: 'Address',         example: '123 Main St, Monsey NY 10952' },
+  { key: 'order_status',   label: 'Order Status',    example: 'On Property' },
+  { key: 'upper_rider',    label: 'Upper Rider',     example: 'For Sale' },
+  { key: 'lower_rider',    label: 'Lower Rider',     example: 'Under Contract' },
+  { key: 'date_installed', label: 'Date Installed',  example: '2026-01-15', type: 'date' },
+  { key: 'date_removed',   label: 'Date Removed',    example: '2026-06-01', type: 'date' },
+  { key: 'comments',       label: 'Comments',        example: '' },
+]
 
 // ── CONSTANTS ─────────────────────────────────────────────────────
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
@@ -529,6 +540,15 @@ export function Signs() {
                 </button>
               ))}
             </div>
+            {(isAdmin || canManage) && (
+              <ImportExport
+                table="signs"
+                data={filtered}
+                columns={SIGNS_EXPORT_COLS}
+                label="Signs"
+                onImport={load}
+              />
+            )}
             {(isAdmin || canManage) && <Btn onClick={() => setEditSign({})}>+ Add Sign</Btn>}
           </div>
         </div>

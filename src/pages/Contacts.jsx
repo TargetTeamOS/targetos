@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { useContacts, useAgents } from '../lib/hooks'
 import { db } from '../lib/db'
+import { ImportExport } from '../components/ImportExport'
 import { fmt$, fmtDate, fmtPhone, initials, matchSearch } from '../lib/utils'
 import { CONTACT_STATUSES, CONTACT_SOURCES } from '../lib/constants'
 import {
@@ -19,6 +20,18 @@ import {
 } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+
+const CONTACT_EXPORT_COLS = [
+  { key:'first_name', label:'First Name', example:'John' },
+  { key:'last_name',  label:'Last Name',  example:'Smith' },
+  { key:'phone',      label:'Phone',      example:'8455551234' },
+  { key:'email',      label:'Email',      example:'john@email.com' },
+  { key:'status',     label:'Status',     example:'Hot' },
+  { key:'source',     label:'Source',     example:'SOI' },
+  { key:'type',       label:'Type',       example:'Buyer' },
+  { key:'budget_max', label:'Budget Max', example:'500000', type:'number' },
+  { key:'notes',      label:'Notes',      example:'' },
+]
 
 const BLANK = {
   first_name: '', last_name: '', phone: '', email: '', address: '',

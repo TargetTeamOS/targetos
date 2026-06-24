@@ -25,9 +25,36 @@ import {
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { FileAttachments } from '../components/FileAttachments'
 import { RecordActivity } from '../pages/ActivityLog'
+import { ImportExport } from '../components/ImportExport'
 import { useAgents } from '../lib/hooks'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+
+const EXPORT_COLUMNS = [
+  { key: 'addr',                 label: 'Address',              example: '123 Main St, Monsey NY 10952' },
+  { key: 'unit',                 label: 'Unit',                 example: '201' },
+  { key: 'side',                 label: 'Side',                 example: 'Buyer', type: 'text' },
+  { key: 'stage',                label: 'Stage',                example: 'Offer Accapted' },
+  { key: 'sale_type',            label: 'Sale Type',            example: 'On Market' },
+  { key: 'property_type',        label: 'Property Type',        example: 'Condo' },
+  { key: 'sales_source',         label: 'Sales Source',         example: 'SOI' },
+  { key: 'referral_agent',       label: 'Referral Agent',       example: 'None' },
+  { key: 'production',           label: 'Production $',         example: '500000', type: 'number' },
+  { key: 'gci',                  label: 'GCI $',                example: '15000', type: 'number' },
+  { key: 'ao_date',              label: 'A/O Date',             example: '2026-01-15', type: 'date' },
+  { key: 'contract_date',        label: 'Contract Date',        example: '2026-02-01', type: 'date' },
+  { key: 'expected_close_date',  label: 'Expected Close Date',  example: '2026-03-15', type: 'date' },
+  { key: 'close_date',           label: 'Close Date',           example: '2026-03-20', type: 'date' },
+  { key: 'client_name',          label: 'Client Name',          example: 'John Smith' },
+  { key: 'client_legal_name',    label: 'Client Legal Name',    example: 'John B Smith' },
+  { key: 'client_phone',         label: 'Client Phone',         example: '8455551234' },
+  { key: 'client_email',         label: 'Client Email',         example: 'client@email.com' },
+  { key: 'atty_name',            label: 'Attorney Name',        example: 'Jane Atty' },
+  { key: 'atty_email',           label: 'Attorney Email',       example: 'atty@law.com' },
+  { key: 'command',              label: 'Command',              example: 'Done' },
+  { key: 'ctc',                  label: 'Contract to Close',    example: 'Clear to close' },
+  { key: 'notes',                label: 'Notes',                example: '' },
+]
 
 // ── CONSTANTS ─────────────────────────────────────────────────────
 
@@ -832,6 +859,13 @@ export function Production() {
               </button>
             ))}
           </div>
+          <ImportExport
+            table="deals"
+            data={filtered}
+            columns={EXPORT_COLUMNS}
+            label="Deals"
+            onImport={load}
+          />
           <Btn onClick={openNew}>+ Add Deal</Btn>
         </div>
       </div>

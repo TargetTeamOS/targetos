@@ -18,6 +18,14 @@ import {
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
+const TASK_EXPORT_COLS = [
+  { key:'title',    label:'Title',    example:'Follow up with client' },
+  { key:'status',   label:'Status',   example:'pending' },
+  { key:'priority', label:'Priority', example:'normal' },
+  { key:'due_date', label:'Due Date', example:'2026-01-15', type:'date' },
+  { key:'notes',    label:'Notes',    example:'' },
+]
+
 const BLANK = {
   title: '', priority: 'normal', status: 'pending', due_date: '',
   notes: '', agent_id: '', deal_id: '', contact_id: ''
