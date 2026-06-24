@@ -49,15 +49,17 @@ export function Contacts() {
   const { contacts, loading, add, update, remove, refetch } = useContacts(filters)
   const { agents } = useAgents()
 
-  const [search,   setSearch]   = useState('')
-  const [statusF,  setStatusF]  = useState('')
-  const [agentF,   setAgentF]   = useState('')
-  const [selected, setSelected] = useState(null)
-  const [showAdd,  setShowAdd]  = useState(false)
-  const [form,     setForm]     = useState(BLANK)
-  const [saving,   setSaving]   = useState(false)
-  const [tab,      setTab]      = useState('info')
+  const [search,      setSearch]      = useState('')
+  const [statusF,     setStatusF]     = useState('')
+  const [agentF,      setAgentF]      = useState('')
+  const [selected,    setSelected]    = useState(null)
+  const [showAdd,     setShowAdd]     = useState(false)
+  const [form,        setForm]        = useState(BLANK)
+  const [saving,      setSaving]      = useState(false)
+  const [tab,         setTab]         = useState('info')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [selectedIds, setSelectedIds] = useState([])
+  const [bulkDel,     setBulkDel]     = useState(false)
 
   // Auto-open from URL param
   useEffect(() => {
@@ -196,9 +198,15 @@ export function Contacts() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
           {filtered.map(c => (
             <div key={c.id} onClick={() => navigate('/contacts/' + c.id + '/detail')}
-              style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: selected?.id === c.id ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s' }}
+              style={{ background: selectedIds.includes(c.id) ? 'rgba(204,34,0,.04)' : 'var(--panel)', borderRadius: 'var(--radius)', border: selectedIds.includes(c.id) ? '2px solid #CC220044' : selected?.id === c.id ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s', position: 'relative' }}
               onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
               onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
+              {/* Selection checkbox */}
+              <div
+                onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]) }}
+                style={{ position:'absolute', top:10, left:10, width:16, height:16, borderRadius:'4px', border:`2px solid ${selectedIds.includes(c.id) ? '#CC2200' : 'var(--border)'}`, background: selectedIds.includes(c.id) ? '#CC2200' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, transition:'all .12s' }}>
+                {selectedIds.includes(c.id) && <span style={{ color:'#fff', fontSize:'9px', fontWeight:900, lineHeight:1 }}>✓</span>}
+              </div>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                 <div style={{ width: 38, height: 38, borderRadius: '50%', background: statusColor(c.status), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, flexShrink: 0 }}>
                   {initials(c.first_name + ' ' + (c.last_name || ''))}
