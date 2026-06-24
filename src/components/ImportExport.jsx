@@ -77,6 +77,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
   const [mapping,     setMapping]     = useState({})      // csvHeader → dbColumn
   const [dupMode,     setDupMode]     = useState('skip')  // 'skip' | 'update'
   const [importing,   setImporting]   = useState(false)
+  const [importProgress, setImportProgress] = useState('')  // status message during import
   const [importDone,  setImportDone]  = useState(null)    // { inserted, skipped, updated, errors }
   const fileRef = useRef(null)
 
@@ -120,42 +121,39 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     e.target.value = ''
   }
 
-  // ── IMPORT: execute ───────────────────────────────────────────
+  // ── IMPORT: execute (batched — handles 500+ rows without crashing) ───
   async function doImport() {
     if (!preview) return
     setImporting(true)
     const { allRows } = preview
     let inserted = 0, updated = 0, skipped = 0, errors = []
-    // Load agents once for name→id resolution
+
+    // ── Step 1: Load agents once for name→id resolution ──────────
     let agentCache = []
     try {
       const { data } = await supabase.from('agents').select('id, name').eq('active', true)
       agentCache = data || []
-    } catch { /* ignore — agent resolution will just be skipped */ }
+    } catch { /* non-fatal */ }
 
+    setImportProgress('Reading ' + allRows.length + ' rows...')
+    // ── Step 2: Build all records from CSV mapping ────────────────
+    const records = []
     for (const row of allRows) {
-      // Build record from mapping
       const record = {}
       let agentNameToResolve = null
       Object.entries(mapping).forEach(([csvH, dbKey]) => {
-        if (dbKey && row[csvH] !== undefined) {
-          const col = columns.find(c => c.key === dbKey)
-          // _agent_name is virtual — resolve it to agent_id separately
-          if (dbKey === '_agent_name') {
-            agentNameToResolve = row[csvH] || null
-            return
-          }
-          let val = row[csvH]
-          if (col?.type === 'number') val = parseFloat(val) || null
-          if (col?.type === 'date' && val) val = val.slice(0, 10)
-          if (val === '') val = null
-          record[dbKey] = val
-        }
+        if (!dbKey || row[csvH] === undefined) return
+        const col = columns.find(c => c.key === dbKey)
+        if (dbKey === '_agent_name') { agentNameToResolve = row[csvH] || null; return }
+        let val = row[csvH]
+        if (col?.type === 'number') val = parseFloat(val) || null
+        if (col?.type === 'date' && val) val = val.slice(0, 10)
+        if (val === '') val = null
+        record[dbKey] = val
       })
       // Resolve agent name → agent_id
       if (agentNameToResolve) {
         const name = agentNameToResolve.trim().toLowerCase()
-        // Fuzzy match: try full name, then first name, then last name
         const found = agentCache.find(a =>
           a.name.toLowerCase() === name ||
           a.name.toLowerCase().split(' ')[0] === name ||
@@ -164,36 +162,79 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         )
         if (found) record.agent_id = found.id
       }
-
-      if (!record.addr && !record.name && !record.title) {
-        const firstVal = Object.values(row)[0]
-        errors.push(`Row skipped — no address/name found (first cell: "${String(firstVal).slice(0,30)}")`)
+      const idField = record.addr ? 'addr' : record.name ? 'name' : 'title'
+      if (!record[idField]) {
+        errors.push('Row skipped — no identifier (addr/name/title): ' + Object.values(row)[0]?.slice(0, 40))
         continue
       }
+      records.push({ record, idField })
+    }
 
+    setImportProgress('Checking for duplicates (' + records.length + ' rows)...')
+    // ── Step 3: Fetch ALL existing records in ONE query ───────────
+    // Instead of one query per row, grab all identifiers at once
+    const BATCH = 50  // Supabase IN() limit
+    const idField0 = records[0]?.idField || 'addr'
+    const allIds   = records.map(r => r.record[r.idField]).filter(Boolean)
+    const existingMap = {}  // identifier+side → db id
+
+    // Fetch in batches of 50
+    for (let i = 0; i < allIds.length; i += BATCH) {
+      const chunk = allIds.slice(i, i + BATCH)
       try {
-        // Check if exists — for deals match on addr+side (dual deals share address)
-        // For other tables match on the primary identifier field
-        const idField = record.addr ? 'addr' : record.name ? 'name' : 'title'
-        if (!record[idField]) { errors.push('Skipped row — no identifier field'); continue }
-        let q = supabase.from(table).select('id').eq(idField, record[idField])
-        // If record has a 'side' field (deals), include it in the match
-        if (record.side) q = q.eq('side', record.side)
-        const { data: existing } = await q.maybeSingle()
-        if (existing?.id) {
-          if (dupMode === 'skip') {
-            skipped++
-          } else {
-            await supabase.from(table).update({ ...record, updated_at: new Date().toISOString() }).eq('id', existing.id)
-            updated++
-          }
-        } else {
-          await supabase.from(table).insert({ ...record, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          inserted++
-        }
-      } catch(e) {
-        errors.push(e.message)
+        const { data } = await supabase.from(table).select('id, ' + idField0 + (table === 'deals' ? ', side' : '')).in(idField0, chunk)
+        ;(data || []).forEach(row => {
+          const key = row[idField0] + (row.side ? '||' + row.side : '')
+          existingMap[key] = row.id
+        })
+      } catch(e) { errors.push('Fetch batch failed: ' + e.message) }
+    }
+
+    // ── Step 4: Split into inserts vs updates ─────────────────────
+    const toInsert = []
+    const toUpdate = []
+
+    for (const { record, idField } of records) {
+      const key = record[idField] + (record.side ? '||' + record.side : '')
+      const existingId = existingMap[key]
+      if (existingId) {
+        if (dupMode === 'skip') skipped++
+        else toUpdate.push({ id: existingId, record })
+      } else {
+        toInsert.push(record)
       }
+    }
+
+    setImportProgress('Inserting ' + toInsert.length + ' new records...')
+    // ── Step 5: Batch INSERT (up to 50 per call) ──────────────────
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      const chunk = toInsert.slice(i, i + BATCH).map(r => ({
+        ...r,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }))
+      try {
+        const { error } = await supabase.from(table).insert(chunk)
+        if (error) throw error
+        inserted += chunk.length
+      } catch(e) {
+        errors.push('Insert batch ' + (i/BATCH+1) + ' failed: ' + e.message)
+      }
+    }
+
+    if (toUpdate.length) setImportProgress('Updating ' + toUpdate.length + ' existing records...')
+    // ── Step 6: Batch UPDATE (individual — Supabase requires one per id) ─
+    // Run in parallel groups of 10 to stay fast without overwhelming the DB
+    const PARALLEL = 10
+    for (let i = 0; i < toUpdate.length; i += PARALLEL) {
+      const chunk = toUpdate.slice(i, i + PARALLEL)
+      await Promise.all(chunk.map(async ({ id, record }) => {
+        try {
+          const { error } = await supabase.from(table).update({ ...record, updated_at: new Date().toISOString() }).eq('id', id)
+          if (error) throw error
+          updated++
+        } catch(e) { errors.push('Update failed: ' + e.message) }
+      }))
     }
 
     setImportDone({ inserted, updated, skipped, errors })
