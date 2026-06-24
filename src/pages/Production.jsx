@@ -190,7 +190,7 @@ function InlinePicker({ value, options, onSave, color, renderValue }) {
 }
 
 // ── BOARD ROW ──────────────────────────────────────────────────────
-function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin }) {
+function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect }) {
   const agent = agents.find(a => a.id === deal.agent_id)
   const ctcDef = CTC_STAGES.find(s => s.value === deal.ctc)
   const cmdDef = COMMAND_STATUSES.find(s => s.value === deal.command)
@@ -199,10 +199,16 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin }) {
   return (
     <tr
       onClick={() => onOpen(deal)}
-      style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)', transition: 'background .1s' }}
-      onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
-      onMouseLeave={e => e.currentTarget.style.background = ''}
+      style={{ cursor: 'pointer', borderBottom: `1px solid var(--border)`, transition: 'background .1s', background: isSelected ? 'rgba(204,34,0,.04)' : '' }}
+      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--hov)' }}
+      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '' }}
     >
+      {/* Checkbox */}
+      <td style={{ padding: '9px 8px', width: '32px' }} onClick={e => { e.stopPropagation(); onToggleSelect(deal.id) }}>
+        <div style={{ width: 16, height: 16, borderRadius: '4px', border: `2px solid ${isSelected ? '#CC2200' : 'var(--border)'}`, background: isSelected ? '#CC2200' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all .12s', margin: '0 auto' }}>
+          {isSelected && <span style={{ color: '#fff', fontSize: '9px', fontWeight: 900, lineHeight: 1 }}>✓</span>}
+        </div>
+      </td>
       {/* Address */}
       <td style={{ padding: '9px 12px', maxWidth: '200px' }}>
         <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -304,7 +310,7 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin }) {
 }
 
 // ── BOARD GROUP ────────────────────────────────────────────────────
-function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin }) {
+function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll }) {
   const [collapsed, setCollapsed] = useState(false)
   const totalGCI  = deals.reduce((s, d) => s + parseNum(d.gci), 0)
   const totalProd = deals.reduce((s, d) => s + parseNum(d.production), 0)
@@ -330,6 +336,16 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin }) {
         <span style={{ fontSize: '11px', fontWeight: 600, color: group.color, background: group.color + '22', padding: '1px 7px', borderRadius: '20px' }}>
           {deals.length}
         </span>
+        {/* Select all in group */}
+        {deals.length > 0 && (
+          <div
+            onClick={e => { e.stopPropagation(); onSelectAll(deals.map(d => d.id)) }}
+            style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 600, cursor: 'pointer', padding: '2px 6px', borderRadius: '5px', border: '1px solid var(--border)', background: 'var(--panel)' }}
+            title="Select all in this group"
+          >
+            {deals.every(d => selectedIds.includes(d.id)) ? '☑ All' : '☐ Select all'}
+          </div>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '16px', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>GCI: <strong style={{ color: '#10B981' }}>{fmt$(totalGCI)}</strong></span>
           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Vol: <strong>{fmt$(totalProd)}</strong></span>
@@ -342,7 +358,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                {['Address / Client','Agent','Production','GCI','Stage','Side','Command','CTC','A/O Date','Exp. Close','Sale Type','Prop Type','Commission'].map(h => (
+                {['','Address / Client','Agent','Production','GCI','Stage','Side','Command','CTC','A/O Date','Exp. Close','Sale Type','Prop Type','Commission'].map(h => (
                   <th key={h} style={{ padding: '6px 12px', textAlign: h === 'Production' || h === 'GCI' ? 'right' : 'left', fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>
                     {h}
                   </th>
@@ -351,7 +367,8 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin }) {
             </thead>
             <tbody>
               {deals.map(d => (
-                <DealRow key={d.id} deal={d} agents={agents} onOpen={onOpen} onQuickUpdate={onQuickUpdate} isAdmin={isAdmin} />
+                <DealRow key={d.id} deal={d} agents={agents} onOpen={onOpen} onQuickUpdate={onQuickUpdate} isAdmin={isAdmin}
+                  isSelected={selectedIds.includes(d.id)} onToggleSelect={onToggleSelect} />
               ))}
             </tbody>
             <tfoot>
@@ -705,6 +722,26 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
 // ════════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ════════════════════════════════════════════════════════════════
+function exportSelected(selectedIds, filtered, agents) {
+  const sel = filtered.filter(d => selectedIds.includes(d.id))
+  const header = 'Address,Side,Stage,Production,GCI,A/O Date,Close Date,Client,Agent'
+  const rows = sel.map(d => {
+    const a = agents.find(x => x.id === d.agent_id)
+    return [d.addr, d.side, d.stage, d.production, d.gci, d.ao_date, d.close_date, d.client_name, a ? a.name : '']
+      .map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(',')
+  })
+  const csv  = [header].concat(rows).join('\r\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url  = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href     = url
+  link.download = 'selected_deals_' + sel.length + '.csv'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 export function Production() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
@@ -721,7 +758,8 @@ export function Production() {
   const [yearF,    setYearF]    = useState(new Date().getFullYear().toString())
   const [selected, setSelected] = useState(null) // deal being edited, or {} for new
   const [saving,   setSaving]   = useState(false)
-  const [viewMode, setViewMode] = useState('board') // 'board' | 'table'
+  const [viewMode,    setViewMode]    = useState('board') // 'board' | 'table'
+  const [selectedIds, setSelectedIds] = useState([])
 
   const years = []
   for (let y = new Date().getFullYear(); y >= 2015; y--) years.push(y.toString())
@@ -919,6 +957,82 @@ export function Production() {
         )}
       </div>
 
+      {/* ── SELECTION BAR ── */}
+      {selectedIds.length > 0 && (() => {
+        const sel = filtered.filter(d => selectedIds.includes(d.id))
+        const selGCI  = sel.reduce((s, d) => s + (parseFloat(d.gci)        || 0), 0)
+        const selProd = sel.reduce((s, d) => s + (parseFloat(d.production) || 0), 0)
+        const byAgent = {}
+        sel.forEach(d => { const a = agents.find(x => x.id === d.agent_id); const n = a?.name?.split(' ')[0] || 'Unassigned'; byAgent[n] = (byAgent[n] || 0) + (parseFloat(d.gci) || 0) })
+        const byStage = {}
+        sel.forEach(d => { byStage[d.stage] = (byStage[d.stage] || 0) + 1 })
+        return (
+          <div style={{ marginBottom: '14px', background: '#1B2B4B', borderRadius: '12px', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}>
+            {/* Count */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '8px', background: '#CC2200', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>{sel.length}</span>
+              </div>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>deal{sel.length !== 1 ? 's' : ''} selected</span>
+            </div>
+            {/* Divider */}
+            <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,.15)' }} />
+            {/* Production */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '16px', fontWeight: 900, color: '#fff' }}>{fmt$(selProd)}</div>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Volume</div>
+            </div>
+            {/* GCI */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '16px', fontWeight: 900, color: '#10B981' }}>{fmt$(selGCI)}</div>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>GCI</div>
+            </div>
+            {/* Avg GCI */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '16px', fontWeight: 900, color: '#F5A623' }}>{sel.length ? fmt$(selGCI / sel.length) : '—'}</div>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Avg GCI</div>
+            </div>
+            {/* Divider */}
+            <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,.15)' }} />
+            {/* By agent mini breakdown */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {Object.entries(byAgent).map(([name, gci]) => (
+                <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '20px', background: 'rgba(255,255,255,.1)' }}>
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,.7)', fontWeight: 600 }}>{name}</span>
+                  <span style={{ fontSize: '11px', color: '#10B981', fontWeight: 800 }}>{fmt$(gci)}</span>
+                </div>
+              ))}
+            </div>
+            {/* By stage mini breakdown */}
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {Object.entries(byStage).map(([stage, count]) => {
+                const hex = DEAL_STAGES.find(s => s.value === stage)?.hex || '#94A3B8'
+                return (
+                  <div key={stage} style={{ padding: '2px 8px', borderRadius: '12px', background: hex + '33', border: `1px solid ${hex}66` }}>
+                    <span style={{ fontSize: '10px', color: hex, fontWeight: 700 }}>{count} {stage}</span>
+                  </div>
+                )
+              })}
+            </div>
+            {/* Spacer */}
+            <div style={{ flex: 1 }} />
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+              <button
+                onClick={() => exportSelected(selectedIds, filtered, agents)}
+                style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid rgba(255,255,255,.2)', background: 'transparent', color: '#fff', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
+                ⬇ Export {sel.length}
+              </button>
+              <button
+                onClick={() => setSelectedIds([])}
+                style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid rgba(255,255,255,.2)', background: 'transparent', color: 'rgba(255,255,255,.7)', fontSize: '12px', cursor: 'pointer', fontFamily: ff }}>
+                ✕ Clear
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── CONTENT ── */}
       {loading ? <Loading /> : filtered.length === 0 ? (
         <Empty icon="📊" title="No deals found" sub="Try adjusting your filters or add your first deal."
@@ -935,6 +1049,12 @@ export function Production() {
               onOpen={openDeal}
               onQuickUpdate={quickUpdate}
               isAdmin={isAdmin}
+              selectedIds={selectedIds}
+              onToggleSelect={id => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+              onSelectAll={ids => setSelectedIds(prev => {
+                const allSelected = ids.every(id => prev.includes(id))
+                return allSelected ? prev.filter(id => !ids.includes(id)) : [...new Set([...prev, ...ids])]
+              })}
             />
           ))}
         </div>
@@ -944,7 +1064,7 @@ export function Production() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                {['#','Address','Agent','Production','GCI','Stage','Side','A/O Date','Exp Close','Command','Source'].map(h => (
+                {['','#','Address','Agent','Production','GCI','Stage','Side','A/O Date','Exp Close','Command','Source'].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: h === 'Production' || h === 'GCI' ? 'right' : 'left', fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap', background: 'var(--dim)' }}>
                     {h}
                   </th>
@@ -956,9 +1076,14 @@ export function Production() {
                 const a = agents.find(x => x.id === d.agent_id)
                 const cmdDef = COMMAND_STATUSES.find(s => s.value === d.command)
                 return (
-                  <tr key={d.id} onClick={() => openDeal(d)} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
-                    onMouseLeave={e => e.currentTarget.style.background = ''}>
+                  <tr key={d.id} onClick={() => openDeal(d)} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)', background: selectedIds.includes(d.id) ? 'rgba(204,34,0,.04)' : '' }}
+                    onMouseEnter={e => { if (!selectedIds.includes(d.id)) e.currentTarget.style.background = 'var(--hov)' }}
+                    onMouseLeave={e => { if (!selectedIds.includes(d.id)) e.currentTarget.style.background = '' }}>
+                    <td style={{ padding: '9px 8px', width: '32px' }} onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id]) }}>
+                      <div style={{ width: 16, height: 16, borderRadius: '4px', border: `2px solid ${selectedIds.includes(d.id) ? '#CC2200' : 'var(--border)'}`, background: selectedIds.includes(d.id) ? '#CC2200' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', margin: '0 auto' }}>
+                        {selectedIds.includes(d.id) && <span style={{ color: '#fff', fontSize: '9px', fontWeight: 900 }}>✓</span>}
+                      </div>
+                    </td>
                     <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)' }}>{i + 1}</td>
                     <td style={{ padding: '9px 12px' }}>
                       <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>{d.addr}</div>
