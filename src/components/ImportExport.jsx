@@ -32,27 +32,47 @@ function toCSV(rows, columns) {
   return [header, ...lines].join('\r\n')
 }
 
+function parseLine(line) {
+  // Parse a single CSV line respecting quoted fields
+  const vals = []
+  let cur = '', inQ = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"' && !inQ)                        { inQ = true;  continue }
+    if (ch === '"' && inQ && line[i+1] === '"')    { cur += '"';  i++; continue }
+    if (ch === '"' && inQ)                         { inQ = false; continue }
+    if (ch === ',' && !inQ)                        { vals.push(cur); cur = ''; continue }
+    cur += ch
+  }
+  vals.push(cur)
+  return vals
+}
+
 function parseCSV(text) {
-  const lines = text.trim().split(/\r?\n/)
+  // Strip UTF-8 BOM that Excel adds (\uFEFF) and normalise line endings
+  const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+  const lines  = clean.split('\n').filter(l => l.trim() !== '')
   if (lines.length < 2) return { headers: [], rows: [] }
-  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim())
+
+  // Parse headers — strip outer quotes and whitespace
+  const headers = parseLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim())
+
+  if (!headers.length || headers.every(h => !h)) return { headers: [], rows: [] }
+
   const rows = lines.slice(1).map(line => {
-    // Handle quoted fields with commas inside
-    const vals = []
-    let cur = '', inQ = false
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i]
-      if (ch === '"' && !inQ) { inQ = true; continue }
-      if (ch === '"' && inQ && line[i+1] === '"') { cur += '"'; i++; continue }
-      if (ch === '"' && inQ) { inQ = false; continue }
-      if (ch === ',' && !inQ) { vals.push(cur.trim()); cur = ''; continue }
-      cur += ch
-    }
-    vals.push(cur.trim())
-    const obj = {}
-    headers.forEach((h, i) => { obj[h] = vals[i] || '' })
+    const vals = parseLine(line)
+    const obj  = {}
+    headers.forEach((h, i) => {
+      // Strip outer quotes and trim whitespace from every value
+      let v = (vals[i] || '').replace(/^"|"$/g, '').trim()
+      obj[h] = v
+    })
     return obj
+  }).filter(row => {
+    // Skip completely empty rows (all values blank)
+    return Object.values(row).some(v => v !== '')
   })
+
   return { headers, rows }
 }
 
@@ -106,7 +126,8 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     const reader = new FileReader()
     reader.onload = ev => {
       const { headers, rows } = parseCSV(ev.target.result)
-      if (!rows.length) { toast('CSV is empty or invalid', '#DC2626'); return }
+      if (!headers.length) { toast('Could not read CSV headers — make sure the file is a .csv and not .xlsx', '#DC2626'); return }
+      if (!rows.length) { toast('CSV has headers but no data rows', '#DC2626'); return }
       // Auto-map CSV headers to column keys
       const autoMap = {}
       headers.forEach(h => {
