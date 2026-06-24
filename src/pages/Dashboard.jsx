@@ -49,9 +49,10 @@ const WIDGET_DEFS = {
   gifts_pending:   { label: 'Gifts Pending',         icon: '🎁', roles: ['admin','secretary'] },
   quick_add:       { label: 'Quick Add',             icon: '⚡', roles: ['admin','secretary','agent'] },
   overdue_alert:   { label: 'Overdue Alert',         icon: '⚠️',  roles: ['admin','secretary','agent'] },
-  announcements:   { label: 'Announcements',         icon: '📣', roles: ['admin','secretary','agent'] },
+  announcements:    { label: 'Announcements',          icon: '📣', roles: ['admin','secretary','agent'] },
+  production_stats: { label: 'Production Stats',       icon: '💰', roles: ['admin','secretary','agent'] },
   // Custom board widgets — defined by the user at runtime
-  custom:          { label: 'Custom Widget',         icon: '🔲', roles: ['admin','secretary','agent'] },
+  custom:           { label: 'Custom Widget',          icon: '🔲', roles: ['admin','secretary','agent'] },
 }
 
 const ACCENT_COLORS = [
@@ -688,7 +689,15 @@ const WIDGET_CONFIG_OPTIONS = {
   open_houses:   { label: 'Open Houses This Week', fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'daysAhead', label:'Days ahead', type:'number', min:3, max:30, default:7 }] },
   overdue_alert: { label: 'Overdue Alert',         fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:5 }] },
   announcements: { label: 'Announcements',         fields: [{ key:'priorityFilter', label:'Priority', type:'select', options:['All','urgent','high','normal','low'] }, { key:'limit', label:'Max items', type:'number', min:2, max:10, default:3 }] },
-  gifts_pending: { label: 'Gifts Pending',         fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'statusFilter', label:'Status', type:'select', options:['All','Pending','Ordered','Delivered'] }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:6 }] },
+  gifts_pending:    { label: 'Gifts Pending',       fields: [{ key:'agentFilter', label:'Filter Agent', type:'agent' }, { key:'statusFilter', label:'Status', type:'select', options:['All','Pending','Ordered','Delivered'] }, { key:'limit', label:'Max items', type:'number', min:3, max:20, default:6 }] },
+  production_stats: { label: 'Production Stats',   fields: [
+    { key:'year',        label:'Year',          type:'year' },
+    { key:'agentFilter', label:'Filter Agent',  type:'agent' },
+    { key:'stageFilter', label:'Stage',         type:'select', options:['All','Offer Accapted','Under Shtar','Under Contract','Closed','Deal Fell Through'], default:'All' },
+    { key:'sideFilter',  label:'Side',          type:'select', options:['All','Buyer','Listing','Dual Buyer','Dual Listing','Flip'], default:'All' },
+    { key:'metric',      label:'Show',          type:'select', options:['GCI','Volume','Deal Count','Avg GCI'], default:'GCI' },
+    { key:'display',     label:'Display as',    type:'select', options:['numbers','bar','breakdown'], default:'numbers' },
+  ]},
 }
 
 const YEARS_LIST = []
@@ -1516,6 +1525,76 @@ export function Dashboard() {
         ))}
       </div>
     )
+
+    // ── PRODUCTION STATS ─────────────────────────────────────────────
+    if (w.id === 'production_stats') {
+      const wYear   = wcfg.year        || yearFilter
+      const wAgent  = wcfg.agentFilter || null
+      const wStage  = wcfg.stageFilter && wcfg.stageFilter !== 'All' ? wcfg.stageFilter : null
+      const wSide   = wcfg.sideFilter  && wcfg.sideFilter  !== 'All' ? wcfg.sideFilter  : null
+      const wMetric = wcfg.metric  || 'GCI'
+      const wDisp   = wcfg.display || 'numbers'
+      const allD = [...(data.closedDeals || []), ...(data.activeDeals || [])].filter((d,i,a) => a.findIndex(x=>x.id===d.id)===i)
+      const fd = allD.filter(d => {
+        const ds = d.close_date || d.ao_date || d.created_at || ''
+        if (wYear  && !ds.startsWith(wYear))        return false
+        if (wAgent && d.agent_id !== wAgent)         return false
+        if (wStage && d.stage    !== wStage)         return false
+        if (wSide  && d.side     !== wSide)          return false
+        return true
+      })
+      const totGCI = fd.reduce((s,d) => s + (parseFloat(d.gci)||0), 0)
+      const totVol = fd.reduce((s,d) => s + (parseFloat(d.production)||0), 0)
+      const cnt    = fd.length
+      const avgGCI = cnt > 0 ? totGCI / cnt : 0
+      const SC     = { 'Offer Accapted':'#037f4c','Under Shtar':'#bb3354','Under Contract':'#757575','Closed':'#225091','Deal Fell Through':'#ff007f' }
+      const byStage = {}
+      fd.forEach(d => { byStage[d.stage] = byStage[d.stage] || {gci:0,count:0}; byStage[d.stage].gci += parseFloat(d.gci)||0; byStage[d.stage].count++ })
+      const stageE = Object.entries(byStage).sort((a,b)=>b[1].gci-a[1].gci)
+      const maxSGCI = Math.max(...stageE.map(([,v])=>v.gci), 1)
+      const primVal = wMetric==='Deal Count' ? cnt : wMetric==='Volume' ? fmt$(totVol) : wMetric==='Avg GCI' ? fmt$(avgGCI) : fmt$(totGCI)
+      const agentName = wAgent ? agents.find(a=>a.id===wAgent)?.name?.split(' ')[0] : null
+      return shell(
+        <div>
+          <div style={{ marginBottom:'10px' }}>
+            <div style={{ fontSize:'26px', fontWeight:900, color:'var(--text)' }}>{primVal}</div>
+            <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px' }}>
+              {wMetric} · {cnt} deal{cnt!==1?'s':''}
+              {wStage ? ' · '+wStage : ''}{wSide ? ' · '+wSide : ''}{agentName ? ' · '+agentName : ''} · {wYear}
+            </div>
+          </div>
+          {wDisp === 'numbers' && (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
+              {[['GCI',fmt$(totGCI),'#10B981'],['Volume',fmt$(totVol),'#3B82F6'],['Deals',cnt,'#F5A623'],['Avg GCI',fmt$(avgGCI),'#8B5CF6']].map(([lbl,val,c]) => (
+                <div key={lbl} style={{ padding:'7px 9px', background:'var(--dim)', borderRadius:'7px', border:'1px solid var(--border)', borderLeft:'3px solid '+c }}>
+                  <div style={{ fontSize:'14px', fontWeight:800, color:c }}>{val}</div>
+                  <div style={{ fontSize:'10px', color:'var(--muted)', marginTop:'1px' }}>{lbl}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {(wDisp==='bar'||wDisp==='breakdown') && stageE.length > 0 && (
+            <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
+              {stageE.slice(0,5).map(([stage,vals]) => {
+                const pct = (vals.gci/maxSGCI)*100
+                const sc  = SC[stage] || '#94A3B8'
+                return (
+                  <div key={stage}>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'2px' }}>
+                      <span style={{ fontSize:'10px', color:'var(--muted)', fontWeight:600 }}>{stage}</span>
+                      <span style={{ fontSize:'10px', color:sc, fontWeight:800 }}>{fmt$(vals.gci)} · {vals.count}</span>
+                    </div>
+                    <div style={{ height:5, background:'var(--border)', borderRadius:3, overflow:'hidden' }}>
+                      <div style={{ width:pct+'%', height:'100%', background:sc, borderRadius:3, transition:'width .5s' }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )
+    }
 
     return null
   }

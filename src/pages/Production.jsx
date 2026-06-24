@@ -1084,11 +1084,22 @@ export function Production() {
   }
 
   async function quickUpdate(deal, field, value) {
+    // Optimistic update immediately — UI responds instantly
+    setDeals(prev => prev.map(d => d.id === deal.id ? { ...d, [field]: value } : d))
     try {
-      const { data, error } = await supabase.from('deals').update({ [field]: value, updated_at: new Date().toISOString() }).eq('id', deal.id).select('*, agents(id,name,color)').single()
+      const { data, error } = await supabase
+        .from('deals')
+        .update({ [field]: value, updated_at: new Date().toISOString() })
+        .eq('id', deal.id)
+        .select('*, agents(id,name,color)')
+        .maybeSingle()
       if (error) throw error
-      setDeals(prev => prev.map(d => d.id === deal.id ? data : d))
-    } catch(e) { toast('Update failed: ' + e.message, '#DC2626') }
+      if (data) setDeals(prev => prev.map(d => d.id === deal.id ? data : d))
+    } catch(e) {
+      // Revert optimistic update on failure
+      setDeals(prev => prev.map(d => d.id === deal.id ? deal : d))
+      toast('Update failed: ' + e.message, '#DC2626')
+    }
   }
 
   // ── FILTERING ──────────────────────────────────────────────────
