@@ -50,6 +50,8 @@ const WIDGET_DEFS = {
   quick_add:       { label: 'Quick Add',             icon: '⚡', roles: ['admin','secretary','agent'] },
   overdue_alert:   { label: 'Overdue Alert',         icon: '⚠️',  roles: ['admin','secretary','agent'] },
   announcements:   { label: 'Announcements',         icon: '📣', roles: ['admin','secretary','agent'] },
+  // Custom board widgets — defined by the user at runtime
+  custom:          { label: 'Custom Widget',         icon: '🔲', roles: ['admin','secretary','agent'] },
 }
 
 const ACCENT_COLORS = [
@@ -87,6 +89,250 @@ function MiniBar({ data, color = '#CC2200' }) {
           <div style={{ fontSize: '8px', color: 'var(--muted)' }}>{d.label}</div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CUSTOM WIDGET BUILDER
+// Admin can create a widget showing any board: Contacts, Deals,
+// Tasks, Listings, etc. with a status/field filter and a chosen
+// display mode (count, list, or table).
+// ═══════════════════════════════════════════════════════════════
+
+const BOARD_OPTIONS = [
+  { id: 'contacts',      label: 'Contacts',      icon: '👤', table: 'contacts',     statusField: 'status',  nameField: 'first_name', statusOptions: ['New','Hot','Warm','Cold','Active','Nurturing','Closed','Unresponsive'] },
+  { id: 'deals',         label: 'Deals',         icon: '💼', table: 'deals',        statusField: 'stage',   nameField: 'addr',       statusOptions: ['Negotiations','Offer Accapted','Under Shtar','Under Contract','Closed','Deal Fell Through'] },
+  { id: 'tasks',         label: 'Tasks',         icon: '✅', table: 'tasks',        statusField: 'status',  nameField: 'title',      statusOptions: ['pending','in_progress','done','cancelled'] },
+  { id: 'listings',      label: 'Listings',      icon: '🏡', table: 'listings',     statusField: 'status',  nameField: 'addr',       statusOptions: ['Active','Under Contract','Sold','Expired','Withdrawn'] },
+  { id: 'calls',         label: 'Calls',         icon: '📞', table: 'calls',        statusField: 'outcome', nameField: 'contact_name',statusOptions: ['Answered','Voicemail','No Answer','Busy','Left Message'] },
+  { id: 'gifts',         label: 'Gifts',         icon: '🎁', table: 'gifts',        statusField: 'status',  nameField: 'client_name', statusOptions: ['Pending','Ordered','Delivered'] },
+  { id: 'open_houses',   label: 'Open Houses',   icon: '🚪', table: 'open_houses',  statusField: null,      nameField: 'listing_addr',statusOptions: [] },
+  { id: 'offers',        label: 'Offers',        icon: '📝', table: 'offers',       statusField: 'status',  nameField: 'addr',        statusOptions: ['Pending','Accepted','Rejected','Countered'] },
+  { id: 'announcements', label: 'Announcements', icon: '📣', table: 'announcements',statusField: 'priority',nameField: 'title',       statusOptions: ['low','normal','high','urgent'] },
+]
+
+const DISPLAY_OPTIONS = [
+  { id: 'count',  label: 'Count only',    icon: '🔢' },
+  { id: 'list',   label: 'Item list',     icon: '📋' },
+  { id: 'table',  label: 'Mini table',   icon: '📊' },
+]
+
+function CustomWidgetBuilder({ onSave, onClose }) {
+  const [step,     setStep]    = useState(1) // 1=board, 2=filter, 3=display
+  const [board,    setBoard]   = useState(null)
+  const [statuses, setStatus]  = useState([]) // [] = all
+  const [display,  setDisplay] = useState('list')
+  const [label,    setLabel]   = useState('')
+  const [color,    setColor]   = useState('#3B82F6')
+  const ff2 = 'Inter,system-ui,sans-serif'
+
+  const boardDef = BOARD_OPTIONS.find(b => b.id === board)
+
+  function finish() {
+    if (!board) return
+    const widgetLabel = label.trim() || (boardDef?.label + (statuses.length ? ' · ' + statuses.slice(0,2).join(', ') : ''))
+    onSave({
+      id:           'custom_' + Date.now(),
+      size:         'md',
+      color,
+      visible:      true,
+      customConfig: { board, statuses, display, label: widgetLabel, icon: boardDef?.icon || '🔲' },
+    })
+  }
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px', fontFamily:ff2 }}>
+      <div style={{ background:'var(--panel)', borderRadius:'14px', width:'100%', maxWidth:'520px', boxShadow:'0 20px 50px rgba(0,0,0,.3)', display:'flex', flexDirection:'column', maxHeight:'90vh', overflow:'hidden' }}>
+
+        {/* Header */}
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:'10px' }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:'15px', fontWeight:800, color:'var(--text)' }}>🔲 Create Custom Widget</div>
+            <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>Step {step} of 3</div>
+          </div>
+          {/* Progress dots */}
+          <div style={{ display:'flex', gap:'5px' }}>
+            {[1,2,3].map(s => (
+              <div key={s} style={{ width:8, height:8, borderRadius:'50%', background: step >= s ? '#CC2200' : 'var(--border)', transition:'background .2s' }} />
+            ))}
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:'18px', cursor:'pointer', color:'var(--muted)' }}>✕</button>
+        </div>
+
+        <div style={{ flex:1, overflowY:'auto', padding:'16px 18px' }}>
+          {/* Step 1: Choose board */}
+          {step === 1 && (
+            <div>
+              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'12px' }}>Which board do you want to show?</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                {BOARD_OPTIONS.map(b => (
+                  <div key={b.id} onClick={() => { setBoard(b.id); setStatus([]) }}
+                    style={{ padding:'12px', borderRadius:'9px', border:`2px solid ${board === b.id ? '#CC2200' : 'var(--border)'}`, background: board === b.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', display:'flex', alignItems:'center', gap:'8px' }}>
+                    <span style={{ fontSize:'20px' }}>{b.icon}</span>
+                    <span style={{ fontSize:'13px', fontWeight:700, color: board === b.id ? '#CC2200' : 'var(--text)' }}>{b.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Filter by status */}
+          {step === 2 && boardDef && (
+            <div>
+              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'4px' }}>Filter by status (optional)</div>
+              <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'12px' }}>Leave all unchecked to show everything</div>
+              {boardDef.statusOptions.length > 0 ? (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'16px' }}>
+                  {boardDef.statusOptions.map(s => {
+                    const on = statuses.includes(s)
+                    return (
+                      <div key={s} onClick={() => setStatus(prev => on ? prev.filter(x => x !== s) : [...prev, s])}
+                        style={{ padding:'5px 12px', borderRadius:'20px', border:`1px solid ${on ? '#CC2200' : 'var(--border)'}`, background: on ? 'rgba(204,34,0,.1)' : 'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color: on ? '#CC2200' : 'var(--muted)' }}>
+                        {s}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div style={{ padding:'12px', background:'var(--dim)', borderRadius:'8px', fontSize:'12px', color:'var(--muted)', marginBottom:'16px' }}>
+                  This board has no status filter — all items will be shown.
+                </div>
+              )}
+              <div style={{ marginBottom:'12px' }}>
+                <div style={{ fontSize:'12px', fontWeight:600, color:'var(--muted)', marginBottom:'6px' }}>Widget name (optional)</div>
+                <input value={label} onChange={e => setLabel(e.target.value)}
+                  placeholder={boardDef.label + (statuses.length ? ' · ' + statuses[0] : '')}
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff2, boxSizing:'border-box' }} />
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Display + color */}
+          {step === 3 && (
+            <div>
+              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'12px' }}>How should it display?</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'20px' }}>
+                {DISPLAY_OPTIONS.map(d => (
+                  <div key={d.id} onClick={() => setDisplay(d.id)}
+                    style={{ padding:'12px 14px', borderRadius:'9px', border:`2px solid ${display === d.id ? '#CC2200' : 'var(--border)'}`, background: display === d.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', display:'flex', alignItems:'center', gap:'10px' }}>
+                    <span style={{ fontSize:'18px' }}>{d.icon}</span>
+                    <div>
+                      <div style={{ fontSize:'13px', fontWeight:700, color: display === d.id ? '#CC2200' : 'var(--text)' }}>{d.label}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize:'12px', fontWeight:600, color:'var(--muted)', marginBottom:'8px' }}>Widget color</div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+                {['#CC2200','#10B981','#3B82F6','#F5A623','#8B5CF6','#EC4899','#14B8A6','#F97316','#84CC16','#0EA5E9'].map(c => (
+                  <div key={c} onClick={() => setColor(c)}
+                    style={{ width:24, height:24, borderRadius:'50%', background:c, cursor:'pointer', border: color === c ? '3px solid var(--text)' : '2px solid transparent', transition:'border .1s' }} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+          {step > 1 && <Btn variant="secondary" onClick={() => setStep(s => s - 1)}>← Back</Btn>}
+          {step < 3 && <Btn onClick={() => { if (!board && step === 1) return; setStep(s => s + 1) }} style={{ opacity: !board && step === 1 ? 0.5 : 1 }}>Next →</Btn>}
+          {step === 3 && <Btn onClick={finish} style={{ background:'#10B981', border:'none' }}>✅ Add Widget</Btn>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── CUSTOM WIDGET RENDERER ────────────────────────────────────────
+function CustomWidgetContent({ config, agentId }) {
+  const [items, setItems] = useState([])
+  const [count, setCount] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const { supabase: sb } = { supabase } // use global supabase
+
+  useEffect(() => {
+    if (!config?.board) return
+    const boardDef = BOARD_OPTIONS.find(b => b.id === config.board)
+    if (!boardDef) return
+
+    async function load() {
+      setLoading(true)
+      try {
+        let q = supabase.from(boardDef.table).select('*').eq('agent_id', agentId).limit(50)
+        if (config.statuses?.length && boardDef.statusField) {
+          q = q.in(boardDef.statusField, config.statuses)
+        }
+        const { data, count: cnt } = await q
+        setItems(data || [])
+        setCount(cnt || (data?.length || 0))
+      } catch { setItems([]); setCount(0) }
+      finally { setLoading(false) }
+    }
+    load()
+  }, [config?.board, JSON.stringify(config?.statuses), agentId])
+
+  const boardDef = BOARD_OPTIONS.find(b => b.id === config?.board)
+  if (!boardDef) return <div style={{ color:'var(--muted)', fontSize:'12px' }}>Board not found</div>
+  if (loading)   return <div style={{ color:'var(--muted)', fontSize:'12px' }}>Loading...</div>
+
+  if (config.display === 'count') {
+    return (
+      <div style={{ textAlign:'center', padding:'16px 0' }}>
+        <div style={{ fontSize:'48px', fontWeight:900, color:'var(--text)' }}>{count}</div>
+        <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'4px' }}>
+          {config.statuses?.length ? config.statuses.join(', ') : 'Total'} {boardDef.label}
+        </div>
+      </div>
+    )
+  }
+
+  if (config.display === 'list') {
+    return (
+      <div>
+        {items.slice(0,6).map((item, i) => (
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
+            <span style={{ fontSize:'12px' }}>{boardDef.icon}</span>
+            <div style={{ flex:1, fontSize:'12px', fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {item[boardDef.nameField] || 'Untitled'}
+            </div>
+            {boardDef.statusField && item[boardDef.statusField] && (
+              <span style={{ fontSize:'10px', color:'var(--muted)', fontWeight:600, flexShrink:0 }}>{item[boardDef.statusField]}</span>
+            )}
+          </div>
+        ))}
+        {count === 0 && <div style={{ textAlign:'center', padding:'12px', color:'var(--muted)', fontSize:'12px' }}>No items</div>}
+        {count > 6 && <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'6px', textAlign:'right' }}>+{count - 6} more</div>}
+      </div>
+    )
+  }
+
+  // table display
+  return (
+    <div style={{ overflowX:'auto' }}>
+      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'11px' }}>
+        <thead>
+          <tr style={{ borderBottom:'1px solid var(--border)' }}>
+            <th style={{ textAlign:'left', padding:'4px 0', color:'var(--muted)', fontWeight:700 }}>Name</th>
+            {boardDef.statusField && <th style={{ textAlign:'left', padding:'4px 8px', color:'var(--muted)', fontWeight:700 }}>Status</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {items.slice(0,8).map((item, i) => (
+            <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
+              <td style={{ padding:'4px 0', color:'var(--text)', fontWeight:600, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {item[boardDef.nameField] || 'Untitled'}
+              </td>
+              {boardDef.statusField && (
+                <td style={{ padding:'4px 8px', color:'var(--muted)' }}>{item[boardDef.statusField] || '—'}</td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {count === 0 && <div style={{ textAlign:'center', padding:'12px', color:'var(--muted)', fontSize:'12px' }}>No items</div>}
     </div>
   )
 }
@@ -440,9 +686,10 @@ export function Dashboard() {
   const [agentFilter,  setAgentFilter]  = useState('')
   const [yearFilter,   setYearFilter]   = useState(year)
   const [popup,        setPopup]        = useState(null)
-  const [showCustomize,setShowCustomize]= useState(false)
-  const [showGoals,    setShowGoals]    = useState(false)
-  const [showAgentView,setShowAgentView]= useState(false)
+  const [showCustomize,    setShowCustomize]    = useState(false)
+  const [showGoals,        setShowGoals]        = useState(false)
+  const [showAgentView,    setShowAgentView]    = useState(false)
+  const [showCustomWidget, setShowCustomWidget] = useState(false)
   const [dragId,       setDragId]       = useState(null)
   const [editMode,     setEditMode]     = useState(false)
   const [pendingWidgets, setPendingWidgets] = useState(null) // staged changes before save
@@ -621,7 +868,9 @@ export function Dashboard() {
 
   // ── RENDER A WIDGET ───────────────────────────────────────────
   function renderWidget(w) {
-    const def   = WIDGET_DEFS[w.id]
+    // Custom widgets have dynamic id like 'custom_1234'
+    const isCustom = w.id.startsWith('custom_') || w.id === 'custom'
+    const def   = isCustom ? { ...WIDGET_DEFS.custom, label: w.customConfig?.label || 'Custom Widget', icon: w.customConfig?.icon || '🔲' } : WIDGET_DEFS[w.id]
     const color = w.color || '#CC2200'
     const isLg  = w.size === 'lg'
 
@@ -1196,6 +1445,14 @@ export function Dashboard() {
             {widgets.filter(w => !w.visible && WIDGET_DEFS[w.id]?.roles.includes(agent.role)).length === 0 && (
               <span style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>All widgets are visible</span>
             )}
+            {/* Add custom widget button — admin only */}
+            {isAdmin && (
+              <button
+                onClick={() => setShowCustomWidget(true)}
+                style={{ display:'flex', alignItems:'center', gap:'6px', padding:'6px 12px', borderRadius:'8px', border:'2px dashed #CC2200', background:'rgba(204,34,0,.04)', color:'#CC2200', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                🔲 + Custom Widget
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1204,6 +1461,21 @@ export function Dashboard() {
         <CustomizePanel widgets={widgets} role={agent.role}
           onSave={newW => { persistWidgets(newW); toast('✅ Layout saved') }}
           onClose={() => setShowCustomize(false)} />
+      )}
+
+      {showCustomWidget && (
+        <CustomWidgetBuilder
+          onSave={cfg => {
+            // Add new custom widget to the list and stage it
+            const newWidget = { ...cfg }
+            const updated   = [...widgets, newWidget]
+            setWidgets(updated)
+            setPendingWidgets(updated)
+            setShowCustomWidget(false)
+            toast('✅ Custom widget added — click Save Layout to lock it in')
+          }}
+          onClose={() => setShowCustomWidget(false)}
+        />
       )}
       {showGoals && (
         <GoalEditor agents={agents} currentAgent={agent} isAdmin={isAdmin}

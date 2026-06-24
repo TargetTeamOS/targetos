@@ -47,14 +47,37 @@ export async function loadDashPrefs(agentId) {
 
 // ── SAVE PREFS TO DB ──────────────────────────────────────────────
 export async function saveDashPrefs(agentId, widgets, layout = {}) {
-  await supabase
+  // Check if a row already exists for this agent
+  const { data: existing } = await supabase
     .from('briefing_prefs')
-    .upsert({
-      agent_id:          agentId,
-      dashboard_widgets: widgets,
-      dashboard_layout:  layout,
-      updated_at:        new Date().toISOString(),
-    })
+    .select('agent_id')
+    .eq('agent_id', agentId)
+    .maybeSingle()
+
+  const payload = {
+    agent_id:          agentId,
+    dashboard_widgets: widgets,
+    dashboard_layout:  layout,
+    updated_at:        new Date().toISOString(),
+  }
+
+  let error
+  if (existing) {
+    // Row exists — UPDATE it
+    const result = await supabase
+      .from('briefing_prefs')
+      .update({ dashboard_widgets: widgets, dashboard_layout: layout, updated_at: new Date().toISOString() })
+      .eq('agent_id', agentId)
+    error = result.error
+  } else {
+    // No row yet — INSERT
+    const result = await supabase
+      .from('briefing_prefs')
+      .insert(payload)
+    error = result.error
+  }
+
+  if (error) throw new Error('saveDashPrefs failed: ' + error.message)
 }
 
 // ── LOAD AGENT GOALS FROM DB ──────────────────────────────────────
@@ -96,7 +119,7 @@ export async function saveTeamGoal(teamGci, teamDeals) {
       agent_id:        '00000000-0000-0000-0000-000000000000',
       dashboard_layout:{ team_gci: teamGci, team_deals: teamDeals },
       updated_at:      new Date().toISOString(),
-    })
+    }, { onConflict: 'agent_id' })
 }
 
 export { DEFAULT_WIDGETS }
