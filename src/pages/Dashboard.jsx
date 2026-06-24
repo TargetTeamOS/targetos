@@ -771,6 +771,140 @@ function WidgetConfigModal({ widget, agents, onSave, onClose }) {
   )
 }
 
+// ═══════════════════════════════════════════════════════════════
+// WIDGET MANAGER — add/remove/reorder widgets from a central panel
+// ═══════════════════════════════════════════════════════════════
+function WidgetManager({ widgets, role, onSave, onClose }) {
+  const [wids, setWids] = useState(() => {
+    // Ensure all known widget IDs are represented
+    const existing = new Set(widgets.map(w => w.id))
+    const allBuiltIn = Object.entries(WIDGET_DEFS)
+      .filter(([id, d]) => id !== 'custom' && d.roles.includes(role))
+      .map(([id, d]) => widgets.find(w => w.id === id) || { id, visible: false, size: 'md', color: '#CC2200' })
+    // Include custom widgets too
+    const customs = widgets.filter(w => w.id.startsWith('custom_'))
+    return [...allBuiltIn, ...customs]
+  })
+
+  const visible = wids.filter(w => w.visible !== false)
+  const hidden  = wids.filter(w => w.visible === false)
+
+  function toggle(id) {
+    setWids(prev => prev.map(w => w.id === id ? { ...w, visible: !w.visible } : w))
+  }
+
+  function setSize(id, size) {
+    setWids(prev => prev.map(w => w.id === id ? { ...w, size } : w))
+  }
+
+  function setColor(id, color) {
+    setWids(prev => prev.map(w => w.id === id ? { ...w, color } : w))
+  }
+
+  function removeCustom(id) {
+    setWids(prev => prev.filter(w => w.id !== id))
+  }
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', fontFamily:ff }}>
+      <div style={{ background:'var(--panel)', borderRadius:'14px', width:'100%', maxWidth:'640px', maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 20px 50px rgba(0,0,0,.3)', overflow:'hidden' }}>
+        {/* Header */}
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:'10px' }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:'15px', fontWeight:800, color:'var(--text)' }}>📐 Widget Manager</div>
+            <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'1px' }}>{visible.length} visible · {hidden.length} hidden</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:'18px', cursor:'pointer', color:'var(--muted)' }}>✕</button>
+        </div>
+
+        <div style={{ flex:1, overflowY:'auto', padding:'16px 18px' }}>
+          {/* Active widgets */}
+          <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'10px' }}>
+            Active Widgets — {visible.length}
+          </div>
+          {visible.map(w => {
+            const isCustom = w.id.startsWith('custom_')
+            const def = isCustom ? { label: w.customConfig?.label || 'Custom', icon: w.customConfig?.icon || '🔲' } : WIDGET_DEFS[w.id]
+            if (!def) return null
+            return (
+              <div key={w.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', background:'var(--dim)', borderRadius:'9px', border:'1px solid var(--border)', marginBottom:'6px' }}>
+                <span style={{ fontSize:'18px', flexShrink:0 }}>{def.icon}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>{def.label}</div>
+                  {isCustom && w.customConfig?.statuses?.length > 0 && (
+                    <div style={{ fontSize:'10px', color:'var(--muted)' }}>Filter: {w.customConfig.statuses.join(', ')}</div>
+                  )}
+                </div>
+                {/* Size toggle */}
+                <div style={{ display:'flex', background:'var(--panel)', borderRadius:'6px', padding:'2px', gap:'2px' }}>
+                  {[['md','½'],['lg','▭']].map(([sz, lbl]) => (
+                    <button key={sz} onClick={() => setSize(w.id, sz)}
+                      style={{ padding:'3px 8px', borderRadius:'5px', border:'none', background: w.size===sz ? '#CC2200' : 'transparent', color: w.size===sz ? '#fff' : 'var(--muted)', fontSize:'11px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                {/* Color swatches */}
+                <div style={{ display:'flex', gap:'3px' }}>
+                  {['#CC2200','#10B981','#3B82F6','#F5A623','#8B5CF6','#EC4899'].map(c => (
+                    <div key={c} onClick={() => setColor(w.id, c)}
+                      style={{ width:14, height:14, borderRadius:'50%', background:c, cursor:'pointer', border:(w.color||'#CC2200')===c ? '2px solid var(--text)' : '1px solid transparent' }} />
+                  ))}
+                </div>
+                {/* Hide button */}
+                <button onClick={() => toggle(w.id)}
+                  style={{ padding:'4px 8px', borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:'11px', cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
+                  Hide
+                </button>
+                {isCustom && (
+                  <button onClick={() => removeCustom(w.id)}
+                    style={{ padding:'4px 8px', borderRadius:'6px', border:'1px solid #DC262644', background:'#FEF2F2', color:'#DC2626', fontSize:'11px', cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
+                    Delete
+                  </button>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Hidden widgets */}
+          {hidden.length > 0 && (
+            <div style={{ marginTop:'16px' }}>
+              <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'10px' }}>
+                Hidden — click to show
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
+                {hidden.map(w => {
+                  const isCustom = w.id.startsWith('custom_')
+                  const def = isCustom ? { label: w.customConfig?.label || 'Custom', icon: w.customConfig?.icon || '🔲' } : WIDGET_DEFS[w.id]
+                  if (!def) return null
+                  return (
+                    <button key={w.id} onClick={() => toggle(w.id)}
+                      style={{ display:'flex', alignItems:'center', gap:'8px', padding:'9px 12px', borderRadius:'9px', border:'1px dashed var(--border)', background:'transparent', color:'var(--muted)', fontSize:'12px', fontWeight:600, cursor:'pointer', fontFamily:ff, textAlign:'left' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#CC2200'; e.currentTarget.style.color = '#CC2200' }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
+                      <span style={{ fontSize:'16px' }}>{def.icon}</span>
+                      + {def.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={() => { onSave(wids); onClose() }} style={{ background:'#10B981', border:'none' }}>
+            💾 Save Changes
+          </Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Dashboard() {
   const navigate  = useNavigate()
   const { agent, isAdmin, canManage } = useAuth()
@@ -786,6 +920,10 @@ export function Dashboard() {
   const [agents,       setAgents]       = useState([])
   const [agentFilter,  setAgentFilter]  = useState('')
   const [yearFilter,   setYearFilter]   = useState(year)
+  const [stageFilter,  setStageFilter]  = useState([])   // multi-select stages
+  const [sideFilter,   setSideFilter]   = useState('')
+  const [showFilters,  setShowFilters]  = useState(false) // filter panel open
+  const [showWidgetMgr,setShowWidgetMgr]= useState(false) // widget manager open
   const [popup,        setPopup]        = useState(null)
   const [showCustomize,    setShowCustomize]    = useState(false)
   const [showGoals,        setShowGoals]        = useState(false)
@@ -894,14 +1032,23 @@ export function Dashboard() {
       const weekEnd  = new Date(); weekEnd.setDate(weekEnd.getDate() + 7)
       const weekStr  = weekEnd.toISOString().slice(0, 10)
 
-      const yearDeals   = myDeals.filter(d => d.ao_date?.startsWith(yearFilter))
+      const yearDeals   = myDeals.filter(d => {
+        if (!d.ao_date?.startsWith(yearFilter)) return false
+        if (sideFilter  && d.side  !== sideFilter)           return false
+        return true
+      })
       const closedDeals = yearDeals.filter(d => d.stage === 'Closed')
       const activeDeals = myDeals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
       const closedGCI   = closedDeals.reduce((s, d) => s + parseNum(d.gci), 0)
       const pipelineGCI = activeDeals.reduce((s, d) => s + parseNum(d.gci), 0)
 
       // Team GCI — always all agents, for team_goal widget
-      const teamClosed = rawDeals.filter(d => d.ao_date?.startsWith(yearFilter) && d.stage === 'Closed')
+      const teamClosed = rawDeals.filter(d => {
+        if (!d.ao_date?.startsWith(yearFilter)) return false
+        if (d.stage !== 'Closed') return false
+        if (sideFilter && d.side !== sideFilter) return false
+        return true
+      })
       const teamGCI    = teamClosed.reduce((s, d) => s + parseNum(d.gci), 0)
       const teamDeals  = teamClosed.length
 
@@ -953,7 +1100,7 @@ export function Dashboard() {
     } catch(e) {
       toast('Dashboard error: ' + e.message, '#DC2626')
     } finally { setLoading(false) }
-  }, [agent?.id, agentFilter, yearFilter, isAdmin, canManage])
+  }, [agent?.id, agentFilter, yearFilter, stageFilter, sideFilter, isAdmin, canManage])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -1389,10 +1536,13 @@ export function Dashboard() {
           {/* Filters — hidden during edit mode */}
           {!editMode && (
             <>
+              {/* Year selector */}
               <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}
                 style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
                 {years.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
+
+              {/* Agent filter */}
               {(isAdmin || canManage) && (
                 <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)}
                   style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
@@ -1400,9 +1550,51 @@ export function Dashboard() {
                   {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               )}
-              <button onClick={loadData} style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--muted)', cursor: 'pointer', fontSize: '13px', fontFamily: ff }} title="Refresh">↻</button>
+
+              {/* Side filter */}
+              <select value={sideFilter} onChange={e => setSideFilter(e.target.value)}
+                style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
+                <option value="">All Sides</option>
+                {['Buyer','Listing','Dual Buyer','Dual Listing','Flip'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+
+              {/* Stage quick filters — pill toggles */}
+              <div style={{ display:'flex', gap:'4px', flexWrap:'wrap', alignItems:'center' }}>
+                {[
+                  { id:'ao',       label:'AO',              stages:['Offer Accapted'],                      color:'#037f4c' },
+                  { id:'uc',       label:'Under Contract',  stages:['Under Shtar','Under Contract'],        color:'#757575' },
+                  { id:'closed',   label:'Sold',            stages:['Closed'],                              color:'#225091' },
+                ].map(f => {
+                  const isOn = f.stages.every(s => stageFilter.includes(s))
+                  return (
+                    <button key={f.id}
+                      onClick={() => {
+                        setStageFilter(prev => {
+                          if (isOn) return prev.filter(s => !f.stages.includes(s))
+                          return [...new Set([...prev, ...f.stages])]
+                        })
+                      }}
+                      style={{ padding:'4px 10px', borderRadius:'20px', border:`1px solid ${isOn ? f.color : 'var(--border)'}`, background: isOn ? f.color : 'transparent', color: isOn ? '#fff' : 'var(--muted)', fontSize:'11px', fontWeight:700, cursor:'pointer', fontFamily:ff, transition:'all .15s' }}>
+                      {f.label}
+                    </button>
+                  )
+                })}
+                {(stageFilter.length > 0 || sideFilter || agentFilter) && (
+                  <button onClick={() => { setStageFilter([]); setSideFilter(''); setAgentFilter('') }}
+                    style={{ padding:'4px 8px', borderRadius:'20px', border:'1px solid #DC262644', background:'#FEF2F2', color:'#DC2626', fontSize:'11px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                    ✕ Clear
+                  </button>
+                )}
+              </div>
+
+              <button onClick={loadData}
+                style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--muted)', cursor: 'pointer', fontSize: '13px', fontFamily: ff }}
+                title="Refresh">↻</button>
               <Btn size="sm" variant="secondary" onClick={() => setShowGoals(true)}>🎯 Goals</Btn>
               {isAdmin && <Btn size="sm" variant="secondary" onClick={() => setShowAgentView(true)}>👥 Agent Views</Btn>}
+              {isAdmin && (
+                <Btn size="sm" variant="secondary" onClick={() => setShowWidgetMgr(true)}>+ Widgets</Btn>
+              )}
             </>
           )}
 
@@ -1420,6 +1612,60 @@ export function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Active filter summary bar — shows totals for current filter combination */}
+      {!loading && (stageFilter.length > 0 || sideFilter || agentFilter) && (
+        <div style={{ display:'flex', gap:'16px', padding:'12px 16px', background:'var(--dim)', borderRadius:'10px', border:'1px solid var(--border)', marginBottom:'12px', flexWrap:'wrap', alignItems:'center' }}>
+          <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>Filtered Results</div>
+          {(() => {
+            // Calculate production totals for the current filter combo
+            const allDeals = data.closedDeals || []
+            const filtered = allDeals.filter(d => {
+              if (stageFilter.length > 0 && !stageFilter.includes(d.stage)) return false
+              if (sideFilter && d.side !== sideFilter) return false
+              return true
+            })
+            const allActive = data.activeDeals || []
+            const filteredActive = allActive.filter(d => {
+              if (stageFilter.length > 0 && !stageFilter.includes(d.stage)) return false
+              if (sideFilter && d.side !== sideFilter) return false
+              return true
+            })
+            const gci   = filtered.reduce((s, d) => s + (parseFloat(d.gci) || 0), 0)
+            const vol   = filtered.reduce((s, d) => s + (parseFloat(d.production) || 0), 0)
+            const agci  = filteredActive.reduce((s, d) => s + (parseFloat(d.gci) || 0), 0)
+            return (
+              <>
+                <div>
+                  <div style={{ fontSize:'16px', fontWeight:900, color:'#10B981' }}>{fmt$(gci)}</div>
+                  <div style={{ fontSize:'10px', color:'var(--muted)' }}>Closed GCI</div>
+                </div>
+                <div>
+                  <div style={{ fontSize:'16px', fontWeight:900, color:'var(--text)' }}>{fmt$(vol)}</div>
+                  <div style={{ fontSize:'10px', color:'var(--muted)' }}>Volume</div>
+                </div>
+                <div>
+                  <div style={{ fontSize:'16px', fontWeight:900, color:'#F5A623' }}>{fmt$(agci)}</div>
+                  <div style={{ fontSize:'10px', color:'var(--muted)' }}>Pipeline GCI</div>
+                </div>
+                <div>
+                  <div style={{ fontSize:'16px', fontWeight:900, color:'var(--text)' }}>{filtered.length}</div>
+                  <div style={{ fontSize:'10px', color:'var(--muted)' }}>Closed Deals</div>
+                </div>
+                <div>
+                  <div style={{ fontSize:'16px', fontWeight:900, color:'var(--text)' }}>{filteredActive.length}</div>
+                  <div style={{ fontSize:'10px', color:'var(--muted)' }}>Active Deals</div>
+                </div>
+              </>
+            )
+          })()}
+          <div style={{ flex:1, textAlign:'right' }}>
+            <span style={{ fontSize:'11px', color:'var(--muted)' }}>
+              {[agentFilter ? agents.find(a=>a.id===agentFilter)?.name : null, sideFilter||null, stageFilter.length ? stageFilter.join(', ') : null, yearFilter].filter(Boolean).join(' · ')}
+            </span>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}><Loading /></div>
@@ -1597,6 +1843,19 @@ export function Dashboard() {
         <CustomizePanel widgets={widgets} role={agent.role}
           onSave={newW => { persistWidgets(newW); toast('✅ Layout saved') }}
           onClose={() => setShowCustomize(false)} />
+      )}
+
+      {/* Widget Manager */}
+      {showWidgetMgr && (
+        <WidgetManager
+          widgets={widgets}
+          role={agent.role}
+          onSave={newWids => {
+            persistWidgets(newWids)
+            toast('✅ Widget layout saved')
+          }}
+          onClose={() => setShowWidgetMgr(false)}
+        />
       )}
 
       {/* Widget config modal */}
