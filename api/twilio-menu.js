@@ -1,5 +1,5 @@
 const { createClient } = require('@supabase/supabase-js')
-const qs = require('qs')
+const querystring = require('querystring')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 const wrap = (xml) => `<?xml version="1.0" encoding="UTF-8"?><Response>${xml}</Response>`
 const say  = (t)   => `<Say voice="Polly.Joanna">${t}</Say>`
@@ -8,7 +8,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
   let body = {}
-  try { body = qs.parse(await getRawBody(req)) } catch(e) { body = req.body || {} }
+  try { body = querystring.parse(await getRawBody(req)) } catch(e) { body = req.body || {} }
   const digits = body.Digits || ''
   const to     = body.To     || ''
   const vmXml  = say('Please leave your message after the tone.') + '<Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />'

@@ -1,11 +1,11 @@
 const { createClient } = require('@supabase/supabase-js')
-const qs = require('qs')
+const querystring = require('querystring')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
   let body = {}
-  try { body = qs.parse(await getRawBody(req)) } catch(e) { body = req.body || {} }
+  try { body = querystring.parse(await getRawBody(req)) } catch(e) { body = req.body || {} }
   const { CallSid, RecordingUrl, RecordingDuration, TranscriptionText, From } = body
   try {
     const { data: call } = await supabase.from('calls').select('*').eq('twilio_call_sid', CallSid).maybeSingle()

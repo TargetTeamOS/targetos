@@ -1,5 +1,5 @@
 const { createClient } = require('@supabase/supabase-js')
-const qs = require('qs')
+const querystring = require('querystring')
 
 function getRawBody(req) {
   return new Promise((resolve, reject) => {
@@ -24,7 +24,7 @@ module.exports = async function handler(req, res) {
   )
 
   let body = {}
-  try { const raw = await getRawBody(req); body = qs.parse(raw) } catch(e) { body = req.body || {} }
+  try { const raw = await getRawBody(req); body = querystring.parse(raw) } catch(e) { body = req.body || {} }
 
   const from    = body.From    || ''
   const to      = body.To      || ''
