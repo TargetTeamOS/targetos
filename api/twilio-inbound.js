@@ -1,93 +1,98 @@
 // ═══════════════════════════════════════════════════════════════
-// /api/twilio-inbound — Handles all inbound calls from Twilio
-// 1. Looks up the caller in Supabase contacts by phone number
-// 2. If contact found with assigned agent → routes to that agent
-// 3. If no match → plays IVR menu
-// 4. Logs the call to Supabase
+// /api/twilio-inbound — Inbound call handler
+// • Validates Twilio webhook signature
+// • Looks up caller in contacts DB
+// • Routes to assigned agent OR plays IVR
+// • Logs every call to Supabase
 // ═══════════════════════════════════════════════════════════════
-
 import { createClient } from '@supabase/supabase-js'
+import twilio from 'twilio'
 
 const supabase = createClient(
-  process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
+  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY
 )
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).end()
+const twiml = (xml) => `<?xml version="1.0" encoding="UTF-8"?><Response>${xml}</Response>`
+const say   = (text) => `<Say voice="Polly.Joanna">${text}</Say>`
 
-  const from     = req.body?.From || ''
-  const to       = req.body?.To || ''
-  const callSid  = req.body?.CallSid || ''
-  const digits   = req.body?.Digits || ''
+export default async function handler(req, res) {
+  res.setHeader('Content-Type', 'text/xml')
+  if (req.method !== 'POST') return res.status(405).send(twiml(say('Method not allowed.')))
+
+  // Validate Twilio signature in production
+  if (process.env.TWILIO_AUTH_TOKEN) {
+    const validator  = new twilio.webhooks.WebhookClient(process.env.TWILIO_AUTH_TOKEN)
+    const url        = `https://${req.headers.host}/api/twilio-inbound`
+    const isValid    = validator.validate(url, req.body, req.headers['x-twilio-signature'] || '')
+    if (!isValid) return res.status(403).send(twiml(say('Unauthorized.')))
+  }
+
+  const from    = req.body?.From || ''
+  const to      = req.body?.To  || ''
+  const callSid = req.body?.CallSid || ''
 
   try {
     // ── 1. Log the call ──────────────────────────────────────
-    const { data: callLog } = await supabase.from('calls').insert({
+    await supabase.from('calls').insert({
       twilio_call_sid: callSid,
       from_number:     from,
       to_number:       to,
       direction:       'Inbound',
       status:          'in-progress',
       called_at:       new Date().toISOString(),
-    }).select().single()
+    })
 
     // ── 2. Look up caller in contacts ────────────────────────
     const cleanPhone = from.replace(/\D/g, '').slice(-10)
     const { data: contact } = await supabase
       .from('contacts')
-      .select('id, first_name, last_name, agent_id, agents(id,name)')
+      .select('id, first_name, last_name, agent_id, agents(id, name)')
       .or(`phone.ilike.%${cleanPhone}%`)
       .maybeSingle()
 
-    // ── 3. Look up routing rules + IVR ───────────────────────
+    // ── 3. Load IVR config ───────────────────────────────────
     const { data: ivr } = await supabase
       .from('phone_ivr')
       .select('*')
       .eq('is_active', true)
       .maybeSingle()
 
-    // ── 4. If caller is a known contact with assigned agent → route directly ──
-    if (contact?.agent_id && process.env.TWILIO_CONTACT_MATCH_ENABLED !== 'false') {
-      const { data: agentExt } = await supabase
+    // ── 4. Contact match → route directly to assigned agent ──
+    if (contact?.agent_id) {
+      const { data: ext } = await supabase
         .from('phone_extensions')
         .select('*')
         .eq('agent_id', contact.agent_id)
         .eq('active', true)
         .maybeSingle()
 
-      if (agentExt?.forward_to) {
-        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna">One moment, connecting you to your agent.</Say>
-  <Dial callerId="${to}" timeout="30" record="record-from-answer">
-    <Number statusCallback="/api/twilio-status" statusCallbackMethod="POST">${agentExt.forward_to}</Number>
-  </Dial>
-  <Say voice="Polly.Joanna">Your agent is unavailable. Please leave a message after the tone.</Say>
-  <Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />
-</Response>`
-        res.setHeader('Content-Type', 'text/xml')
-        return res.status(200).send(twiml)
+      if (ext?.forward_to) {
+        const agentName = contact.agents?.name?.split(' ')[0] || 'your agent'
+        return res.status(200).send(twiml(
+          `${say(`One moment, connecting you to ${agentName}.`)}
+          <Dial callerId="${to}" timeout="30" record="record-from-answer" recordingStatusCallback="/api/twilio-status">
+            <Number statusCallback="/api/twilio-status" statusCallbackMethod="POST">${ext.forward_to}</Number>
+          </Dial>
+          ${say(ext.voicemail_greeting || 'Please leave your message after the tone.')}
+          <Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />`
+        ))
       }
     }
 
-    // ── 5. Play IVR menu ─────────────────────────────────────
-    const greeting = ivr?.greeting_text || 'Thank you for calling. Press 1 for sales, or press 0 to speak with the next available agent.'
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Gather numDigits="1" action="/api/twilio-menu" method="POST" timeout="10">
-    <Say voice="Polly.Joanna">${greeting}</Say>
-  </Gather>
-  <Say voice="Polly.Joanna">We didn't receive your selection. Please call back and try again.</Say>
-</Response>`
+    // ── 5. No match → IVR menu ───────────────────────────────
+    const greeting = ivr?.greeting_text ||
+      'Thank you for calling Target Team. To reach the sales team, press 1. For a specific agent extension, press 2. To leave a voicemail, press 9.'
 
-    res.setHeader('Content-Type', 'text/xml')
-    return res.status(200).send(twiml)
+    return res.status(200).send(twiml(
+      `<Gather numDigits="1" action="/api/twilio-menu" method="POST" timeout="10">
+        ${say(greeting)}
+      </Gather>
+      ${say('We did not receive your selection. Please call back and try again.')}`
+    ))
 
-  } catch(err) {
+  } catch (err) {
     console.error('twilio-inbound error:', err)
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Say>We're experiencing technical difficulties. Please try again.</Say></Response>`
-    res.setHeader('Content-Type', 'text/xml')
-    return res.status(200).send(twiml)
+    return res.status(200).send(twiml(say('We are experiencing technical difficulties. Please try your call again.')))
   }
 }
