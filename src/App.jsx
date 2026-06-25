@@ -21,6 +21,7 @@ import { Tasks }         from './pages/Tasks'
 import { Calendar }      from './pages/Calendar'
 import { Offers }        from './pages/Offers'
 import { Gifts }         from './pages/Gifts'
+import { CallFlow } from './pages/CallFlow'
 import { Calls }         from './pages/Calls'
 import { OpenHouse }     from './pages/OpenHouse'
 import { AgentPerformance } from './pages/AgentPerformance'
@@ -120,6 +121,7 @@ function AppShell() {
           <Route path="/offers/:id"          element={<Offers />} />
           <Route path="/gifts"               element={<Gifts />} />
           <Route path="/gifts/:id"           element={<Gifts />} />
+          <Route path="/call-flow" element={<CallFlow />} />
           <Route path="/calls"               element={<Calls />} />
           <Route path="/calls/:id"           element={<Calls />} />
           <Route path="/openhouse"           element={<OpenHouse />} />

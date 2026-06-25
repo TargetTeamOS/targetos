@@ -24,6 +24,7 @@ const NAV = [
   { id: 'calendar',     label: 'Calendar',      icon: '📅', roles: ['admin','secretary','agent'] },
   { id: 'openhouse',    label: 'Open House',    icon: '🚪', roles: ['admin','secretary','agent'] },
   { id: 'gifts',        label: 'Gifts',         icon: '🎁', roles: ['admin','secretary'] },
+  { id: 'call-flow', label: 'Call Flows',    icon: '🔀', roles: ['admin','secretary'] },
   { id: 'calls',        label: 'Calls',         icon: '📞', roles: ['admin','secretary','agent'] },
   { id: 'signs',        label: 'Signs',         icon: '🪧', roles: ['admin','secretary'] },
   { id: 'listingprep',  label: 'Listing Prep',  icon: '🔧', roles: ['admin','secretary','agent'] },
