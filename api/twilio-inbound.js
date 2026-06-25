@@ -1,16 +1,11 @@
 const { createClient } = require('@supabase/supabase-js')
 const qs = require('qs')
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-)
-
 function getRawBody(req) {
   return new Promise((resolve, reject) => {
     let data = ''
     req.on('data', chunk => { data += chunk })
-    req.on('end', () => resolve(data))
+    req.on('end',  () => resolve(data))
     req.on('error', reject)
   })
 }
@@ -22,13 +17,14 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
   if (req.method !== 'POST') return res.status(405).send(wrap(say('Invalid request.')))
 
+  // Create supabase client inside handler so missing env vars dont crash on load
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+  )
+
   let body = {}
-  try {
-    const raw = await getRawBody(req)
-    body = qs.parse(raw)
-  } catch(e) {
-    body = req.body || {}
-  }
+  try { const raw = await getRawBody(req); body = qs.parse(raw) } catch(e) { body = req.body || {} }
 
   const from    = body.From    || ''
   const to      = body.To      || ''
@@ -37,12 +33,8 @@ module.exports = async function handler(req, res) {
   try {
     // Log the call
     await supabase.from('calls').insert({
-      twilio_call_sid: callSid,
-      from_number:     from,
-      to_number:       to,
-      direction:       'Inbound',
-      status:          'in-progress',
-      called_at:       new Date().toISOString(),
+      twilio_call_sid: callSid, from_number: from, to_number: to,
+      direction: 'Inbound', status: 'in-progress', called_at: new Date().toISOString(),
     })
 
     // Look up caller in contacts
@@ -53,25 +45,19 @@ module.exports = async function handler(req, res) {
       .or(`phone.ilike.%${cleanPhone}%`)
       .maybeSingle()
 
-    // Load active IVR
+    // Load active IVR config
     const { data: ivr } = await supabase
-      .from('phone_ivr')
-      .select('*')
-      .eq('is_active', true)
-      .maybeSingle()
+      .from('phone_ivr').select('*').eq('is_active', true).maybeSingle()
 
     // Contact match — route to assigned agent
     if (contact && contact.agent_id) {
       const { data: ext } = await supabase
-        .from('phone_extensions')
-        .select('*')
-        .eq('agent_id', contact.agent_id)
-        .eq('active', true)
-        .maybeSingle()
+        .from('phone_extensions').select('*')
+        .eq('agent_id', contact.agent_id).eq('active', true).maybeSingle()
       if (ext && ext.forward_to) {
-        const firstName = (contact.agents && contact.agents.name) ? contact.agents.name.split(' ')[0] : 'your agent'
+        const name = (contact.agents && contact.agents.name) ? contact.agents.name.split(' ')[0] : 'your agent'
         return res.send(wrap(
-          say('One moment, connecting you to ' + firstName + '.') +
+          say('One moment, connecting you to ' + name + '.') +
           '<Dial callerId="' + to + '" timeout="30" record="record-from-answer" recordingStatusCallback="/api/twilio-status">' +
             '<Number statusCallback="/api/twilio-status" statusCallbackMethod="POST">' + ext.forward_to + '</Number>' +
           '</Dial>' +
@@ -81,10 +67,9 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // No match — play IVR
+    // No match — play IVR menu
     const greeting = (ivr && ivr.greeting_text) ||
       'Thank you for calling Target Team. For sales press 1. For any available agent press 0. To leave a voicemail press 9.'
-
     return res.send(wrap(
       '<Gather numDigits="1" action="/api/twilio-menu" method="POST" timeout="10">' +
         say(greeting) +
@@ -94,6 +79,6 @@ module.exports = async function handler(req, res) {
 
   } catch(err) {
     console.error('twilio-inbound error:', err.message)
-    return res.send(wrap(say('We are experiencing technical difficulties. Please try your call again.')))
+    return res.send(wrap(say('We are experiencing technical difficulties. Please try again shortly.')))
   }
 }
