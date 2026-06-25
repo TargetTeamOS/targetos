@@ -1084,12 +1084,23 @@ export function Production() {
   }
 
   async function quickUpdate(deal, field, value) {
+    const today = new Date().toISOString().slice(0, 10)
+
+    // Auto-date logic: set the relevant date if not already set
+    const autoFields = { [field]: value, updated_at: new Date().toISOString() }
+    if (field === 'stage') {
+      if (value === 'Closed'           && !deal.close_date)     autoFields.close_date     = today
+      if (value === 'Offer Accapted'   && !deal.ao_date)        autoFields.ao_date        = today
+      if (value === 'Under Contract'   && !deal.contract_date)  autoFields.contract_date  = today
+      if (value === 'Under Shtar'      && !deal.contract_date)  autoFields.contract_date  = today
+    }
+
     // Optimistic update immediately — UI responds instantly
-    setDeals(prev => prev.map(d => d.id === deal.id ? { ...d, [field]: value } : d))
+    setDeals(prev => prev.map(d => d.id === deal.id ? { ...d, ...autoFields } : d))
     try {
       const { data, error } = await supabase
         .from('deals')
-        .update({ [field]: value, updated_at: new Date().toISOString() })
+        .update(autoFields)
         .eq('id', deal.id)
         .select('*, agents(id,name,color)')
         .maybeSingle()
