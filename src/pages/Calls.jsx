@@ -35,8 +35,9 @@ const TABS_MAIN = [
   { id: 'voicemail', label: '📬 Voicemail' },
   { id: 'extensions',label: '📞 Extensions' },
   { id: 'ivr',       label: '🎛 IVR Menu' },
-  { id: 'routing',   label: '🔀 Routing Rules' },
-  { id: 'settings',  label: '⚙️ Twilio Setup' },
+  { id: 'flow',      label: '🔀 Call Flows' },
+  { id: 'routing',   label: '⚙️ Routing Rules' },
+  { id: 'settings',  label: '🔌 Twilio Setup' },
 ]
 
 // ── HELPERS ────────────────────────────────────────────────────
@@ -770,6 +771,124 @@ function VoicemailInbox({ agents }) {
   )
 }
 
+// ── CALL FLOW EMBED ──────────────────────────────────────────
+// Inline version of the visual call flow builder inside the Phone System
+function CallFlowEmbed({ agents }) {
+  const { toast } = useApp()
+  const navigate  = useNavigate()
+  const [flows,   setFlows]   = useState([])
+  const [loading, setLoading] = useState(true)
+  const [active,  setActive]  = useState(null)
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const { data } = await supabase.from('phone_ivr').select('*').order('created_at', { ascending: false })
+    setFlows(data || [])
+    setActive(data?.find(f => f.is_active)?.id || null)
+    setLoading(false)
+  }
+
+  async function toggleActive(flow) {
+    // Deactivate all, then activate this one
+    await supabase.from('phone_ivr').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000')
+    if (!flow.is_active) {
+      await supabase.from('phone_ivr').update({ is_active: true }).eq('id', flow.id)
+      setActive(flow.id)
+      toast('✅ Flow activated — now handling inbound calls')
+    } else {
+      setActive(null)
+      toast('Flow deactivated')
+    }
+    load()
+  }
+
+  async function deleteFlow(id) {
+    if (!window.confirm('Delete this flow?')) return
+    await supabase.from('phone_ivr').delete().eq('id', id)
+    load()
+    toast('Flow deleted')
+  }
+
+  const FLOW_STEPS = [
+    { icon: '📞', label: 'Inbound call received', color: '#10B981' },
+    { icon: '👤', label: 'Check if caller is a known contact', color: '#3B82F6' },
+    { icon: '✅', label: 'Match → route to their agent', color: '#10B981' },
+    { icon: '🎛', label: 'No match → play IVR menu', color: '#8B5CF6' },
+    { icon: '📱', label: 'Caller presses key → dial extension', color: '#CC2200' },
+    { icon: '📬', label: 'No answer → voicemail', color: '#F5A623' },
+  ]
+
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20, flexWrap:'wrap' }}>
+        <div>
+          <div style={{ fontSize:15, fontWeight:800, color:'var(--text)' }}>Call Flow Manager</div>
+          <div style={{ fontSize:12, color:'var(--muted)' }}>Design how inbound calls are handled step by step</div>
+        </div>
+        <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+          <button onClick={() => navigate('/call-flow')}
+            style={{ padding:'8px 14px', borderRadius:8, border:'none', background:'#CC2200', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            🔀 Open Visual Builder
+          </button>
+        </div>
+      </div>
+
+      {/* Current flow diagram */}
+      <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', padding:16, marginBottom:16 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:12 }}>Current Call Flow Logic</div>
+        <div style={{ display:'flex', alignItems:'center', gap:0, flexWrap:'wrap', rowGap:8 }}>
+          {FLOW_STEPS.map((step, i) => (
+            <React.Fragment key={i}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 12px', borderRadius:8, background:step.color+'15', border:`1px solid ${step.color}44` }}>
+                <span style={{ fontSize:16 }}>{step.icon}</span>
+                <span style={{ fontSize:11, fontWeight:700, color:step.color, whiteSpace:'nowrap' }}>{step.label}</span>
+              </div>
+              {i < FLOW_STEPS.length - 1 && (
+                <div style={{ padding:'0 4px', color:'var(--muted)', fontSize:14, fontWeight:700 }}>→</div>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      {/* Saved flows */}
+      <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:10 }}>Saved Flows</div>
+      {loading ? <Loading /> : flows.length === 0 ? (
+        <Empty icon="🔀" title="No flows saved yet"
+          sub="Open the Visual Builder to create your first call flow"
+          action={<button onClick={() => navigate('/call-flow')} style={{ padding:'8px 14px', borderRadius:8, border:'none', background:'#CC2200', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>Open Builder</button>} />
+      ) : (
+        flows.map(flow => (
+          <div key={flow.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:'var(--panel)', borderRadius:10, border:`1px solid ${flow.is_active ? '#10B981' : 'var(--border)'}`, marginBottom:8 }}>
+            <div style={{ width:10, height:10, borderRadius:'50%', background: flow.is_active ? '#10B981' : 'var(--dim)', border:`2px solid ${flow.is_active ? '#10B981' : 'var(--border)'}`, flexShrink:0 }} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:'var(--text)' }}>{flow.name || 'Unnamed Flow'}</div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
+                {flow.menu_options?.length || 0} menu options · {flow.flow_nodes?.length || 0} nodes
+                {flow.is_active && <span style={{ marginLeft:8, color:'#10B981', fontWeight:700 }}>● ACTIVE</span>}
+              </div>
+            </div>
+            <button onClick={() => toggleActive(flow)}
+              style={{ padding:'5px 12px', borderRadius:7, border:`1px solid ${flow.is_active ? '#10B981' : 'var(--border)'}`, background: flow.is_active ? '#10B98118' : 'transparent', color: flow.is_active ? '#10B981' : 'var(--muted)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+              {flow.is_active ? '✅ Active' : 'Activate'}
+            </button>
+            <button onClick={() => navigate('/call-flow')}
+              style={{ padding:'5px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:ff }}>
+              ✏️ Edit
+            </button>
+            <button onClick={() => deleteFlow(flow.id)}
+              style={{ padding:'5px 10px', borderRadius:7, border:'1px solid #DC262444', background:'#FEF2F2', color:'#DC2626', fontSize:12, cursor:'pointer', fontFamily:ff }}>
+              🗑
+            </button>
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
+
 // ── TWILIO SETTINGS ───────────────────────────────────────────
 function TwilioSettings() {
   const { toast } = useApp()
@@ -1063,6 +1182,7 @@ export function Calls() {
       {tab === 'extensions' && <ExtensionManager agents={agents} />}
       {tab === 'ivr'        && <IVRBuilder agents={agents} />}
       {tab === 'routing'    && <RoutingRules agents={agents} />}
+      {tab === 'flow'       && <CallFlowEmbed agents={agents} />}
       {tab === 'settings'   && <TwilioSettings />}
 
       {/* Call Detail Drawer */}

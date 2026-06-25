@@ -25,6 +25,7 @@ import {
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { FileAttachments } from '../components/FileAttachments'
 import { RecordActivity } from '../pages/ActivityLog'
+import { ClickToCall } from '../components/ClickToCall'
 import { ImportExport } from '../components/ImportExport'
 import { useAgents } from '../lib/hooks'
 
@@ -773,7 +774,12 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
               <Grid2>
                 <Field label="Client Name"><Inp k="client_name" placeholder="John Smith" /></Field>
                 <Field label="Client Legal Name"><Inp k="client_legal_name" placeholder="For closing docs" /></Field>
-                <Field label="Client Phone"><Inp k="client_phone" type="tel" placeholder="(845) 555-1234" /></Field>
+                <Field label="Client Phone">
+                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  <div style={{ flex:1 }}><Inp k="client_phone" type="tel" placeholder="(845) 555-1234" /></div>
+                  {form.client_phone && <ClickToCall phone={form.client_phone} contactName={form.client_name} showLabel={false} size="lg" />}
+                </div>
+              </Field>
                 <Field label="Client Email"><Inp k="client_email" type="email" placeholder="client@email.com" /></Field>
               </Grid2>
               <SectionHdr>Attorney</SectionHdr>
