@@ -128,6 +128,8 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       const { headers, rows } = parseCSV(ev.target.result)
       if (!headers.length) { toast('Could not read CSV headers — make sure the file is a .csv and not .xlsx', '#DC2626'); return }
       if (!rows.length) { toast('CSV has headers but no data rows', '#DC2626'); return }
+      console.log('[ImportExport] CSV headers detected:', headers)
+      console.log('[ImportExport] First row sample:', rows[0])
       // Auto-map CSV headers to column keys
       const autoMap = {}
       // Extra aliases for common import sources (Monday.com exports, Excel, etc.)
@@ -155,6 +157,9 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         // Try alias map
         if (ALIASES[lower]) { autoMap[h] = ALIASES[lower] }
       })
+      console.log('[ImportExport] Auto-mapped columns:', autoMap)
+      const unmapped = headers.filter(h => !autoMap[h])
+      if (unmapped.length) console.log('[ImportExport] Unmapped columns:', unmapped)
       setMapping(autoMap)
       setPreview({ headers, rows: rows.slice(0, 5), allRows: rows })
       setImportDone(null)
@@ -204,18 +209,28 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         )
         if (found) record.agent_id = found.id
       }
-      // Flexible identifier: addr is preferred for deals, name for contacts/tasks
-      // Also accept common alternative keys that come from Monday.com exports
-      const idField = record.addr   ? 'addr'
-                    : record.name   ? 'name'
-                    : record.title  ? 'title'
-                    : record.Name   ? 'Name'
-                    : record.Address? 'Address'
-                    : null
-      if (!idField || !record[idField]) {
-        const mappedKeys = Object.keys(record).filter(k => record[k])
-        errors.push('Row skipped — could not find address/name column. Mapped fields: ' + (mappedKeys.join(', ') || 'none') + '. First value: ' + Object.values(row)[0]?.slice(0, 40))
+      // Flexible identifier — find first non-empty value across all possible id fields
+      const ID_CANDIDATES = ['addr','name','title','Name','Address','address','Item Name','item_name']
+      let idField = null
+      for (const candidate of ID_CANDIDATES) {
+        if (record[candidate] && String(record[candidate]).trim()) {
+          idField = candidate
+          break
+        }
+      }
+      // Last resort: find ANY mapped field that has a value
+      if (!idField) {
+        idField = Object.keys(record).find(k => record[k] && String(record[k]).trim()) || null
+      }
+      if (!idField) {
+        const rawVals = Object.values(row).filter(v => v).slice(0, 3).join(' | ')
+        errors.push('Row skipped — no value found in any mapped column. Raw row values: ' + rawVals.slice(0, 80))
         continue
+      }
+      // Normalize the idField to the canonical DB column name
+      if (['Name','Address','address','Item Name','item_name'].includes(idField)) {
+        record.addr = record[idField]
+        idField = 'addr'
       }
       records.push({ record, idField })
     }
@@ -401,7 +416,18 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
               </div>
               <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '14px' }}>
                 {preview.allRows.length} rows detected. Map each CSV column to a {label.slice(0,-1).toLowerCase()} field.
-              </div>
+            </div>
+            {/* Mapping summary */}
+            <div style={{ padding:'8px 12px', background:'var(--dim)', borderRadius:'8px', border:'1px solid var(--border)', marginBottom:'10px', fontSize:'11px', color:'var(--muted)' }}>
+              <span style={{ fontWeight:700, color:'var(--text)' }}>{Object.values(mapping).filter(Boolean).length}</span> of {preview.headers.length} columns mapped.
+              {Object.values(mapping).filter(Boolean).length === 0 && (
+                <span style={{ color:'#DC2626', fontWeight:700 }}> ⚠️ No columns mapped — please set mappings manually below.</span>
+              )}
+              {!Object.values(mapping).includes('addr') && !Object.values(mapping).includes('name') && !Object.values(mapping).includes('title') && Object.values(mapping).filter(Boolean).length > 0 && (
+                <span style={{ color:'#F5A623', fontWeight:700 }}> ⚠️ No address/name column mapped — rows will be skipped. Make sure "Address" or "Name" is mapped.</span>
+              )}
+            </div>
+            <div style={{ fontSize:'11px' }}>
 
               {/* Duplicate handling */}
               <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'10px 12px', background:'var(--dim)', borderRadius:'8px', border:'1px solid var(--border)', marginBottom:'14px' }}>
