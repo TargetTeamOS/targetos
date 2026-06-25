@@ -4,7 +4,7 @@ const supabase = createClient(
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY
 )
-export const config = { api: { bodyParser: { type: 'application/x-www-form-urlencoded' } } }
+export const config = { api: { bodyParser: true } }
 const wrap = (xml) => `<?xml version="1.0" encoding="UTF-8"?><Response>${xml}</Response>`
 const say  = (t)   => `<Say voice="Polly.Joanna">${t}</Say>`
 const vmXml = `${say('Please leave your message after the tone.')}<Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />`

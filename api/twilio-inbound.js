@@ -10,7 +10,7 @@ const wrap = (xml) => `<?xml version="1.0" encoding="UTF-8"?><Response>${xml}</R
 const say  = (t)   => `<Say voice="Polly.Joanna">${t}</Say>`
 
 // Vercel body parser config — Twilio sends urlencoded form data
-export const config = { api: { bodyParser: { type: 'application/x-www-form-urlencoded' } } }
+export const config = { api: { bodyParser: true } }
 
 export default async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
