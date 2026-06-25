@@ -130,9 +130,30 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       if (!rows.length) { toast('CSV has headers but no data rows', '#DC2626'); return }
       // Auto-map CSV headers to column keys
       const autoMap = {}
+      // Extra aliases for common import sources (Monday.com exports, Excel, etc.)
+      const ALIASES = {
+        'name': 'addr', 'item name': 'addr', 'address': 'addr', 'property': 'addr', 'property address': 'addr',
+        'agent': '_agent_name', 'assigned agent': '_agent_name', 'agent name': '_agent_name', 'people': '_agent_name',
+        'gci $': 'gci', 'gci': 'gci', 'gross commission': 'gci',
+        'production $': 'production', 'production': 'production', 'sale price': 'production', 'price': 'production',
+        'a/o date': 'ao_date', 'ao date': 'ao_date', 'accepted offer date': 'ao_date',
+        'ctrct date': 'contract_date', 'contract date': 'contract_date', 'contract': 'contract_date',
+        'cls date': 'close_date', 'close date': 'close_date', 'closing date': 'close_date', 'closed date': 'close_date',
+        'expected closing date': 'expected_close_date', 'exp close': 'expected_close_date',
+        'clients legal name': 'client_legal_name', 'client legal name': 'client_legal_name',
+        'clients email': 'client_email', 'client email': 'client_email', 'cliant phone': 'client_phone', 'client phone': 'client_phone',
+        'attorenys name': 'atty_name', 'attorenys email': 'atty_email', 'attorney name': 'atty_name', 'attorney email': 'atty_email',
+        'sale type': 'sale_type', 'sales source': 'sales_source', 'property type': 'property_type',
+        'contract to close': 'ctc', 'stage': 'stage', 'side': 'side',
+        'commission received': 'commission_received', 'agent commission sent': 'agent_commission_sent',
+      }
       headers.forEach(h => {
-        const col = columns.find(c => c.label.toLowerCase() === h.toLowerCase() || c.key.toLowerCase() === h.toLowerCase())
-        if (col) autoMap[h] = col.key
+        const lower = h.toLowerCase().trim()
+        // Try exact label match first
+        const col = columns.find(c => c.label.toLowerCase() === lower || c.key.toLowerCase() === lower)
+        if (col) { autoMap[h] = col.key; return }
+        // Try alias map
+        if (ALIASES[lower]) { autoMap[h] = ALIASES[lower] }
       })
       setMapping(autoMap)
       setPreview({ headers, rows: rows.slice(0, 5), allRows: rows })
@@ -183,9 +204,17 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         )
         if (found) record.agent_id = found.id
       }
-      const idField = record.addr ? 'addr' : record.name ? 'name' : 'title'
-      if (!record[idField]) {
-        errors.push('Row skipped — no identifier (addr/name/title): ' + Object.values(row)[0]?.slice(0, 40))
+      // Flexible identifier: addr is preferred for deals, name for contacts/tasks
+      // Also accept common alternative keys that come from Monday.com exports
+      const idField = record.addr   ? 'addr'
+                    : record.name   ? 'name'
+                    : record.title  ? 'title'
+                    : record.Name   ? 'Name'
+                    : record.Address? 'Address'
+                    : null
+      if (!idField || !record[idField]) {
+        const mappedKeys = Object.keys(record).filter(k => record[k])
+        errors.push('Row skipped — could not find address/name column. Mapped fields: ' + (mappedKeys.join(', ') || 'none') + '. First value: ' + Object.values(row)[0]?.slice(0, 40))
         continue
       }
       records.push({ record, idField })
