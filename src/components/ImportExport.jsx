@@ -172,62 +172,87 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     const { allRows } = preview
     let inserted = 0, updated = 0, skipped = 0, errors = []
 
-    // ── Step 1: Load agents once for name→id resolution ──────────
+    // ── Step 1: Load agents ───────────────────────────────────────
     let agentCache = []
     try {
       const { data } = await supabase.from('agents').select('id, name').eq('active', true)
       agentCache = data || []
-    } catch { /* non-fatal */ }
+    } catch(e) { /* non-fatal */ }
 
     setImportProgress('Reading ' + allRows.length + ' rows...')
-    // ── Step 2: Build all records from CSV mapping ────────────────
-    const records = []
-    for (const row of allRows) {
-      const record = {}
-      let agentNameToResolve = null
-      // Build a case-insensitive lookup of the actual row keys to handle
-      // any casing differences between autoMap keys and CSV row keys
-      const rowKeyMap = {}
-      Object.keys(row).forEach(k => { rowKeyMap[k.trim().toLowerCase()] = k })
 
-      Object.entries(mapping).forEach(([csvH, dbKey]) => {
-        if (!dbKey) return
-        // Try exact match first, then case-insensitive match
-        var actualKey = (row[csvH] !== undefined) ? csvH : rowKeyMap[csvH.trim().toLowerCase()]
-        if (!actualKey || row[actualKey] === undefined) return
+    // ── Step 2: Build records from CSV ────────────────────────────
+    const records = []
+    for (let ri = 0; ri < allRows.length; ri++) {
+      const row = allRows[ri]
+      const record = {}
+      let agentName = null
+
+      // Case-insensitive row key lookup
+      const rowKeys = Object.keys(row)
+      const rowKeyLower = {}
+      for (let ki = 0; ki < rowKeys.length; ki++) {
+        rowKeyLower[rowKeys[ki].trim().toLowerCase()] = rowKeys[ki]
+      }
+
+      // Apply column mapping
+      const mappingEntries = Object.entries(mapping)
+      for (let mi = 0; mi < mappingEntries.length; mi++) {
+        const csvH = mappingEntries[mi][0]
+        const dbKey = mappingEntries[mi][1]
+        if (!dbKey) continue
+
+        // Find the actual row key (exact or case-insensitive)
+        const actualKey = (row[csvH] !== undefined) ? csvH : rowKeyLower[csvH.trim().toLowerCase()]
+        if (!actualKey) continue
+
+        const rawVal = row[actualKey]
+        const strVal = (rawVal === null || rawVal === undefined) ? '' : String(rawVal).trim()
+
+        if (dbKey === '_agent_name') { agentName = strVal || null; continue }
+
         const col = columns.find(c => c.key === dbKey)
-        if (dbKey === '_agent_name') { agentNameToResolve = String(row[actualKey] || '').trim() || null; return }
-        let val = String(row[actualKey] || '').trim()
-        if (col?.type === 'number') val = parseFloat(val) || null
-        else if (col?.type === 'date' && val) val = val.slice(0, 10)
-        else if (val === '') val = null
-        record[dbKey] = val
-      })
+        if (strVal === '' || strVal === 'null' || strVal === 'None' || strVal === 'undefined') {
+          record[dbKey] = null
+        } else if (col && col.type === 'number') {
+          record[dbKey] = parseFloat(strVal) || null
+        } else if (col && col.type === 'date') {
+          record[dbKey] = strVal.slice(0, 10) || null
+        } else {
+          record[dbKey] = strVal
+        }
+      }
+
       // Resolve agent name → agent_id
-      if (agentNameToResolve) {
-        const name = agentNameToResolve.trim().toLowerCase()
-        const found = agentCache.find(a =>
-          a.name.toLowerCase() === name ||
-          a.name.toLowerCase().split(' ')[0] === name ||
-          a.name.toLowerCase().split(' ').pop() === name ||
-          name.includes(a.name.toLowerCase().split(' ')[0])
-        )
+      if (agentName) {
+        const nameLower = agentName.toLowerCase()
+        const found = agentCache.find(function(a) {
+          const al = a.name.toLowerCase()
+          const af = al.split(' ')[0]
+          return al === nameLower || af === nameLower || nameLower.includes(af)
+        })
         if (found) record.agent_id = found.id
       }
-      // Flexible identifier: addr is preferred for deals, name for contacts/tasks
-      // Also accept common alternative keys that come from Monday.com exports
-      const idField = record.addr   ? 'addr'
-                    : record.name   ? 'name'
-                    : record.title  ? 'title'
-                    : record.Name   ? 'Name'
-                    : record.Address? 'Address'
-                    : null
-      if (!idField || !record[idField]) {
-        const mappedKeys = Object.keys(record).filter(k => record[k])
-        errors.push('Row skipped — could not find address/name column. Mapped fields: ' + (mappedKeys.join(', ') || 'none') + '. First value: ' + Object.values(row)[0]?.slice(0, 40))
+
+      // Find identifier field (addr for deals, name for contacts, title for tasks)
+      let idField = null
+      const idCandidates = ['addr', 'name', 'title']
+      for (let ic = 0; ic < idCandidates.length; ic++) {
+        const cand = idCandidates[ic]
+        if (record[cand] && String(record[cand]).trim().length > 0) {
+          idField = cand
+          break
+        }
+      }
+
+      if (!idField) {
+        const nonEmpty = Object.keys(record).filter(function(k) { return record[k] && String(record[k]).trim() })
+        const firstRaw = String(Object.values(row)[0] || '').slice(0, 60)
+        errors.push('Row ' + (ri+1) + ' skipped — address empty after mapping. First cell: "' + firstRaw + '". Mapped: ' + (nonEmpty.join(', ') || 'nothing'))
         continue
       }
-      records.push({ record, idField })
+
+      records.push({ record: record, idField: idField })
     }
 
     setImportProgress('Checking for duplicates (' + records.length + ' rows)...')
