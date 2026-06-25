@@ -38,6 +38,151 @@ const BLANK = {
   city: '', state: 'NY', zip: '', status: 'New', source: '', tags: [], notes: ''
 }
 
+// ═══════════════════════════════════════════════════════════════
+// CONTACT POPUP — Quick info card on card click
+// Shows configurable fields + linked deals
+// Admin can choose which fields to show via ⚙️ button
+// ═══════════════════════════════════════════════════════════════
+const ALL_POPUP_FIELDS = [
+  { id: 'phone',     label: 'Phone',          icon: '📞' },
+  { id: 'email',     label: 'Email',          icon: '📧' },
+  { id: 'status',    label: 'Status',         icon: '🏷' },
+  { id: 'source',    label: 'Source',         icon: '📌' },
+  { id: 'agent',     label: 'Assigned Agent', icon: '👤' },
+  { id: 'address',   label: 'Address',        icon: '📍' },
+  { id: 'type',      label: 'Type',           icon: '🏠' },
+  { id: 'budget_max',label: 'Budget',         icon: '💰' },
+  { id: 'notes',     label: 'Notes',          icon: '📝' },
+  { id: 'tags',      label: 'Tags',           icon: '🏷' },
+]
+
+function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onClose, agents, isAdmin, onFieldsChange }) {
+  const [configMode, setConfigMode] = React.useState(false)
+  const [localFields, setLocalFields] = React.useState(fields)
+  const ff2 = 'Inter,system-ui,sans-serif'
+  const STATUS_COLORS = { Hot:'#DC2626',Warm:'#F5A623',Cold:'#3B82F6',Active:'#10B981',New:'#8B5CF6',Nurturing:'#14B8A6',Closed:'#94A3B8',Unresponsive:'#64748B' }
+  const sc = STATUS_COLORS[c.status] || '#CC2200'
+  const agent = agents.find(a => a.id === c.agent_id)
+
+  function renderField(fieldId) {
+    switch(fieldId) {
+      case 'phone':     return c.phone     ? <a href={'tel:' + c.phone.replace(/\D/g,'')} onClick={e => e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none', fontSize:'13px' }}>{c.phone}</a> : null
+      case 'email':     return c.email     ? <a href={'mailto:' + c.email} onClick={e => e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none', fontSize:'13px' }}>{c.email}</a> : null
+      case 'status':    return c.status    ? <span style={{ fontSize:'12px', padding:'2px 8px', borderRadius:'12px', background:sc+'22', color:sc, fontWeight:700 }}>{c.status}</span> : null
+      case 'source':    return c.source    ? <span style={{ fontSize:'12px', color:'var(--muted)' }}>{c.source}</span> : null
+      case 'agent':     return agent       ? <div style={{ display:'flex', alignItems:'center', gap:'5px' }}><div style={{ width:18, height:18, borderRadius:'50%', background:agent.color||'#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'8px', fontWeight:800, color:'#fff' }}>{agent.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div><span style={{ fontSize:'12px', color:'var(--muted)' }}>{agent.name}</span></div> : null
+      case 'address':   return c.address   ? <span style={{ fontSize:'12px', color:'var(--muted)' }}>{[c.address, c.city, c.state].filter(Boolean).join(', ')}</span> : null
+      case 'type':      return c.type      ? <span style={{ fontSize:'12px', color:'var(--muted)' }}>{c.type}</span> : null
+      case 'budget_max':return c.budget_max? <span style={{ fontSize:'12px', fontWeight:700, color:'#10B981' }}>Up to ${Number(c.budget_max).toLocaleString()}</span> : null
+      case 'notes':     return c.notes     ? <span style={{ fontSize:'11px', color:'var(--muted)', fontStyle:'italic' }}>{String(c.notes).slice(0,80)}{String(c.notes).length>80?'…':''}</span> : null
+      case 'tags':      return c.tags?.length ? <div style={{ display:'flex', gap:'3px', flexWrap:'wrap' }}>{c.tags.slice(0,4).map(t => <span key={t} style={{ fontSize:'10px', padding:'1px 6px', borderRadius:'10px', background:'var(--dim)', color:'var(--muted)', border:'1px solid var(--border)' }}>{t}</span>)}</div> : null
+      default:          return null
+    }
+  }
+
+  return (
+    <div onClick={onClose}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.3)', zIndex:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', fontFamily:ff2 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background:'var(--panel)', borderRadius:'14px', width:'100%', maxWidth:'380px', boxShadow:'0 12px 40px rgba(0,0,0,.2)', overflow:'hidden', border:'1px solid var(--border)' }}>
+
+        {/* Header */}
+        <div style={{ padding:'16px 16px 12px', borderBottom:'1px solid var(--border)', background: sc + '0a' }}>
+          <div style={{ display:'flex', alignItems:'flex-start', gap:'10px' }}>
+            <div style={{ width:44, height:44, borderRadius:'50%', background:sc, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'16px', fontWeight:800, color:'#fff', flexShrink:0 }}>
+              {(c.first_name?.[0]||'') + (c.last_name?.[0]||'')}
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:'16px', fontWeight:800, color:'var(--text)' }}>{c.first_name} {c.last_name}</div>
+              {c.status && <span style={{ fontSize:'11px', padding:'1px 7px', borderRadius:'10px', background:sc+'22', color:sc, fontWeight:700 }}>{c.status}</span>}
+            </div>
+            <div style={{ display:'flex', gap:'4px' }}>
+              {isAdmin && (
+                <button onClick={() => setConfigMode(m => !m)}
+                  title="Configure popup fields"
+                  style={{ background:'none', border:'none', cursor:'pointer', fontSize:'14px', color:'var(--muted)', padding:'3px' }}>⚙️</button>
+              )}
+              <button onClick={onClose}
+                style={{ background:'none', border:'none', cursor:'pointer', fontSize:'16px', color:'var(--muted)', padding:'3px' }}>✕</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Field config mode */}
+        {configMode && (
+          <div style={{ padding:'10px 14px', borderBottom:'1px solid var(--border)', background:'var(--dim)' }}>
+            <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.06em' }}>Choose fields to show</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:'5px' }}>
+              {ALL_POPUP_FIELDS.map(f => {
+                const on = localFields.includes(f.id)
+                return (
+                  <button key={f.id} onClick={() => {
+                    const next = on ? localFields.filter(x => x !== f.id) : [...localFields, f.id]
+                    setLocalFields(next)
+                    onFieldsChange(next)
+                  }}
+                    style={{ padding:'3px 9px', borderRadius:'12px', border:`1px solid ${on ? '#CC2200' : 'var(--border)'}`, background: on ? 'rgba(204,34,0,.1)' : 'transparent', color: on ? '#CC2200' : 'var(--muted)', fontSize:'11px', fontWeight:600, cursor:'pointer', fontFamily:ff2 }}>
+                    {f.icon} {f.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Field values */}
+        <div style={{ padding:'12px 16px', display:'flex', flexDirection:'column', gap:'8px' }}>
+          {localFields.map(fid => {
+            const def = ALL_POPUP_FIELDS.find(f => f.id === fid)
+            const val = renderField(fid)
+            if (!val) return null
+            return (
+              <div key={fid} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                <span style={{ fontSize:'13px', flexShrink:0, width:18 }}>{def?.icon}</span>
+                <div style={{ flex:1, minWidth:0 }}>{val}</div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Linked deals */}
+        {deals.length > 0 && (
+          <div style={{ padding:'8px 16px 12px', borderTop:'1px solid var(--border)' }}>
+            <div style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'6px' }}>Linked Deals</div>
+            {deals.slice(0,3).map(d => (
+              <div key={d.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0', borderBottom:'1px solid var(--border)' }}>
+                <span style={{ fontSize:'12px', color:'var(--text)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{d.addr}</span>
+                <span style={{ fontSize:'11px', padding:'1px 6px', borderRadius:'10px', background:'#10B98118', color:'#10B981', fontWeight:700, flexShrink:0, marginLeft:8 }}>{d.stage}</span>
+              </div>
+            ))}
+            {deals.length > 3 && <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'4px' }}>+{deals.length-3} more deals</div>}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ padding:'10px 16px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px' }}>
+          {c.phone && (
+            <a href={'tel:' + c.phone.replace(/\D/g,'')} onClick={e => e.stopPropagation()}
+              style={{ flex:1, padding:'8px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:'12px', fontWeight:700, textDecoration:'none', textAlign:'center', fontFamily:ff2 }}>
+              📞 Call
+            </a>
+          )}
+          {c.phone && (
+            <a href={'https://wa.me/' + c.phone.replace(/\D/g,'')} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+              style={{ flex:1, padding:'8px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--dim)', color:'#25D366', fontSize:'12px', fontWeight:700, textDecoration:'none', textAlign:'center', fontFamily:ff2 }}>
+              💬 WhatsApp
+            </a>
+          )}
+          <button onClick={() => { onOpenFull(); onClose() }}
+            style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', background:'#CC2200', color:'#fff', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff2 }}>
+            Open →
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Contacts() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
@@ -58,8 +203,11 @@ export function Contacts() {
   const [saving,      setSaving]      = useState(false)
   const [tab,         setTab]         = useState('info')
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [selectedIds, setSelectedIds] = useState([])
-  const [bulkDel,     setBulkDel]     = useState(false)
+  const [selectedIds,  setSelectedIds]  = useState([])
+  const [bulkDel,      setBulkDel]      = useState(false)
+  const [popupContact, setPopupContact] = useState(null)   // quick info popup
+  const [popupDeals,   setPopupDeals]   = useState([])     // deals for popup
+  const [popupFields,  setPopupFields]  = useState(['phone','email','source','status','agent']) // configurable
 
   // Auto-open from URL param
   useEffect(() => {
@@ -94,7 +242,10 @@ export function Contacts() {
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
   async function saveContact() {
-    if (!form.first_name.trim()) { toast('First name is required', '#DC2626'); return }
+    if (!form.first_name.trim())  { toast('First name is required', '#DC2626'); return }
+    if (!form.phone?.trim() && !selected)  { toast('Phone number is required', '#DC2626'); return }
+    if (!form.source && !selected)         { toast('Source is required', '#DC2626'); return }
+    if (!form.agent_id && (isAdmin || canManage) && !selected) { toast('Please assign an agent', '#DC2626'); return }
     setSaving(true)
     try {
       if (selected) {
@@ -102,7 +253,47 @@ export function Contacts() {
         setSelected(updated)
         toast('✅ Contact saved')
       } else {
-        const created = await add({ ...form, agent_id: form.agent_id || agent?.id })
+        const isQuickAdd = !form.source && !form.email && !form.address
+      const created = await add({ ...form, agent_id: form.agent_id || agent?.id })
+      
+      if (created && isQuickAdd) {
+        // Quick add: create follow-up task for agent + send email
+        const assignedAgentId = form.agent_id || agent?.id
+        const assignedAgent   = agents.find(a => a.id === assignedAgentId)
+        const contactName     = form.first_name + ' ' + (form.last_name || '')
+        
+        // Create task to fill in missing info
+        try {
+          await supabase.from('tasks').insert({
+            agent_id:   assignedAgentId,
+            created_by: agent?.id,
+            contact_id: created.id,
+            title:      'Complete contact info for ' + contactName,
+            notes:      'Quick-added contact needs: source, email, address, buyer type, budget',
+            priority:   'high',
+            status:     'pending',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+        } catch(e) { console.warn('Task create failed:', e.message) }
+
+        // Send email to assigned agent
+        if (assignedAgent?.email) {
+          try {
+            await fetch('/api/send-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                from:    'TargetOS <office@targetreteam.com>',
+                to:      [assignedAgent.email],
+                subject: '📋 New lead added — please complete: ' + contactName,
+                html:    '<div style="font-family:Inter,sans-serif;padding:20px"><h2 style="color:#CC2200">New Lead: ' + contactName + '</h2><p>A new contact was quick-added and needs you to fill in the remaining information.</p><p><strong>Name:</strong> ' + contactName + '<br><strong>Phone:</strong> ' + (form.phone || '—') + '</p><p>Please log in to TargetOS and complete the contact profile with source, email, buyer type, and notes.</p><a href="https://app.targetreteam.com/contacts/' + created.id + '/detail" style="background:#CC2200;color:#fff;padding:10px 20px;text-decoration:none;border-radius:7px;display:inline-block;margin-top:12px">Open Contact →</a></div>',
+              }),
+            })
+          } catch(e) { console.warn('Email failed:', e.message) }
+        }
+        toast('✅ Contact added — task created for ' + (assignedAgent?.name || 'agent') + ' to complete info')
+      }
         toast('✅ Contact added')
         closePanel()
         navigate('/contacts/' + created.id)
@@ -197,9 +388,9 @@ export function Contacts() {
       {!loading && filtered.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
           {filtered.map(c => (
-            <div key={c.id} onClick={() => navigate('/contacts/' + c.id + '/detail')}
-              style={{ background: selectedIds.includes(c.id) ? 'rgba(204,34,0,.04)' : 'var(--panel)', borderRadius: 'var(--radius)', border: selectedIds.includes(c.id) ? '2px solid #CC220044' : selected?.id === c.id ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s', position: 'relative' }}
-              onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
+            <div key={c.id} onClick={() => setPopupContact(c)}
+              style={{ background: selectedIds.includes(c.id) ? 'rgba(204,34,0,.04)' : 'var(--panel)', borderRadius: 'var(--radius)', border: selectedIds.includes(c.id) ? '2px solid #CC220044' : popupContact?.id === c.id ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s', position: 'relative' }}
+              onMouseEnter={e => { if (!selectedIds.includes(c.id)) e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
               onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
               {/* Selection checkbox */}
               <div
@@ -212,10 +403,11 @@ export function Contacts() {
                   {initials(c.first_name + ' ' + (c.last_name || ''))}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <a href={'/contacts/' + c.id + '/detail'} onClick={e => { e.preventDefault(); navigate('/contacts/' + c.id + '/detail') }}
-                    style={{ fontWeight: 700, fontSize: '14px', color: 'var(--brand)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', textDecoration: 'none' }}>
+                  <span
+                    onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
+                    style={{ fontWeight: 700, fontSize: '14px', color: 'var(--brand)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
                     {c.first_name} {c.last_name}
-                  </a>
+                  </span>
                   {c.phone && <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>{fmtPhone(c.phone)}</div>}
                   {c.email && <div style={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>}
                 </div>
@@ -250,7 +442,7 @@ export function Contacts() {
               <Field label="Last Name">
                 <Input value={form.last_name} onChange={v => set('last_name', v)} placeholder="Smith" />
               </Field>
-              <Field label="Phone">
+              <Field label="Phone" required>
                 <Input value={form.phone} onChange={v => set('phone', v)} placeholder="(845) 555-1234" type="tel" />
               </Field>
               <Field label="Email">
@@ -278,7 +470,7 @@ export function Contacts() {
               <Field label="Status">
                 <Select value={form.status} onChange={v => set('status', v)} options={CONTACT_STATUSES} />
               </Field>
-              <Field label="Source">
+              <Field label="Source" required>
                 <Select value={form.source} onChange={v => set('source', v)} options={CONTACT_SOURCES} placeholder="How did they find you?" />
               </Field>
             </div>
@@ -314,6 +506,21 @@ export function Contacts() {
           <Btn onClick={saveContact} loading={saving}>{selected ? 'Save Changes' : 'Add Contact'}</Btn>
         </ModalActions>
       </Modal>
+
+      {/* Contact Popup */}
+      {popupContact && (
+        <ContactPopup
+          contact={popupContact}
+          deals={popupDeals}
+          fields={popupFields}
+          agents={agents}
+          isAdmin={isAdmin || canManage}
+          onEdit={() => { openContact(popupContact); setPopupContact(null) }}
+          onOpenFull={() => navigate('/contacts/' + popupContact.id + '/detail')}
+          onClose={() => setPopupContact(null)}
+          onFieldsChange={fields => setPopupFields(fields)}
+        />
+      )}
 
       <Confirm
         open={confirmDelete}
