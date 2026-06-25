@@ -244,7 +244,9 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       try {
         const { data } = await supabase.from(table).select('id, ' + idField0 + (table === 'deals' ? ', side' : '')).in(idField0, chunk)
         ;(data || []).forEach(row => {
-          const key = row[idField0] + (row.side ? '||' + row.side : '')
+          // Normalize key: trim and lowercase for comparison
+          const normAddr = String(row[idField0] || '').trim().toLowerCase()
+          const key = normAddr + (row.side ? '||' + String(row.side).trim().toLowerCase() : '')
           existingMap[key] = row.id
         })
       } catch(e) { errors.push('Fetch batch failed: ' + e.message) }
@@ -255,7 +257,9 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     const toUpdate = []
 
     for (const { record, idField } of records) {
-      const key = record[idField] + (record.side ? '||' + record.side : '')
+      const normVal = String(record[idField] || '').trim().toLowerCase()
+      const normSide = record.side ? String(record.side).trim().toLowerCase() : ''
+      const key = normVal + (normSide ? '||' + normSide : '')
       const existingId = existingMap[key]
       if (existingId) {
         if (dupMode === 'skip') skipped++
