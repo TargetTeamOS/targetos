@@ -185,14 +185,22 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     for (const row of allRows) {
       const record = {}
       let agentNameToResolve = null
+      // Build a case-insensitive lookup of the actual row keys to handle
+      // any casing differences between autoMap keys and CSV row keys
+      const rowKeyMap = {}
+      Object.keys(row).forEach(k => { rowKeyMap[k.trim().toLowerCase()] = k })
+
       Object.entries(mapping).forEach(([csvH, dbKey]) => {
-        if (!dbKey || row[csvH] === undefined) return
+        if (!dbKey) return
+        // Try exact match first, then case-insensitive match
+        var actualKey = (row[csvH] !== undefined) ? csvH : rowKeyMap[csvH.trim().toLowerCase()]
+        if (!actualKey || row[actualKey] === undefined) return
         const col = columns.find(c => c.key === dbKey)
-        if (dbKey === '_agent_name') { agentNameToResolve = row[csvH] || null; return }
-        let val = row[csvH]
+        if (dbKey === '_agent_name') { agentNameToResolve = String(row[actualKey] || '').trim() || null; return }
+        let val = String(row[actualKey] || '').trim()
         if (col?.type === 'number') val = parseFloat(val) || null
-        if (col?.type === 'date' && val) val = val.slice(0, 10)
-        if (val === '') val = null
+        else if (col?.type === 'date' && val) val = val.slice(0, 10)
+        else if (val === '') val = null
         record[dbKey] = val
       })
       // Resolve agent name → agent_id
