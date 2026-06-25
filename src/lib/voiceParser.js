@@ -8,46 +8,295 @@
 const ADDRESS_RE = /\b(\d+)\s+([A-Za-z0-9\s]{2,30}(?:Ave|Avenue|Rd|Road|St|Street|Dr|Drive|Ln|Lane|Blvd|Boulevard|Ct|Court|Pl|Place|Way|Pkwy|Parkway|Hwy|Highway|Route|Rte|Unit|#)\s*[A-Za-z0-9\s#-]{0,20})/gi
 
 // NY cities / neighborhoods commonly spoken
+// ── ROCKLAND COUNTY — CITIES, HAMLETS, NEIGHBORHOODS ────────────
 const KNOWN_PLACES = [
+  // Cities & Villages
   'monsey','spring valley','suffern','nanuet','new city','nyack','haverstraw',
   'pomona','airmont','chestnut ridge','new hempstead','wesley hills','montebello',
-  'sloatsburg','tallman','tallman ny','Tallman','hillburn','woodbury','harriman',
+  'sloatsburg','tallman','hillburn','woodbury','harriman',
   'tuxedo','monroe','kiryas joel','KJ','cornwall','newburgh','middletown',
-  'goshen','warwick','florida','chester','mahwah','ramsey','hillsdale',
-  'river vale','park ridge','woodcliff lake','montvale','park ridge',
-  'clarkstown','ramapo','stony point','tomkins cove','letchworth',
-  'rockland lake','blauvelt','sparkill','snedens landing','grandview',
-  'west haverstraw','stony point','tappan','orangeburg','pearl river','congers',
-  'valley cottage','west nyack','blauvelt','bardonia','palisades','piermont',
-  'upper nyack','south nyack','garnerville','thiells','pomona','airmont',
-  'wesley hills','new hempstead','chestnut ridge','montebello','sloatsburg',
-  'ramapo','mahwah','rockland','brooklyn','manhattan','queens','bronx',
-  'staten island','new york','jersey city','hoboken','lakewood',
-  'kiryas joel','monroe','woodbury','swan lake','liberty','fallsburg',
+  'goshen','warwick','florida','chester',
+  'clarkstown','ramapo','stony point','tomkins cove',
+  'rockland lake','blauvelt','sparkill','grandview',
+  'west haverstraw','tappan','orangeburg','pearl river','congers',
+  'valley cottage','west nyack','bardonia','palisades','piermont',
+  'upper nyack','south nyack','garnerville','thiells',
+  // NJ nearby
+  'mahwah','ramsey','hillsdale','river vale','park ridge','woodcliff lake','montvale',
+  // Other NY
+  'brooklyn','manhattan','queens','bronx','staten island',
+  'jersey city','hoboken','lakewood','brooklyn','boro park','williamsburg',
+  'flatbush','kensington','midwood','crown heights','borough park',
 ]
+
+// ── ROCKLAND COUNTY — STREETS & ADDRESSES ────────────────────────
+// Common street names spoken in voice captures — helps parser
+// recognize when someone says a Rockland address
+const ROCKLAND_STREETS = new Set([
+  // Route numbers & Highways
+  'route 9w','route 306','route 45','route 59','route 202','route 304','route 340',
+  'rt 9w','rt 306','rt 45','rt 59','rt 202','rt 304','rt 340',
+  'new hempstead road','new hempstead rd',
+  'route 9','route 17','route 304','route 340',
+  // Monsey / Airmont
+  'blauvelt road','blauvelt rd','main street','main st',
+  'saddle river road','saddle river rd',
+  'viola road','viola rd',
+  'spook rock road','spook rock rd',
+  'dutch hill road','dutch hill rd',
+  'kearsing parkway','kearsing pkwy',
+  'grove street','grove st',
+  'warren court','warren ct',
+  'calvert drive','calvert dr',
+  'jeffrey place','jeffrey pl',
+  'prime lane','prime ln',
+  'nesher court','nesher ct',
+  'lane street','lane st',
+  'haskell avenue','haskell ave',
+  'park lane','park ln',
+  'west maple avenue','west maple ave','w maple ave',
+  'cloverdale lane','cloverdale ln',
+  'hilda lane','hilda ln',
+  'miele road','miele rd',
+  'horton drive','horton dr',
+  'memorial park drive','memorial park dr',
+  's remsen street','south remsen st','south remsen street',
+  'remsen avenue','remsen ave',
+  'maple avenue','maple ave',
+  'bakertown road','bakertown rd',
+  'church road','church rd',
+  'forest avenue','forest ave',
+  'ridge avenue','ridge ave',
+  'woodland place','woodland pl',
+  'airmont road','airmont rd',
+  // Spring Valley
+  'union road','union rd',
+  'northbrook road','northbrook rd',
+  'ellish parkway','ellish pkwy',
+  'twin avenue','twin ave',
+  'funston avenue','funston ave','e funston','w funston',
+  'yale drive','yale dr',
+  'oxford court','oxford ct',
+  'parkview drive','parkview dr',
+  'gladys drive','gladys dr',
+  'alan road','alan rd',
+  'division avenue','division ave',
+  'francis place','francis pl','francis avenue','francis ave',
+  'rigaud road','rigaud rd',
+  'sneden court','sneden ct',
+  'south cole court','south cole ct','s cole ct',
+  'merrick lane','merrick ln',
+  'buckman place','buckman pl',
+  'paikin drive','paikin dr',
+  'flint drive','flint dr',
+  'fairview avenue','fairview ave',
+  'greene road','greene rd',
+  'sharon drive','sharon dr',
+  'memory lane','memory ln',
+  'evergreen drive','evergreen dr',
+  'birchwood avenue','birchwood ave',
+  // Suffern
+  'washington avenue','washington ave',
+  'bridge street','bridge st',
+  'brook street','brook st','brook st suffern',
+  'van orden avenue','van orden ave',
+  'silverwood circle','silverwood cir',
+  'smith hill road','smith hill rd',
+  'clinton place','clinton pl',
+  'prairie avenue','prairie ave',
+  // New City / Nanuet
+  'west burda','w burda',
+  'zabella drive','zabella dr',
+  'karsten drive','karsten dr',
+  'valley drive','valley dr',
+  'tennyson drive','tennyson dr',
+  'freedman avenue','freedman ave',
+  'n pascack road','north pascack road','n pascack rd',
+  'medford place','medford pl',
+  'lilburn drive','lilburn dr',
+  // Nyack
+  'south broadway','s broadway',
+  'catherine street','catherine st',
+  'broadway nyack','broadway haverstraw',
+  'old nyack turnpike','old nyack tpke',
+  'depew avenue','depew ave',
+  'main street nyack',
+  'north broadway','n broadway',
+  'upper myrtle avenue','upper myrtle ave',
+  // Haverstraw
+  'pratt street','pratt st',
+  'church street','church st haverstraw',
+  'broadway haverstraw',
+  // Other
+  'old haverstraw road','old haverstraw rd',
+  'central avenue','central ave',
+  'saddle river','saddle river back unit',
+  'amherst road','amherst rd',
+])`
 
 // ── NAME DETECTION ────────────────────────────────────────────
 // Jewish/Hebrew/Yiddish names common in Rockland County
+// ── JEWISH / YIDDISH / HEBREW NAMES — COMPREHENSIVE ─────────────
+// Covers the full range of names used in the Rockland County
+// Orthodox / Chassidic community, including common variations
+// and how they sound when spoken aloud.
 const KNOWN_NAMES = new Set([
-  'moshe','shlomo','yosef','yaakov','menachem','avraham','yitzchak','shimon',
-  'levi','dovid','mordechai','chaim','nachman','pinchas','eliyahu','aharon',
-  'binyamin','tzvi','zev','baruch','chana','rivka','leah','rachel','miriam',
-  'sarah','devorah','esther','malka','shira','tzipora','raizel','gittel',
-  'faigy','chayele','baila','bracha','penina','naomi','yael','adina',
-  'yanky','yankel','moishe','lazer','feivel','sruli','shloime','mendel',
-  'gershon','nesanel','shmuel','refael','gavriel','uriel','yehuda','yehoshua',
-  'fishel','leibish','mottel','pinny','srulik','yossi','motti','nosson',
-  'avrumi','shloimi','moishi','benji','duvy','sruly','shimi','bentzion',
-  'tzvi','hirsh','betzalel','akiva','nochum','velvel','heshy','gilly',
-  'avigail','tzipporah','nechamie','menucha','shoshana','meirav','liora',
-  'yehudis','zahava','tzirel','chaya','sheindel','ruchel','nechama',
-  // Real estate client names common in area
-  'jose','juan','carlos','miguel','luis','pedro','maria','rosa','elena',
-  'rafael','antonio','francisco','roberto','jorge','manuel','alejandro',
-  'aisha','fatima','omar','ali','hassan','ahmed','yusuf','ibrahim',
-  'nuchem','boruch','velvel','berel','leiby','shmueli','hershy','yidel',
-  'gitty','fradel','chanie','rivky','esty','deeny','perle','blima',
-  // Common secular names
+  // ── MALE — Hebrew / Biblical ──────────────────────────────────
+  'moshe','moishe','moishi','moshiach',
+  'shlomo','shloime','shloimi','shloimy',
+  'yosef','yossi','yoss','yossie','yusuf',
+  'yaakov','yankev','yankel','yanky','yaki',
+  'menachem','mendel','mendy','mendi',
+  'avraham','avrohom','avrum','avrumi','avremele','avrahamie',
+  'yitzchak','yitzchok','itzy','itzik','itzikl',
+  'shimon','simcha','simche','simchy',
+  'levi','levie','levy','leivi',
+  'dovid','david','duvid','duvy','duvi','dave',
+  'mordechai','mottel','mottl','mordy','mordche',
+  'chaim','haim','hyim','hyme','hymy','chaim',
+  'nachman','nochum','nochumie','nachum',
+  'pinchas','pinny','pini','pinchus','pinchos',
+  'eliyahu','elya','eli','elie','eliezer','elazar','lazer','lazar',
+  'aharon','aron','aaron','ahrele','arele',
+  'binyamin','binyamin','bentzion','benzion','benzy','benjy','benji',
+  'tzvi','tsvi','hirsh','hersh','hershel','heshy','heshi',
+  'zev','zevi','volf','wolf','velvel','velvele',
+  'baruch','boruch','borchy','baruchy',
+  'gershon','gershom','gershy','gershoim',
+  'nesanel','nissan','nissim','nissonl',
+  'shmuel','shmueli','shmili','samuel',
+  'refael','raphael','rafoel','ruffy',
+  'gavriel','gavi','gavy','gabrielle',
+  'uriel','uri','urie',
+  'yehuda','yidel','yidl','yuda','yudi',
+  'yehoshua','yeshua','shaya','shayale',
+  'fishel','fishke','fishi','phishel',
+  'leibish','leiby','leibel','leibush','leib',
+  'nosson','noson','nussy','nussan','nasan',
+  'akiva','kivie','kivi','akive',
+  'betzalel','bezalel','betzalele',
+  'nuchem','nuchimie','nuchum',
+  'berel','berel','berele','ber',
+  'sruli','sruly','srulik','srul','israel','yisroel','yisrael',
+  'shimi','shimmy','shimie','shimmie','shimy',
+  'yidel','yidl','yidi',
+  'tuli','tully','tulle','tuvia','tuvie','tuvya',
+  'hershel','herchy','hersh','hirschel','hirsh',
+  'zishe','zishi','zishel','zissel',
+  'pinchus','pinchos','pinches','finchus',
+  'nuchem','nuchemia','nuchimie',
+  'gilly','gilla','gili','gilli',
+  'fishke','fischel','fische',
+  'shloimy','shloimi','shloime',
+  'tzalie','tzali','tzaliel',
+  'alter','alterke',
+  'feivel','feivish','faivel','feivel',
+  'yoeli','yoel','joel','yoely',
+  'azriel','ezriel','azriyel',
+  'cheski','chezky','chezkel','chizkiyahu','yechezkel',
+  'zelig','zeligman','zelik',
+  'pesach','pessy','passover',
+  'leibush','leibishe','leibusha',
+  'kalmen','kalman','kalmy','klonimus',
+  'ysroel','sroel','sroel',
+  'elchonan','elchonon','elchanan',
+  'yisachar','issac','yisachor','isochor',
+  'zevulun','zvulun','zevulon',
+  'dovber','dov','dov ber',
+  'shrageh','shraga','shragie',
+  'yisochor','yisochor','isocher',
+  'doniel','daniel','doni','danny',
+  'mindy','mindi','mindel','mindle',
+  'naftoli','naftaly','naftule','naftali',
+  'chananya','ananiah','chonanya',
+  'michoel','michel','michael','michy','micky',
+  'rachamim','ruchama','rachamy',
+  'shneor','shneur','schneor','zalman','zalmy','shneur zalman',
+  'yochanan','yochy','yochny','yochanan',
+  'yirmiyahu','yirmy','yirmi','yirmya',
+  'matisyahu','mattis','matys','mattisyahu',
+  'heshel','heshy','heshky',
+  'shimshon','shimson','samsons',
+  // ── FEMALE — Hebrew / Yiddish ─────────────────────────────────
+  'chana','chane','chanie','chany','hana','hannah',
+  'rivka','rivky','rivkah','rivi','rifky','rifka','riva',
+  'leah','lea','laia','laye',
+  'rachel','raizel','raizy','rochel','rochele',
+  'miriam','mirele','miri','mira','miry',
+  'sarah','sara','sary','sarie','sarele',
+  'devorah','devory','devoiry','deborah','dvorah',
+  'esther','esty','esti','estie','esthy',
+  'malka','malky','malki','malkah',
+  'shira','shiri','shiry',
+  'tzipora','tzipporah','zippy','zipora','tzipy',
+  'raizel','raizy','raize',
+  'gittel','gitty','gitti','gittie','gitte',
+  'faigy','faigie','faige','faigie',
+  'chayele','chaya','chaye','chay','haya',
+  'baila','baile','baile','baily','bayleh',
+  'bracha','brocha','bruchy','brochie',
+  'penina','penine','penny','peni',
+  'yael','yail','yaeli',
+  'adina','adine','adiny',
+  'avigail','avigayil','avigale','avigayle','avigale',
+  'tzipporah','tzippy','tzipy','zippy','zippora',
+  'nechamie','nechama','nechamy','nechamieh',
+  'menucha','menuchah','menuchie',
+  'shoshana','shoshi','shoshy','shoshane',
+  'meirav','meirave','merav',
+  'liora','liore','lior',
+  'yehudis','yehudit','yehudith','yehudy',
+  'zahava','zahave','zahavi','zahavalee',
+  'tzirel','tzirell','tzirely',
+  'sheindel','sheindi','sheindl','sheindla',
+  'ruchel','ruchele','ruchely','ruchala',
+  'nechama','nechame','nechamy',
+  'fradel','fradl','fradle','frady',
+  'deeny','dini','diny','deine','deini',
+  'perle','perl','perele','perly',
+  'blima','blime','blimie','blimele',
+  'gitty','gitti','gitta','gittie',
+  'mirel','mirele','mirelah','mirela',
+  'hindel','hinde','hindy','hindi',
+  'kreindel','kreindle','kreindi','kreindl',
+  'tzirrel','tziril','tzirle',
+  'pessel','pessy','pesse','pessele',
+  'goldie','goldy','golda','goldele',
+  'layah','laya','layie','leah',
+  'soroh','sorah','sorel','sorele',
+  'henya','henye','henye','henny',
+  'dvorah','dvoire','dvoiry','dvoire',
+  'zissel','zisi','zisel','zisele',
+  'yente','yentl','yentle',
+  'basya','basie','basi','basye','batsheva','batsheva',
+  'tziviah','tzivia','tzivy',
+  'rochel','rochele','rochely',
+  'nussy','nussie','nussi',
+  'rivky','rivkie','rivkele',
+  'malky','malkie','malkele',
+  'rivkah','rivky',
+  'chayala','chayalah','chayale',
+  // ── COMMON LAST NAMES in Rockland County ─────────────────────
+  'goldberg','greenberg','klein','weiss','schwartz','friedman','rosenberg',
+  'stein','weinstein','bernstein','rubinstein','feldman','kaplan','shapiro',
+  'hoffman','silver','cohen','levy','katz','roth','weiner','schreiber',
+  'teitelbaum','halberstam','rottenberg','spitzer','reich','blum','gross',
+  'engel','mandelbaum','morgenstern','lieberman','glick','silber','felder',
+  'twersky','horowitz','kohn','mandel','stern','waxman','markowitz',
+  'steinberg','margolis','nadler','schonfeld','herskowitz','baumgarten',
+  'goldstein','lefkowitz','perlmutter','adler','berkowitz','lichtenstein',
+  'finkelstein','glasser','wiesel','rosenfeld','tannenbaum','fischman',
+  'katzman','bloch','deutsch','ehrlich','fein','gottesman','kagan',
+  'pollak','rabinowitz','silberstein','tepper','zimmer','zucker','frankel',
+  'greenberg','hamburger','hertz','isaacs','jacobson','kessler','kramer',
+  'landau','levine','loewenthal','marcus','miller','moskowitz','newman',
+  'ostreicher','perlstein','pincus','reiss','richman','rothenberg','salomon',
+  'sandler','schiff','schlossberg','seidman','shafran','shapiro','sheinfeld',
+  'shulman','solomon','sonnenschein','spiegel','spira','strauss','treitel',
+  'unger','wachtfogel','waldman','weissberg','weisz','willner','winkler',
+  'wolf','wolfson','wortman','yoffe','zwiebel','farkas','jankovits',
+  'lichtenstein','leibowitz','rottenstein','weinberger',
+  // ── COMMON SECULAR NAMES ─────────────────────────────────────
   'john','james','michael','david','daniel','robert','william','richard',
   'charles','joseph','thomas','christopher','matthew','anthony','mark',
   'donald','steven','paul','andrew','kenneth','joshua','kevin','brian',
@@ -59,8 +308,55 @@ const KNOWN_NAMES = new Set([
   'jessica','sarah','karen','lisa','nancy','betty','margaret','sandra',
   'ashley','dorothy','kimberly','emily','donna','michelle','carol','amanda',
   'melissa','deborah','stephanie','rebecca','sharon','laura','cynthia',
-  'navasir','vassar','colma', // ones that came up in testing
+  // ── PHONETIC CORRECTIONS ─────────────────────────────────────
+  // How Google Speech API often mishears Jewish names
+  'navasir','vassar','colma','shama','yama','mochie','moshie',
+  'lazar','lezar','yozy','yozi',
 ])
+
+// ── PHONETIC NAME CORRECTIONS ────────────────────────────────────
+// Maps what Google Speech hears → the actual name
+const PHONETIC_CORRECTIONS = {
+  // Male names
+  'yenky':'yanky','yanki':'yanky','yankee':'yanky',
+  'moshe':'moshe','moshey':'moshe','moshi':'moshe','mosha':'moshe',
+  'mendel':'mendel','mendle':'mendel','mendl':'mendel',
+  'shmueli':'shmuel','shmooly':'shmuel','shmuly':'shmuel',
+  'lazer':'lazer','laser':'lazer','lazar':'lazer','lezar':'lazer',
+  'motty':'motti','moti':'motti','mottie':'motti',
+  'leiby':'leiby','laibee':'leiby','laybee':'leiby',
+  'yiddle':'yidel','yiddel':'yidel','yidl':'yidel',
+  'hershie':'hershy','hirshie':'hershy','hershey':'hershy',
+  'pini':'pinny','pennie':'pinny','penny':'pinny',
+  'cheski':'cheski','chesky':'cheski','cheskie':'cheski',
+  'borchy':'boruch','borchie':'boruch','borichi':'boruch',
+  'gilly':'gilly','gili':'gilly','gillie':'gilly',
+  'nussy':'nosson','nussie':'nosson','nussi':'nosson',
+  'shaya':'shaya','shia':'shaya','shya':'shaya',
+  'tully':'tuli','tullie':'tuli','toolie':'tuli',
+  'duvy':'duvy','duvie':'duvy','doovy':'duvy','dovie':'duvy',
+  'avrumi':'avrum','avroomy':'avrum','abrumie':'avrum',
+  'fishy':'fishel','fishie':'fishel','feishy':'fishel',
+  'zlaty':'zlata','zlatty':'zlata',
+  // Female names
+  'gitty':'gitty','gitti':'gitty','gittie':'gitty',
+  'faigy':'faigy','faigee':'faigy','faigi':'faigy',
+  'chani':'chanie','chaney':'chanie','chany':'chanie',
+  'rivky':'rivky','rivkie':'rivky','rivkee':'rivky',
+  'esty':'esty','estie':'esty','esti':'esty',
+  'deeny':'deeny','deenie':'deeny','dini':'deeny',
+  'perle':'perle','perlie':'perle','perel':'perle',
+  'blimie':'blima','blimmy':'blima','blimy':'blima',
+  'miri':'miriam','meery':'miriam','miry':'miriam',
+  'nechamie':'nechama','nechamy':'nechama',
+  'sheindi':'sheindel','sheindy':'sheindel',
+  'yehudis':'yehudis','yehudy':'yehudis','yehudees':'yehudis',
+  'tzippy':'tzipora','zippy':'tzipora','tzipy':'tzipora',
+  'malky':'malka','malkie':'malka','malkee':'malka',
+  'ruchi':'ruchel','ruchy':'ruchel','ruchie':'ruchel',
+  'fraidy':'fradel','fridy':'fradel','freidy':'fradel',
+  'goldie':'golda','goldy':'golda','goldee':'golda',
+}
 
 // Filler words to strip before name extraction
 const FILLER_WORDS = new Set([
@@ -198,7 +494,30 @@ function extractAddresses(text) {
 }
 
 // ── MAIN PARSE FUNCTION ───────────────────────────────────────
+// Apply phonetic corrections to a word
+function correctPhonetic(word) {
+  const lower = word.toLowerCase()
+  return PHONETIC_CORRECTIONS[lower] ? PHONETIC_CORRECTIONS[lower] : word
+}
+
+// Check if a word looks like a known name (handles phonetic variants)
+function isKnownName(word) {
+  const lower = word.toLowerCase()
+  return KNOWN_NAMES.has(lower) || KNOWN_NAMES.has(PHONETIC_CORRECTIONS[lower] || lower)
+}
+
+// Check if a word is a known Rockland street
+function isRocklandStreet(word) {
+  return ROCKLAND_STREETS.has(word.toLowerCase())
+}
+
 export function parseVoice(rawText) {
+  // Apply phonetic corrections to entire transcript before parsing
+  const corrected = rawText.split(' ').map(w => {
+    const fix = PHONETIC_CORRECTIONS[w.toLowerCase()]
+    return fix ? fix.charAt(0).toUpperCase() + fix.slice(1) : w
+  }).join(' ')
+  rawText = corrected
   const text = rawText.trim()
   const tl = text.toLowerCase()
 
