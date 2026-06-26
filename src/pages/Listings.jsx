@@ -646,7 +646,7 @@ export function Listings() {
       {/* Filters */}
       <FilterBar
         search={search} onSearch={setSearch} searchPlaceholder="🔍 Address, city, notes..."
-        values={{ statusF, agentF, typeF, bedsF, bathsF:'', dealTypeF, ivrF }}
+        values={{ statusF, agentF, typeF, bedsF, minPrice, maxPrice }}
         onChange={(k,v) => {
           if (k==='statusF')   setStatusF(v)
           if (k==='agentF')    setAgentF(v)

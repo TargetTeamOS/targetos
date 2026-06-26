@@ -358,7 +358,7 @@ export function Contacts() {
           if (k==='sourceF') setSourceF(v)
           if (k==='typeF')   setTypeF(v)
         }}
-        total={contacts?.length} filtered={filtered.length}
+        total={contacts.length} filtered={filtered.length}
         filters={[
           { key:'statusF', label:'Status', type:'select', options:(CONTACT_STATUSES||[]).map(s=>({value:s.value||s,label:s.label||s})), placeholder:'Status' },
           ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', type:'select', options:agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent' }]:[]),
