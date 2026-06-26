@@ -630,18 +630,26 @@ export function CallFlow() {
   }
 
   function handlePortClick(fromId, port) {
-    setPending({fromId,port})
+    setPending({fromId, port})
+  }
+
+  // SVG elements don't support .closest('[data-nid]') reliably
+  // Walk up the DOM tree manually to find the parent <g data-nid>
+  function findNodeId(el) {
+    let cur = el
+    while (cur && cur !== document.body) {
+      if (cur.dataset && cur.dataset.nid) return cur.dataset.nid
+      cur = cur.parentElement || cur.parentNode
+    }
+    return null
   }
 
   function handleCanvasClick(e) {
     if (!pendingConnect) { setSelected(null); return }
-    const g = e.target.closest('[data-nid]')
-    if (g) {
-      const toId = g.dataset.nid
-      if (toId !== pendingConnect.fromId) {
-        const eid = `e_${pendingConnect.fromId}_${pendingConnect.port}_${toId}_${Date.now()}`
-        setEdges(p=>[...p,{id:eid,from:pendingConnect.fromId,port:pendingConnect.port,to:toId}])
-      }
+    const toId = findNodeId(e.target)
+    if (toId && toId !== pendingConnect.fromId) {
+      const eid = `e_${pendingConnect.fromId}_${pendingConnect.port}_${toId}_${Date.now()}`
+      setEdges(p => [...p, { id:eid, from:pendingConnect.fromId, port:pendingConnect.port, to:toId }])
     }
     setPending(null)
   }

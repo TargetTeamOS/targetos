@@ -27,6 +27,7 @@ import { FileAttachments } from '../components/FileAttachments'
 import { RecordActivity } from '../pages/ActivityLog'
 import { ClickToCall } from '../components/ClickToCall'
 import { ImportExport } from '../components/ImportExport'
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { useAgents } from '../lib/hooks'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'

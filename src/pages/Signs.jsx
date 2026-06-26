@@ -8,6 +8,7 @@
 // • Synced from Sign Inventory board (211 signs)
 // ═══════════════════════════════════════════════════════════════
 
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'

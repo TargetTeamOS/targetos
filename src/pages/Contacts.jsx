@@ -12,6 +12,7 @@ import { useContacts, useAgents } from '../lib/hooks'
 import { db } from '../lib/db'
 import { ImportExport } from '../components/ImportExport'
 import { ClickToCall } from '../components/ClickToCall'
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { fmt$, fmtDate, fmtPhone, initials, matchSearch } from '../lib/utils'
 import { CONTACT_STATUSES, CONTACT_SOURCES } from '../lib/constants'
 import {
