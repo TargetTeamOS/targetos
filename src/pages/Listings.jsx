@@ -123,8 +123,10 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
 
   async function loadShowings() {
     if (!listing?.id) return
-    const { data } = await supabase.from('showings').select('*, agents(name,color)').eq('listing_id', listing.id).order('showing_date', { ascending: true })
-    setShowings(data || [])
+    try {
+      const { data } = await supabase.from('showings').select('*, agents(name,color)').eq('listing_id', listing.id).order('showing_date', { ascending: true })
+      setShowings(data || [])
+    } catch(e) { setShowings([]) }
   }
 
   const Lbl = ({c}) => <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:3 }}>{c}</div>
@@ -306,7 +308,8 @@ function ShowingsTab({ listing, showings, agents, onAdd, onRefresh }) {
 
   async function saveShowing() {
     if (!form.showing_date) { toast('Date required', '#DC2626'); return }
-    await supabase.from('showings').insert({ ...form, listing_id: listing.id, created_at: new Date().toISOString() })
+    try { await supabase.from('showings').insert({ ...form, listing_id: listing.id, created_at: new Date().toISOString() }) }
+    catch(e) { toast('Could not save showing: ' + e.message, '#DC2626'); return }
     setAdding(false)
     setForm({ showing_date:'', showing_time:'', agent_id:'', contact_name:'', contact_phone:'', notes:'' })
     onRefresh()
@@ -314,7 +317,7 @@ function ShowingsTab({ listing, showings, agents, onAdd, onRefresh }) {
   }
 
   async function deleteShowing(id) {
-    await supabase.from('showings').delete().eq('id', id)
+    try { await supabase.from('showings').delete().eq('id', id) } catch(e) {}
     onRefresh()
     toast('Showing deleted')
   }
@@ -493,19 +496,30 @@ export function Listings() {
 
   async function load() {
     setLoading(true)
-    let q = supabase.from('listings').select('*').order('list_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
-    if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
-    const { data } = await q
+    try {
+      let q = supabase.from('listings').select('*').order('list_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+      if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
+      const { data } = await q
+      const rows = data || []
 
-    // Count showings per listing
-    if (data?.length) {
-      const { data: sc } = await supabase.from('showings').select('listing_id')
-      const counts = {}
-      ;(sc||[]).forEach(s => { counts[s.listing_id] = (counts[s.listing_id]||0)+1 })
-      data.forEach(l => { l.showings_count = counts[l.id] || 0 })
+      // Count showings per listing (safe - table may not exist yet)
+      if (rows.length) {
+        try {
+          const { data: sc } = await supabase.from('showings').select('listing_id')
+          const counts = {}
+          ;(sc||[]).forEach(s => { counts[s.listing_id] = (counts[s.listing_id]||0)+1 })
+          rows.forEach(l => { l.showings_count = counts[l.id] || 0 })
+        } catch(e) {
+          rows.forEach(l => { l.showings_count = 0 })
+        }
+      }
+      setListings(rows)
+    } catch(e) {
+      console.error('Listings load error:', e.message)
+      setListings([])
+    } finally {
+      setLoading(false)
     }
-    setListings(data || [])
-    setLoading(false)
   }
 
   // Sync from Monday.com via API
@@ -572,7 +586,8 @@ export function Listings() {
   }
 
   async function deleteListing() {
-    await supabase.from('listings').delete().eq('id', selected.id)
+    try { await supabase.from('listings').delete().eq('id', selected.id) }
+    catch(e) { toast('Delete failed: ' + e.message, '#DC2626'); setConfirmDel(false); return }
     setSelected(null)
     setConfirmDel(false)
     load()
@@ -581,7 +596,8 @@ export function Listings() {
 
   async function toggleIvr(id) {
     const l = listings.find(x => x.id === id)
-    await supabase.from('listings').update({ ivr_enabled: !l.ivr_enabled }).eq('id', id)
+    try { await supabase.from('listings').update({ ivr_enabled: !l.ivr_enabled }).eq('id', id) }
+    catch(e) { toast('Update failed: ' + e.message, '#DC2626'); return }
     setListings(p => p.map(x => x.id === id ? { ...x, ivr_enabled: !x.ivr_enabled } : x))
     toast(l.ivr_enabled ? 'Removed from phone listing' : '✅ Added to phone listing — callers press 3')
   }

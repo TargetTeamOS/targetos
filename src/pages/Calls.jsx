@@ -204,9 +204,11 @@ function ExtensionManager({ agents }) {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('phone_extensions').select('*, agents(id,name,color)').order('order_index')
-    setExtensions(data || [])
-    setLoading(false)
+    try {
+      const { data } = await supabase.from('phone_extensions').select('*, agents(id,name,color)').order('order_index')
+      setExtensions(data || [])
+    } catch(e) { console.warn('phone_extensions table not ready:', e.message) }
+    finally { setLoading(false) }
   }
 
   async function save(form) {
@@ -225,12 +227,12 @@ function ExtensionManager({ agents }) {
   }
 
   async function toggleActive(ext) {
-    await supabase.from('phone_extensions').update({ active: !ext.active }).eq('id', ext.id)
+    try { await supabase.from('phone_extensions').update({ active: !ext.active }).eq('id', ext.id) } catch(e) {}
     setExtensions(prev => prev.map(e => e.id === ext.id ? { ...e, active: !e.active } : e))
   }
 
   async function remove(id) {
-    await supabase.from('phone_extensions').delete().eq('id', id)
+    try { await supabase.from('phone_extensions').delete().eq('id', id) } catch(e) {}
     setExtensions(prev => prev.filter(e => e.id !== id))
     toast('Extension deleted')
   }
@@ -364,6 +366,10 @@ function IVRBuilder({ agents }) {
     ]).then(([ivrRes, extRes]) => {
       setIvr(ivrRes.data || { name:'Main Menu', is_active:true, greeting_text:'', menu_options:[], voicemail_extension:'9', after_hours_text:'' })
       setExts(extRes.data || [])
+      setLoad(false)
+    }).catch(() => {
+      setIvr({ name:'Main Menu', is_active:false, greeting_text:'', menu_options:[], voicemail_extension:'9', after_hours_text:'' })
+      setExts([])
       setLoad(false)
     })
   }, [])
@@ -534,7 +540,7 @@ function RoutingRules({ agents }) {
       setRules(rr.data || [])
       setExts(er.data || [])
       setLoad(false)
-    })
+    }).catch(() => { setRules([]); setExts([]); setLoad(false) })
   }, [])
 
   async function save(form) {
@@ -554,12 +560,12 @@ function RoutingRules({ agents }) {
   }
 
   async function toggle(rule) {
-    await supabase.from('phone_routing').update({ is_active: !rule.is_active }).eq('id', rule.id)
+    try { await supabase.from('phone_routing').update({ is_active: !rule.is_active }).eq('id', rule.id) } catch(e) {}
     setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r))
   }
 
   async function remove(id) {
-    await supabase.from('phone_routing').delete().eq('id', id)
+    try { await supabase.from('phone_routing').delete().eq('id', id) } catch(e) {}
     setRules(prev => prev.filter(r => r.id !== id))
     toast('Rule deleted')
   }
@@ -692,15 +698,16 @@ function VoicemailInbox({ agents }) {
   useEffect(() => {
     supabase.from('voicemails').select('*, agents(id,name,color)').order('created_at', { ascending: false })
       .then(({ data }) => { setVms(data || []); setLoad(false) })
+      .catch(() => { setVms([]); setLoad(false) })
   }, [])
 
   async function markRead(id) {
-    await supabase.from('voicemails').update({ is_read: true }).eq('id', id)
+    try { await supabase.from('voicemails').update({ is_read: true }).eq('id', id) } catch(e) {}
     setVms(prev => prev.map(v => v.id === id ? { ...v, is_read: true } : v))
   }
 
   async function deleteVM(id) {
-    await supabase.from('voicemails').delete().eq('id', id)
+    try { await supabase.from('voicemails').delete().eq('id', id) } catch(e) {}
     setVms(prev => prev.filter(v => v.id !== id))
     toast('Voicemail deleted')
   }
@@ -785,10 +792,12 @@ function CallFlowEmbed({ agents }) {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('phone_ivr').select('*').order('created_at', { ascending: false })
-    setFlows(data || [])
-    setActive(data?.find(f => f.is_active)?.id || null)
-    setLoading(false)
+    try {
+      const { data } = await supabase.from('phone_ivr').select('*').order('created_at', { ascending: false })
+      setFlows(data || [])
+      setActive(data?.find(f => f.is_active)?.id || null)
+    } catch(e) { setFlows([]) }
+    finally { setLoading(false) }
   }
 
   async function toggleActive(flow) {
@@ -1018,11 +1027,13 @@ export function Calls() {
 
   async function loadCalls() {
     setLoading(true)
-    let q = supabase.from('calls').select('*, agents(id,name,color)').order('called_at', { ascending: false }).limit(200)
-    if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
-    const { data } = await q
-    setCalls(data || [])
-    setLoading(false)
+    try {
+      let q = supabase.from('calls').select('*, agents(id,name,color)').order('called_at', { ascending: false }).limit(200)
+      if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
+      const { data } = await q
+      setCalls(data || [])
+    } catch(e) { console.warn('calls load error:', e.message); setCalls([]) }
+    finally { setLoading(false) }
   }
 
   async function saveCall(form) {
@@ -1045,7 +1056,7 @@ export function Calls() {
 
   async function deleteCall() {
     if (!selected) return
-    await supabase.from('calls').delete().eq('id', selected.id)
+    try { await supabase.from('calls').delete().eq('id', selected.id) } catch(e) {}
     setCalls(prev => prev.filter(c => c.id !== selected.id))
     setSelected(null)
     setConfirmDel(false)

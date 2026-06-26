@@ -46,29 +46,38 @@ class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null } }
   static getDerivedStateFromError(e) { return { error: e } }
   componentDidCatch(error, info) {
-    console.error('=== ERROR BOUNDARY CAUGHT ===')
-    console.error('Error:', error.message)
-    console.error('Stack:', error.stack)
-    console.error('Component Stack:', info.componentStack)
+    console.error('ErrorBoundary:', error.message, info.componentStack)
   }
   render() {
     if (this.state.error) return (
-      <div style={{ padding: '40px', maxWidth: '500px', margin: '60px auto', fontFamily: 'Inter,system-ui,sans-serif' }}>
-        <div style={{ background: '#1B2B4B', borderRadius: '16px', padding: '28px', textAlign: 'center', marginBottom: '16px' }}>
-          <div style={{ color: '#fff', fontSize: '20px', fontWeight: 800, marginBottom: '6px' }}>TargetOS</div>
-          <div style={{ color: 'rgba(255,255,255,.5)', fontSize: '13px' }}>Something went wrong</div>
+      <div style={{ padding: '32px', maxWidth: '480px', margin: '48px auto', fontFamily: 'Inter,system-ui,sans-serif' }}>
+        <div style={{ background: '#1B2B4B', borderRadius: '14px', padding: '24px', textAlign: 'center', marginBottom: '14px' }}>
+          <div style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginBottom: '4px' }}>TargetOS</div>
+          <div style={{ color: 'rgba(255,255,255,.5)', fontSize: '12px' }}>Something went wrong</div>
         </div>
-        <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px', padding: '14px', marginBottom: '14px' }}>
-          <div style={{ fontSize: '12px', color: '#DC2626', fontFamily: 'monospace', wordBreak: 'break-all' }}>{this.state.error?.message}</div>
+        <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '9px', padding: '12px', marginBottom: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#DC2626', fontFamily: 'monospace', wordBreak: 'break-all' }}>{this.state.error?.message}</div>
         </div>
-        <button onClick={() => window.location.href = '/'}
-          style={{ width: '100%', background: '#CC2200', border: 'none', borderRadius: '10px', color: '#fff', fontSize: '14px', fontWeight: 700, padding: '14px', cursor: 'pointer', fontFamily: 'Inter,system-ui,sans-serif' }}>
-          Reload App
-        </button>
+        <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={() => this.setState({ error: null })}
+            style={{ flex:1, background: 'white', border: '1px solid #E2E8F0', borderRadius: '9px', color: '#1E293B', fontSize: '13px', fontWeight: 700, padding: '12px', cursor: 'pointer', fontFamily: 'Inter,system-ui,sans-serif' }}>
+            ↩ Try Again
+          </button>
+          <button onClick={() => window.location.href = '/'}
+            style={{ flex:1, background: '#CC2200', border: 'none', borderRadius: '9px', color: '#fff', fontSize: '13px', fontWeight: 700, padding: '12px', cursor: 'pointer', fontFamily: 'Inter,system-ui,sans-serif' }}>
+            Reload App
+          </button>
+        </div>
       </div>
     )
     return this.props.children
   }
+}
+
+// ── PER-PAGE ERROR BOUNDARY ──────────────────────────────────────
+// Wraps each route so a single page crash doesn't break navigation
+function SafePage({ children }) {
+  return <ErrorBoundary key={window.location.pathname}>{children}</ErrorBoundary>
 }
 
 // ── LOADING SCREEN ───────────────────────────────────────────────
