@@ -216,6 +216,11 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
           if (status !== 'OK' || !results?.[0]) return
           const pos = results[0].geometry.location
           placePin(sign, pos)
+          // Save lat/lng back to DB so future page loads show pins instantly
+          supabase.from('signs').update({
+            lat: pos.lat(),
+            lng: pos.lng(),
+          }).eq('id', sign.id).then(() => {})
           if (done === signsWithAddr.length && markers.current.length > 0) {
             mapObj.current.fitBounds(bounds)
             if (markers.current.length === 1) mapObj.current.setZoom(14)
@@ -223,7 +228,7 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
         })
       }, i * 220) // 220ms between calls stays under 5/sec limit
     })
-  }, [signs, selectedIds])
+  }, [signs, selectedIds, mapReady])
 
   // Expose click handler globally for InfoWindow button
   useEffect(() => {

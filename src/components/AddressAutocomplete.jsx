@@ -87,8 +87,8 @@ export function AddressAutocomplete({
         componentRestrictions: { country: 'us' },
         // Bias toward Rockland County NY area
         location: new window.google.maps.LatLng(41.1100, -74.0478),
-        radius:   40000,
-        types:    ['address'],
+        radius:   50000,
+        // No types filter — allows partial street numbers like "16 Lawrence" to resolve
       },
       (predictions, status) => {
         if (status === 'OK' && predictions) {
