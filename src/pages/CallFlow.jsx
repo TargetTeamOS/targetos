@@ -560,7 +560,8 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
 // ══════════════════════════════════════════════════════════════
 export function CallFlow() {
   const { toast }  = useApp()
-  const { agents } = useAgents()
+  const { agents: rawAgents } = useAgents()
+  const agents = rawAgents || []
   const navigate   = useNavigate()
 
   const [nodes,     setNodes]     = useState([{id:'start',type:'incoming',x:60,y:220,config:{}}])
@@ -576,12 +577,16 @@ export function CallFlow() {
   useEffect(()=>{ loadFlow() },[])
 
   async function loadFlow() {
-    const {data} = await supabase.from('phone_ivr').select('*').order('updated_at',{ascending:false}).limit(1).maybeSingle()
-    if (data?.flow_nodes?.length) {
-      setNodes(data.flow_nodes)
-      setEdges(data.flow_edges||[])
-      setFlowName(data.name||'Main Call Flow')
-      setSavedId(data.id)
+    try {
+      const {data} = await supabase.from('phone_ivr').select('*').order('updated_at',{ascending:false}).limit(1).maybeSingle()
+      if (data?.flow_nodes?.length) {
+        setNodes(data.flow_nodes)
+        setEdges(data.flow_edges||[])
+        setFlowName(data.name||'Main Call Flow')
+        setSavedId(data.id)
+      }
+    } catch(e) {
+      console.warn('CallFlow: phone_ivr table not ready yet:', e.message)
     }
   }
 
