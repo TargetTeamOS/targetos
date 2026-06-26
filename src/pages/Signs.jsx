@@ -159,20 +159,8 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
     signsWithAddr.forEach((sign, i) => {
       // Throttle geocode calls (5/sec limit on free tier)
       setTimeout(() => {
-        // Use stored lat/lng if available, otherwise geocode the address
-        if (sign.lat && sign.lng) {
-          const pos = { lat: sign.lat, lng: sign.lng }
-          done++
-          setGeocoded(done)
-          if (done === signsWithAddr.length) setGeocoding(false)
-          placeMarker(sign, pos)
-          if (done === signsWithAddr.length && markers.current.length > 0) {
-            const bounds = new window.google.maps.LatLngBounds()
-            markers.current.forEach(m => bounds.extend(m.getPosition()))
-            mapObj.current.fitBounds(bounds)
-            if (markers.current.length === 1) mapObj.current.setZoom(15)
-          }
-        } else if (geocoder) {
+        // Geocode the address (lat/lng will be stored on future saves)
+        if (geocoder) {
           geocoder.geocode({ address: sign.addr }, (results, status) => {
           done++
           setGeocoded(done)
@@ -228,6 +216,7 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
             if (signsWithAddr.length === 1) mapObj.current.setZoom(14)
           }
         })
+        } // end if (geocoder)
       }, i * 200) // 200ms between calls = 5/sec
     })
   }, [signs, selectedIds])
