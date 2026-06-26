@@ -164,8 +164,19 @@ function AppShell() {
         </Routes>
       </Layout>
       <Toast />
-      <VoiceCapture />
-      <AIAssistant />
+      <LocationAwareTools />
+    </>
+  )
+}
+
+// Mic only on Dashboard, AI assistant on all other pages
+function LocationAwareTools() {
+  const loc = useLocation()
+  const isDashboard = loc.pathname === '/' || loc.pathname === '/dashboard'
+  return (
+    <>
+      {isDashboard && <VoiceCapture />}
+      {!isDashboard && <AIAssistant />}
     </>
   )
 }
