@@ -200,6 +200,8 @@ export function Contacts() {
   const [search,      setSearch]      = useState('')
   const [statusF,     setStatusF]     = useState('')
   const [agentF,      setAgentF]      = useState('')
+  const [sourceF,     setSourceF]     = useState('')
+  const [typeF,       setTypeF]       = useState('')
   const [selected,    setSelected]    = useState(null)
   const [showAdd,     setShowAdd]     = useState(false)
   const [form,        setForm]        = useState(BLANK)
@@ -318,8 +320,10 @@ export function Contacts() {
 
   // ── FILTER ────────────────────────────────────────────────────
   const filtered = contacts.filter(c => {
-    if (statusF && c.status !== statusF) return false
-    if (agentF  && c.agent_id !== agentF) return false
+    if (statusF && c.status    !== statusF) return false
+    if (agentF  && c.agent_id  !== agentF)  return false
+    if (sourceF && c.source    !== sourceF) return false
+    if (typeF   && c.type      !== typeF)   return false
     if (search  && !matchSearch(c, search, ['first_name','last_name','phone','email','address','notes'])) return false
     return true
   })
