@@ -62,7 +62,12 @@ function FlowNode({ node, selected, agents, onSelect, onMove, onDelete, onPort }
   const safeAgents = agents || []
 
   function onMouseDown(e) {
-    if (e.target.closest('.port') || e.target.closest('.del')) return
+    // Check data attribute instead of className (SVG closest() is unreliable)
+    var cur = e.target
+    while (cur && cur.tagName !== 'svg') {
+      if (cur.dataset && (cur.dataset.port || cur.dataset.del)) return
+      cur = cur.parentNode
+    }
     e.preventDefault()
     e.stopPropagation()
     const ox = e.clientX - node.x
@@ -120,7 +125,7 @@ function FlowNode({ node, selected, agents, onSelect, onMove, onDelete, onPort }
         <circle cx={0} cy={NH / 2} r={6} fill="#fff" stroke={d.color} strokeWidth={2} />
       )}
       {selected && node.type !== 'incoming' && (
-        <g className="del" onClick={function(e) { e.stopPropagation(); onDelete(node.id) }} style={{cursor:'pointer'}}>
+        <g data-del="1" onClick={function(e) { e.stopPropagation(); onDelete(node.id) }} style={{cursor:'pointer'}}>
           <circle cx={NW - 10} cy={10} r={8} fill="#DC2626" />
           <line x1={NW-14} y1={6} x2={NW-6} y2={14} stroke="#fff" strokeWidth={2} />
           <line x1={NW-6} y1={6} x2={NW-14} y2={14} stroke="#fff" strokeWidth={2} />
@@ -128,9 +133,10 @@ function FlowNode({ node, selected, agents, onSelect, onMove, onDelete, onPort }
       )}
       {ports.map(function(p) {
         return (
-          <g key={p.id} className="port"
-            onClick={function(e) { e.stopPropagation(); onPort(node.id, p.id) }}
+          <g key={p.id} data-port="1"
+            onMouseDown={function(e) { e.stopPropagation(); e.preventDefault(); onPort(node.id, p.id) }}
             style={{cursor:'crosshair'}}>
+            <circle cx={NW} cy={p.y} r={14} fill="transparent" />
             <circle cx={NW} cy={p.y} r={7} fill={p.color} stroke="#fff" strokeWidth={2} />
             {p.label ? <text x={NW-11} y={p.y+4} fontSize={8} textAnchor="end" fill={p.color} fontFamily={ff} fontWeight={700}>{p.label}</text> : null}
           </g>
@@ -442,9 +448,13 @@ export function CallFlow() {
     var toId = findNodeId(e.target)
     if (toId && toId !== pending.fromId) {
       var eid = 'e_' + pending.fromId + '_' + pending.port + '_' + toId + '_' + Date.now()
-      setEdges(function(p) { return p.concat([{ id:eid, from:pending.fromId, port:pending.port, to:toId }]) })
+      setEdges(function(prev) { return prev.concat([{ id:eid, from:pending.fromId, port:pending.port, to:toId }]) })
+      setPending(null)
+    } else if (!toId) {
+      // Clicked empty canvas - cancel pending
+      setPending(null)
     }
-    setPending(null)
+    // If toId === fromId, keep pending so user can try again
   }
 
   function delEdge(id) { setEdges(function(p) { return p.filter(function(e) { return e.id !== id }) }) }
@@ -571,7 +581,7 @@ export function CallFlow() {
             <rect width="100%" height="100%" fill="url(#cfgrid)" />
           </svg>
 
-          <svg style={{position:'absolute', inset:0, width:'100%', height:'100%', overflow:'visible', zIndex:1}} onClick={handleCanvas}>
+          <svg style={{position:'absolute', inset:0, width:'100%', height:'100%', overflow:'visible', zIndex:1}} onMouseUp={handleCanvas}>
             <defs>
               <marker id="mG" markerWidth={7} markerHeight={7} refX={5} refY={3} orient="auto"><path d="M 0 0 L 5 3 L 0 6 z" fill="#10B981" /></marker>
               <marker id="mR" markerWidth={7} markerHeight={7} refX={5} refY={3} orient="auto"><path d="M 0 0 L 5 3 L 0 6 z" fill="#DC2626" /></marker>
@@ -609,7 +619,7 @@ export function CallFlow() {
                     node={node}
                     selected={selected === node.id}
                     agents={agents}
-                    onSelect={function(id) { setSelected(id); setPending(null) }}
+                    onSelect={function(id) { setSelected(id) }}
                     onMove={moveNode}
                     onDelete={deleteNode}
                     onPort={handlePort}
