@@ -29,11 +29,16 @@ const CONTACT_EXPORT_COLS = [
   { key:'last_name',  label:'Last Name',  example:'Smith' },
   { key:'phone',      label:'Phone',      example:'8455551234' },
   { key:'email',      label:'Email',      example:'john@email.com' },
+  { key:'address',    label:'Address',    example:'123 Main St' },
+  { key:'city',       label:'City',       example:'Spring Valley' },
+  { key:'state',      label:'State',      example:'NY' },
+  { key:'zip',        label:'Zip',        example:'10977' },
   { key:'status',     label:'Status',     example:'Hot' },
   { key:'source',     label:'Source',     example:'SOI' },
   { key:'type',       label:'Type',       example:'Buyer' },
   { key:'budget_max', label:'Budget Max', example:'500000', type:'number' },
   { key:'notes',      label:'Notes',      example:'' },
+  { key:'_agent_name',label:'Agent Name', example:'Lazer Farkas', virtual:true },
 ]
 
 const BLANK = {
@@ -348,7 +353,16 @@ export function Contacts() {
         title="Contacts"
         sub={`${filtered.length} contacts`}
         actions={
-          <Btn onClick={openAdd}>+ Add Contact</Btn>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <ImportExport
+              table="contacts"
+              data={filtered}
+              columns={CONTACT_EXPORT_COLS}
+              label="Contacts"
+              onImport={refetch}
+            />
+            <Btn onClick={openAdd}>+ Add Contact</Btn>
+          </div>
         }
       />
 

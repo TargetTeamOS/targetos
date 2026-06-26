@@ -17,6 +17,7 @@ import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { useAgents } from '../lib/hooks'
 import { FilterBar } from '../components/FilterBar'
+import { ImportExport } from '../components/ImportExport'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
@@ -30,6 +31,23 @@ const STATUSES = [
   { id:'Expired',          label:'Expired',              color:'#df2f4a' },
   { id:'Temp Off Market',  label:'Temp Off Market',      color:'#579bfc' },
   { id:'Seller not selling',label:'Seller Not Selling',  color:'#333333' },
+]
+
+const LISTINGS_EXPORT_COLS = [
+  { key:'addr',          label:'Address',       example:'123 Main St, Monsey NY 10952' },
+  { key:'city',          label:'City',          example:'Spring Valley' },
+  { key:'status',        label:'Status',        example:'Active' },
+  { key:'list_price',    label:'List Price',    example:'750000', type:'number' },
+  { key:'property_type', label:'Property Type', example:'Single Family' },
+  { key:'deal_type',     label:'Deal Type',     example:'MLS' },
+  { key:'beds',          label:'Beds',          example:'4' },
+  { key:'baths',         label:'Baths',         example:'2' },
+  { key:'sqft',          label:'Sqft',          example:'2000' },
+  { key:'list_date',     label:'List Date',     example:'2026-01-15', type:'date' },
+  { key:'mls_link',      label:'MLS Link',      example:'https://...' },
+  { key:'door_lock',     label:'Door Lock Code',example:'1234' },
+  { key:'notes',         label:'Notes',         example:'' },
+  { key:'_agent_name',   label:'Agent Name',    example:'Mendy Jankovits', virtual:true },
 ]
 
 const PROPERTY_TYPES = ['Single Family','Condo','New Construction','Multi Family','2 Family','3 Family','4 Family','Duplex','High Ranch','Ranch','Land','Commercial']
@@ -647,6 +665,13 @@ export function Listings() {
             style={{ padding:'7px 14px', borderRadius:8, border:'1px solid #10B98144', background:'#10B98111', color:'#10B981', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
             {syncing ? '⏳ Syncing...' : '↓ Sync from Monday.com'}
           </button>
+          <ImportExport
+            table="listings"
+            data={filtered}
+            columns={LISTINGS_EXPORT_COLS}
+            label="Listings"
+            onImport={load}
+          />
           <Btn onClick={() => { setSelected(null); setShowAdd(true) }}>+ Add Listing</Btn>
         </div>
       </div>

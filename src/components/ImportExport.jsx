@@ -234,9 +234,9 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         if (found) record.agent_id = found.id
       }
 
-      // Find identifier field (addr for deals, name for contacts, title for tasks)
+      // Find identifier field - try all possible primary key fields
       let idField = null
-      const idCandidates = ['addr', 'name', 'title']
+      const idCandidates = ['addr', 'first_name', 'name', 'title', 'phone', 'email', 'label']
       for (let ic = 0; ic < idCandidates.length; ic++) {
         const cand = idCandidates[ic]
         if (record[cand] && String(record[cand]).trim().length > 0) {
@@ -248,7 +248,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       if (!idField) {
         const nonEmpty = Object.keys(record).filter(function(k) { return record[k] && String(record[k]).trim() })
         const firstRaw = String(Object.values(row)[0] || '').slice(0, 60)
-        errors.push('Row ' + (ri+1) + ' skipped — address empty after mapping. First cell: "' + firstRaw + '". Mapped: ' + (nonEmpty.join(', ') || 'nothing'))
+        errors.push('Row ' + (ri+1) + ' skipped — no identifier field found. Keys mapped: [' + (nonEmpty.join(', ') || 'nothing') + ']. First CSV cell: "' + firstRaw + '"')
         continue
       }
 
@@ -267,7 +267,8 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     for (let i = 0; i < allIds.length; i += BATCH) {
       const chunk = allIds.slice(i, i + BATCH)
       try {
-        const { data } = await supabase.from(table).select('id, ' + idField0 + (table === 'deals' ? ', side' : '')).in(idField0, chunk)
+        const selectFields = 'id, ' + idField0 + (table === 'deals' ? ', side' : '') + (table === 'contacts' ? ', phone' : '')
+        const { data } = await supabase.from(table).select(selectFields).in(idField0, chunk)
         ;(data || []).forEach(row => {
           // Normalize key: trim and lowercase for comparison
           const normAddr = String(row[idField0] || '').trim().toLowerCase()
