@@ -552,6 +552,7 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
         <Btn onClick={()=>{onSave(node.id,cfg);onClose()}} style={{width:'100%'}}>✅ Apply</Btn>
       </div>
     </div>
+  </div>
   )
 }
 
@@ -870,5 +871,7 @@ export function CallFlow() {
         )}
       </div>
     </div>
+  </div>
+  </div>
   )
 }
