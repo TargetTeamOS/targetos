@@ -62,7 +62,7 @@ const GROUPS = [
 ]
 
 const BLANK = {
-  addr: '', agent_id: '', upper_rider: '', lower_rider: '',
+  addr: '', city: '', state: '', zip: '', lat: null, lng: null, agent_id: '', upper_rider: '', lower_rider: '',
   order_status: 'Order Sent In', date_installed: '', date_removed: '', comments: '',
 }
 
@@ -146,7 +146,7 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
     markers.current.forEach(m => m.setMap(null))
     markers.current = []
 
-    const geocoder = new window.google.maps.Geocoder()
+    const geocoder = window.google.maps.Geocoder ? new window.google.maps.Geocoder() : null
     const signsWithAddr = signs.filter(s => s.addr?.length > 5)
 
     if (!signsWithAddr.length) return
@@ -159,7 +159,21 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
     signsWithAddr.forEach((sign, i) => {
       // Throttle geocode calls (5/sec limit on free tier)
       setTimeout(() => {
-        geocoder.geocode({ address: sign.addr }, (results, status) => {
+        // Use stored lat/lng if available, otherwise geocode the address
+        if (sign.lat && sign.lng) {
+          const pos = { lat: sign.lat, lng: sign.lng }
+          done++
+          setGeocoded(done)
+          if (done === signsWithAddr.length) setGeocoding(false)
+          placeMarker(sign, pos)
+          if (done === signsWithAddr.length && markers.current.length > 0) {
+            const bounds = new window.google.maps.LatLngBounds()
+            markers.current.forEach(m => bounds.extend(m.getPosition()))
+            mapObj.current.fitBounds(bounds)
+            if (markers.current.length === 1) mapObj.current.setZoom(15)
+          }
+        } else if (geocoder) {
+          geocoder.geocode({ address: sign.addr }, (results, status) => {
           done++
           setGeocoded(done)
           if (done === signsWithAddr.length) setGeocoding(false)
@@ -257,11 +271,11 @@ function SignModal({ sign, agents, onSave, onClose, saving }) {
     <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '4px' }}>{children}</div>
   )
   const Inp = ({ k, type = 'text', placeholder }) => (
-    <input type={type} value={f[k] || ''} onChange={e => set(k, e.target.value)} placeholder={placeholder}
+    <input type={type} value={f[k] ?? ''} onChange={e => set(k, e.target.value)} placeholder={placeholder}
       style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, boxSizing: 'border-box' }} />
   )
   const Sel = ({ k, options }) => (
-    <select value={f[k] || ''} onChange={e => set(k, e.target.value)}
+    <select value={f[k] ?? ''} onChange={e => set(k, e.target.value)}
       style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
       <option value="">—</option>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -278,7 +292,22 @@ function SignModal({ sign, agents, onSave, onClose, saving }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div><Lbl>Property Address *</Lbl><Inp k="addr" placeholder="123 Main St, Monsey, NY 10952" /></div>
+          <div>
+            <Lbl>Property Address *</Lbl>
+            <AddressAutocomplete
+              value={f.addr||''}
+              onChange={v => set('addr', v)}
+              onSelect={s => {
+                set('addr', s.street || s.full)
+                if (s.city)  set('city',  s.city)
+                if (s.state) set('state', s.state)
+                if (s.zip)   set('zip',   s.zip)
+                if (s.lat)   set('lat',   s.lat)
+                if (s.lng)   set('lng',   s.lng)
+              }}
+              placeholder="123 Main St, Monsey, NY 10952"
+            />
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <Lbl>Order Status</Lbl>

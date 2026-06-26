@@ -609,11 +609,11 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
     </div>
   )
   const Inp = ({ k, type = 'text', placeholder, half }) => (
-    <input type={type} value={form[k] || ''} onChange={e => set(k, e.target.value)} placeholder={placeholder}
+    <input type={type} value={form[k] ?? ''} onChange={e => set(k, e.target.value)} placeholder={placeholder}
       style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, boxSizing: 'border-box' }} />
   )
   const Sel = ({ k, options, placeholder }) => (
-    <select value={form[k] || ''} onChange={e => set(k, e.target.value)}
+    <select value={form[k] ?? ''} onChange={e => set(k, e.target.value)}
       style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
       {placeholder && <option value="">{placeholder}</option>}
       {options.map(o => {
@@ -726,7 +726,16 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
           {tab === 'deal' && (
             <div>
               <Grid2>
-                <Field label="Address" required><Inp k="addr" placeholder="123 Main St, Monsey NY 10952" /></Field>
+                <Field label="Address" required>
+                <AddressAutocomplete value={form.addr??''} onChange={v=>set('addr',v)}
+                  onSelect={s=>{
+                    set('addr', s.street||s.full)
+                    if(s.city)  set('city', s.city)
+                    if(s.state) set('state', s.state)
+                    if(s.zip)   set('zip', s.zip)
+                  }}
+                  placeholder="123 Main St, Monsey NY 10952" />
+              </Field>
                 <Field label="Unit"><Inp k="unit" placeholder="Apt 2B" /></Field>
                 <Field label="Side"><Sel k="side" options={DEAL_SIDES} /></Field>
                 <Field label="Stage"><Sel k="stage" options={DEAL_STAGES} /></Field>

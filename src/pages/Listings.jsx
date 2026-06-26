@@ -133,7 +133,7 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
   const Row = ({children}) => <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>{children}</div>
   const Field = ({label, children}) => <div><Lbl c={label}/>{children}</div>
   const Inp = ({k, type='text', placeholder}) => (
-    <input type={type} value={form[k]||''} onChange={e=>set(k,e.target.value)} placeholder={placeholder}
+    <input type={type} value={form[k]??''} onChange={e=>set(k,e.target.value)} placeholder={placeholder}
       style={{ width:'100%', padding:'7px 9px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff, boxSizing:'border-box' }}/>
   )
 
@@ -178,7 +178,14 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
             <div>
               <div style={{ marginBottom:10 }}>
                 <Lbl c="Address"/>
-                <AddressAutocomplete value={form.addr||''} onChange={v=>set('addr',v)} placeholder="123 Main St, Monsey NY"/>
+                <AddressAutocomplete value={form.addr||''} onChange={v=>set('addr',v)}
+                onSelect={s=>{
+                  set('addr', s.street||s.full)
+                  if(s.city)  set('city', s.city)
+                  if(s.state) set('state', s.state)
+                  if(s.zip)   set('zip', s.zip)
+                }}
+                placeholder="123 Main St, Monsey NY"/>
               </div>
               <Row>
                 <Field label="City"><Inp k="city" placeholder="Spring Valley"/></Field>

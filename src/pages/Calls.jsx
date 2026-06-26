@@ -100,11 +100,11 @@ function CallDrawer({ call, agents, onSave, onClose, onDelete, saving }) {
     <div style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'4px' }}>{c}</div>
   )
   const Inp = ({ k, type='text', placeholder }) => (
-    <input type={type} value={form[k] || ''} onChange={e => set(k, e.target.value)} placeholder={placeholder}
+    <input type={type} value={form[k]??''} onChange={e => set(k, e.target.value)} placeholder={placeholder}
       style={{ width:'100%', padding:'7px 9px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, boxSizing:'border-box' }} />
   )
   const Sel = ({ k, options }) => (
-    <select value={form[k] || ''} onChange={e => set(k, e.target.value)}
+    <select value={form[k]??''} onChange={e => set(k, e.target.value)}
       style={{ width:'100%', padding:'7px 9px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff }}>
       <option value="">—</option>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -1228,7 +1228,7 @@ export function Calls() {
                 {['direction','outcome'].map(k => (
                   <div key={k}>
                     <div style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'4px' }}>{k.charAt(0).toUpperCase()+k.slice(1)}</div>
-                    <select value={form[k]||''} onChange={e => setForm(x => ({ ...x, [k]: e.target.value }))}
+                    <select value={form[k]??''} onChange={e => setForm(x => ({ ...x, [k]: e.target.value }))}
                       style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff }}>
                       <option value="">—</option>
                       {(k==='direction'?DIRECTIONS:OUTCOMES).map(o => <option key={o} value={o}>{o}</option>)}

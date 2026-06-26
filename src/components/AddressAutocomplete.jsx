@@ -104,7 +104,6 @@ export function AddressAutocomplete({
   }, [value, ready])
 
   function selectPrediction(prediction) {
-    // Get full place details for lat/lng etc
     const svc = new window.google.maps.places.PlacesService(document.createElement('div'))
     svc.getDetails(
       {
@@ -114,10 +113,32 @@ export function AddressAutocomplete({
       },
       (place, status) => {
         if (status === 'OK') {
-          const addr = place.formatted_address
-          onChange(addr)
-          if (onSelect) onSelect(place)
-          // Reset session token after selection
+          // Parse address components into structured fields
+          const comps  = place.address_components || []
+          const get    = (types) => comps.find(c => types.some(t => c.types.includes(t)))?.long_name || ''
+          const getS   = (types) => comps.find(c => types.some(t => c.types.includes(t)))?.short_name || ''
+
+          const streetNum  = get(['street_number'])
+          const streetName = get(['route'])
+          const unit       = get(['subpremise'])
+          const city       = get(['locality']) || get(['sublocality']) || get(['neighborhood'])
+          const state      = getS(['administrative_area_level_1'])
+          const zip        = get(['postal_code'])
+          const lat        = place.geometry?.location?.lat()
+          const lng        = place.geometry?.location?.lng()
+
+          // Build clean street address (without city/state/zip)
+          let street = [streetNum, streetName].filter(Boolean).join(' ')
+          if (unit) street += ' #' + unit
+
+          const structured = {
+            full:   place.formatted_address,
+            street, unit, city, state, zip,
+            lat, lng,
+          }
+
+          onChange(street || place.formatted_address)
+          if (onSelect) onSelect(structured)
           sessionRef.current = new window.google.maps.places.AutocompleteSessionToken()
         } else {
           onChange(prediction.description)
