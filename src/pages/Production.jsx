@@ -1213,9 +1213,9 @@ export function Production() {
       {/* ── FILTERS ── */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
         <FilterBar
-          values={{ search, yearF, stageF, sideF, agentF, saleTypeF, propTypeF }}
+          search={search} onSearch={setSearch} searchPlaceholder="🔍 Address, client, attorney..."
+          values={{ yearF, stageF, sideF, agentF, saleTypeF, propTypeF }}
           onChange={(k,v) => {
-            if (k==='search')    setSearch(v)
             if (k==='yearF')     setYearF(v)
             if (k==='stageF')    setStageF(v)
             if (k==='sideF')     setSideF(v)
@@ -1223,19 +1223,14 @@ export function Production() {
             if (k==='saleTypeF') setSaleTypeF(v)
             if (k==='propTypeF') setPropTypeF(v)
           }}
-          total={deals.length}
-          filtered={filtered.length}
-          extraLeft={
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Address, client..."
-              style={{ padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff, height:28, minWidth:180 }}/>
-          }
+          total={deals.length} filtered={filtered.length}
           filters={[
-            { key:'yearF',    label:'Year',        type:'select', options: years.map(y=>({value:y,label:y})), placeholder:'Year', primary:true },
-            { key:'stageF',   label:'Stage',       type:'select', options: DEAL_STAGES.map(s=>({value:s.value,label:s.label})), placeholder:'Stage', primary:true },
-            { key:'sideF',    label:'Side',        type:'select', options: DEAL_SIDES.map(s=>({value:s,label:s})), placeholder:'Side', primary:true },
-            ...(isAdmin||canManage ? [{ key:'agentF', label:'Agent', type:'select', options: agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent', primary:true }] : []),
-            { key:'saleTypeF',label:'Sale Type',   type:'select', options:['On Market','Off Market','FSBO'].map(s=>({value:s,label:s})), placeholder:'Sale Type', primary:false },
-            { key:'propTypeF',label:'Prop Type',   type:'select', options:['Single Family','Condo','New Construction','Multi Family','Duplex','Flip','Land'].map(s=>({value:s,label:s})), placeholder:'Prop Type', primary:false },
+            { key:'yearF',    label:'Year',      type:'select', options:years.map(y=>({value:y,label:y})),                           placeholder:'Year' },
+            { key:'stageF',   label:'Stage',     type:'select', options:DEAL_STAGES.map(s=>({value:s.value,label:s.label})),          placeholder:'Stage' },
+            { key:'sideF',    label:'Side',      type:'select', options:DEAL_SIDES.map(s=>({value:s,label:s})),                       placeholder:'Side' },
+            ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', type:'select', options:agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent' }]:[]),
+            { key:'saleTypeF',label:'Sale Type', type:'select', options:['On Market','Off Market','FSBO'].map(s=>({value:s,label:s})), placeholder:'Sale Type', secondary:true },
+            { key:'propTypeF',label:'Type',      type:'select', options:['Single Family','Condo','New Construction','Multi Family','Duplex','Flip','Land','Commercial'].map(s=>({value:s,label:s})), placeholder:'Prop Type', secondary:true },
           ]}
         />
       </div>

@@ -645,39 +645,34 @@ export function Listings() {
 
       {/* Filters */}
       <FilterBar
-        values={{ search, statusF, agentF, typeF, bedsF, minPrice, maxPrice }}
+        search={search} onSearch={setSearch} searchPlaceholder="🔍 Address, city, notes..."
+        values={{ statusF, agentF, typeF, bedsF, bathsF:'', dealTypeF, ivrF }}
         onChange={(k,v) => {
-          if (k==='search')   setSearch(v)
-          if (k==='statusF')  setStatusF(v)
-          if (k==='agentF')   setAgentF(v)
-          if (k==='typeF')    setTypeF(v)
-          if (k==='bedsF')    setBedsF(v)
-          if (k==='minPrice') setMinPrice(v)
-          if (k==='maxPrice') setMaxPrice(v)
+          if (k==='statusF')   setStatusF(v)
+          if (k==='agentF')    setAgentF(v)
+          if (k==='typeF')     setTypeF(v)
+          if (k==='bedsF')     setBedsF(v)
+          if (k==='minPrice')  setMinPrice(v)
+          if (k==='maxPrice')  setMaxPrice(v)
         }}
-        total={listings.length}
-        filtered={filtered.length}
-        extraLeft={
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Address, city..."
-            style={{ padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff, height:28, minWidth:160 }}/>
-        }
-        extraRight={
-          <div style={{ display:'flex', background:'var(--dim)', borderRadius:6, padding:2 }}>
+        total={listings.length} filtered={filtered.length}
+        right={
+          <div style={{ display:'flex', background:'var(--dim)', borderRadius:5, padding:2, gap:1 }}>
             {[['grid','⊞'],['board','▦']].map(([v,icon])=>(
               <button key={v} onClick={()=>setView(v)}
-                style={{ padding:'3px 7px', borderRadius:4, border:'none', background:view===v?'#CC2200':'transparent', color:view===v?'#fff':'var(--muted)', cursor:'pointer', fontSize:13, fontFamily:ff }}>
+                style={{ padding:'2px 6px', borderRadius:3, border:'none', background:view===v?'#CC2200':'transparent', color:view===v?'#fff':'var(--muted)', cursor:'pointer', fontSize:12, fontFamily:ff }}>
                 {icon}
               </button>
             ))}
           </div>
         }
         filters={[
-          { key:'statusF', label:'Status',    type:'select', options:STATUSES.map(s=>({value:s.id,label:s.label})),     placeholder:'Status',   primary:true },
-          ...(isAdmin||canManage ? [{ key:'agentF', label:'Agent', type:'select', options:agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent', primary:true }] : []),
-          { key:'typeF',   label:'Type',      type:'select', options:PROPERTY_TYPES.map(t=>({value:t,label:t})),        placeholder:'Type',     primary:true },
-          { key:'bedsF',   label:'Beds',      type:'select', options:['1','2','3','4','5','6','7','8','9'].map(n=>({value:n,label:n+' bed'})), placeholder:'Beds', primary:true },
-          { key:'minPrice',label:'Min Price', type:'text',   placeholder:'Min $', width:72,  primary:false },
-          { key:'maxPrice',label:'Max Price', type:'text',   placeholder:'Max $', width:72,  primary:false },
+          { key:'statusF',  label:'Status',    type:'select', options:STATUSES.map(s=>({value:s.id,label:s.label})),    placeholder:'Status' },
+          ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', type:'select', options:agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent' }]:[]),
+          { key:'typeF',    label:'Type',      type:'select', options:PROPERTY_TYPES.map(t=>({value:t,label:t})),       placeholder:'Type' },
+          { key:'bedsF',    label:'Beds',      type:'select', options:['1','2','3','4','5','6','7','8','9'].map(n=>({value:n,label:n+' bd'})), placeholder:'Beds' },
+          { key:'minPrice', label:'Min $',     type:'text',   placeholder:'Min $', width:70, secondary:true },
+          { key:'maxPrice', label:'Max $',     type:'text',   placeholder:'Max $', width:70, secondary:true },
         ]}
       />
 

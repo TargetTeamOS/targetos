@@ -349,21 +349,23 @@ export function Contacts() {
       />
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <SearchInput value={search} onChange={setSearch} placeholder="Search name, phone, email..." style={{ flex: 1, minWidth: '200px' }} />
-        <select value={statusF} onChange={e => setStatusF(e.target.value)}
-          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-          <option value="">All Statuses</option>
-          {CONTACT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
-        {(isAdmin || canManage) && (
-          <select value={agentF} onChange={e => setAgentF(e.target.value)}
-            style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-            <option value="">All Agents</option>
-            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-        )}
-      </div>
+      <FilterBar
+        search={search} onSearch={setSearch} searchPlaceholder="🔍 Name, phone, email..."
+        values={{ statusF, agentF, sourceF, typeF }}
+        onChange={(k,v) => {
+          if (k==='statusF') setStatusF(v)
+          if (k==='agentF')  setAgentF(v)
+          if (k==='sourceF') setSourceF(v)
+          if (k==='typeF')   setTypeF(v)
+        }}
+        total={contacts?.length} filtered={filtered.length}
+        filters={[
+          { key:'statusF', label:'Status', type:'select', options:(CONTACT_STATUSES||[]).map(s=>({value:s.value||s,label:s.label||s})), placeholder:'Status' },
+          ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', type:'select', options:agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent' }]:[]),
+          { key:'sourceF', label:'Source', type:'select', options:(CONTACT_SOURCES||['SOI','Zillow','Referral','Farm - Open House','System Call','Past Client Repeat','Open House']).map(s=>({value:s,label:s})), placeholder:'Source', secondary:true },
+          { key:'typeF',   label:'Type',   type:'select', options:['Buyer','Seller','Investor','Renter','Other'].map(s=>({value:s,label:s})), placeholder:'Type', secondary:true },
+        ]}
+      />
 
       {/* Selection bar */}
       {selectedIds.length > 0 && (
