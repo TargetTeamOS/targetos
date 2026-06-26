@@ -165,6 +165,7 @@ function AppShell() {
       </Layout>
       <Toast />
       <VoiceCapture />
+      <AIAssistant />
     </>
   )
 }

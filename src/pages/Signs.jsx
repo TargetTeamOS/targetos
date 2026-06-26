@@ -156,68 +156,72 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
     let done = 0
     const bounds = new window.google.maps.LatLngBounds()
 
+    function placePin(sign, pos) {
+      const isSelected = selectedIds.includes(sign.id)
+      const statusDef  = ORDER_STATUS.find(s => s.id === sign.order_status) || ORDER_STATUS[1]
+      const marker = new window.google.maps.Marker({
+        position: pos,
+        map: mapObj.current,
+        title: sign.addr,
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: isSelected ? 14 : 10,
+          fillColor: isSelected ? '#CC2200' : statusDef.color,
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+        },
+        animation: isSelected ? window.google.maps.Animation.BOUNCE : null,
+      })
+      marker.signId = sign.id
+      marker.addListener('click', () => {
+        const content = '<div style="font-family:Inter,sans-serif;padding:4px;max-width:240px">'
+          + '<div style="font-weight:700;font-size:13px;color:#1E293B;margin-bottom:6px">' + sign.addr + '</div>'
+          + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
+          + '<span style="font-size:11px;padding:2px 7px;border-radius:12px;background:' + statusDef.bg + ';color:' + statusDef.color + ';font-weight:700">' + statusDef.icon + ' ' + (sign.order_status || 'Unknown') + '</span>'
+          + (sign.lower_rider ? '<span style="font-size:11px;padding:2px 7px;border-radius:12px;background:#F0F9FF;color:#0369A1;font-weight:700">' + sign.lower_rider + '</span>' : '')
+          + '</div>'
+          + (sign.upper_rider ? '<div style="font-size:11px;color:#64748B">Upper rider: ' + sign.upper_rider + '</div>' : '')
+          + (sign.date_installed ? '<div style="font-size:11px;color:#64748B">Installed: ' + sign.date_installed + '</div>' : '')
+          + '<button onclick="window.__signClick && window.__signClick(\'' + sign.id + '\')" style="margin-top:8px;padding:5px 12px;background:#CC2200;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">Edit Sign</button>'
+          + '</div>'
+        infoWin.current.setContent(content)
+        infoWin.current.open(mapObj.current, marker)
+      })
+      markers.current.push(marker)
+      bounds.extend(pos)
+    }
+
     signsWithAddr.forEach((sign, i) => {
-      // Throttle geocode calls (5/sec limit on free tier)
+      // Use stored lat/lng if available (instant — no API call needed)
+      if (sign.lat && sign.lng) {
+        done++
+        setGeocoded(done)
+        if (done === signsWithAddr.length) setGeocoding(false)
+        placePin(sign, { lat: parseFloat(sign.lat), lng: parseFloat(sign.lng) })
+        if (done === signsWithAddr.length && markers.current.length > 0) {
+          mapObj.current.fitBounds(bounds)
+          if (markers.current.length === 1) mapObj.current.setZoom(15)
+        }
+        return
+      }
+
+      // No stored coordinates — geocode the address
       setTimeout(() => {
-        // Geocode the address (lat/lng will be stored on future saves)
-        if (geocoder) {
-          geocoder.geocode({ address: sign.addr }, (results, status) => {
+        if (!geocoder) { done++; setGeocoded(done); if (done === signsWithAddr.length) setGeocoding(false); return }
+        geocoder.geocode({ address: sign.addr }, (results, status) => {
           done++
           setGeocoded(done)
           if (done === signsWithAddr.length) setGeocoding(false)
-
           if (status !== 'OK' || !results?.[0]) return
-
-          const pos    = results[0].geometry.location
-          const isSelected = selectedIds.includes(sign.id)
-          const statusDef  = ORDER_STATUS.find(s => s.id === sign.order_status) || ORDER_STATUS[1]
-
-          const marker = new window.google.maps.Marker({
-            position: pos,
-            map: mapObj.current,
-            title: sign.addr,
-            icon: {
-              path: window.google.maps.SymbolPath.CIRCLE,
-              scale: isSelected ? 14 : 10,
-              fillColor: isSelected ? '#CC2200' : statusDef.color,
-              fillOpacity: 1,
-              strokeColor: '#fff',
-              strokeWeight: 2,
-            },
-            animation: isSelected ? window.google.maps.Animation.BOUNCE : null,
-          })
-
-          marker.signId = sign.id
-
-          marker.addListener('click', () => {
-            const content = `
-              <div style="font-family:Inter,sans-serif;padding:4px;max-width:240px">
-                <div style="font-weight:700;font-size:13px;color:#1E293B;margin-bottom:6px">${sign.addr}</div>
-                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-                  <span style="font-size:11px;padding:2px 7px;border-radius:12px;background:${statusDef.bg};color:${statusDef.color};font-weight:700">${statusDef.icon} ${sign.order_status || 'Unknown'}</span>
-                  ${sign.lower_rider ? `<span style="font-size:11px;padding:2px 7px;border-radius:12px;background:#F0F9FF;color:#0369A1;font-weight:700">${sign.lower_rider}</span>` : ''}
-                </div>
-                ${sign.upper_rider ? `<div style="font-size:11px;color:#64748B">Upper rider: ${sign.upper_rider}</div>` : ''}
-                ${sign.date_installed ? `<div style="font-size:11px;color:#64748B">Installed: ${sign.date_installed}</div>` : ''}
-                <button onclick="window.__signClick && window.__signClick('${sign.id}')" 
-                  style="margin-top:8px;padding:5px 12px;background:#CC2200;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;font-family:Inter,sans-serif">
-                  Edit Sign →
-                </button>
-              </div>`
-            infoWin.current.setContent(content)
-            infoWin.current.open(mapObj.current, marker)
-          })
-
-          markers.current.push(marker)
-          bounds.extend(pos)
-
+          const pos = results[0].geometry.location
+          placePin(sign, pos)
           if (done === signsWithAddr.length && markers.current.length > 0) {
             mapObj.current.fitBounds(bounds)
-            if (signsWithAddr.length === 1) mapObj.current.setZoom(14)
+            if (markers.current.length === 1) mapObj.current.setZoom(14)
           }
         })
-        } // end if (geocoder)
-      }, i * 200) // 200ms between calls = 5/sec
+      }, i * 220) // 220ms between calls stays under 5/sec limit
     })
   }, [signs, selectedIds])
 
