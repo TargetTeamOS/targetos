@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { useAgents } from '../lib/hooks'
+import { FilterBar } from '../components/FilterBar'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
@@ -643,45 +644,42 @@ export function Listings() {
       </div>
 
       {/* Filters */}
-      <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search address, city..."
-          style={{ flex:1, minWidth:160, padding:'8px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}/>
-        <select value={statusF} onChange={e=>setStatusF(e.target.value)}
-          style={{ padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
-          <option value="">All Statuses</option>
-          {STATUSES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
-        </select>
-        {(isAdmin||canManage) && (
-          <select value={agentF} onChange={e=>setAgentF(e.target.value)}
-            style={{ padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
-            <option value="">All Agents</option>
-            {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-        )}
-        <select value={typeF} onChange={e=>setTypeF(e.target.value)}
-          style={{ padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
-          <option value="">All Types</option>
-          {PROPERTY_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-        </select>
-        <select value={bedsF} onChange={e=>setBedsF(e.target.value)}
-          style={{ padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
-          <option value="">Any beds</option>
-          {['1','2','3','4','5','6','7','8','9'].map(n=><option key={n} value={n}>{n} bed</option>)}
-        </select>
-        <input value={minPrice} onChange={e=>setMinPrice(e.target.value)} placeholder="Min $"
-          style={{ width:80, padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}/>
-        <input value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} placeholder="Max $"
-          style={{ width:80, padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}/>
-        {/* View toggle */}
-        <div style={{ display:'flex', background:'var(--dim)', borderRadius:8, padding:2 }}>
-          {[['grid','⊞'],['board','▦']].map(([v,icon])=>(
-            <button key={v} onClick={()=>setView(v)}
-              style={{ padding:'5px 10px', borderRadius:6, border:'none', background:view===v?'#CC2200':'transparent', color:view===v?'#fff':'var(--muted)', cursor:'pointer', fontSize:14, fontFamily:ff }}>
-              {icon}
-            </button>
-          ))}
-        </div>
-      </div>
+      <FilterBar
+        values={{ search, statusF, agentF, typeF, bedsF, minPrice, maxPrice }}
+        onChange={(k,v) => {
+          if (k==='search')   setSearch(v)
+          if (k==='statusF')  setStatusF(v)
+          if (k==='agentF')   setAgentF(v)
+          if (k==='typeF')    setTypeF(v)
+          if (k==='bedsF')    setBedsF(v)
+          if (k==='minPrice') setMinPrice(v)
+          if (k==='maxPrice') setMaxPrice(v)
+        }}
+        total={listings.length}
+        filtered={filtered.length}
+        extraLeft={
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Address, city..."
+            style={{ padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff, height:28, minWidth:160 }}/>
+        }
+        extraRight={
+          <div style={{ display:'flex', background:'var(--dim)', borderRadius:6, padding:2 }}>
+            {[['grid','⊞'],['board','▦']].map(([v,icon])=>(
+              <button key={v} onClick={()=>setView(v)}
+                style={{ padding:'3px 7px', borderRadius:4, border:'none', background:view===v?'#CC2200':'transparent', color:view===v?'#fff':'var(--muted)', cursor:'pointer', fontSize:13, fontFamily:ff }}>
+                {icon}
+              </button>
+            ))}
+          </div>
+        }
+        filters={[
+          { key:'statusF', label:'Status',    type:'select', options:STATUSES.map(s=>({value:s.id,label:s.label})),     placeholder:'Status',   primary:true },
+          ...(isAdmin||canManage ? [{ key:'agentF', label:'Agent', type:'select', options:agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent', primary:true }] : []),
+          { key:'typeF',   label:'Type',      type:'select', options:PROPERTY_TYPES.map(t=>({value:t,label:t})),        placeholder:'Type',     primary:true },
+          { key:'bedsF',   label:'Beds',      type:'select', options:['1','2','3','4','5','6','7','8','9'].map(n=>({value:n,label:n+' bed'})), placeholder:'Beds', primary:true },
+          { key:'minPrice',label:'Min Price', type:'text',   placeholder:'Min $', width:72,  primary:false },
+          { key:'maxPrice',label:'Max Price', type:'text',   placeholder:'Max $', width:72,  primary:false },
+        ]}
+      />
 
       {/* IVR notice */}
       {ivrCount > 0 && (

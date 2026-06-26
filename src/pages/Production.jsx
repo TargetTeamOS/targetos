@@ -26,6 +26,7 @@ import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { FileAttachments } from '../components/FileAttachments'
 import { RecordActivity } from '../pages/ActivityLog'
 import { ClickToCall } from '../components/ClickToCall'
+import { FilterBar } from '../components/FilterBar'
 import { ImportExport } from '../components/ImportExport'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { useAgents } from '../lib/hooks'
@@ -977,6 +978,8 @@ export function Production() {
   const [stageF,   setStageF]   = useState('')
   const [agentF,   setAgentF]   = useState('')
   const [sideF,    setSideF]    = useState('')
+  const [saleTypeF,setSaleTypeF]= useState('')
+  const [propTypeF,setPropTypeF]= useState('')
   const [yearF,    setYearF]    = useState(new Date().getFullYear().toString())
   const [selected, setSelected] = useState(null) // deal being edited, or {} for new
   const [saving,   setSaving]   = useState(false)
@@ -1122,9 +1125,11 @@ export function Production() {
 
   // ── FILTERING ──────────────────────────────────────────────────
   const filtered = deals.filter(d => {
-    if (stageF && d.stage !== stageF) return false
-    if (agentF && d.agent_id !== agentF) return false
-    if (sideF  && d.side  !== sideF)  return false
+    if (stageF    && d.stage         !== stageF)    return false
+    if (agentF    && d.agent_id      !== agentF)    return false
+    if (sideF     && d.side          !== sideF)     return false
+    if (saleTypeF && d.sale_type     !== saleTypeF) return false
+    if (propTypeF && d.property_type !== propTypeF) return false
     if (search && !matchSearch(d.addr + ' ' + (d.client_name || '') + ' ' + (d.atty_name || ''), search)) return false
     if (yearF) {
       const year = d.ao_date?.slice(0, 4) || d.close_date?.slice(0, 4) || d.created_at?.slice(0, 4)
@@ -1207,36 +1212,32 @@ export function Production() {
 
       {/* ── FILTERS ── */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search address, client, attorney..."
-          style={{ flex: 1, minWidth: '200px', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }} />
-        <select value={yearF} onChange={e => setYearF(e.target.value)}
-          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-          <option value="">All Years</option>
-          {years.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        <select value={stageF} onChange={e => setStageF(e.target.value)}
-          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-          <option value="">All Stages</option>
-          {DEAL_STAGES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
-        <select value={sideF} onChange={e => setSideF(e.target.value)}
-          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-          <option value="">All Sides</option>
-          {DEAL_SIDES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        {(isAdmin || canManage) && (
-          <select value={agentF} onChange={e => setAgentF(e.target.value)}
-            style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-            <option value="">All Agents</option>
-            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-        )}
-        {(stageF || agentF || sideF || search) && (
-          <button onClick={() => { setStageF(''); setAgentF(''); setSideF(''); setSearch('') }}
-            style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', fontSize: '12px', fontFamily: ff }}>
-            ✕ Clear
-          </button>
-        )}
+        <FilterBar
+          values={{ search, yearF, stageF, sideF, agentF, saleTypeF, propTypeF }}
+          onChange={(k,v) => {
+            if (k==='search')    setSearch(v)
+            if (k==='yearF')     setYearF(v)
+            if (k==='stageF')    setStageF(v)
+            if (k==='sideF')     setSideF(v)
+            if (k==='agentF')    setAgentF(v)
+            if (k==='saleTypeF') setSaleTypeF(v)
+            if (k==='propTypeF') setPropTypeF(v)
+          }}
+          total={deals.length}
+          filtered={filtered.length}
+          extraLeft={
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Address, client..."
+              style={{ padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff, height:28, minWidth:180 }}/>
+          }
+          filters={[
+            { key:'yearF',    label:'Year',        type:'select', options: years.map(y=>({value:y,label:y})), placeholder:'Year', primary:true },
+            { key:'stageF',   label:'Stage',       type:'select', options: DEAL_STAGES.map(s=>({value:s.value,label:s.label})), placeholder:'Stage', primary:true },
+            { key:'sideF',    label:'Side',        type:'select', options: DEAL_SIDES.map(s=>({value:s,label:s})), placeholder:'Side', primary:true },
+            ...(isAdmin||canManage ? [{ key:'agentF', label:'Agent', type:'select', options: agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent', primary:true }] : []),
+            { key:'saleTypeF',label:'Sale Type',   type:'select', options:['On Market','Off Market','FSBO'].map(s=>({value:s,label:s})), placeholder:'Sale Type', primary:false },
+            { key:'propTypeF',label:'Prop Type',   type:'select', options:['Single Family','Condo','New Construction','Multi Family','Duplex','Flip','Land'].map(s=>({value:s,label:s})), placeholder:'Prop Type', primary:false },
+          ]}
+        />
       </div>
 
       {/* ── SELECTION BAR ── */}

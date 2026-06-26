@@ -16,6 +16,7 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmtDate, fmtPhone } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
+import { FilterBar } from '../components/FilterBar'
 import { useAgents } from '../lib/hooks'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
@@ -1111,18 +1112,17 @@ export function Calls() {
 
           {/* Filters */}
           <div style={{ display:'flex', gap:'8px', marginBottom:'14px', flexWrap:'wrap' }}>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search name, phone, notes..."
-              style={{ flex:1, minWidth:'180px', padding:'8px 12px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff }} />
-            <select value={dirFilter} onChange={e => setDirFilter(e.target.value)}
-              style={{ padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff }}>
-              <option value="">All Directions</option>
-              {DIRECTIONS.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <select value={outFilter} onChange={e => setOutFilter(e.target.value)}
-              style={{ padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff }}>
-              <option value="">All Outcomes</option>
-              {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
+            <FilterBar
+              values={{ search, dirFilter, outFilter }}
+              onChange={(k,v) => { if(k==='search') setSearch(v); if(k==='dirFilter') setDirFilter(v); if(k==='outFilter') setOutFilter(v) }}
+              total={calls.length} filtered={filtered.length}
+              extraLeft={<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Name, phone, notes..."
+                style={{ padding:'4px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff, height:28, minWidth:160 }}/>}
+              filters={[
+                { key:'dirFilter', label:'Direction', type:'select', options:DIRECTIONS.map(d=>({value:d,label:d})), placeholder:'Direction', primary:true },
+                { key:'outFilter', label:'Outcome',   type:'select', options:OUTCOMES.map(o=>({value:o,label:o})),   placeholder:'Outcome',   primary:true },
+              ]}
+            />
           </div>
 
           {loading ? <Loading /> : filtered.length === 0 ? (
