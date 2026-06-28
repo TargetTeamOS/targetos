@@ -10,7 +10,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
@@ -784,6 +784,7 @@ function VoicemailInbox({ agents }) {
 function CallFlowEmbed({ agents }) {
   const { toast } = useApp()
   const navigate  = useNavigate()
+  const location  = useLocation()
   const [flows,   setFlows]   = useState([])
   const [loading, setLoading] = useState(true)
   const [active,  setActive]  = useState(null)
@@ -1015,6 +1016,20 @@ export function Calls() {
   const [saving,     setSaving]    = useState(false)
   const [confirmDel, setConfirmDel]= useState(false)
   const [showAdd,    setShowAdd]   = useState(false)
+  const [contactPrefill, setContactPrefill] = useState(null)
+
+  // Auto-open Log Call if navigated from a contact
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const cid  = params.get('contact')
+    const cname = params.get('name')
+    if (cid && cname) {
+      setContactPrefill({ id: cid, name: decodeURIComponent(cname) })
+      setForm(f => ({ ...f, direction:'Outbound', agent_id: agent ? agent.id : '', contact_id: cid, contact_name: decodeURIComponent(cname) }))
+      setShowAdd(true)
+      setTab('log')
+    }
+  }, [location.search])
   const [form,       setForm]      = useState({})
   const [vmUnread,   setVmUnread]  = useState(0)
 
@@ -1225,7 +1240,12 @@ export function Calls() {
                 </div>
               ))}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
-                {['direction','outcome'].map(k => (
+                {contactPrefill && (
+                <div style={{ padding:'8px 12px', background:'#EFF6FF', borderRadius:8, fontSize:12, color:'#1E40AF', marginBottom:8 }}>
+                  Logging call for: <strong>{contactPrefill.name}</strong>
+                </div>
+              )}
+              {['direction','outcome'].map(k => (
                   <div key={k}>
                     <div style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'4px' }}>{k.charAt(0).toUpperCase()+k.slice(1)}</div>
                     <select value={form[k]??''} onChange={e => setForm(x => ({ ...x, [k]: e.target.value }))}
@@ -1243,7 +1263,7 @@ export function Calls() {
               </div>
             </div>
             <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px', justifyContent:'flex-end' }}>
-              <button onClick={() => setShowAdd(false)} style={{ padding:'8px 14px', borderRadius:'8px', border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', cursor:'pointer', fontFamily:ff }}>Cancel</button>
+              <button onClick={() => { setShowAdd(false); setContactPrefill(null) }} style={{ padding:'8px 14px', borderRadius:'8px', border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', cursor:'pointer', fontFamily:ff }}>Cancel</button>
               <Btn onClick={() => saveCall(form)} loading={saving}>Log Call</Btn>
             </div>
           </div>
