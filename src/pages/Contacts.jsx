@@ -76,14 +76,14 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
 
   function renderField(fieldId) {
     switch(fieldId) {
-      case 'phone':     return c.phone     ? <a href={'tel:' + c.phone.replace(/\D/g,'')} onClick={e => e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none', fontSize:'13px' }}>{c.phone}</a> : null
+      case 'phone':     return c.phone     ? <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')} onClick={e => e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none', fontSize:'13px' }}>{c.phone}</a> : null
       case 'email':     return c.email     ? <a href={'mailto:' + c.email} onClick={e => e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none', fontSize:'13px' }}>{c.email}</a> : null
       case 'status':    return c.status    ? <span style={{ fontSize:'12px', padding:'2px 8px', borderRadius:'12px', background:sc+'22', color:sc, fontWeight:700 }}>{c.status}</span> : null
       case 'source':    return c.source    ? <span style={{ fontSize:'12px', color:'var(--muted)' }}>{c.source}</span> : null
       case 'agent':     return agent       ? <div style={{ display:'flex', alignItems:'center', gap:'5px' }}><div style={{ width:18, height:18, borderRadius:'50%', background:agent.color||'#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'8px', fontWeight:800, color:'#fff' }}>{agent.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div><span style={{ fontSize:'12px', color:'var(--muted)' }}>{agent.name}</span></div> : null
       case 'address':   return c.address   ? <span style={{ fontSize:'12px', color:'var(--muted)' }}>{[c.address, c.city, c.state].filter(Boolean).join(', ')}</span> : null
       case 'type':      return c.type      ? <span style={{ fontSize:'12px', color:'var(--muted)' }}>{c.type}</span> : null
-      case 'budget_max':return c.budget_max? <span style={{ fontSize:'12px', fontWeight:700, color:'#10B981' }}>Up to ${Number(c.budget_max).toLocaleString()}</span> : null
+      case 'budget_max':return c.budget_max? <span style={{ fontSize:'12px', fontWeight:700, color:'#10B981' }}>{'Up to $' + Number(c.budget_max).toLocaleString()}</span> : null
       case 'notes':     return c.notes     ? <span style={{ fontSize:'11px', color:'var(--muted)', fontStyle:'italic' }}>{String(c.notes).slice(0,80)}{String(c.notes).length>80?'…':''}</span> : null
       case 'tags':      return c.tags?.length ? <div style={{ display:'flex', gap:'3px', flexWrap:'wrap' }}>{c.tags.slice(0,4).map(t => <span key={t} style={{ fontSize:'10px', padding:'1px 6px', borderRadius:'10px', background:'var(--dim)', color:'var(--muted)', border:'1px solid var(--border)' }}>{t}</span>)}</div> : null
       default:          return null
@@ -131,7 +131,7 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
                     setLocalFields(next)
                     onFieldsChange(next)
                   }}
-                    style={{ padding:'3px 9px', borderRadius:'12px', border:`1px solid ${on ? '#CC2200' : 'var(--border)'}`, background: on ? 'rgba(204,34,0,.1)' : 'transparent', color: on ? '#CC2200' : 'var(--muted)', fontSize:'11px', fontWeight:600, cursor:'pointer', fontFamily:ff2 }}>
+                    style={{ padding:'3px 9px', borderRadius:'12px', border:'1px solid ' + (on ? '#CC2200' : 'var(--border)') + '', background: on ? 'rgba(204,34,0,.1)' : 'transparent', color: on ? '#CC2200' : 'var(--muted)', fontSize:'11px', fontWeight:600, cursor:'pointer', fontFamily:ff2 }}>
                     {f.icon} {f.label}
                   </button>
                 )
@@ -172,13 +172,13 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
         {/* Actions */}
         <div style={{ padding:'10px 16px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px' }}>
           {c.phone && (
-            <a href={'tel:' + c.phone.replace(/\D/g,'')} onClick={e => e.stopPropagation()}
+            <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')} onClick={e => e.stopPropagation()}
               style={{ flex:1, padding:'8px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:'12px', fontWeight:700, textDecoration:'none', textAlign:'center', fontFamily:ff2 }}>
               📞 Call
             </a>
           )}
           {c.phone && (
-            <a href={'https://wa.me/' + c.phone.replace(/\D/g,'')} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+            <a href={'https://wa.me/' + c.phone.replace(/[^0-9]/g,'')} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
               style={{ flex:1, padding:'8px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--dim)', color:'#25D366', fontSize:'12px', fontWeight:700, textDecoration:'none', textAlign:'center', fontFamily:ff2 }}>
               💬 WhatsApp
             </a>
@@ -243,7 +243,7 @@ function CallsTab({ contact, agent, toast }) {
     if (!form.outcome) { toast('Select an outcome', '#DC2626'); return }
     setSaving(true)
     try {
-      const phone = (contact.phone || '').replace(/\D/g, '')
+      const phone = (contact.phone || '').replace(/[^0-9]/g, '')
       const e164  = phone ? (phone.startsWith('1') ? '+' + phone : '+1' + phone) : null
       const { data, error } = await supabase.from('calls').insert({
         contact_id:   contact.id,
@@ -501,12 +501,12 @@ export function Contacts() {
 
   async function bulkDelete() {
     if (!selectedIds.length) return
-    if (!window.confirm(`Delete ${selectedIds.length} contact${selectedIds.length !== 1 ? 's' : ''}? This cannot be undone.`)) return
+    if (!window.confirm('Delete ' + selectedIds.length + ' contact' + (selectedIds.length !== 1 ? 's' : '') + '? This cannot be undone.')) return
     setBulkDel(true)
     try {
       await supabase.from('contacts').delete().in('id', selectedIds)
       setSelectedIds([])
-      toast(`✅ Deleted ${selectedIds.length} contact${selectedIds.length !== 1 ? 's' : ''}`)
+      toast('Deleted ' + selectedIds.length + ' contact' + (selectedIds.length !== 1 ? 's' : ''))
     } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
     finally { setBulkDel(false) }
   }
@@ -515,7 +515,7 @@ export function Contacts() {
     <div style={{ fontFamily: ff }}>
       <PageHeader
         title="Contacts"
-        sub={`${filtered.length} contacts`}
+        sub={filtered.length + ' contacts'}
         actions={
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
             <ImportExport
@@ -582,7 +582,7 @@ export function Contacts() {
               {/* Selection checkbox */}
               <div
                 onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]) }}
-                style={{ position:'absolute', top:10, left:10, width:16, height:16, borderRadius:'4px', border:`2px solid ${selectedIds.includes(c.id) ? '#CC2200' : 'var(--border)'}`, background: selectedIds.includes(c.id) ? '#CC2200' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, transition:'all .12s' }}>
+                style={{ position:'absolute', top:10, left:10, width:16, height:16, borderRadius:'4px', border:'2px solid ' + (selectedIds.includes(c.id) ? '#CC2200' : 'var(--border)') + '', background: selectedIds.includes(c.id) ? '#CC2200' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, transition:'all .12s' }}>
                 {selectedIds.includes(c.id) && <span style={{ color:'#fff', fontSize:'9px', fontWeight:900, lineHeight:1 }}>✓</span>}
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
@@ -624,7 +624,7 @@ export function Contacts() {
       )}
 
       {/* Detail / Add Panel */}
-      <Modal open={!!(selected || showAdd)} onClose={closePanel} title={selected ? `${selected.first_name} ${selected.last_name || ''}` : 'New Contact'} width={560}>
+      <Modal open={!!(selected || showAdd)} onClose={closePanel} title={selected ? (selected.first_name + ' ' + (selected.last_name || '')) : 'New Contact'} width={560}>
 
         {selected && (
           <Tabs tabs={['info','calls','notes','files','activity']} active={tab} onChange={setTab} />
@@ -731,7 +731,7 @@ export function Contacts() {
 
       <Confirm
         open={confirmDelete}
-        message={`Delete ${selected?.first_name} ${selected?.last_name || ''}? This cannot be undone.`}
+        message={'Delete ' + (selected?.first_name || '') + ' ' + (selected?.last_name || '') + '? This cannot be undone.'}
         onConfirm={deleteContact}
         onCancel={() => setConfirmDelete(false)}
       />
