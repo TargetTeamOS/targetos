@@ -56,7 +56,9 @@ function Entry({ e, agents }) {
   const [expanded, setExpanded] = useState(false)
   const ac    = getAction(e.action)
   const agent = agents.find(function(a) { return a.id === e.agent_id }) || e.agents
-  const meta  = e.metadata ? (typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata) : {}
+  // metadata can be JSONB (object) or string — handle both safely
+  let meta = {}
+  try { meta = e.metadata ? (typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata) : {} } catch { meta = {} }
 
   // Parse before/after from metadata
   const hasChange = meta.old_value !== undefined || meta.before !== undefined
