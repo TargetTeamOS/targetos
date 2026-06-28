@@ -25,6 +25,7 @@ import { AIAssistant } from './components/AIAssistant'
 import { CallFlow } from './pages/CallFlow'
 import { Calls }         from './pages/Calls'
 import { OpenHouse }     from './pages/OpenHouse'
+import { SocialCards } from './pages/SocialCards'
 import { AgentPerformance } from './pages/AgentPerformance'
 import { Signs }         from './pages/Signs'
 import { Announcements } from './pages/Announcements'
@@ -136,6 +137,7 @@ function AppShell() {
           <Route path="/calls/:id"           element={<Calls />} />
           <Route path="/openhouse"           element={<OpenHouse />} />
           <Route path="/openhouse/:id"       element={<OpenHouse />} />
+          <Route path="/social-cards" element={<SocialCards />} />
           <Route path="/performance" element={<AgentPerformance />} />
           <Route path="/signs"               element={<Signs />} />
           <Route path="/signs/:id"           element={<Signs />} />

@@ -27,6 +27,7 @@ const NAV = [
   { id: 'call-flow', label: 'Call Flows',    icon: '🔀', roles: ['admin','secretary'] },
   { id: 'calls',        label: 'Calls',         icon: '📞', roles: ['admin','secretary','agent'] },
   { id: 'signs',        label: 'Signs',         icon: '🪧', roles: ['admin','secretary'] },
+  { id: 'social-cards', label: 'Social Cards',  icon: '📱', roles: ['admin','secretary','agent'] },
   { id: 'listingprep',  label: 'Listing Prep',  icon: '🔧', roles: ['admin','secretary','agent'] },
   { DIVIDER: true },
   { id: 'announcements',label: 'Announcements', icon: '📣', roles: ['admin','secretary','agent'] },
