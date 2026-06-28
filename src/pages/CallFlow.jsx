@@ -637,22 +637,24 @@ export function CallFlow() {
     const issues = []
     const startNode = nodes.find(function(n){return n.type==='incoming'})
     if (!startNode) { issues.push('No Incoming Call node found.'); return issues }
-    // Check start has an outbound connection
     const startEdge = edges.find(function(e){return e.from===startNode.id})
-    if (!startEdge) issues.push('Incoming Call has no connection — nothing will happen when a call arrives.')
-    // Check every non-terminal node has all ports connected
+    if (!startEdge) issues.push('Incoming Call is not connected to anything yet.')
+    // Nodes that end the call — no outgoing connection required
+    const TERMINAL = { hangup:true, voicemail:true }
+    // Nodes whose single "out" port is optional (they work fine as endpoints)
+    const OPTIONAL_OUT = { savelead:true, sms:true, greeting:true }
     nodes.forEach(function(node) {
-      if (node.type === 'incoming' || node.type === 'hangup') return
+      if (node.type === 'incoming' || TERMINAL[node.type]) return
       const ports = getPorts(node)
       ports.forEach(function(p) {
+        if (p.id === 'out' && OPTIONAL_OUT[node.type]) return
         const hasEdge = edges.some(function(e){return e.from===node.id && e.port===p.id})
-        if (!hasEdge) issues.push(nd(node.type).label + ' node: "' + (p.label||p.id) + '" port is not connected.')
+        if (!hasEdge) issues.push(nd(node.type).label + ': "' + (p.label||p.id) + '" is not connected.')
       })
     })
     return issues
   }
-
-  const flowIssues = validateFlow()
+    const flowIssues = validateFlow()
 
   return (
     <div style={{fontFamily:ff, height:'calc(100vh - 56px)', display:'flex', flexDirection:'column', overflow:'hidden', background:'var(--bg)'}}>
