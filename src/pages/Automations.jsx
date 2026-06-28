@@ -365,7 +365,7 @@ function SentenceBuilder({ form, onChange, agents }) {
         const def = ACTION_LIST.find(a => a.id === action.type)
         if (!def) return null
         const cfg = action.config || {}
-        const pickerKey = `action_${idx}`
+        const pickerKey = "action_" + (idx)
 
         const AgentChip = ({ configKey }) => {
           const chosen = [{ id: 'trigger_agent', label: 'the assigned agent', icon: '👤' }, ...agents.map(a => ({ id: a.id, label: a.name, icon: '👤' }))].find(a => a.id === cfg[configKey])
@@ -373,7 +373,7 @@ function SentenceBuilder({ form, onChange, agents }) {
             <span style={{ position: 'relative' }}>
               <Chip
                 label={chosen?.label || 'the assigned agent'}
-                onClick={() => setOpenPicker(openPicker === `${pickerKey}_${configKey}` ? null : `${pickerKey}_${configKey}`)}
+                onClick={() => setOpenPicker(openPicker === `${pickerKey}_${configKey}" ? null : "${pickerKey}_${configKey}`)}
               />
               {openPicker === `${pickerKey}_${configKey}` && (
                 <Dropdown
@@ -436,9 +436,9 @@ function SentenceBuilder({ form, onChange, agents }) {
                     <Chip
                       label={cfg.status || 'select status'}
                       dim={!cfg.status}
-                      onClick={() => setOpenPicker(openPicker === `${pickerKey}_status` ? null : `${pickerKey}_status`)}
+                      onClick={() => setOpenPicker(openPicker === (pickerKey) + "_status" ? null : (pickerKey) + "_status")}
                     />
-                    {openPicker === `${pickerKey}_status` && (
+                    {openPicker === (pickerKey) + "_status" && (
                       <Dropdown
                         options={[{ label: null, items: CONTACT_STATUSES.map(s => ({ id: s, label: s, icon: '🏷' })) }]}
                         onSelect={s => { updateActionConfig(idx, 'status', s.id); setOpenPicker(null) }}
@@ -457,9 +457,9 @@ function SentenceBuilder({ form, onChange, agents }) {
                     <Chip
                       label={cfg.stage || 'select stage'}
                       dim={!cfg.stage}
-                      onClick={() => setOpenPicker(openPicker === `${pickerKey}_stage` ? null : `${pickerKey}_stage`)}
+                      onClick={() => setOpenPicker(openPicker === (pickerKey) + "_stage" ? null : (pickerKey) + "_stage")}
                     />
-                    {openPicker === `${pickerKey}_stage` && (
+                    {openPicker === (pickerKey) + "_stage" && (
                       <Dropdown
                         options={[{ label: null, items: DEAL_STAGES.map(s => ({ id: s, label: s, icon: '📊' })) }]}
                         onSelect={s => { updateActionConfig(idx, 'stage', s.id); setOpenPicker(null) }}
@@ -613,7 +613,7 @@ function CardBuilder({ form, onChange, agents }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
           {TRIGGER_LIST.map(t => (
             <div key={t.id} onClick={() => setTrigger(t.id)}
-              style={{ padding: '10px 12px', borderRadius: '8px', border: `2px solid ${form.trigger_type === t.id ? '#CC2200' : 'var(--border)'}`, background: form.trigger_type === t.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor: 'pointer' }}>
+              style={{ padding: '10px 12px', borderRadius: '8px', border: "2px solid " + (form.trigger_type === t.id ? '#CC2200' : 'var(--border)'), background: form.trigger_type === t.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '2px' }}>
                 <span style={{ fontSize: '14px' }}>{t.icon}</span>
                 <span style={{ fontSize: '12px', fontWeight: 700, color: form.trigger_type === t.id ? '#CC2200' : 'var(--text)' }}>{t.label}</span>
@@ -722,11 +722,11 @@ function AutomationCard({ automation, onEdit, onToggle, onDelete, onViewRuns }) 
   const isActive = automation.active === true
 
   return (
-    <div style={{ background: 'var(--panel)', borderRadius: '12px', border: `1px solid ${isActive ? '#10B98133' : 'var(--border)'}`, padding: '16px 20px', transition: 'box-shadow .15s' }}
+    <div style={{ background: 'var(--panel)', borderRadius: '12px', border: "1px solid " + (isActive ? '#10B98133' : 'var(--border)'), padding: '16px 20px', transition: 'box-shadow .15s' }}
       onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
       onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
-        <div style={{ width: 36, height: 36, borderRadius: '10px', background: isActive ? '#10B98118' : 'var(--dim)', border: `1px solid ${isActive ? '#10B98144' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>
+        <div style={{ width: 36, height: 36, borderRadius: '10px', background: isActive ? '#10B98118' : 'var(--dim)', border: "1px solid " + (isActive ? '#10B98144' : 'var(--border)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>
           {trigger?.icon || '⚡'}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -791,7 +791,7 @@ function RunHistory({ automation, onClose }) {
           {loading && <Loading />}
           {!loading && runs.length === 0 && <div style={{ textAlign: 'center', padding: '32px', color: 'var(--muted)', fontSize: '13px' }}>No runs yet — activate this automation to start tracking.</div>}
           {runs.map(run => (
-            <div key={run.id} style={{ padding: '10px 12px', borderRadius: '8px', border: `1px solid ${run.status === 'error' ? '#FECACA' : 'var(--border)'}`, background: run.status === 'error' ? '#FEF2F2' : 'var(--dim)', marginBottom: '8px' }}>
+            <div key={run.id} style={{ padding: '10px 12px', borderRadius: '8px', border: "1px solid " + (run.status === 'error' ? '#FECACA' : 'var(--border)'), background: run.status === 'error' ? '#FEF2F2' : 'var(--dim)', marginBottom: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>{run.status === 'error' ? '❌' : '✅'}</span>
@@ -952,7 +952,7 @@ export function Automations() {
           { label: 'Inactive', value: automations.length - activeCount, color: '#94A3B8' },
           { label: 'Runs',     value: totalRuns,                        color: '#F5A623' },
         ].map(s => (
-          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px 16px', borderTop: `3px solid ${s.color}` }}>
+          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px 16px', borderTop: "3px solid " + (s.color) }}>
             <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text)' }}>{s.value}</div>
             <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>{s.label}</div>
           </div>
@@ -978,7 +978,7 @@ export function Automations() {
           <div style={{ background: builderMode === 'sentence' ? '#fff' : 'var(--panel)', borderRadius: '16px', width: '100%', maxWidth: '860px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,.4)' }}>
 
             {/* Modal header */}
-            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${builderMode === 'sentence' ? '#E2E8F0' : 'var(--border)'}`, display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+            <div style={{ padding: '16px 20px', borderBottom: "1px solid " + (builderMode === 'sentence' ? '#E2E8F0' : 'var(--border)'), display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
               <div style={{ flex: 1 }}>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Automation name..."
                   style={{ fontSize: '18px', fontWeight: 700, background: 'none', border: 'none', color: builderMode === 'sentence' ? '#1E293B' : 'var(--text)', fontFamily: ff, outline: 'none', width: '100%' }} />
@@ -1016,7 +1016,7 @@ export function Automations() {
             </div>
 
             {/* Modal footer */}
-            <div style={{ padding: '14px 20px', borderTop: `1px solid ${builderMode === 'sentence' ? '#E2E8F0' : 'var(--border)'}`, display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
+            <div style={{ padding: '14px 20px', borderTop: "1px solid " + (builderMode === 'sentence' ? '#E2E8F0' : 'var(--border)'), display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
               <Btn variant="secondary" onClick={closeBuilder}>Cancel</Btn>
               <Btn onClick={save} loading={saving}>{selected ? 'Save Changes' : 'Create Automation'}</Btn>
             </div>
@@ -1025,7 +1025,7 @@ export function Automations() {
       )}
 
       {viewRuns    && <RunHistory automation={viewRuns} onClose={() => setViewRuns(null)} />}
-      <Confirm open={!!confirmDel} message={`Delete "${confirmDel?.name}"? This cannot be undone.`} onConfirm={deleteAutomation} onCancel={() => setConfirmDel(null)} />
+      <Confirm open={!!confirmDel} message={"Delete \"" + (confirmDel?.name) + "\"? This cannot be undone."} onConfirm={deleteAutomation} onCancel={() => setConfirmDel(null)} />
     </div>
   )
 }

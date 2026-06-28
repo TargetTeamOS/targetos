@@ -58,7 +58,7 @@ const MONDAY_BOARD   = '2445753704'
 function statusColor(s) { return STATUSES.find(x => x.id === s)?.color || '#c4c4c4' }
 function Badge({ label, color, size = 11 }) {
   return (
-    <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:20, background:color+'22', color, border:`1px solid ${color}44`, fontSize:size, fontWeight:700, whiteSpace:'nowrap' }}>
+    <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:20, background:color+'22', color, border:"1px solid " + (color) + "44", fontSize:size, fontWeight:700, whiteSpace:'nowrap' }}>
       {label}
     </span>
   )
@@ -72,7 +72,7 @@ function ListingCard({ listing, selected, onSelect, onToggleIvr, agents, onShowi
 
   return (
     <div onClick={() => onSelect(listing)}
-      style={{ background:'var(--panel)', borderRadius:10, border:`1.5px solid ${selected ? '#CC2200' : 'var(--border)'}`, padding:'14px 16px', cursor:'pointer', transition:'all .15s', position:'relative' }}
+      style={{ background:'var(--panel)', borderRadius:10, border:"1.5px solid " + (selected ? '#CC2200' : 'var(--border)'), padding:'14px 16px', cursor:'pointer', transition:'all .15s', position:'relative' }}
       onMouseEnter={e => { if (!selected) e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)' }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}>
 
@@ -80,7 +80,7 @@ function ListingCard({ listing, selected, onSelect, onToggleIvr, agents, onShowi
       <div
         onClick={e => { e.stopPropagation(); onToggleIvr(listing.id) }}
         title={listing.ivr_enabled ? 'Remove from phone listing' : 'Add to phone listing (press 3)'}
-        style={{ position:'absolute', top:10, right:10, width:22, height:22, borderRadius:6, background:listing.ivr_enabled?'#8B5CF6':'var(--dim)', border:`1px solid ${listing.ivr_enabled?'#8B5CF6':'var(--border)'}`, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:11 }}>
+        style={{ position:'absolute', top:10, right:10, width:22, height:22, borderRadius:6, background:listing.ivr_enabled?'#8B5CF6':'var(--dim)', border:"1px solid " + (listing.ivr_enabled?'#8B5CF6':'var(--border)'), display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:11 }}>
         📞
       </div>
 
@@ -274,7 +274,7 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
                 </div>
               </div>
 
-              <label style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px', borderRadius:10, border:`1px solid ${form.ivr_enabled?'#8B5CF6':'var(--border)'}`, background:form.ivr_enabled?'#F5F3FF':'var(--dim)', cursor:'pointer', marginBottom:12 }}>
+              <label style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px', borderRadius:10, border:"1px solid " + (form.ivr_enabled?'#8B5CF6':'var(--border)'), background:form.ivr_enabled?'#F5F3FF':'var(--dim)', cursor:'pointer', marginBottom:12 }}>
                 <input type="checkbox" checked={!!form.ivr_enabled} onChange={e=>set('ivr_enabled',e.target.checked)}
                   style={{ width:18, height:18, cursor:'pointer', accentColor:'#8B5CF6' }}/>
                 <div>
@@ -287,7 +287,7 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
                 <div>
                   <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Custom IVR description (optional)</div>
                   <textarea value={form.ivr_description||''} onChange={e=>set('ivr_description',e.target.value)} rows={3}
-                    placeholder={`${form.addr}. ${form.beds} bedrooms, ${form.baths} bathrooms, ${form.sqft} square feet. Listed at ${fmt$(form.list_price)}.`}
+                    placeholder={form.addr + '. ' + form.beds + ' bedrooms, ' + form.baths + ' bathrooms, ' + form.sqft + ' square feet. Listed at ' + fmt$(form.list_price)}
                     style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff, resize:'vertical', boxSizing:'border-box', marginBottom:10 }}/>
                   <div style={{ fontSize:11, color:'var(--muted)', fontStyle:'italic' }}>Leave blank to use auto-generated description from property data.</div>
                 </div>
@@ -463,8 +463,8 @@ function RoutePlanner({ listings, onClose }) {
           <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Select listings to visit</div>
           {listings.filter(l=>l.status==='Active').map(l => (
             <div key={l.id} onClick={() => toggle(l.id)}
-              style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, border:`1px solid ${selected.includes(l.id)?'#CC2200':'var(--border)'}`, background:selected.includes(l.id)?'rgba(204,34,0,.04)':'var(--dim)', cursor:'pointer', marginBottom:5 }}>
-              <div style={{ width:18, height:18, borderRadius:4, border:`2px solid ${selected.includes(l.id)?'#CC2200':'var(--border)'}`, background:selected.includes(l.id)?'#CC2200':'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, border:"1px solid " + (selected.includes(l.id)?'#CC2200':'var(--border)'), background:selected.includes(l.id)?'rgba(204,34,0,.04)':'var(--dim)', cursor:'pointer', marginBottom:5 }}>
+              <div style={{ width:18, height:18, borderRadius:4, border:"2px solid " + (selected.includes(l.id)?'#CC2200':'var(--border)'), background:selected.includes(l.id)?'#CC2200':'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 {selected.includes(l.id) && <span style={{ color:'#fff', fontSize:10, fontWeight:900 }}>✓</span>}
               </div>
               <div style={{ flex:1, minWidth:0 }}>
@@ -684,7 +684,7 @@ export function Listings() {
           { label:'On Phone IVR', value:ivrCount,      color:'#F97316' },
           { label:'Active Volume',value:fmt$(totalVol),color:'#CC2200' },
         ].map(s=>(
-          <div key={s.label} style={{ background:'var(--panel)', borderRadius:9, border:'1px solid var(--border)', padding:'10px 12px', borderLeft:`3px solid ${s.color}` }}>
+          <div key={s.label} style={{ background:'var(--panel)', borderRadius:9, border:'1px solid var(--border)', padding:'10px 12px', borderLeft:"3px solid " + (s.color) }}>
             <div style={{ fontSize:20, fontWeight:900, color:s.color }}>{s.value}</div>
             <div style={{ fontSize:10, color:'var(--muted)', fontWeight:600, marginTop:1 }}>{s.label}</div>
           </div>
@@ -749,7 +749,7 @@ export function Listings() {
         <div style={{ display:'flex', gap:14, overflowX:'auto', paddingBottom:12 }}>
           {statusGroups.map(g => (
             <div key={g.id} style={{ flexShrink:0, width:280 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8, padding:'6px 10px', background:g.color+'18', borderRadius:8, border:`1px solid ${g.color}33` }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8, padding:'6px 10px', background:g.color+'18', borderRadius:8, border:"1px solid " + (g.color) + "33" }}>
                 <div style={{ width:8, height:8, borderRadius:'50%', background:g.color, flexShrink:0 }}/>
                 <span style={{ fontSize:12, fontWeight:700, color:g.color }}>{g.label}</span>
                 <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>{g.items.length}</span>
@@ -790,7 +790,7 @@ export function Listings() {
       {/* Route Planner */}
       {showRoute && <RoutePlanner listings={listings} onClose={() => setShowRoute(false)} />}
 
-      <Confirm open={confirmDel} message={`Delete ${selected?.addr}?`} onConfirm={deleteListing} onCancel={() => setConfirmDel(false)} />
+      <Confirm open={confirmDel} message={"Delete " + (selected?.addr) + "?"} onConfirm={deleteListing} onCancel={() => setConfirmDel(false)} />
     </div>
   )
 }

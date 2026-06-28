@@ -27,7 +27,7 @@ export function Pipeline() {
   async function moveDeal(dealId, newStage) {
     try {
       await update(dealId, { stage: newStage })
-      toast(`✅ Moved to ${newStage}`)
+      toast("✅ Moved to " + (newStage))
     } catch(e) {
       toast('Failed: ' + e.message, '#DC2626')
     }
@@ -85,7 +85,7 @@ export function Pipeline() {
                       {activeStages.filter(s => s.value !== stage.value).map(s => (
                         <button key={s.value}
                           onClick={(e) => { e.stopPropagation(); moveDeal(deal.id, s.value) }}
-                          style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${s.hex}44`, background: s.hex + '11', color: s.hex, cursor: 'pointer', fontFamily: ff, fontWeight: 600 }}>
+                          style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', border: "1px solid " + (s.hex) + "44", background: s.hex + '11', color: s.hex, cursor: 'pointer', fontFamily: ff, fontWeight: 600 }}>
                           → {s.label.split(' ')[0]}
                         </button>
                       ))}

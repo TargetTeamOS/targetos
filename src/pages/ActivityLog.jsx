@@ -193,8 +193,8 @@ export function ActivityLog() {
   const createLogs = logs.filter(l => l.action === 'created')
   const updateLogs = logs.filter(l => l.action === 'updated')
 
-  const tableOptions = Object.entries(TABLE_LABELS).map(([k, v]) => ({ value: k, label: `${v.icon} ${v.label}` }))
-  const actionOptions = Object.entries(ACTION_LABELS).map(([k, v]) => ({ value: k, label: `${v.icon} ${v.label}` }))
+  const tableOptions = Object.entries(TABLE_LABELS).map(([k, v]) => ({ value: k, label: v.icon + ' ' + v.label }))
+  const actionOptions = Object.entries(ACTION_LABELS).map(([k, v]) => ({ value: k, label: v.icon + ' ' + v.label }))
 
   return (
     <div style={{ fontFamily: ff }}>
@@ -211,7 +211,7 @@ export function ActivityLog() {
           { label: 'Created', value: createLogs.length, color: '#F5A623' },
           { label: 'Updated', value: updateLogs.length, color: '#8B5CF6' },
         ].map(s => (
-          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: '14px 16px', borderTop: `3px solid ${s.color}` }}>
+          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: '14px 16px', borderTop: "3px solid " + (s.color) }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '4px' }}>{s.label}</div>
             <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text)' }}>{s.value}</div>
           </div>

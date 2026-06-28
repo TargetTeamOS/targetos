@@ -108,7 +108,7 @@ export function Offers() {
 
   return (
     <div style={{ fontFamily: ff }}>
-      <PageHeader title="Offers" sub={`${offers.length} total offers`} actions={<Btn onClick={openAdd}>+ Add Offer</Btn>} />
+      <PageHeader title="Offers" sub={(offers.length) + " total offers"} actions={<Btn onClick={openAdd}>+ Add Offer</Btn>} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
         <StatCard label="Total Offers" value={offers.length} icon="📝" />
@@ -169,7 +169,7 @@ export function Offers() {
         </div>
       )}
 
-      <Modal open={!!(selected || urlId === 'new')} onClose={closePanel} title={selected ? `Offer — ${selected.listing_addr}` : 'New Offer'} width={500}>
+      <Modal open={!!(selected || urlId === 'new')} onClose={closePanel} title={selected ? "Offer — " + (selected.listing_addr) : 'New Offer'} width={500}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <Field label="Listing Address" required>
             <Input value={form.listing_addr} onChange={v => set('listing_addr', v)} placeholder="123 Main St" />

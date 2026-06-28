@@ -194,7 +194,7 @@ export function ListingDetail({ listingId, onBack }) {
           {TABS.map(tab=>(
             <button key={tab} onClick={()=>setActiveTab(tab)}
               style={{flex:1,padding:'8px 4px',borderRadius:'8px',border:'none',cursor:'pointer',fontSize:'11px',fontWeight:700,fontFamily:'Inter,system-ui,sans-serif',textTransform:'capitalize',background:activeTab===tab?'var(--panel)':'transparent',color:activeTab===tab?'var(--text)':'var(--muted)',transition:'all .15s'}}>
-              {tab==='showings'?`Showings (${showings.length})`:tab==='interest'?`Interest (${interests.length})`:tab==='expenses'?`Expenses (${(listing.spend||[]).length})`:tab}
+              {tab==='showings'?"Showings (" + (showings.length) + ")":tab==='interest'?"Interest (" + (interests.length) + ")":tab==='expenses'?"Expenses (" + ((listing.spend||[]).length) + ")":tab}
             </button>
           ))}
         </div>
@@ -213,10 +213,10 @@ export function ListingDetail({ listingId, onBack }) {
                   <div style={{fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'5px'}}>{label}</div>
                   {editing[field] ? (
                     <div style={{display:'flex',gap:'5px'}}>
-                      <input type={type} defaultValue={listing[field]||''} id={`field-${field}`} autoFocus
+                      <input type={type} defaultValue={listing[field]||''} id={"field-" + (field)} autoFocus
                         style={{flex:1,background:'var(--inp)',border:'1.5px solid #CC2200',borderRadius:'6px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'6px 8px',outline:'none'}}
                         onKeyDown={e=>e.key==='Enter'&&saveField(field,e.target.value)}/>
-                      <button onClick={()=>saveField(field, document.getElementById(`field-${field}`).value)} style={{background:'#CC2200',border:'none',borderRadius:'6px',color:'#fff',fontSize:'11px',padding:'5px 9px',cursor:'pointer'}}>✓</button>
+                      <button onClick={()=>saveField(field, document.getElementById("field-" + (field)).value)} style={{background:'#CC2200',border:'none',borderRadius:'6px',color:'#fff',fontSize:'11px',padding:'5px 9px',cursor:'pointer'}}>✓</button>
                       <button onClick={()=>setEditing(e=>({...e,[field]:false}))} style={{background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'6px',color:'var(--muted)',fontSize:'11px',padding:'5px 9px',cursor:'pointer'}}>✕</button>
                     </div>
                   ) : (
@@ -544,25 +544,24 @@ export function ListingDetail({ listingId, onBack }) {
 
 function generateSellerReport(listing, showings, interests) {
   const totalBuyers = showings.reduce((s,sh) => s+(sh.buyer_count||1), 0)
-  const html = `
-    <html><head><title>Seller Report — ${listing.addr}</title>
+  const html = '
+    <html><head><title>Seller Report — ' + (listing.addr) + '</title>
     <style>body{font-family:Arial,sans-serif;padding:40px;max-width:700px;margin:0 auto;color:#1E293B;}h1{color:#1B2B4B;}table{width:100%;border-collapse:collapse;margin:16px 0;}th{background:#1B2B4B;color:#fff;padding:10px;text-align:left;font-size:12px;}td{padding:10px;border-bottom:1px solid #E2E8F0;font-size:13px;}.stat{display:inline-block;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px 20px;margin:6px;text-align:center;}.stat-val{font-size:24px;font-weight:900;color:#CC2200;}.stat-label{font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;}</style>
     </head><body>
     <h1>Seller Report</h1>
-    <h2>${listing.addr}</h2>
-    <p>${new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
+    <h2>' + (listing.addr) + '</h2>
+    <p>' + (new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric') + ')}</p>
     <hr/>
     <h3>Activity Summary</h3>
     <div>
-      <div class="stat"><div class="stat-val">${showings.length}</div><div class="stat-label">Total Showings</div></div>
-      <div class="stat"><div class="stat-val">${totalBuyers}</div><div class="stat-label">Buyers Shown</div></div>
-      <div class="stat"><div class="stat-val">${interests.filter(i=>i.type==='general').length}</div><div class="stat-label">Inquiries</div></div>
-      <div class="stat"><div class="stat-val">${listing.days||0}</div><div class="stat-label">Days on Market</div></div>
+      <div class="stat"><div class="stat-val">' + (showings.length) + '</div><div class="stat-label">Total Showings</div></div>
+      <div class="stat"><div class="stat-val">' + (totalBuyers) + '</div><div class="stat-label">Buyers Shown</div></div>
+      <div class="stat"><div class="stat-val">' + (interests.filter(i=>i.type==='general').length) + '</div><div class="stat-label">Inquiries</div></div>
+      <div class="stat"><div class="stat-val">' + (listing.days||0) + '</div><div class="stat-label">Days on Market</div></div>
     </div>
-    ${showings.length>0?`<h3>Showing History</h3><table><tr><th>Date</th><th>Agent</th><th>Buyers</th><th>Interest</th><th>Notes</th></tr>${showings.map(s=>`<tr><td>${s.date}</td><td>${s.agent_name}</td><td>${s.buyer_count||1}</td><td>${s.interest}</td><td>${s.notes||''}</td></tr>`).join('')}</table>`:''}
+    ' + (showings.length>0 ? '<h3>Showing History</h3><table><tr><th>Date</th><th>Agent</th><th>Buyers</th><th>Interest</th><th>Notes</th></tr>' + showings.map(function(s){ return '<tr><td>' + s.date + '</td><td>' + s.agent_name + '</td><td>' + (s.buyer_count||1) + '</td><td>' + s.interest + '</td><td>' + (s.notes||'') + '</td></tr>' }).join('') + '</table>' : '')
     <p style="margin-top:40px;color:#94A3B8;font-size:12px;">Prepared by Target Team · Keller Williams Valley Realty · 845.424.1014</p>
-    </body></html>`
-  const w = window.open('','_blank')
+    </body></html>'  const w = window.open('','_blank')
   w.document.write(html)
   w.document.close()
   setTimeout(()=>w.print(), 500)

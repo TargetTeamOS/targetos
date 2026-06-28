@@ -99,7 +99,7 @@ export function Calendar() {
   const todayStr = today()
 
   function eventsOnDay(day) {
-    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+    const dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0')
     return events.filter(e => e.start_date === dateStr)
   }
 
@@ -113,7 +113,7 @@ export function Calendar() {
     <div style={{ fontFamily: ff }}>
       <PageHeader
         title="Calendar"
-        sub={`${events.length} events in ${MONTHS[month]} ${year}`}
+        sub={events.length + ' events in ' + MONTHS[month] + ' ' + year}
         actions={
           <div style={{ display: 'flex', gap: '8px' }}>
             <Tabs tabs={[{id:'month',label:'Month'},{id:'list',label:'List'}]} active={view} onChange={setView} />
@@ -144,7 +144,7 @@ export function Calendar() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
             {/* Empty cells for first week */}
             {Array.from({ length: firstDay }).map((_, i) => (
-              <div key={`empty-${i}`} style={{ minHeight: '100px', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--dim)' }} />
+              <div key={"empty-" + (i)} style={{ minHeight: '100px', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--dim)' }} />
             ))}
             {/* Day cells */}
             {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
@@ -167,7 +167,7 @@ export function Calendar() {
                     <div key={ev.id}
                       onClick={(e) => { e.stopPropagation(); navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) }}
                       style={{ fontSize: '11px', fontWeight: 600, color: '#fff', background: ev.color || '#CC2200', borderRadius: '4px', padding: '2px 5px', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {ev.start_time && `${ev.start_time.slice(0,5)} `}{ev.title}
+                      {ev.start_time && (ev.start_time.slice(0,5)) + " "}{ev.title}
                     </div>
                   ))}
                   {dayEvents.length > 3 && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>+{dayEvents.length - 3} more</div>}
@@ -187,7 +187,7 @@ export function Calendar() {
           )}
           {events.map(ev => (
             <div key={ev.id} onClick={() => { navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) }}
-              style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px 16px', marginBottom: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: `4px solid ${ev.color || '#CC2200'}`, transition: 'box-shadow .12s' }}
+              style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px 16px', marginBottom: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: "4px solid " + (ev.color || '#CC2200'), transition: 'box-shadow .12s' }}
               onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
               onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
               <div style={{ textAlign: 'center', minWidth: '44px' }}>
@@ -196,7 +196,7 @@ export function Calendar() {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>{ev.title}</div>
-                {ev.start_time && <div style={{ fontSize: '12px', color: 'var(--muted)' }}>🕐 {ev.start_time}{ev.end_time ? ` — ${ev.end_time}` : ''}</div>}
+                {ev.start_time && <div style={{ fontSize: '12px', color: 'var(--muted)' }}>🕐 {ev.start_time}{ev.end_time ? " — " + (ev.end_time) : ''}</div>}
                 {ev.location && <div style={{ fontSize: '12px', color: 'var(--muted)' }}>📍 {ev.location}</div>}
               </div>
               <Pill label={ev.type} color={ev.color || '#CC2200'} />

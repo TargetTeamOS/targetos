@@ -34,7 +34,7 @@ function loadGoogleMaps(cb) {
   }
 
   const script    = document.createElement('script')
-  script.src      = `https://maps.googleapis.com/maps/api/js?key=${KEY}&libraries=places`
+  script.src      = "https://maps.googleapis.com/maps/api/js?key=" + (KEY) + "&libraries=places"
   script.async    = true
   script.onload   = () => {
     gmapsLoaded = true

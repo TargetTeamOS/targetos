@@ -92,7 +92,7 @@ export function Notes() {
 
   return (
     <div style={{ fontFamily: ff }}>
-      <PageHeader title="Notes" sub={`${notes.length} notes logged`} />
+      <PageHeader title="Notes" sub={(notes.length) + " notes logged"} />
 
       {/* Add Note */}
       <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: '16px', marginBottom: '20px' }}>
@@ -122,7 +122,7 @@ export function Notes() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {filtered.map(n => (
-          <div key={n.id} style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: '14px 16px', borderLeft: `4px solid ${typeColor(n.field_name)}` }}>
+          <div key={n.id} style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: '14px 16px', borderLeft: "4px solid " + (typeColor(n.field_name)) }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <Avatar agent={n.agents} size={26} />
               <div style={{ flex: 1 }}>

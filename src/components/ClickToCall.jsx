@@ -57,7 +57,7 @@ export function ClickToCall({ phone, contactName, contactId, dealId, size = 'sm'
 
       if (res.ok) {
         const data = await res.json()
-        toast(`📞 Calling ${contactName || e164}...`)
+        toast("📞 Calling " + (contactName || e164) + "...")
         setCallActive(true)
 
         // Update call log with Twilio SID
@@ -66,12 +66,12 @@ export function ClickToCall({ phone, contactName, contactId, dealId, size = 'sm'
         }
       } else {
         // Fallback: open phone dialer if Twilio not configured
-        window.location.href = `tel:${e164}`
+        window.location.href = "tel:" + (e164)
         toast('Opening phone dialer...')
       }
     } catch(e) {
       // Fallback to device phone dialer
-      window.location.href = `tel:${e164}`
+      window.location.href = "tel:" + (e164)
       toast('Opening phone dialer')
     } finally {
       setCalling(false)
@@ -84,16 +84,16 @@ export function ClickToCall({ phone, contactName, contactId, dealId, size = 'sm'
 
   return (
     <a
-      href={`tel:${e164}`}
+      href={"tel:" + (e164)}
       onClick={e => { e.preventDefault(); initiateCall() }}
-      title={`Call ${contactName || e164}`}
+      title={"Call " + (contactName || e164)}
       style={{
         display:'inline-flex', alignItems:'center', gap:btnSize.gap,
         padding:btnSize.padding,
         borderRadius:20,
         background: callActive ? '#10B981' : '#10B98118',
         color: callActive ? '#fff' : '#10B981',
-        border:`1px solid ${callActive ? '#10B981' : '#10B98144'}`,
+        border:"1px solid " + (callActive ? '#10B981' : '#10B98144'),
         fontSize:btnSize.fontSize, fontWeight:700,
         cursor:'pointer', textDecoration:'none', fontFamily:ff,
         transition:'all .15s',

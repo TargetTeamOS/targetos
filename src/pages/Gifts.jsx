@@ -151,7 +151,7 @@ export function Gifts() {
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>
                   <td style={{ padding: '11px 12px', fontWeight: 600, color: 'var(--text)' }}>{g.client_name}</td>
-                  <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{g.address}{g.unit ? ` #${g.unit}` : ''}</td>
+                  <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{g.address}{g.unit ? " #" + (g.unit) : ''}</td>
                   <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{g.phone || '—'}</td>
                   <td style={{ padding: '11px 12px' }}><Pill label={g.status} color={statusColor(g.status)} /></td>
                   <td style={{ padding: '11px 12px' }}>{g.label ? <Pill label={g.label} color="#9d99b9" /> : '—'}</td>
@@ -165,7 +165,7 @@ export function Gifts() {
         </div>
       )}
 
-      <Modal open={!!(selected || (urlId === 'new'))} onClose={closePanel} title={selected ? `Gift — ${selected.client_name}` : 'New Gift'} width={540}>
+      <Modal open={!!(selected || (urlId === 'new'))} onClose={closePanel} title={selected ? "Gift — " + (selected.client_name) : 'New Gift'} width={540}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <Field label="Client Name" required>
             <Input value={form.client_name} onChange={v => set('client_name', v)} placeholder="John Smith" />

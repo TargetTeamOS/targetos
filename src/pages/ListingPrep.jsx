@@ -101,7 +101,7 @@ export function ListingPrep() {
     <div style={{ fontFamily: ff }}>
       <PageHeader
         title="Listing Prep"
-        sub={`${preps.length} listings in prep`}
+        sub={(preps.length) + " listings in prep"}
         actions={<Btn onClick={() => { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); navigate('/listingprep/new') }}>+ New Prep</Btn>}
       />
 
@@ -121,7 +121,7 @@ export function ListingPrep() {
               onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
               onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
               <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)', marginBottom: '12px' }}>{p.listing_addr}</div>
-              <ProgressBar value={done} max={cl.length} label={`${done}/${cl.length} done`} color="#10B981" />
+              <ProgressBar value={done} max={cl.length} label={done + '/' + cl.length + ' done'} color="#10B981" />
               <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '8px' }}>{pct}% complete</div>
             </div>
           )
@@ -145,7 +145,7 @@ export function ListingPrep() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
           {checklist.map(item => (
             <label key={item.id}
-              style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', background: item.done ? 'rgba(16,185,129,.08)' : 'var(--dim)', borderRadius: '8px', cursor: 'pointer', border: `1px solid ${item.done ? '#BBF7D0' : 'var(--border)'}` }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', background: item.done ? 'rgba(16,185,129,.08)' : 'var(--dim)', borderRadius: '8px', cursor: 'pointer', border: "1px solid " + (item.done ? '#BBF7D0' : 'var(--border)') }}>
               <input type="checkbox" checked={item.done} onChange={() => toggleItem(item.id)}
                 style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#10B981' }} />
               <span style={{ fontSize: '13px', color: item.done ? '#059669' : 'var(--text)', textDecoration: item.done ? 'line-through' : 'none' }}>{item.label}</span>

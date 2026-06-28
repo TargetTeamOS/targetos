@@ -45,17 +45,17 @@ export function FileAttachments({ tableName, recordId, readOnly = false }) {
     for (const file of selectedFiles) {
       try {
         if (file.size > 50 * 1024 * 1024) {
-          toast(`${file.name} is too large (max 50MB)`, '#DC2626')
+          toast((file.name) + " is too large (max 50MB)", '#DC2626')
           continue
         }
         await uploadFile(file, tableName, recordId)
         uploaded++
       } catch(e) {
-        toast(`Failed to upload ${file.name}: ${e.message}`, '#DC2626')
+        toast('Failed to upload ' + file.name + ': ' + e.message, '#DC2626')
       }
     }
     if (uploaded > 0) {
-      toast(`✅ ${uploaded} file${uploaded > 1 ? 's' : ''} uploaded`)
+      toast('✅ ' + uploaded + ' file' + (uploaded > 1 ? 's' : '') + ' uploaded')
       await load()
     }
     setUploading(false)
@@ -146,7 +146,7 @@ export function FileAttachments({ tableName, recordId, readOnly = false }) {
 
       <Confirm
         open={!!confirmDelete}
-        message={`Delete "${confirmDelete?.name}"?`}
+        message={"Delete \"" + (confirmDelete?.name) + "\"?"}
         onConfirm={() => handleDelete(confirmDelete)}
         onCancel={() => setConfirmDelete(null)}
       />

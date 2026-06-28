@@ -72,7 +72,7 @@ function GCIRing({ value, goal, color = '#CC2200', size = 88 }) {
     <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--dim)" strokeWidth={10} />
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={10}
-        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+        strokeDasharray={dash + ' ' + circ} strokeLinecap="round"
         style={{ transition: 'stroke-dasharray .7s ease' }} />
     </svg>
   )
@@ -87,7 +87,7 @@ function MiniBar({ data, color = '#CC2200' }) {
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '60px' }}>
       {data.map((d, i) => (
         <div key={i} title={fmt$(d.value)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-          <div style={{ width: '100%', background: i === curMonth ? color : color + '44', borderRadius: '2px 2px 0 0', height: `${Math.max(3, (d.value / max) * 50)}px`, transition: 'height .4s ease' }} />
+          <div style={{ width: '100%', background: i === curMonth ? color : color + '44', borderRadius: '2px 2px 0 0', height: (Math.max(3, (d.value / max) * 50)) + "px", transition: 'height .4s ease' }} />
           <div style={{ fontSize: '8px', color: 'var(--muted)' }}>{d.label}</div>
         </div>
       ))}
@@ -171,7 +171,7 @@ function CustomWidgetBuilder({ onSave, onClose }) {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
                 {BOARD_OPTIONS.map(b => (
                   <div key={b.id} onClick={() => { setBoard(b.id); setStatus([]) }}
-                    style={{ padding:'12px', borderRadius:'9px', border:`2px solid ${board === b.id ? '#CC2200' : 'var(--border)'}`, background: board === b.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', display:'flex', alignItems:'center', gap:'8px' }}>
+                    style={{ padding:'12px', borderRadius:'9px', border:"2px solid " + (board === b.id ? '#CC2200' : 'var(--border)'), background: board === b.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', display:'flex', alignItems:'center', gap:'8px' }}>
                     <span style={{ fontSize:'20px' }}>{b.icon}</span>
                     <span style={{ fontSize:'13px', fontWeight:700, color: board === b.id ? '#CC2200' : 'var(--text)' }}>{b.label}</span>
                   </div>
@@ -191,7 +191,7 @@ function CustomWidgetBuilder({ onSave, onClose }) {
                     const on = statuses.includes(s)
                     return (
                       <div key={s} onClick={() => setStatus(prev => on ? prev.filter(x => x !== s) : [...prev, s])}
-                        style={{ padding:'5px 12px', borderRadius:'20px', border:`1px solid ${on ? '#CC2200' : 'var(--border)'}`, background: on ? 'rgba(204,34,0,.1)' : 'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color: on ? '#CC2200' : 'var(--muted)' }}>
+                        style={{ padding:'5px 12px', borderRadius:'20px', border:"1px solid " + (on ? '#CC2200' : 'var(--border)'), background: on ? 'rgba(204,34,0,.1)' : 'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color: on ? '#CC2200' : 'var(--muted)' }}>
                         {s}
                       </div>
                     )
@@ -218,7 +218,7 @@ function CustomWidgetBuilder({ onSave, onClose }) {
               <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'20px' }}>
                 {DISPLAY_OPTIONS.map(d => (
                   <div key={d.id} onClick={() => setDisplay(d.id)}
-                    style={{ padding:'12px 14px', borderRadius:'9px', border:`2px solid ${display === d.id ? '#CC2200' : 'var(--border)'}`, background: display === d.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', display:'flex', alignItems:'center', gap:'10px' }}>
+                    style={{ padding:'12px 14px', borderRadius:'9px', border:"2px solid " + (display === d.id ? '#CC2200' : 'var(--border)'), background: display === d.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', display:'flex', alignItems:'center', gap:'10px' }}>
                     <span style={{ fontSize:'18px' }}>{d.icon}</span>
                     <div>
                       <div style={{ fontSize:'13px', fontWeight:700, color: display === d.id ? '#CC2200' : 'var(--text)' }}>{d.label}</div>
@@ -420,7 +420,7 @@ function WidgetSettings({ widget, onUpdate, onClose }) {
               { value: 'lg', label: 'Full Width',  desc: '2 columns' },
             ].map(s => (
               <div key={s.value} onClick={() => setSize(s.value)}
-                style={{ flex: 1, padding: '10px 12px', border: `2px solid ${size === s.value ? color : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer', background: size === s.value ? color + '11' : 'transparent', textAlign: 'center' }}>
+                style={{ flex: 1, padding: '10px 12px', border: "2px solid " + (size === s.value ? color : 'var(--border)'), borderRadius: '8px', cursor: 'pointer', background: size === s.value ? color + '11' : 'transparent', textAlign: 'center' }}>
                 <div style={{ fontSize: '12px', fontWeight: 700, color: size === s.value ? color : 'var(--text)' }}>{s.label}</div>
                 <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px' }}>{s.desc}</div>
               </div>
@@ -472,7 +472,7 @@ function CustomizePanel({ widgets, onSave, onClose, role }) {
             const def = WIDGET_DEFS[w.id]
             if (!def) return null
             return (
-              <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', border: `1px solid ${w.visible ? w.color + '55' : 'var(--border)'}`, background: w.visible ? w.color + '08' : 'transparent', marginBottom: '6px' }}>
+              <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', border: "1px solid " + (w.visible ? w.color + '55' : 'var(--border)'), background: w.visible ? w.color + '08' : 'transparent', marginBottom: '6px' }}>
                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: w.color, flexShrink: 0 }} />
                 <span style={{ fontSize: '15px' }}>{def.icon}</span>
                 <div style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{def.label}</div>
@@ -553,7 +553,7 @@ function GoalEditor({ agents, currentAgent, isAdmin, onClose, onSaved }) {
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {agents.map(a => (
                   <div key={a.id} onClick={() => setSelId(a.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px', borderRadius: '8px', border: `1px solid ${selId === a.id ? 'var(--brand)' : 'var(--border)'}`, background: selId === a.id ? 'rgba(204,34,0,.08)' : 'transparent', cursor: 'pointer' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px', borderRadius: '8px', border: "1px solid " + (selId === a.id ? 'var(--brand)' : 'var(--border)'), background: selId === a.id ? 'rgba(204,34,0,.08)' : 'transparent', cursor: 'pointer' }}>
                     <Avatar agent={a} size={18} />
                     <span style={{ fontSize: '11px', fontWeight: 600 }}>{a.name.split(' ')[0]}</span>
                   </div>
@@ -621,7 +621,7 @@ function AgentViewControl({ agents, onClose }) {
   async function save() {
     setSaving(true)
     await saveDashPrefs(sel, wids)
-    toast(`✅ Dashboard saved for ${selAgent?.name}`)
+    toast("✅ Dashboard saved for " + (selAgent?.name))
     setSaving(false)
     onClose()
   }
@@ -637,7 +637,7 @@ function AgentViewControl({ agents, onClose }) {
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {agents.map(a => (
               <div key={a.id} onClick={() => setSel(a.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '8px', border: `1px solid ${sel === a.id ? 'var(--brand)' : 'var(--border)'}`, background: sel === a.id ? 'rgba(204,34,0,.08)' : 'transparent', cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '8px', border: "1px solid " + (sel === a.id ? 'var(--brand)' : 'var(--border)'), background: sel === a.id ? 'rgba(204,34,0,.08)' : 'transparent', cursor: 'pointer' }}>
                 <Avatar agent={a} size={20} />
                 <span style={{ fontSize: '12px', fontWeight: 600 }}>{a.name.split(' ')[0]}</span>
               </div>
@@ -650,7 +650,7 @@ function AgentViewControl({ agents, onClose }) {
             if (!def) return null
             return (
               <div key={w.id} onClick={() => setWids(ws => ws.map(x => x.id === w.id ? { ...x, visible: !x.visible } : x))}
-                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', border: `1px solid ${w.visible ? w.color + '55' : 'var(--border)'}`, background: w.visible ? w.color + '08' : 'transparent', marginBottom: '6px', cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', border: "1px solid " + (w.visible ? w.color + '55' : 'var(--border)'), background: w.visible ? w.color + '08' : 'transparent', marginBottom: '6px', cursor: 'pointer' }}>
                 <span style={{ fontSize: '15px' }}>{def.icon}</span>
                 <div style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{def.label}</div>
                 <div style={{ width: 32, height: 18, borderRadius: '99px', background: w.visible ? (w.color || 'var(--brand)') : 'var(--border)', position: 'relative', flexShrink: 0, transition: 'background .2s' }}>
@@ -1077,7 +1077,7 @@ export function Dashboard() {
       const upcomingOH     = myOH.filter(oh => oh.date >= todayStr && oh.date <= weekStr)
 
       const monthlyGCI = Array.from({ length: 12 }, (_, m) => {
-        const ms = `${yearFilter}-${String(m+1).padStart(2,'0')}`
+        const ms = yearFilter + '-' + String(m+1).padStart(2,'0')
         const gci = myDeals.filter(d => d.ao_date?.startsWith(ms) && d.stage === 'Closed').reduce((s, d) => s + parseNum(d.gci), 0)
         return { label: 'JFMAMJJASOND'[m], value: gci }
       })
@@ -1146,8 +1146,8 @@ export function Dashboard() {
           gridColumn:    isLg ? 'span 2' : 'span 1',
           background:    'var(--panel)',
           borderRadius:  '12px',
-          border:        editMode ? `2px dashed ${color}` : `1px solid var(--border)`,
-          borderTop:     editMode ? `2px dashed ${color}` : `3px solid ${color}`,
+          border:        editMode ? "2px dashed " + (color) : "1px solid var(--border)",
+          borderTop:     editMode ? "2px dashed " + (color) : "3px solid " + (color),
           display:       'flex',
           flexDirection: 'column',
           overflow:      'hidden',
@@ -1172,7 +1172,7 @@ export function Dashboard() {
                 setWidgets(updated)
                 setPendingWidgets(updated)
               }}
-                style={{ padding: '2px 7px', borderRadius: '5px', border: `1px solid ${color}44`, background: color + '11', color: color, fontSize: '10px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+                style={{ padding: '2px 7px', borderRadius: '5px', border: "1px solid " + (color) + "44", background: color + '11', color: color, fontSize: '10px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
                 {w.size === 'lg' ? '◻ Half' : '▭ Full'}
               </button>
               {/* Color picker dots */}
@@ -1264,7 +1264,7 @@ export function Dashboard() {
           { label: 'Active Listings', value: data.activeListings?.length || 0, popup: 'active_listings',c: '#14B8A6' },
         ].map(s => (
           <div key={s.label} onClick={() => setPopup(s.popup)}
-            style={{ padding: '10px', background: 'var(--dim)', borderRadius: '8px', cursor: 'pointer', borderLeft: `3px solid ${s.c}` }}
+            style={{ padding: '10px', background: 'var(--dim)', borderRadius: '8px', cursor: 'pointer', borderLeft: "3px solid " + (s.c) }}
             onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
             onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
             <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>{s.value}</div>
@@ -1422,12 +1422,12 @@ export function Dashboard() {
         {data.leaderboard?.filter(r => r.gci > 0 || r.closed > 0).slice(0, 6).map((row, i) => (
           <div key={row.agent.id} onClick={() => { setAgentFilter(row.agent.id); setPopup('gci_goal') }}
             style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-            <div style={{ fontSize: '14px', minWidth: '22px' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`}</div>
+            <div style={{ fontSize: '14px', minWidth: '22px' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1) + "."}</div>
             <Avatar agent={row.agent} size={26} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.agent.name}</div>
               <div style={{ height: '3px', background: 'var(--dim)', borderRadius: '99px', marginTop: '3px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: row.agent.color || '#CC2200', width: `${pct(row.gci, agentGoals.goal_gci)}%` }} />
+                <div style={{ height: '100%', background: row.agent.color || '#CC2200', width: (pct(row.gci, agentGoals.goal_gci)) + "%" }} />
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -1459,7 +1459,7 @@ export function Dashboard() {
             style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{oh.listing_addr}</div>
-              <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{fmtDate(oh.date)} {oh.start_time && `· ${oh.start_time}`}</div>
+              <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{fmtDate(oh.date)} {oh.start_time && "· " + (oh.start_time)}</div>
             </div>
             {oh.agents && <Avatar agent={oh.agents} size={20} />}
           </div>
@@ -1496,7 +1496,7 @@ export function Dashboard() {
           { label: '+ Event',   path: '/calendar/new',   c: '#CC2200' },
         ].map(item => (
           <button key={item.path} onClick={() => navigate(item.path)}
-            style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${item.c}33`, background: item.c + '11', color: item.c, fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+            style={{ padding: '6px 12px', borderRadius: '8px', border: "1px solid " + (item.c) + "33", background: item.c + '11', color: item.c, fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
             {item.label}
           </button>
         ))}
@@ -1657,7 +1657,7 @@ export function Dashboard() {
                           return [...new Set([...prev, ...f.stages])]
                         })
                       }}
-                      style={{ padding:'4px 10px', borderRadius:'20px', border:`1px solid ${isOn ? f.color : 'var(--border)'}`, background: isOn ? f.color : 'transparent', color: isOn ? '#fff' : 'var(--muted)', fontSize:'11px', fontWeight:700, cursor:'pointer', fontFamily:ff, transition:'all .15s' }}>
+                      style={{ padding:'4px 10px', borderRadius:'20px', border:"1px solid " + (isOn ? f.color : 'var(--border)'), background: isOn ? f.color : 'transparent', color: isOn ? '#fff' : 'var(--muted)', fontSize:'11px', fontWeight:700, cursor:'pointer', fontFamily:ff, transition:'all .15s' }}>
                       {f.label}
                     </button>
                   )
@@ -1768,7 +1768,7 @@ export function Dashboard() {
           <div><div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text)' }}>{data.closedDeals?.length || 0}</div><div style={{ fontSize: '11px', color: 'var(--muted)' }}>Closed Deals</div></div>
         </div>
         {data.closedDeals?.map(d => (
-          <DetailRow key={d.id} left={d.addr} sub={`${d.client_name || '—'} · ${d.side || ''} · ${fmtDate(d.ao_date)}`}
+          <DetailRow key={d.id} left={d.addr} sub={(d.client_name || '—') + ' · ' + (d.side || '') + ' · ' + fmtDate(d.ao_date)}
             right={fmt$(d.gci)} onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
         ))}
         {!data.closedDeals?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No closed deals in {yearFilter}</div>}
@@ -1778,8 +1778,8 @@ export function Dashboard() {
       <DetailPopup open={popup === 'team_goal'} onClose={() => setPopup(null)} title="Team Goal — All Agents" icon="🏆">
         {data.leaderboard?.map((row, i) => (
           <DetailRow key={row.agent.id}
-            left={<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span>{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</span><Avatar agent={row.agent} size={24} /><span style={{ fontWeight: 600 }}>{row.agent.name}</span></div>}
-            sub={`${row.closed} closed · ${row.active} active`} right={fmt$(row.gci)} />
+            left={<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span>{i===0?'🥇':i===1?'🥈':i===2?'🥉':"#" + (i+1)}</span><Avatar agent={row.agent} size={24} /><span style={{ fontWeight: 600 }}>{row.agent.name}</span></div>}
+            sub={row.closed + ' closed · ' + row.active + ' active'} right={fmt$(row.gci)} />
         ))}
       </DetailPopup>
 
@@ -1787,7 +1787,7 @@ export function Dashboard() {
       <DetailPopup open={popup === 'active_deals'} onClose={() => setPopup(null)} title="All Active Deals" icon="💼" width={640}>
         <div style={{ marginBottom: '10px', fontSize: '12px', color: 'var(--muted)' }}>{data.activeDeals?.length} deals · {fmt$(data.pipelineGCI)} pipeline GCI</div>
         {data.activeDeals?.map(d => (
-          <DetailRow key={d.id} left={d.addr} sub={`${d.client_name || '—'} · ${d.side || ''}`}
+          <DetailRow key={d.id} left={d.addr} sub={(d.client_name || '—') + ' · ' + (d.side || '')}
             right={fmt$(d.gci)} badge={<Pill label={d.stage} color={stageHex(d.stage)} />}
             onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
         ))}
@@ -1815,7 +1815,7 @@ export function Dashboard() {
       {/* Hot Leads Detail */}
       <DetailPopup open={popup === 'hot_leads'} onClose={() => setPopup(null)} title="Hot & Warm Leads" icon="🔥">
         {data.hotLeads?.map(c => (
-          <DetailRow key={c.id} left={`${c.first_name} ${c.last_name || ''}`} sub={c.phone || c.source || ''}
+          <DetailRow key={c.id} left={c.first_name + ' ' + (c.last_name || '')} sub={c.phone || c.source || ''}
             badge={<Pill label={c.status} color={c.status === 'Hot' ? '#DC2626' : '#F97316'} />}
             right={c.phone ? <span onClick={e=>e.stopPropagation()}><ClickToCall phone={c.phone} contactName={c.first_name + ' ' + (c.last_name||'')} contactId={c.id} size="sm" /></span> : null}
             onClick={() => { navigate('/contacts/' + c.id); setPopup(null) }} />
@@ -1845,7 +1845,7 @@ export function Dashboard() {
       {/* Overdue Tasks Detail */}
       <DetailPopup open={popup === 'overdue_alert'} onClose={() => setPopup(null)} title="Overdue Tasks" icon="⚠️">
         {data.overdueTasks?.map(t => (
-          <DetailRow key={t.id} left={t.title} sub={`Due ${fmtDate(t.due_date)}`}
+          <DetailRow key={t.id} left={t.title} sub={"Due " + (fmtDate(t.due_date))}
             badge={<Pill label="OVERDUE" color="#DC2626" />}
             onClick={() => { navigate('/tasks/' + t.id); setPopup(null) }} />
         ))}
@@ -1857,8 +1857,8 @@ export function Dashboard() {
         {data.upcoming?.map(d => {
           const days = getDaysUntil(d.expected_close_date || d.close_date)
           return (
-            <DetailRow key={d.id} left={d.addr} sub={`${d.client_name || '—'} · Closes ${fmtDate(d.expected_close_date || d.close_date)}`}
-              right={fmt$(d.gci)} badge={<Pill label={`${days}d`} color={days <= 7 ? '#DC2626' : '#10B981'} />}
+            <DetailRow key={d.id} left={d.addr} sub={(d.client_name || '—') + ' · Closes ' + fmtDate(d.expected_close_date || d.close_date)}
+              right={fmt$(d.gci)} badge={<Pill label={(days) + "d"} color={days <= 7 ? '#DC2626' : '#10B981'} />}
               onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
           )
         })}
@@ -1867,9 +1867,9 @@ export function Dashboard() {
 
       {/* Pipeline Stage Popups */}
       {DEAL_STAGES.map(s => (
-        <DetailPopup key={s.value} open={popup === 'stage_' + s.value} onClose={() => setPopup(null)} title={`${s.label}`} icon="🔀">
+        <DetailPopup key={s.value} open={popup === 'stage_' + s.value} onClose={() => setPopup(null)} title={(s.label)} icon="🔀">
           {data.pipeByStage?.find(x => x.value === s.value)?.deals?.map(d => (
-            <DetailRow key={d.id} left={d.addr} sub={`${d.client_name || '—'} · ${d.side || ''}`}
+            <DetailRow key={d.id} left={d.addr} sub={(d.client_name || '—') + ' · ' + (d.side || '')}
               right={fmt$(d.gci)} onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
           ))}
         </DetailPopup>

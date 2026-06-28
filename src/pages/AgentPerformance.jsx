@@ -32,7 +32,7 @@ function MiniBar({ value, max, color }) {
 // ── STAT CARD ─────────────────────────────────────────────────────
 function StatCard({ label, value, sub, color, icon }) {
   return (
-    <div style={{ background: 'var(--panel)', borderRadius: 10, border: '1px solid var(--border)', padding: '14px 16px', borderLeft: `3px solid ${color}` }}>
+    <div style={{ background: 'var(--panel)', borderRadius: 10, border: '1px solid var(--border)', padding: '14px 16px', borderLeft: "3px solid " + (color) }}>
       <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5, textTransform: 'uppercase', letterSpacing: '.05em' }}>
         {icon} {label}
       </div>
@@ -54,7 +54,7 @@ function MonthlyChart({ data, color, label }) {
           return (
             <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
               <div
-                title={`${MONTHS[i]}: ${fmt$(d.value)}`}
+                title={MONTHS[i] + ': ' + fmt$(d.value)}
                 style={{ width: '100%', background: d.value > 0 ? color : 'var(--border)', borderRadius: '3px 3px 0 0', height: Math.max(2, (pct / 100) * 52) + 'px', transition: 'height .4s', cursor: 'default' }}
               />
               <span style={{ fontSize: 8, color: 'var(--muted)', fontWeight: 600 }}>{MONTHS[i].slice(0, 1)}</span>
@@ -98,7 +98,7 @@ function AgentCard({ agent, stats, rank, maxGCI, year }) {
         onMouseLeave={e => e.currentTarget.style.background = ''}
       >
         {/* Rank */}
-        <div style={{ width: 28, height: 28, borderRadius: '50%', background: rankColor + '22', border: `2px solid ${rankColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: rankColor, flexShrink: 0 }}>
+        <div style={{ width: 28, height: 28, borderRadius: '50%', background: rankColor + '22', border: "2px solid " + (rankColor), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: rankColor, flexShrink: 0 }}>
           {rank}
         </div>
 
@@ -147,11 +147,11 @@ function AgentCard({ agent, stats, rank, maxGCI, year }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16, marginTop: 14 }}>
             <StatCard label="Total GCI"     value={fmt$(stats.gci)}           color="#10B981" icon="💰" />
             <StatCard label="Volume"        value={fmt$(stats.production)}     color="#3B82F6" icon="📊" />
-            <StatCard label="Avg GCI/Deal"  value={fmt$(avgGCI)}               color="#F5A623" icon="📈" sub={`${closedDeals.length} closed deals`} />
-            <StatCard label="Pipeline"      value={fmt$(stats.pipelineGCI)}    color="#8B5CF6" icon="⏳" sub={`${activeDeals.length} active deals`} />
+            <StatCard label="Avg GCI/Deal"  value={fmt$(avgGCI)}               color="#F5A623" icon="📈" sub={(closedDeals.length) + " closed deals"} />
+            <StatCard label="Pipeline"      value={fmt$(stats.pipelineGCI)}    color="#8B5CF6" icon="⏳" sub={(activeDeals.length) + " active deals"} />
           </div>
 
-          <MonthlyChart data={monthlyGCI} color={agent.color || '#10B981'} label={`Monthly GCI — ${year}`} />
+          <MonthlyChart data={monthlyGCI} color={agent.color || '#10B981'} label={"Monthly GCI — " + (year)} />
 
           {/* Recent deals */}
           {closedDeals.length > 0 && (
@@ -259,15 +259,15 @@ export function AgentPerformance() {
         <>
           {/* Team totals */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
-            <StatCard label="Team GCI"      value={fmt$(teamGCI)}      color="#10B981" icon="💰" sub={`${totalClosed} deals closed`} />
+            <StatCard label="Team GCI"      value={fmt$(teamGCI)}      color="#10B981" icon="💰" sub={(totalClosed) + " deals closed"} />
             <StatCard label="Team Volume"   value={fmt$(teamVolume)}   color="#3B82F6" icon="🏡" />
             <StatCard label="Pipeline GCI"  value={fmt$(teamPipeline)} color="#F5A623" icon="⏳" sub="Active deals" />
-            <StatCard label="Agents"        value={agentStats.length}  color="#8B5CF6" icon="👥" sub={`of ${agents.length} total`} />
+            <StatCard label="Agents"        value={agentStats.length}  color="#8B5CF6" icon="👥" sub={"of " + (agents.length) + " total"} />
           </div>
 
           {/* Team monthly chart */}
           <div style={{ background: 'var(--panel)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, marginBottom: 20 }}>
-            <MonthlyChart data={monthlyTeamGCI} color="#10B981" label={`Team GCI by Month — ${year}`} />
+            <MonthlyChart data={monthlyTeamGCI} color="#10B981" label={"Team GCI by Month — " + (year)} />
           </div>
 
           {/* Leaderboard */}

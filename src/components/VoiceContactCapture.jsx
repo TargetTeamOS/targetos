@@ -12,8 +12,7 @@ function extractPhone(text) {
   const m = clean.match(/(\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}|\d{10,11})/g)
   if(!m) return null
   const digits = m[0].replace(/\D/g,'')
-  if(digits.length === 10) return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`
-  if(digits.length === 11 && digits[0]==='1') return `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`
+  if(digits.length === 10) return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}"\n  if(digits.length === 11 && digits[0]==='1') return "(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`
   return m[0]
 }
 
@@ -137,7 +136,7 @@ export function VoiceContactCapture({ onSaved, onClose, compact=false }) {
       phone:       extracted.phone || '',
       status:      'New',
       source:      'Voice Capture',
-      notes:       `Voice note: "${extracted.notes}" — Needs full profile completion`,
+      notes:       "Voice note: \"" + (extracted.notes) + "\" — Needs full profile completion",
       agent_id:    agent?.id,
     }]).select()
 
@@ -162,7 +161,7 @@ export function VoiceContactCapture({ onSaved, onClose, compact=false }) {
     }])
 
     setStage('done')
-    toast(`✅ Contact saved! Reminder created to fill out ${extracted.first || 'the profile'}'s details.`)
+    toast("✅ Contact saved! Reminder created to fill out " + (extracted.first || 'the profile') + "'s details.")
     if(onSaved) onSaved(data[0])
   }
 

@@ -116,7 +116,7 @@ export function Transactions() {
     <div style={{ fontFamily: ff }}>
       <PageHeader
         title="Transactions"
-        sub={`${active} active · ${fmt$(totalGCI)} total GCI`}
+        sub={active + ' active · ' + fmt$(totalGCI) + ' total GCI'}
         actions={<Btn onClick={() => { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); navigate('/transactions/new') }}>+ Add Transaction</Btn>}
       />
 
@@ -260,7 +260,7 @@ export function Transactions() {
         </ModalActions>
       </Modal>
 
-      <Confirm open={confirmDelete} message={`Delete transaction at ${selected?.addr}?`} onConfirm={deleteTx} onCancel={() => setConfirmDelete(false)} />
+      <Confirm open={confirmDelete} message={"Delete transaction at " + (selected?.addr) + "?"} onConfirm={deleteTx} onCancel={() => setConfirmDelete(false)} />
     </div>
   )
 }

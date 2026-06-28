@@ -301,7 +301,7 @@ export function BulkUpload({ board, onImport, onClose }) {
             <div>
               <div style={{fontSize:'13px',fontWeight:700,color:preview.length>0?'#16A34A':'#DC2626'}}>{preview.length} records ready to import</div>
               <div style={{fontSize:'11px',color:'var(--muted)',marginTop:'2px'}}>
-                {csvData.rows.length - preview.length > 0 && `${csvData.rows.length - preview.length} rows skipped (missing required fields)`}
+                {csvData.rows.length - preview.length > 0 && (csvData.rows.length - preview.length) + " rows skipped (missing required fields)"}
               </div>
             </div>
             <div style={{fontSize:'24px',fontWeight:900,color:preview.length>0?'#16A34A':'#DC2626'}}>{preview.length}</div>
@@ -340,7 +340,7 @@ export function BulkUpload({ board, onImport, onClose }) {
           <div style={{display:'flex',gap:'8px',justifyContent:'space-between'}}>
             <Btn variant="ghost" onClick={()=>setStep(2)}>← Back</Btn>
             <Btn onClick={doImport} disabled={importing||preview.length===0} variant="green">
-              {importing ? 'Importing...' : `Import ${preview.length} Records →`}
+              {importing ? 'Importing...' : "Import " + (preview.length) + " Records →"}
             </Btn>
           </div>
         </div>

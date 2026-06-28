@@ -8,7 +8,7 @@ const s = (active) => ({
   padding: '0 8px',
   height: 26,
   borderRadius: 5,
-  border: `1px solid ${active ? '#CC2200' : 'var(--border)'}`,
+  border: "1px solid " + (active ? '#CC2200' : 'var(--border)'),
   background: active ? 'rgba(204,34,0,.07)' : 'var(--inp)',
   color: active ? '#CC2200' : 'var(--text)',
   fontSize: 11,

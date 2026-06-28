@@ -94,7 +94,7 @@ export function Announcements() {
         {announcements.map(a => (
           <div key={a.id}
             onClick={() => canManage && (navigate('/announcements/' + a.id), setSelected(a), setForm({ ...BLANK, ...a }))}
-            style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: `1px solid ${a.pinned ? typeColor(a.type) + '44' : 'var(--border)'}`, padding: '18px 20px', cursor: canManage ? 'pointer' : 'default', borderLeft: `4px solid ${typeColor(a.type)}`, transition: 'box-shadow .15s' }}
+            style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: "1px solid " + (a.pinned ? typeColor(a.type) + '44' : 'var(--border)'), padding: '18px 20px', cursor: canManage ? 'pointer' : 'default', borderLeft: "4px solid " + (typeColor(a.type)), transition: 'box-shadow .15s' }}
             onMouseEnter={e => { if (canManage) e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
             onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '8px' }}>

@@ -14,7 +14,7 @@ const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 // ── CSV HELPERS ───────────────────────────────────────────────────
 function toCSV(rows, columns) {
-  const header = columns.map(c => `"${c.label}"`).join(',')
+  const header = columns.map(c => "\"" + (c.label) + "\"").join(',')
   const lines  = rows.map(row =>
     columns.map(c => {
       let val
@@ -26,7 +26,7 @@ function toCSV(rows, columns) {
       }
       if (val === null || val === undefined) return '""'
       const str = String(val).replace(/"/g, '""')
-      return `"${str}"`
+      return "\"" + (str) + "\""
     }).join(',')
   )
   return [header, ...lines].join('\r\n')
@@ -105,17 +105,17 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
   function doExport() {
     if (!data.length) { toast('No data to export', '#F5A623'); return }
     const csv  = toCSV(data, columns)
-    const name = `${table}_export_${new Date().toISOString().slice(0,10)}.csv`
+    const name = table + '_export_' + new Date().toISOString().slice(0,10) + '.csv'
     downloadFile(csv, name)
-    toast(`✅ Exported ${data.length} ${label.toLowerCase()}`)
+    toast('✅ Exported ' + data.length + ' ' + label.toLowerCase())
     setOpen(false)
   }
 
   function doExportTemplate() {
-    const header = columns.map(c => `"${c.label}"`).join(',')
-    const sample = columns.map(c => `"${c.example || ''}"` ).join(',')
+    const header = columns.map(c => "\"" + (c.label) + "\"").join(',')
+    const sample = columns.map(c => "\"" + (c.example || '') + "\"" ).join(',')
     const csv    = [header, sample].join('\r\n')
-    downloadFile(csv, `${table}_import_template.csv`)
+    downloadFile(csv, (table) + "_import_template.csv")
     toast('✅ Template downloaded')
   }
 
@@ -330,7 +330,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     setImportDone({ inserted, updated, skipped, errors })
     setImporting(false)
     if (onImport) onImport()
-    toast(`✅ Import complete: ${inserted} added, ${skipped} skipped, ${updated} updated${errors.length ? `, ${errors.length} errors` : ''}`)
+    toast(`✅ Import complete: ${inserted} added, ${skipped} skipped, ${updated} updated${errors.length ? ", " + (errors.length) + " errors" : ''}`)
   }
 
   if (!open) {
@@ -500,7 +500,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
                 </button>
                 <button onClick={doImport} disabled={importing}
                   style={{ flex: 1, padding: '9px', borderRadius: '8px', border: 'none', background: importing ? '#94A3B8' : '#CC2200', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: importing ? 'wait' : 'pointer', fontFamily: ff }}>
-                  {importing ? `⏳ Importing ${preview.allRows.length} rows...` : `⬆ Import ${preview.allRows.length} rows`}
+                  {importing ? "⏳ Importing " + (preview.allRows.length) + " rows..." : "⬆ Import " + (preview.allRows.length) + " rows"}
                 </button>
               </div>
             </div>

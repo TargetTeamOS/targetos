@@ -13,7 +13,7 @@ const ff = 'Inter, system-ui, -apple-system, sans-serif'
 // ── SPINNER ──────────────────────────────────────────────────────
 export function Spinner({ size = 20, color = 'var(--brand)' }) {
   return (
-    <div style={{ width: size, height: size, border: `2px solid ${color}22`, borderTop: `2px solid ${color}`, borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
+    <div style={{ width: size, height: size, border: "2px solid " + (color) + "22", borderTop: "2px solid " + (color), borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
   )
 }
 
@@ -57,7 +57,7 @@ export function Pill({ label, color = '#94A3B8', size = 'sm' }) {
   const pad = size === 'sm' ? '3px 8px' : '5px 12px'
   const fs  = size === 'sm' ? '11px' : '12px'
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', padding: pad, borderRadius: '99px', background: color + '22', color: color, fontSize: fs, fontWeight: 600, fontFamily: ff, whiteSpace: 'nowrap', border: `1px solid ${color}44` }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: pad, borderRadius: '99px', background: color + '22', color: color, fontSize: fs, fontWeight: 600, fontFamily: ff, whiteSpace: 'nowrap', border: "1px solid " + (color) + "44" }}>
       {label}
     </span>
   )
@@ -97,7 +97,7 @@ export function ProgressBar({ value, max, color = 'var(--brand)', height = 8, sh
         </div>
       )}
       <div style={{ height, borderRadius: 99, background: 'var(--dim)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 99, transition: 'width .4s ease' }} />
+        <div style={{ height: '100%', width: (pct) + "%", background: color, borderRadius: 99, transition: 'width .4s ease' }} />
       </div>
     </div>
   )
@@ -211,7 +211,7 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
       type={type}
       onClick={onClick}
       disabled={disabled || loading}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: pads[size] || pads.md, background: c.bg, color: c.text, border: variant === 'outline' ? `1px solid var(--brand)` : 'none', borderRadius: 'var(--radius-sm)', fontSize: fss[size] || fss.md, fontWeight: 600, fontFamily: ff, cursor: disabled || loading ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, transition: 'background .15s', whiteSpace: 'nowrap', ...extra }}>
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: pads[size] || pads.md, background: c.bg, color: c.text, border: variant === 'outline' ? "1px solid var(--brand)" : 'none', borderRadius: 'var(--radius-sm)', fontSize: fss[size] || fss.md, fontWeight: 600, fontFamily: ff, cursor: disabled || loading ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, transition: 'background .15s', whiteSpace: 'nowrap', ...extra }}>
       {loading ? <Spinner size={14} color={c.text} /> : null}
       {children}
     </button>
@@ -273,7 +273,7 @@ export function ModalActions({ children }) {
 // ── GRID ─────────────────────────────────────────────────────────
 export function Grid({ cols = 2, gap = 14, children }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap }}>
+    <div style={{ display: 'grid', gridTemplateColumns: "repeat(" + (cols) + ", 1fr)", gap }}>
       {children}
     </div>
   )

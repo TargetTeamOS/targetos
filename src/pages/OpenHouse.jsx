@@ -132,7 +132,7 @@ export function OpenHouse() {
     <div style={{ fontFamily: ff }}>
       <PageHeader
         title="Open Houses"
-        sub={`${openHouses.length} open houses`}
+        sub={(openHouses.length) + " open houses"}
         actions={<Btn onClick={() => { setForm({ ...BLANK_OH, agent_id: agent?.id }); setShowOHForm(true); navigate('/openhouse/new') }}>+ Add Open House</Btn>}
       />
 
@@ -164,7 +164,7 @@ export function OpenHouse() {
       )}
 
       {/* Selected OH Detail Modal */}
-      <Modal open={!!(selected)} onClose={closePanel} title={`Open House — ${selected?.listing_addr || ''}`} width={600}>
+      <Modal open={!!(selected)} onClose={closePanel} title={"Open House — " + (selected?.listing_addr || '')} width={600}>
         {/* OH Info */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
           <Field label="Address">

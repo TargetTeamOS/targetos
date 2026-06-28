@@ -180,7 +180,7 @@ function TimelineItem({ item }) {
   return (
     <div style={{ display: 'flex', gap: '10px', paddingBottom: '14px', position: 'relative' }}>
       <div style={{ position: 'absolute', left: '13px', top: '26px', bottom: 0, width: '2px', background: 'var(--border)' }} />
-      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--panel)', border: `2px solid ${t.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', flexShrink: 0, zIndex: 1 }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--panel)', border: "2px solid " + (t.color), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', flexShrink: 0, zIndex: 1 }}>
         {t.icon}
       </div>
       <div style={{ flex: 1, background: 'var(--dim)', borderRadius: '10px', padding: '9px 12px', border: '1px solid var(--border)' }}>
@@ -247,7 +247,7 @@ function AddToTimeline({ contactId, agentId, onAdded }) {
       <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
         {TYPES.map(t => (
           <button key={t.value} onClick={() => setType(t.value)}
-            style={{ padding: '4px 10px', borderRadius: '6px', border: `1px solid ${type === t.value ? 'var(--brand)' : 'var(--border)'}`, background: type === t.value ? 'rgba(204,34,0,.08)' : 'transparent', color: type === t.value ? 'var(--brand)' : 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
+            style={{ padding: '4px 10px', borderRadius: '6px', border: "1px solid " + (type === t.value ? 'var(--brand)' : 'var(--border)'), background: type === t.value ? 'rgba(204,34,0,.08)' : 'transparent', color: type === t.value ? 'var(--brand)' : 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
             {t.label}
           </button>
         ))}
@@ -508,7 +508,7 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
         <span style={{ fontSize: '14px' }}>{icon}</span>
         <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{title}</span>
         {action && <span onClick={e => { e.stopPropagation(); action.onClick() }}
-          style={{ fontSize: '11px', fontWeight: 700, color: color, background: color + '18', padding: '2px 8px', borderRadius: '6px', cursor: 'pointer', border: `1px solid ${color}33` }}>
+          style={{ fontSize: '11px', fontWeight: 700, color: color, background: color + '18', padding: '2px 8px', borderRadius: '6px', cursor: 'pointer', border: "1px solid " + (color) + "33" }}>
           {action.label}
         </span>}
         <span style={{ fontSize: '11px', color: 'var(--muted)', transition: 'transform .2s', transform: open ? 'rotate(0)' : 'rotate(-90deg)' }}>▾</span>
@@ -684,7 +684,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── TASKS ── */}
-      <RightSection title={`Tasks (${relTasks.length})`} icon="✅" color="#F97316"
+      <RightSection title={"Tasks (" + (relTasks.length) + ")"} icon="✅" color="#F97316"
         action={{ label: '+ Add', onClick: () => setAddingTask(true) }}>
         {relTasks.length === 0 && <EmptyState text="No tasks yet" action={{ label: '+ Create task', onClick: () => setAddingTask(true) }} />}
         {relTasks.slice(0,5).map(t => (
@@ -712,11 +712,11 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
             </div>
           </div>
         )}
-        {relTasks.length > 5 && <AddBtn onClick={() => navigate('/tasks')} label={`View all ${relTasks.length} tasks →`} />}
+        {relTasks.length > 5 && <AddBtn onClick={() => navigate('/tasks')} label={"View all " + (relTasks.length) + " tasks →"} />}
       </RightSection>
 
       {/* ── DEALS ── */}
-      <RightSection title={`Deals (${relDeals.length})`} icon="💼" color="#10B981">
+      <RightSection title={"Deals (" + (relDeals.length) + ")"} icon="💼" color="#10B981">
         {relDeals.length === 0 && <EmptyState text="No deals linked" action={{ label: '+ Link Deal', onClick: () => navigate('/production/new') }} />}
         {relDeals.map(d => (
           <div key={d.id} onClick={() => navigate('/production/' + d.id)}
@@ -732,7 +732,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── CALLS LOG ── */}
-      <RightSection title={`Calls (${calls.length})`} icon="📞" color="#3B82F6">
+      <RightSection title={"Calls (" + (calls.length) + ")"} icon="📞" color="#3B82F6">
         {calls.length === 0 && <EmptyState text="No calls logged" action={{ label: '+ Log Call', onClick: () => navigate('/calls/new') }} />}
         {calls.slice(0,4).map(c => (
           <div key={c.id} style={{ padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
@@ -748,7 +748,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── GIFTS ── */}
-      <RightSection title={`Gifts (${gifts.length})`} icon="🎁" color="#EC4899">
+      <RightSection title={"Gifts (" + (gifts.length) + ")"} icon="🎁" color="#EC4899">
         {gifts.length === 0 && <EmptyState text="No gifts yet" action={{ label: '+ Add Gift', onClick: () => navigate('/gifts/new') }} />}
         {gifts.map(g => (
           <div key={g.id} onClick={() => navigate('/gifts/' + g.id)}
@@ -939,8 +939,8 @@ export function ContactDetail() {
       calls.forEach(c => items.push({
         id: c.id, type: 'call',
         title:      c.contact_name || '',
-        body:       [c.notes, c.outcome ? `Outcome: ${c.outcome}` : '', c.duration ? `Duration: ${c.duration}` : ''].filter(Boolean).join('\n'),
-        meta:       `${c.direction || 'Outbound'} call${c.outcome ? ' · ' + c.outcome : ''}`,
+        body:       [c.notes, c.outcome ? "Outcome: " + (c.outcome) : '', c.duration ? "Duration: " + (c.duration) : ''].filter(Boolean).join('\n'),
+        meta: (c.direction || 'Outbound') + ' call' + (c.outcome ? ' · ' + c.outcome : ''),
         agent:      c.agents,
         created_at: c.called_at,
       }))
@@ -960,12 +960,11 @@ export function ContactDetail() {
         let body  = ''
 
         if (a.action === 'status') {
-          title = `Status: ${a.old_value || '—'} → ${a.new_value}`
+          title = 'Status: ' + (a.old_value || '—') + ' → ' + a.new_value
         } else if (a.action === 'updated' && a.field_name) {
           const fieldLabel = a.field_name.replace(/_/g, ' ')
-          if (a.old_value && a.new_value) title = `${fieldLabel}: "${a.old_value}" → "${a.new_value}"`
-          else if (a.new_value)           title = `${fieldLabel} set to "${a.new_value}"`
-          else                            title = `${fieldLabel} cleared`
+          if (a.old_value && a.new_value) title = `${fieldLabel}: "${a.old_value}" → "${a.new_value}""\n          else if (a.new_value)           title = "${fieldLabel} set to "${a.new_value}"`
+          else                            title = (fieldLabel) + " cleared"
         } else if (a.action === 'note') {
           body = a.new_value || ''
         } else if (a.action === 'created') {
@@ -1018,7 +1017,7 @@ export function ContactDetail() {
         field_name: field,
         old_value:  prev !== null && prev !== undefined ? String(prev).slice(0, 200) : null,
         new_value:  value !== null && value !== undefined ? String(value).slice(0, 200) : null,
-        metadata:   { description: `${field.replace(/_/g,' ')} updated` },
+        metadata:   { description: (field.replace(/_/g,' ')) + " updated" },
         created_at: new Date().toISOString(),
       })
       loadTimeline()
@@ -1039,7 +1038,7 @@ export function ContactDetail() {
     try {
       const updated = await db.contacts.update(id, { status: s })
       setContact(prev => ({ ...prev, status: s }))
-      toast(`✅ Status → ${s}`)
+      toast("✅ Status → " + (s))
       loadTimeline()
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
@@ -1055,11 +1054,11 @@ export function ContactDetail() {
           agent_id:   contact.agent_id || agent?.id,
           created_by: agent?.id,
           contact_id: id,
-          title:      `Follow up with ${contact.first_name} ${contact.last_name || ''}`,
+          title: 'Follow up with ' + contact.first_name + ' ' + (contact.last_name || ''),
           due_date:   fields.next_followup,
           priority:   'normal',
           status:     'pending',
-          notes:      `Auto-created follow-up for ${contact.first_name}`,
+          notes:      "Auto-created follow-up for " + (contact.first_name),
         })
         toast('✅ Automation saved — follow-up task created')
       } else {
@@ -1108,7 +1107,7 @@ export function ContactDetail() {
               {f.source && <span style={{ fontSize: '11px', color: 'var(--muted)' }}>via {f.source}</span>}
               {daysSinceContact !== null && (
                 <span style={{ fontSize: '11px', color: daysSinceContact > 14 ? '#DC2626' : 'var(--muted)', fontWeight: daysSinceContact > 14 ? 700 : 400 }}>
-                  {daysSinceContact === 0 ? 'Reached today' : `Last contact ${daysSinceContact}d ago`}
+                  {daysSinceContact === 0 ? 'Reached today' : "Last contact " + (daysSinceContact) + "d ago"}
                 </span>
               )}
             </div>
@@ -1164,7 +1163,7 @@ export function ContactDetail() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                 {['Hot','Warm','Cold','Active','Nurturing','Closed','Unresponsive'].map(s => (
                   <button key={s} onClick={() => quickStatus(s)}
-                    style={{ padding: '3px 8px', borderRadius: '6px', border: `1px solid ${f.status === s ? STATUS_COLORS[s] : 'var(--border)'}`, background: f.status === s ? STATUS_COLORS[s] + '18' : 'transparent', color: f.status === s ? STATUS_COLORS[s] : 'var(--muted)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
+                    style={{ padding: '3px 8px', borderRadius: '6px', border: "1px solid " + (f.status === s ? STATUS_COLORS[s] : 'var(--border)'), background: f.status === s ? STATUS_COLORS[s] + '18' : 'transparent', color: f.status === s ? STATUS_COLORS[s] : 'var(--muted)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
                     {s}
                   </button>
                 ))}
@@ -1294,11 +1293,7 @@ export function ContactDetail() {
                     agent_id:   f.agent_id || agent?.id,
                     created_by: agent?.id,
                     contact_id: id,
-                    title:      `Follow up with ${f.first_name} ${f.last_name || ''}`,
-                    due_date:   f.next_followup,
-                    priority:   f.status === 'Hot' ? 'urgent' : f.status === 'Warm' ? 'high' : 'normal',
-                    status:     'pending',
-                    notes:      `Follow-up for ${f.first_name} — ${f.motivation || ''} ${f.timeline || ''}`.trim(),
+                    title:      `Follow up with ${f.first_name} ${f.last_name || ''}",\n                    due_date:   f.next_followup,\n                    priority:   f.status === 'Hot' ? 'urgent' : f.status === 'Warm' ? 'high' : 'normal',\n                    status:     'pending',\n                    notes:      "Follow-up for ${f.first_name} — ${f.motivation || ''} ${f.timeline || ''}`.trim(),
                   })
                   toast('✅ Follow-up task created')
                 } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
@@ -1309,8 +1304,8 @@ export function ContactDetail() {
 
             {/* Upcoming follow-up indicator */}
             {daysToFollowup !== null && (
-              <div style={{ marginTop: '8px', padding: '8px 10px', background: daysToFollowup < 0 ? '#FEF2F2' : daysToFollowup <= 2 ? '#FFF7ED' : '#F0FDF4', borderRadius: '8px', border: `1px solid ${daysToFollowup < 0 ? '#FECACA' : daysToFollowup <= 2 ? '#FED7AA' : '#BBF7D0'}`, fontSize: '12px', color: daysToFollowup < 0 ? '#DC2626' : daysToFollowup <= 2 ? '#C2410C' : '#166534', fontWeight: 600 }}>
-                {daysToFollowup < 0 ? `⚠️ Follow-up overdue by ${Math.abs(daysToFollowup)} days` : daysToFollowup === 0 ? '📅 Follow-up due today' : `📅 Follow-up in ${daysToFollowup} days`}
+              <div style={{ marginTop: '8px', padding: '8px 10px', background: daysToFollowup < 0 ? '#FEF2F2' : daysToFollowup <= 2 ? '#FFF7ED' : '#F0FDF4', borderRadius: '8px', border: "1px solid " + (daysToFollowup < 0 ? '#FECACA' : daysToFollowup <= 2 ? '#FED7AA' : '#BBF7D0'), fontSize: '12px', color: daysToFollowup < 0 ? '#DC2626' : daysToFollowup <= 2 ? '#C2410C' : '#166534', fontWeight: 600 }}>
+                {daysToFollowup < 0 ? "⚠️ Follow-up overdue by " + (Math.abs(daysToFollowup)) + " days" : daysToFollowup === 0 ? '📅 Follow-up due today' : "📅 Follow-up in " + (daysToFollowup) + " days"}
               </div>
             )}
           </Section>
@@ -1367,7 +1362,7 @@ export function ContactDetail() {
         <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relTasks={relTasks} agents={agents} agent={agent} onRefreshTimeline={loadTimeline} />
       </div>
 
-      <Confirm open={confirmDel} message={`Delete ${f.first_name} ${f.last_name || ''}? Cannot be undone.`} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />
+      <Confirm open={confirmDel} message={'Delete ' + f.first_name + ' ' + (f.last_name || '') + '? Cannot be undone.'} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />
     </div>
   )
 }

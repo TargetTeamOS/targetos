@@ -146,12 +146,12 @@ export function Tasks() {
 
     return (
       <div onClick={() => openTask(task)}
-        style={{ background: 'var(--panel)', borderRadius: '10px', border: selected?.id === task.id ? '2px solid var(--brand)' : `1px solid ${overdue ? '#FECACA' : 'var(--border)'}`, padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: '10px', transition: 'box-shadow .12s', marginBottom: '6px' }}
+        style={{ background: 'var(--panel)', borderRadius: '10px', border: selected?.id === task.id ? '2px solid var(--brand)' : "1px solid " + (overdue ? '#FECACA' : 'var(--border)'), padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: '10px', transition: 'box-shadow .12s', marginBottom: '6px' }}
         onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
         onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
         {/* Check button */}
         <button onClick={(e) => markDone(task, e)}
-          style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${priorityColor(task.priority)}`, background: task.status === 'done' ? priorityColor(task.priority) : 'transparent', cursor: 'pointer', flexShrink: 0, marginTop: '1px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#fff' }}>
+          style={{ width: 20, height: 20, borderRadius: '50%', border: "2px solid " + (priorityColor(task.priority)), background: task.status === 'done' ? priorityColor(task.priority) : 'transparent', cursor: 'pointer', flexShrink: 0, marginTop: '1px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#fff' }}>
           {task.status === 'done' ? '✓' : ''}
         </button>
 
@@ -191,12 +191,12 @@ export function Tasks() {
 
   async function bulkDelete() {
     if (!selectedIds.length) return
-    if (!window.confirm(`Delete ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}?`)) return
+    if (!window.confirm('Delete ' + selectedIds.length + ' task' + (selectedIds.length !== 1 ? 's' : '') + '?')) return
     setBulkDel(true)
     try {
       await supabase.from('tasks').delete().in('id', selectedIds)
       setSelectedIds([])
-      toast(`✅ Deleted ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}`)
+      toast('✅ Deleted ' + selectedIds.length + ' task' + (selectedIds.length !== 1 ? 's' : ''))
     } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
     finally { setBulkDel(false) }
   }
@@ -206,7 +206,7 @@ export function Tasks() {
     try {
       await supabase.from('tasks').update({ status: 'done', updated_at: new Date().toISOString() }).in('id', selectedIds)
       setSelectedIds([])
-      toast(`✅ Marked ${selectedIds.length} tasks as done`)
+      toast("✅ Marked " + (selectedIds.length) + " tasks as done")
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
 
@@ -214,7 +214,7 @@ export function Tasks() {
     <div style={{ fontFamily: ff }}>
       <PageHeader
         title="Tasks"
-        sub={`${filtered.filter(t => t.status !== 'done').length} open · ${done.length} done`}
+        sub={filtered.filter(t => t.status !== 'done').length + ' open · ' + done.length + ' done'}
         actions={<Btn onClick={openAdd}>+ Add Task</Btn>}
       />
 

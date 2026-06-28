@@ -75,7 +75,7 @@ function StatusBadge({ status, size = 'sm' }) {
       padding: size === 'lg' ? '4px 10px' : '2px 7px',
       borderRadius: '20px', background: def.bg,
       color: def.color, fontSize: size === 'lg' ? '12px' : '10px', fontWeight: 700,
-      border: `1px solid ${def.color}33`,
+      border: "1px solid " + (def.color) + "33",
     }}>
       {def.icon} {status}
     </span>
@@ -117,7 +117,7 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
 
     const script = document.createElement('script')
     script.id  = 'gmap-script'
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places`
+    script.src = "https://maps.googleapis.com/maps/api/js?key=" + (GOOGLE_MAPS_KEY) + "&libraries=places"
     script.async = true
     script.onload = () => setMapReady(true)
     document.head.appendChild(script)
@@ -363,11 +363,11 @@ function RoutePlanner({ signs, selectedIds, onClear }) {
     const dest = rest[rest.length - 1]
     const waypoints = rest.slice(0, -1)
     const waypointStr = waypoints.map(s => encodeURIComponent(s.addr)).join('|')
-    let url = `https://www.google.com/maps/dir/?api=1`
-    url += `&origin=${encodeURIComponent(origin.addr)}`
-    url += `&destination=${encodeURIComponent(dest.addr)}`
-    if (waypointStr) url += `&waypoints=${waypointStr}`
-    url += `&travelmode=driving&optimize=true`
+    let url = "https://www.google.com/maps/dir/?api=1"
+    url += "&origin=" + (encodeURIComponent(origin.addr))
+    url += "&destination=" + (encodeURIComponent(dest.addr))
+    if (waypointStr) url += "&waypoints=" + (waypointStr)
+    url += "&travelmode=driving&optimize=true"
     return url
   }
 
@@ -415,7 +415,7 @@ function SignRow({ sign, agents, isSelected, onToggleSelect, onEdit }) {
       display: 'grid', gridTemplateColumns: '32px 1fr auto auto auto auto',
       alignItems: 'center', gap: '10px',
       padding: '10px 14px', background: isSelected ? 'rgba(204,34,0,.04)' : 'var(--panel)',
-      borderRadius: '10px', border: `1px solid ${isSelected ? '#CC220033' : 'var(--border)'}`,
+      borderRadius: '10px', border: "1px solid " + (isSelected ? '#CC220033' : 'var(--border)'),
       transition: 'all .12s', cursor: 'pointer',
     }}
       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--hov)' }}
@@ -423,7 +423,7 @@ function SignRow({ sign, agents, isSelected, onToggleSelect, onEdit }) {
     >
       {/* Checkbox */}
       <div onClick={() => onToggleSelect(sign.id)}
-        style={{ width: 18, height: 18, borderRadius: '5px', border: `2px solid ${isSelected ? '#CC2200' : 'var(--border)'}`, background: isSelected ? '#CC2200' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all .12s' }}>
+        style={{ width: 18, height: 18, borderRadius: '5px', border: "2px solid " + (isSelected ? '#CC2200' : 'var(--border)'), background: isSelected ? '#CC2200' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all .12s' }}>
         {isSelected && <span style={{ color: '#fff', fontSize: '10px', fontWeight: 900 }}>✓</span>}
       </div>
 
@@ -590,7 +590,7 @@ export function Signs() {
             { label: 'Removed',       value: signs.filter(s => ['Took Away','Removal Order Sent'].includes(s.order_status)).length, color: '#8B5CF6' },
           ].map(s => (
             <div key={s.label} onClick={() => setGroupFilter(s.label.toLowerCase().replace(' ','_').replace('order_sent', 'order_sent'))}
-              style={{ background: 'var(--panel)', borderRadius: '8px', border: '1px solid var(--border)', padding: '10px 12px', borderLeft: `3px solid ${s.color}`, cursor: 'pointer' }}>
+              style={{ background: 'var(--panel)', borderRadius: '8px', border: '1px solid var(--border)', padding: '10px 12px', borderLeft: "3px solid " + (s.color), cursor: 'pointer' }}>
               <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text)' }}>{s.value}</div>
               <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '1px', fontWeight: 600 }}>{s.label}</div>
             </div>
@@ -684,7 +684,7 @@ export function Signs() {
 
       <Confirm
         open={!!confirmDel}
-        message={`Delete sign at "${confirmDel?.addr}"?`}
+        message={"Delete sign at \"" + (confirmDel?.addr) + "\"?"}
         onConfirm={deleteSig}
         onCancel={() => setConfirmDel(null)}
       />

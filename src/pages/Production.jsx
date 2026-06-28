@@ -111,7 +111,7 @@ function StagePill({ stage, small }) {
       color,
       fontSize: small ? '10px' : '11px',
       fontWeight: 700,
-      border: `1px solid ${color}44`,
+      border: "1px solid " + (color) + "44",
       whiteSpace: 'nowrap',
     }}>
       {stage || '—'}
@@ -203,13 +203,13 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
   return (
     <tr
       onClick={() => onOpen(deal)}
-      style={{ cursor: 'pointer', borderBottom: `1px solid var(--border)`, transition: 'background .1s', background: isSelected ? 'rgba(204,34,0,.04)' : '' }}
+      style={{ cursor: 'pointer', borderBottom: "1px solid var(--border)", transition: 'background .1s', background: isSelected ? 'rgba(204,34,0,.04)' : '' }}
       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--hov)' }}
       onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '' }}
     >
       {/* Checkbox */}
       <td style={{ padding: '9px 8px', width: '32px' }} onClick={e => { e.stopPropagation(); onToggleSelect(deal.id) }}>
-        <div style={{ width: 16, height: 16, borderRadius: '4px', border: `2px solid ${isSelected ? '#CC2200' : 'var(--border)'}`, background: isSelected ? '#CC2200' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all .12s', margin: '0 auto' }}>
+        <div style={{ width: 16, height: 16, borderRadius: '4px', border: "2px solid " + (isSelected ? '#CC2200' : 'var(--border)'), background: isSelected ? '#CC2200' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all .12s', margin: '0 auto' }}>
           {isSelected && <span style={{ color: '#fff', fontSize: '9px', fontWeight: 900, lineHeight: 1 }}>✓</span>}
         </div>
       </td>
@@ -358,7 +358,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
           display: 'flex', alignItems: 'center', gap: '10px',
           padding: '8px 12px',
           background: group.color + '18',
-          borderLeft: `4px solid ${group.color}`,
+          borderLeft: "4px solid " + (group.color),
           borderRadius: '8px',
           cursor: 'pointer',
           userSelect: 'none',
@@ -459,7 +459,7 @@ function DealContactsPanel({ dealId, agentId }) {
     setSearching(true)
     const { data } = await supabase.from('contacts')
       .select('id, first_name, last_name, phone, email, status')
-      .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
+      .or('first_name.ilike.%' + q + '%,last_name.ilike.%' + q + '%,phone.ilike.%' + q + '%,email.ilike.%' + q + '%')
       .limit(8)
     setResults(data || [])
     setSearching(false)
@@ -710,7 +710,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
             <button key={t.id} onClick={() => setTab(t.id)}
               style={{
                 padding: '9px 14px', border: 'none', background: 'none', cursor: 'pointer',
-                borderBottom: tab === t.id ? `2px solid ${stageHex}` : '2px solid transparent',
+                borderBottom: tab === t.id ? "2px solid " + (stageHex) : '2px solid transparent',
                 marginBottom: '-1px', fontSize: '12px', fontWeight: tab === t.id ? 700 : 500,
                 color: tab === t.id ? stageHex : 'var(--muted)', fontFamily: ff, whiteSpace: 'nowrap',
               }}>
@@ -876,7 +876,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
                         display: 'flex', alignItems: 'center', gap: '10px',
                         padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
                         background: isActive ? stage.hex + '18' : 'var(--dim)',
-                        border: `1px solid ${isActive ? stage.hex : 'var(--border)'}`,
+                        border: "1px solid " + (isActive ? stage.hex : 'var(--border)'),
                         transition: 'all .12s',
                       }}>
                       <div style={{ width: 20, height: 20, borderRadius: '50%', background: isActive || isDone ? stage.hex : 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -943,7 +943,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
 
       <Confirm
         open={confirmDel}
-        message={`Delete deal at "${form.addr}"? This cannot be undone.`}
+        message={"Delete deal at \"" + (form.addr) + "\"? This cannot be undone."}
         onConfirm={() => { onDelete(); setConfirmDel(false) }}
         onCancel={() => setConfirmDel(false)}
       />
@@ -1080,13 +1080,13 @@ export function Production() {
 
   async function bulkDelete() {
     if (!selectedIds.length) return
-    if (!window.confirm(`Delete ${selectedIds.length} deal${selectedIds.length !== 1 ? 's' : ''}? This cannot be undone.`)) return
+    if (!window.confirm('Delete ' + selectedIds.length + ' deal' + (selectedIds.length !== 1 ? 's' : '') + '? This cannot be undone.')) return
     setBulkDeleting(true)
     try {
       const { error } = await supabase.from('deals').delete().in('id', selectedIds)
       if (error) throw error
       setDeals(prev => prev.filter(d => !selectedIds.includes(d.id)))
-      toast(`✅ Deleted ${selectedIds.length} deal${selectedIds.length !== 1 ? 's' : ''}`)
+      toast('✅ Deleted ' + selectedIds.length + ' deal' + (selectedIds.length !== 1 ? 's' : ''))
       setSelectedIds([])
     } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
     finally { setBulkDeleting(false) }
@@ -1098,7 +1098,7 @@ export function Production() {
       const { error } = await supabase.from('deals').update({ stage, updated_at: new Date().toISOString() }).in('id', selectedIds)
       if (error) throw error
       setDeals(prev => prev.map(d => selectedIds.includes(d.id) ? { ...d, stage } : d))
-      toast(`✅ Updated ${selectedIds.length} deals to "${stage}"`)
+      toast('✅ Updated ' + selectedIds.length + ' deals to "' + stage + '"')
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
 
@@ -1212,7 +1212,7 @@ export function Production() {
           { label: 'Closed GCI',     value: fmt$(closedGCI),      color: '#10B981', prefix: '' },
           { label: 'Pipeline GCI',   value: fmt$(pipelineGCI),    color: '#F5A623', prefix: '' },
         ].map(s => (
-          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '12px 14px', borderLeft: `3px solid ${s.color}` }}>
+          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '12px 14px', borderLeft: "3px solid " + (s.color) }}>
             <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)' }}>{s.value}</div>
             <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px', fontWeight: 600 }}>{s.label}</div>
           </div>
@@ -1295,7 +1295,7 @@ export function Production() {
               {Object.entries(byStage).map(([stage, count]) => {
                 const hex = DEAL_STAGES.find(s => s.value === stage)?.hex || '#94A3B8'
                 return (
-                  <div key={stage} style={{ padding: '2px 8px', borderRadius: '12px', background: hex + '33', border: `1px solid ${hex}66` }}>
+                  <div key={stage} style={{ padding: '2px 8px', borderRadius: '12px', background: hex + '33', border: "1px solid " + (hex) + "66" }}>
                     <span style={{ fontSize: '10px', color: hex, fontWeight: 700 }}>{count} {stage}</span>
                   </div>
                 )
@@ -1381,7 +1381,7 @@ export function Production() {
                     onMouseEnter={e => { if (!selectedIds.includes(d.id)) e.currentTarget.style.background = 'var(--hov)' }}
                     onMouseLeave={e => { if (!selectedIds.includes(d.id)) e.currentTarget.style.background = '' }}>
                     <td style={{ padding: '9px 8px', width: '32px' }} onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id]) }}>
-                      <div style={{ width: 16, height: 16, borderRadius: '4px', border: `2px solid ${selectedIds.includes(d.id) ? '#CC2200' : 'var(--border)'}`, background: selectedIds.includes(d.id) ? '#CC2200' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', margin: '0 auto' }}>
+                      <div style={{ width: 16, height: 16, borderRadius: '4px', border: "2px solid " + (selectedIds.includes(d.id) ? '#CC2200' : 'var(--border)'), background: selectedIds.includes(d.id) ? '#CC2200' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', margin: '0 auto' }}>
                         {selectedIds.includes(d.id) && <span style={{ color: '#fff', fontSize: '9px', fontWeight: 900 }}>✓</span>}
                       </div>
                     </td>

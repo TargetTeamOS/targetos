@@ -73,7 +73,7 @@ export function LeadGen() {
                   <svg width="80" height="80" viewBox="0 0 80 80" style={{transform:'rotate(-90deg)'}}>
                     <circle cx="40" cy="40" r="28" fill="none" stroke="var(--dim)" strokeWidth="7"/>
                     <circle cx="40" cy="40" r="28" fill="none" stroke={a.color} strokeWidth="7"
-                      strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" style={{transition:'stroke-dasharray .5s'}}/>
+                      strokeDasharray={dash + ' ' + circ} strokeLinecap="round" style={{transition:'stroke-dasharray .5s'}}/>
                   </svg>
                   <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
                     <div style={{color:a.color,fontSize:'18px',fontWeight:900,lineHeight:1}}>{v}</div>

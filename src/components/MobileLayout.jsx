@@ -64,7 +64,7 @@ export function MobileLayout({ children }) {
             <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'8px' }}>
               {MORE_NAV.map(item => (
                 <button key={item.id} onClick={() => { navigate(item.id); setShowMore(false) }}
-                  style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'5px', padding:'12px 6px', background: activePath.startsWith(item.id) ? 'rgba(204,34,0,.1)' : 'var(--dim)', border:`1px solid ${activePath.startsWith(item.id)?'rgba(204,34,0,.3)':'var(--border)'}`, borderRadius:'12px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
+                  style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'5px', padding:'12px 6px', background: activePath.startsWith(item.id) ? 'rgba(204,34,0,.1)' : 'var(--dim)', border:"1px solid " + (activePath.startsWith(item.id)?'rgba(204,34,0,.3)':'var(--border)'), borderRadius:'12px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
                   <span style={{ fontSize:'20px' }}>{item.icon}</span>
                   <span style={{ fontSize:'10px', fontWeight:600, color:'var(--text)', textAlign:'center' }}>{item.label}</span>
                 </button>
@@ -85,7 +85,7 @@ export function MobileLayout({ children }) {
           return (
             <button key={item.id}
               onClick={() => { if (item.id === '/more') setShowMore(s => !s); else { navigate(item.id); setShowMore(false) }}}
-              style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'2px', background:'transparent', border:'none', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', borderTop:`2px solid ${isActive?'#CC2200':'transparent'}` }}>
+              style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'2px', background:'transparent', border:'none', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', borderTop:"2px solid " + (isActive?'#CC2200':'transparent') }}>
               <span style={{ fontSize:'18px' }}>{item.icon}</span>
               <span style={{ fontSize:'9px', fontWeight:600, color:isActive?'#CC2200':'var(--muted)' }}>{item.label}</span>
             </button>
