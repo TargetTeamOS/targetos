@@ -36,10 +36,13 @@ export function NotificationBell() {
     loadNotifs()
 
     // Realtime subscription for new notifications
-    const sub = supabase.channel("notifs_" + (agent.id))
+    // Remove any stale channel first (guards against React Strict Mode double-fire)
+    const chName = "notifs_" + agent.id
+    supabase.removeChannel(supabase.channel(chName))
+    const sub = supabase.channel(chName)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'notifications',
-        filter: "agent_id=eq." + (agent.id)
+        filter: "agent_id=eq." + agent.id
       }, () => loadNotifs())
       .subscribe()
 

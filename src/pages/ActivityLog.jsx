@@ -161,8 +161,9 @@ export function ActivityLog() {
 
   useEffect(() => { load() }, [load])
 
-  // Realtime subscription
+  // Realtime subscription — remove stale channel first to prevent double-subscribe
   useEffect(() => {
+    supabase.removeChannel(supabase.channel('rt_audit_log'))
     const sub = supabase.channel('rt_audit_log')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_log' }, () => load())
       .subscribe()

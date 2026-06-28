@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getContacts, createContact, updateContact, deleteContact } from '../db/contacts'
-import { supabase } from '../supabase'
 
 export function useContacts(filters = {}) {
   const [contacts, setContacts] = useState([])
@@ -23,15 +22,6 @@ export function useContacts(filters = {}) {
   useEffect(() => { load() }, [load])
 
   // Supabase Realtime subscription
-  useEffect(() => {
-    const channel = supabase
-      .channel('contacts-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => {
-        load() // reload when any contact changes
-      })
-      .subscribe()
-    return () => supabase.removeChannel(channel)
-  }, [load])
 
   const add = async (contact) => {
     const created = await createContact(contact)

@@ -1,7 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // TargetOS V2 — React Hooks
 // All data-fetching hooks with Supabase Realtime subscriptions.
-// Every hook returns { data, loading, error, refetch, add, update, remove }
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -9,13 +8,23 @@ import { supabase } from './supabase'
 import { db } from './db'
 
 // ── GENERIC BASE HOOK ────────────────────────────────────────────
-function useTable(tableName, fetcher, realtimeFilter = null) {
+// One stable channel per table per hook instance.
+// Uses a ref-based instance ID so the channel name is fixed for the
+// lifetime of the component — no duplicate subscriptions on re-render.
+let _hookInstanceCounter = 0
+
+function useTable(tableName, fetcher) {
   const [data,    setData]    = useState([])
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
-  const mounted = useRef(true)
+
+  // Stable refs
+  const mounted     = useRef(false)
+  const channelRef  = useRef(null)
+  const instanceId  = useRef(++_hookInstanceCounter)
 
   const fetch = useCallback(async () => {
+    if (!mounted.current) return
     try {
       setLoading(true)
       setError(null)
@@ -26,21 +35,40 @@ function useTable(tableName, fetcher, realtimeFilter = null) {
     } finally {
       if (mounted.current) setLoading(false)
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableName])
 
   useEffect(() => {
     mounted.current = true
     fetch()
 
-    const sub = supabase.channel(`rt_${tableName}_${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: tableName }, fetch)
-      .subscribe()
+    // Stable channel name — never changes for this hook instance
+    const chName = 'rt_' + tableName + '_' + instanceId.current
+
+    // Tear down any existing channel first (handles React Strict Mode double-fire)
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current)
+      channelRef.current = null
+    }
+
+    const ch = supabase.channel(chName)
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: tableName }, () => {
+      if (mounted.current) fetch()
+    }).subscribe((status) => {
+      if (status === 'CHANNEL_ERROR') {
+        console.warn('Realtime channel error for', tableName)
+      }
+    })
+    channelRef.current = ch
 
     return () => {
       mounted.current = false
-      supabase.removeChannel(sub)
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
     }
-  }, [fetch, tableName])
+  }, [tableName, fetch])
 
   return { data, loading, error, refetch: fetch }
 }
@@ -57,8 +85,7 @@ export function useAgents() {
 
 // ── CONTACTS ─────────────────────────────────────────────────────
 export function useContacts(filters = {}) {
-  const filterKey = JSON.stringify(filters)
-  const base = useTable('contacts', () => db.contacts.list(filters), filterKey)
+  const base = useTable('contacts', () => db.contacts.list(filters))
   return {
     ...base,
     contacts: base.data,

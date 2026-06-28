@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from '../db/announcements'
-import { supabase } from '../supabase'
 export function useAnnouncements() {
   const [announcements, setAnnouncements] = useState([])
   const [loading, setLoading] = useState(true)
@@ -9,8 +8,6 @@ export function useAnnouncements() {
     try { setAnnouncements(await getAnnouncements()) } catch(e) {} finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
-  useEffect(() => {
-    const ch = supabase.channel('ann-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},()=>load()).subscribe()
     return () => supabase.removeChannel(ch)
   }, [load])
   const add    = async (a)    => { const d = await createAnnouncement(a); setAnnouncements(p=>[d,...p]); return d }

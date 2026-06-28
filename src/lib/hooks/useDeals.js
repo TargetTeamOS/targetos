@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getDeals, createDeal, updateDeal, deleteDeal } from '../db/deals'
-import { supabase } from '../supabase'
 
 export function useDeals(filters = {}) {
   const [deals, setDeals]   = useState([])
@@ -23,21 +22,6 @@ export function useDeals(filters = {}) {
   useEffect(() => { load() }, [load])
 
   // Realtime
-  useEffect(() => {
-    const channel = supabase
-      .channel('deals-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deals' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          setDeals(prev => [payload.new, ...prev])
-        } else if (payload.eventType === 'UPDATE') {
-          setDeals(prev => prev.map(d => d.id === payload.new.id ? payload.new : d))
-        } else if (payload.eventType === 'DELETE') {
-          setDeals(prev => prev.filter(d => d.id !== payload.old.id))
-        }
-      })
-      .subscribe()
-    return () => supabase.removeChannel(channel)
-  }, [])
 
   const add    = async (deal)    => { const d = await createDeal(deal); setDeals(prev => [d, ...prev]); return d }
   const update = async (id, ch)  => { const d = await updateDeal(id, ch); setDeals(prev => prev.map(x => x.id===id ? d : x)); return d }
