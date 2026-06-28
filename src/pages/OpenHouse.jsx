@@ -11,6 +11,7 @@ import { useOpenHouses, useAgents } from '../lib/hooks'
 import { db } from '../lib/db'
 import { fmtDate, fmtPhone } from '../lib/utils'
 import { OH_INTEREST_LEVELS } from '../lib/constants'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Confirm,

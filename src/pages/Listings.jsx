@@ -19,6 +19,7 @@ import { useAgents } from '../lib/hooks'
 import { FilterBar } from '../components/FilterBar'
 import { ImportExport } from '../components/ImportExport'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -160,6 +161,7 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
     { id:'details',  label:'Details' },
     { id:'ivr',      label:'📞 Phone IVR' },
     { id:'showings', label:'🏡 Showings' },
+    { id:'activity', label:'📋 Activity' },
   ]
 
   return (
@@ -310,6 +312,10 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
               onAdd={() => { onAddShowing(listing); loadShowings() }}
               onRefresh={loadShowings}
             />
+          )}
+
+          {tab==='activity' && listing?.id && (
+            <div style={{ padding:'16px 18px', flex:1, overflowY:'auto' }}><RecordActivityFeed table="listings" recordId={listing.id} /></div>
           )}
         </div>
 

@@ -10,6 +10,7 @@ import { useApp } from '../context/AppContext'
 import { useTasks, useAgents } from '../lib/hooks'
 import { fmtDate, today, isOverdue, isDueToday, isDueSoon } from '../lib/utils'
 import { TASK_PRIORITIES, TASK_STATUSES } from '../lib/constants'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Tabs,

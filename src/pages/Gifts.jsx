@@ -11,6 +11,7 @@ import { useApp } from '../context/AppContext'
 import { useGifts, useAgents } from '../lib/hooks'
 import { fmtDate, matchSearch } from '../lib/utils'
 import { GIFT_STATUSES, GIFT_LABELS, CLOSING_GIFT_STATUSES } from '../lib/constants'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Confirm, StatCard

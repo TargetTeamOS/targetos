@@ -11,6 +11,7 @@ import { useApp } from '../context/AppContext'
 import { useListingPrep, useListings, useAgents } from '../lib/hooks'
 import { fmtDate } from '../lib/utils'
 import { DEFAULT_PREP_CHECKLIST } from '../lib/constants'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   ModalActions, Loading, Empty, Confirm, ProgressBar, SectionTitle

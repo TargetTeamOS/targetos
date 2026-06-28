@@ -10,6 +10,7 @@ import { useApp } from '../context/AppContext'
 import { useOffers, useAgents } from '../lib/hooks'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { OFFER_SIDES, OFFER_STATUSES } from '../lib/constants'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Confirm, StatCard

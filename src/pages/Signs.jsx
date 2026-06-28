@@ -18,6 +18,7 @@ import { fmtDate, matchSearch } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm, Pill, Avatar } from '../components/UI'
 import { ImportExport } from '../components/ImportExport'
 import { useAgents } from '../lib/hooks'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
