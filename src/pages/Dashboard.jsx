@@ -2071,6 +2071,27 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* ── CUSTOMIZE BAR — always visible ── */}
+      {!loading && !editMode && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, padding:'10px 14px', background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', flexWrap:'wrap' }}>
+          <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>📐 Dashboard</span>
+          <span style={{ fontSize:12, color:'var(--muted)' }}>Drag to reorder · customize what you see</span>
+          <div style={{ flex:1 }} />
+          <button onClick={() => setShowCustomWidget(true)}
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'2px dashed #CC2200', background:'rgba(204,34,0,.06)', color:'#CC2200', fontSize:12, fontWeight:800, cursor:'pointer', fontFamily:ff }}>
+            🔲 Add Custom Widget
+          </button>
+          <button onClick={() => setShowWidgetMgr(true)}
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel)', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            ⚙️ Manage Widgets
+          </button>
+          <button onClick={() => { setEditMode(true); setPendingWidgets(null) }}
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel)', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            🎛 Reorder
+          </button>
+        </div>
+      )}
+
       {/* Active filter summary bar — shows totals for current filter combination */}
       {!loading && (stageFilter.length > 0 || sideFilter || agentFilter) && (
         <div style={{ display:'flex', gap:'16px', padding:'12px 16px', background:'var(--dim)', borderRadius:'10px', border:'1px solid var(--border)', marginBottom:'12px', flexWrap:'wrap', alignItems:'center' }}>
