@@ -221,26 +221,64 @@ function GoalsTab({ agents, year, goals, setGoals, agentStats, contacts, savingG
   async function saveGoal(agentId) {
     setSavingGoal(agentId)
     try {
-      const row = {
+      const yearInt  = parseInt(year)
+      const goalData = {
         agent_id:   agentId,
-        year:       parseInt(year),
-        deals:      parseInt(form.deals)      || 0,
-        gci:        parseFloat(form.gci)      || 0,
+        year:       yearInt,
+        deals:      parseInt(form.deals)       || 0,
+        gci:        parseFloat(form.gci)       || 0,
         production: parseFloat(form.production)|| 0,
-        leads:      parseInt(form.leads)      || 0,
+        leads:      parseInt(form.leads)       || 0,
         updated_at: new Date().toISOString(),
       }
-      const { error } = await supabase.from('agent_goals').upsert(row, { onConflict: 'agent_id,year' })
-      if (error) {
-        // Table doesn't exist yet — show SQL
-        toast('Create the agent_goals table first — see instructions below', '#F5A623')
-      } else {
-        setGoals(prev => ({ ...prev, [agentId + '_' + year]: row }))
-        setEditing(null)
-        toast('\u2705 Goal saved for ' + (agents.find(a=>a.id===agentId)?.name||'agent'))
+
+      // Check if a row already exists for this agent+year
+      const { data: existing, error: fetchError } = await supabase
+        .from('agent_goals')
+        .select('id')
+        .eq('agent_id', agentId)
+        .eq('year', yearInt)
+        .maybeSingle()
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        // PGRST116 = no rows found — that is fine
+        // Any other error means the table doesn't exist yet
+        toast('Create the agent_goals table first — see SQL instructions below', '#F5A623')
+        return
       }
-    } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
-    finally { setSavingGoal(null) }
+
+      let saveError
+      if (existing?.id) {
+        // UPDATE existing row
+        const { error } = await supabase
+          .from('agent_goals')
+          .update(goalData)
+          .eq('id', existing.id)
+        saveError = error
+      } else {
+        // INSERT new row
+        const { error } = await supabase
+          .from('agent_goals')
+          .insert(goalData)
+        saveError = error
+      }
+
+      if (saveError) {
+        console.error('saveGoal error:', saveError)
+        toast('Save failed: ' + saveError.message, '#DC2626')
+        return
+      }
+
+      // Update local state so it shows immediately without refresh
+      setGoals(prev => ({ ...prev, [agentId + '_' + year]: goalData }))
+      setEditing(null)
+      toast('\u2705 Goal saved for ' + (agents.find(a => a.id === agentId)?.name || 'agent'))
+    } catch(e) {
+      console.error('saveGoal exception:', e)
+      toast('Save failed: ' + e.message, '#DC2626')
+    } finally {
+      setSavingGoal(null)
+    }
   }
 
   // Show only agents with deals OR all agents if admin

@@ -113,13 +113,11 @@ export async function loadTeamGoal() {
 }
 
 export async function saveTeamGoal(teamGci, teamDeals) {
-  await supabase
-    .from('briefing_prefs')
-    .upsert({
-      agent_id:        '00000000-0000-0000-0000-000000000000',
-      dashboard_layout:{ team_gci: teamGci, team_deals: teamDeals },
-      updated_at:      new Date().toISOString(),
-    }, { onConflict: 'agent_id' })
+  const TEAM_ID = '00000000-0000-0000-0000-000000000000'
+  const { data: existing } = await supabase.from('briefing_prefs').select('id').eq('agent_id', TEAM_ID).maybeSingle()
+  const payload = { agent_id: TEAM_ID, dashboard_layout:{ team_gci: teamGci, team_deals: teamDeals }, updated_at: new Date().toISOString() }
+  if (existing?.id) { await supabase.from('briefing_prefs').update(payload).eq('id', existing.id) }
+  else { await supabase.from('briefing_prefs').insert(payload) }
 }
 
 export { DEFAULT_WIDGETS }

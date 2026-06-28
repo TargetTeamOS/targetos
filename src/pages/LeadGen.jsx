@@ -25,11 +25,12 @@ export function LeadGen() {
     setActivity(prev => ({...prev,[key]:newVal}))
     toast('+1 ' + key)
     try {
-      await supabase.from('lead_gen').upsert({
+      const { error: lgError } = await supabase.from('lead_gen').upsert({
         activity_date: new Date().toISOString().split('T')[0],
         [key+'_made']: newVal
       },{onConflict:'activity_date'})
-    } catch(e) {}
+      if (lgError) console.warn('lead_gen upsert:', lgError.message)
+    } catch(e) { console.warn('lead_gen error:', e.message) }
   }
 
   const totalPct = Math.round(ACTS.reduce((s,a)=>s+Math.min(activity[a.key]/goals[a.key]*100,100),0)/ACTS.length)

@@ -321,7 +321,14 @@ export function DailyBriefing() {
     setSavingPrefs(true)
     try {
       const { emailEnabled, emailTime, ...sections } = prefs
-      await supabase.from('briefing_prefs').upsert({
+      // Check if pref row exists, then update or insert
+      const { data: existingPref } = await supabase
+        .from('briefing_prefs')
+        .select('id')
+        .eq('agent_id', agent.id)
+        .maybeSingle()
+
+      const prefData = {
         agent_id:       agent.id,
         enabled:        emailEnabled,
         send_time:      emailTime,
@@ -329,7 +336,13 @@ export function DailyBriefing() {
         custom_message: customMsg,
         email_style:    emailStyle,
         updated_at:     new Date().toISOString(),
-      }, { onConflict: 'agent_id' })
+      }
+
+      if (existingPref?.id) {
+        await supabase.from('briefing_prefs').update(prefData).eq('id', existingPref.id)
+      } else {
+        await supabase.from('briefing_prefs').insert(prefData)
+      }
       toast('✅ Preferences saved')
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
     finally { setSavingPrefs(false) }
@@ -835,7 +848,11 @@ export function DailyBriefing() {
             async function toggleAgent(field, val) {
               const updated = { ...(agentPrefs[ag.id]||{}), [field]:val }
               setAgentPrefs(prev => ({ ...prev, [ag.id]:updated }))
-              await supabase.from('briefing_prefs').upsert({ agent_id:ag.id, enabled:field==='enabled'?val:(ap?.enabled??true), sections:field==='sections'?val:(ap?.sections||{}), updated_at:new Date().toISOString() }, { onConflict:'agent_id' })
+              // Reliable: check existing then update or insert
+              const { data: existPref } = await supabase.from('briefing_prefs').select('id').eq('agent_id', ag.id).maybeSingle()
+              const pData = { agent_id:ag.id, enabled:field==='enabled'?val:(ap?.enabled??true), sections:field==='sections'?val:(ap?.sections||{}), updated_at:new Date().toISOString() }
+              if (existPref?.id) { await supabase.from('briefing_prefs').update(pData).eq('id', existPref.id) }
+              else { await supabase.from('briefing_prefs').insert(pData) }
             }
             return (
               <div key={ag.id} style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', marginBottom:10, overflow:'hidden' }}>
