@@ -46,6 +46,7 @@ export function Layout({ children }) {
   const { agent, isAdmin, signOut } = useAuth()
   const { state, setSidebarCollapsed, setTheme } = useApp()
   const collapsed = state.collapsed
+  const custom = state.custom || {}
 
   const role = agent?.role || 'agent'
 
