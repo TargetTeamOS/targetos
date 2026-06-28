@@ -1051,13 +1051,16 @@ export function Production() {
     setSaving(true)
     try {
       if (form.id) {
-        const { data, error } = await supabase.from('deals').update({ ...form, updated_at: new Date().toISOString() }).eq('id', form.id).select('*, agents(id,name,color)').single()
+        // Strip client-side virtual fields before saving to DB
+        const { _contact_count, agents, ...cleanForm } = form
+        const { data, error } = await supabase.from('deals').update({ ...cleanForm, updated_at: new Date().toISOString() }).eq('id', form.id).select('*, agents(id,name,color)').single()
         if (error) throw error
         setDeals(prev => prev.map(d => d.id === form.id ? data : d))
         setSelected(data)
         toast('✅ Deal saved')
       } else {
-        const { data, error } = await supabase.from('deals').insert({ ...form, agent_id: form.agent_id || agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select('*, agents(id,name,color)').single()
+        const { _contact_count: _cc, agents: _ag, id: _id, ...cleanFormInsert } = form
+        const { data, error } = await supabase.from('deals').insert({ ...cleanFormInsert, agent_id: form.agent_id || agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select('*, agents(id,name,color)').single()
         if (error) throw error
         setDeals(prev => [data, ...prev])
         setSelected(data)

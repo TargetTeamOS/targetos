@@ -203,9 +203,11 @@ function ExtensionManager({ agents }) {
     setSaving(true)
     try {
       if (form.id) {
-        await supabase.from('phone_extensions').update(form).eq('id', form.id)
+        const { agents: _ea, ...cleanExt } = form
+        await supabase.from('phone_extensions').update(cleanExt).eq('id', form.id)
       } else {
-        await supabase.from('phone_extensions').insert(form)
+        const { id: _eid, agents: _ea2, ...cleanExtIns } = form
+        await supabase.from('phone_extensions').insert(cleanExtIns)
       }
       await load()
       setEditExt(null)
@@ -383,7 +385,8 @@ function IVRBuilder({ agents }) {
     setSave(true)
     try {
       if (ivr.id) {
-        await supabase.from('phone_ivr').update({ ...ivr, updated_at: new Date().toISOString() }).eq('id', ivr.id)
+        const { id: _iid, ...cleanIvr } = ivr
+        await supabase.from('phone_ivr').update({ ...cleanIvr, updated_at: new Date().toISOString() }).eq('id', ivr.id)
       } else {
         const { data } = await supabase.from('phone_ivr').insert(ivr).select().single()
         setIvr(data)
@@ -517,9 +520,11 @@ function RoutingRules({ agents }) {
     setSaving(true)
     try {
       if (form.id) {
-        await supabase.from('phone_routing').update(form).eq('id', form.id)
+        const { ...cleanRoute } = form
+        await supabase.from('phone_routing').update(cleanRoute).eq('id', form.id)
       } else {
-        await supabase.from('phone_routing').insert(form)
+        const { id: _rid, ...cleanRouteIns } = form
+        await supabase.from('phone_routing').insert(cleanRouteIns)
       }
       const { data } = await supabase.from('phone_routing').select('*').order('priority')
       setRules(data || [])
@@ -1026,12 +1031,14 @@ export function Calls() {
     setSaving(true)
     try {
       if (callForm.id) {
-        const { data } = await supabase.from('calls').update({ ...callForm, updated_at: new Date().toISOString() }).eq('id', callForm.id).select('*, agents(id,name,color)').single()
+        const { agents: _ca, ...cleanCall } = callForm
+        const { data } = await supabase.from('calls').update({ ...cleanCall, updated_at: new Date().toISOString() }).eq('id', callForm.id).select('*, agents(id,name,color)').single()
         setCalls(prev => prev.map(c => c.id === callForm.id ? data : c))
         setSelected(data)
         toast('✅ Call saved')
       } else {
-        const { data } = await supabase.from('calls').insert({ ...callForm, agent_id: callForm.agent_id || agent?.id, called_at: new Date().toISOString() }).select('*, agents(id,name,color)').single()
+        const { agents: _ca2, id: _cid, ...cleanCallIns } = callForm
+        const { data } = await supabase.from('calls').insert({ ...cleanCallIns, agent_id: callForm.agent_id || agent?.id, called_at: new Date().toISOString() }).select('*, agents(id,name,color)').single()
         setCalls(prev => [data, ...prev])
         setShowAdd(false)
         setContactPrefill(null)

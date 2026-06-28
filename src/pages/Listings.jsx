@@ -605,10 +605,12 @@ export function Listings() {
   async function saveListing(form) {
     try {
       if (selected) {
-        await supabase.from('listings').update({ ...form, updated_at: new Date().toISOString() }).eq('id', selected.id)
+        const { showings_count: _sc, agents: _la, ...cleanListing } = form
+        await supabase.from('listings').update({ ...cleanListing, updated_at: new Date().toISOString() }).eq('id', selected.id)
         toast('✅ Listing saved')
       } else {
-        await supabase.from('listings').insert({ ...form, agent_id: form.agent_id||agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        const { showings_count: _sc2, agents: _la2, id: _li2, ...cleanListingIns } = form
+        await supabase.from('listings').insert({ ...cleanListingIns, agent_id: form.agent_id||agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         toast('✅ Listing added')
       }
       setSelected(null)

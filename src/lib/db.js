@@ -20,6 +20,26 @@ async function run(promise) {
   if (error) throw error
   return data
 }
+// ── STRIP VIRTUAL FIELDS ──────────────────────────────────────────
+// Removes client-side joins and computed fields before any DB write.
+// Called on every update/insert to prevent "column not found" errors.
+const VIRTUAL_FIELDS = new Set([
+  'agents','contacts','listings','deals','tasks','calls',
+  'oh_visitors','deal_contacts','open_houses',
+  '_contact_count','_task_count','showings_count','_local',
+])
+function stripVirtual(data) {
+  if (!data || typeof data !== 'object') return data
+  const clean = {}
+  for (const key of Object.keys(data)) {
+    if (!VIRTUAL_FIELDS.has(key) && !key.startsWith('_')) {
+      clean[key] = data[key]
+    }
+  }
+  return clean
+}
+
+
 
 // ── FIELD LABELS ─────────────────────────────────────────────────
 const FIELD_LABELS = {
@@ -115,7 +135,7 @@ agents: {
   },
   async update(id, data, agentId) {
     const before = await run(supabase.from('agents').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('agents').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = await run(supabase.from('agents').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     await logDiff(agentId || id, 'agents', id, before, result, result.name || 'Agent')
     return result
   },
@@ -134,8 +154,7 @@ contacts: {
     return run(supabase.from('contacts').select('*, agents(id,name,color)').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('contacts').insert({
-      ...data,
+    const result = await run(supabase.from('contacts').insert({ ...stripVirtual(data),
       last_activity: new Date().toISOString(),
       created_at:    new Date().toISOString(),
       updated_at:    new Date().toISOString(),
@@ -152,8 +171,7 @@ contacts: {
   async update(id, data) {
     // Fetch before state for diff
     const before = await run(supabase.from('contacts').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('contacts').update({
-      ...data,
+    const result = await run(supabase.from('contacts').update({ ...stripVirtual(data),
       last_activity: new Date().toISOString(),
       updated_at:    new Date().toISOString(),
     }).eq('id', id).select().single())
@@ -185,7 +203,7 @@ deals: {
     return run(supabase.from('deals').select('*, agents(id,name,color)').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('deals').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('deals').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
     await log(data.agent_id, 'deals', result.id, 'created', {
       metadata: { description: 'Deal at ' + (result.addr || '') + ' added', field_label: 'Deal Created' }
     })
@@ -194,7 +212,7 @@ deals: {
   },
   async update(id, data) {
     const before = await run(supabase.from('deals').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('deals').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = await run(supabase.from('deals').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     const agentId = data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'deals', id, before, result, result.addr || 'Deal')
     fireTrigger('dealUpdated', result, data)
@@ -219,7 +237,7 @@ listings: {
     return run(supabase.from('listings').select('*, agents(id,name,color)').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('listings').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('listings').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
     await log(data.agent_id, 'listings', result.id, 'created', {
       metadata: { description: 'Listing at ' + (result.addr || '') + ' added', field_label: 'Listing Created' }
     })
@@ -227,7 +245,7 @@ listings: {
   },
   async update(id, data) {
     const before = await run(supabase.from('listings').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('listings').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = await run(supabase.from('listings').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     const agentId = data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'listings', id, before, result, result.addr || 'Listing')
     fireTrigger('listingUpdated', result, data)
@@ -252,7 +270,7 @@ gifts: {
     return run(supabase.from('gifts').select('*, agents(id,name,color)').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('gifts').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('gifts').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
     await log(data.agent_id, 'gifts', result.id, 'created', {
       metadata: { description: 'Gift for ' + (result.client_name || '') + ' added', field_label: 'Gift Created' }
     })
@@ -260,7 +278,7 @@ gifts: {
   },
   async update(id, data) {
     const before = await run(supabase.from('gifts').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('gifts').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = await run(supabase.from('gifts').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     const agentId = data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'gifts', id, before, result, result.client_name || 'Gift')
     return result
@@ -282,7 +300,7 @@ offers: {
     return run(supabase.from('offers').select('*, agents(id,name,color)').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('offers').insert({ ...data, created_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('offers').insert({ ...stripVirtual(data), created_at: new Date().toISOString() }).select().single())
     await log(data.agent_id, 'offers', result.id, 'created', {
       metadata: { description: 'Offer on ' + (result.listing_addr || '') + ' added', field_label: 'Offer Created' }
     })
@@ -312,7 +330,7 @@ transactions: {
     return run(supabase.from('transactions').select('*, agents(id,name,color)').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('transactions').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('transactions').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
     await log(data.agent_id, 'transactions', result.id, 'created', {
       metadata: { description: 'Transaction at ' + (result.addr || '') + ' added', field_label: 'Transaction Created' }
     })
@@ -320,7 +338,7 @@ transactions: {
   },
   async update(id, data) {
     const before = await run(supabase.from('transactions').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('transactions').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = await run(supabase.from('transactions').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     const agentId = data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'transactions', id, before, result, result.addr || 'Transaction')
     return result
@@ -345,7 +363,7 @@ tasks: {
     return run(supabase.from('tasks').select('*, agents(id,name,color)').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('tasks').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('tasks').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
     await log(data.agent_id || data.created_by, 'tasks', result.id, 'created', {
       metadata: { description: result.title, field_label: 'Task Created' }
     })
@@ -354,7 +372,7 @@ tasks: {
   },
   async update(id, data) {
     const before = await run(supabase.from('tasks').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('tasks').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = await run(supabase.from('tasks').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     const agentId = data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'tasks', id, before, result, result.title || 'Task')
     return result
@@ -385,7 +403,7 @@ calls: {
     return run(supabase.from('calls').select('*, agents(id,name,color)').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('calls').insert({ ...data, called_at: data.called_at || new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('calls').insert({ ...stripVirtual(data), called_at: data.called_at || new Date().toISOString() }).select().single())
     await log(data.agent_id, 'calls', result.id, 'created', {
       metadata: { description: 'Call to ' + (result.contact_name || result.from_number || '') + ' — ' + (result.outcome || 'logged'), field_label: 'Call Logged' }
     })
@@ -422,7 +440,7 @@ calendar: {
     return run(supabase.from('calendar_events').select('*').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('calendar_events').insert({ ...data, created_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('calendar_events').insert({ ...stripVirtual(data), created_at: new Date().toISOString() }).select().single())
     await log(data.agent_id, 'calendar_events', result.id, 'created', {
       metadata: { description: result.title, field_label: 'Event Created' }
     })
@@ -452,7 +470,7 @@ openHouses: {
     return run(supabase.from('open_houses').select('*, agents(id,name,color), oh_visitors(*)').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('open_houses').insert({ ...data, created_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('open_houses').insert({ ...stripVirtual(data), created_at: new Date().toISOString() }).select().single())
     await log(data.agent_id, 'open_houses', result.id, 'created', {
       metadata: { description: 'Open house at ' + (result.listing_addr || ''), field_label: 'Open House Created' }
     })
@@ -477,7 +495,7 @@ visitors: {
     return run(supabase.from('oh_visitors').select('*').eq('open_house_id', openHouseId).order('visited_at', { ascending: false }))
   },
   async create(data) {
-    return run(supabase.from('oh_visitors').insert({ ...data, visited_at: new Date().toISOString() }).select().single())
+    return run(supabase.from('oh_visitors').insert({ ...stripVirtual(data), visited_at: new Date().toISOString() }).select().single())
   },
   async update(id, data) {
     return run(supabase.from('oh_visitors').update(data).eq('id', id).select().single())
@@ -493,7 +511,7 @@ announcements: {
     return run(supabase.from('announcements').select('*, agents(id,name,color)').order('pinned', { ascending: false }).order('created_at', { ascending: false }))
   },
   async create(data) {
-    const result = await run(supabase.from('announcements').insert({ ...data, created_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('announcements').insert({ ...stripVirtual(data), created_at: new Date().toISOString() }).select().single())
     await log(data.agent_id, 'announcements', result.id, 'created', {
       metadata: { description: result.title, field_label: 'Announcement Created' }
     })
@@ -522,7 +540,7 @@ signs: {
     return run(supabase.from('signs').select('*').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('signs').insert({ ...data, created_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('signs').insert({ ...stripVirtual(data), created_at: new Date().toISOString() }).select().single())
     await log(data.agent_id, 'signs', result.id, 'created', {
       metadata: { description: 'Sign at ' + (result.addr || ''), field_label: 'Sign Created' }
     })
@@ -551,7 +569,7 @@ listingPrep: {
     return run(supabase.from('listing_prep').select('*, listings(id,addr)').eq('id', id).single())
   },
   async create(data) {
-    const result = await run(supabase.from('listing_prep').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = await run(supabase.from('listing_prep').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
     await log(data.agent_id, 'listing_prep', result.id, 'created', {
       metadata: { description: result.listing_addr || 'Listing prep created', field_label: 'Listing Prep Created' }
     })
@@ -559,7 +577,7 @@ listingPrep: {
   },
   async update(id, data) {
     const before = await run(supabase.from('listing_prep').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('listing_prep').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = await run(supabase.from('listing_prep').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     await logDiff(data.agent_id || before?.agent_id, 'listing_prep', id, before, result, result.listing_addr || 'Listing Prep')
     return result
   },
@@ -578,10 +596,10 @@ emailTemplates: {
     return run(supabase.from('email_templates').select('*').eq('id', id).single())
   },
   async create(data) {
-    return run(supabase.from('email_templates').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    return run(supabase.from('email_templates').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
   },
   async update(id, data) {
-    return run(supabase.from('email_templates').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    return run(supabase.from('email_templates').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
   },
   async delete(id) {
     return run(supabase.from('email_templates').delete().eq('id', id))
@@ -597,10 +615,10 @@ automations: {
     return run(supabase.from('automations').select('*').eq('id', id).single())
   },
   async create(data) {
-    return run(supabase.from('automations').insert({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    return run(supabase.from('automations').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
   },
   async update(id, data) {
-    return run(supabase.from('automations').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    return run(supabase.from('automations').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
   },
   async delete(id) {
     return run(supabase.from('automations').delete().eq('id', id))
