@@ -22,9 +22,16 @@ git clone https://[GITHUB_TOKEN]@github.com/TargetTeamOS/targetos.git targetos-v
 cd targetos-v2-build
 git config user.email "targetos@targetreteam.com"
 git config user.name "TargetOS"
-git checkout origin/main -- .
+git fetch origin
+git checkout main        # ← ALWAYS use main — this is where ALL work lives
+git pull origin main     # ← get the absolute latest before making any changes
 npm install
 ```
+
+> ⚠️ CRITICAL: The repo has two branches — `main` and `v2`. They are kept in sync.
+> ALL work happens on `main`. If you accidentally start from `v2` you will lose context.
+> ALWAYS run `git log --oneline -5` first to confirm you see the latest commits.
+> Latest commit should be: "CLAUDE.md: complete master context" or newer.
 
 ## DEPLOY (every change)
 
