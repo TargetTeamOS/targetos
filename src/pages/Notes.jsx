@@ -1,86 +1,137 @@
-import React, { useState } from 'react'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Notes Page
+// Standalone timestamped notes on any record.
+// Notes are never deletable by agents — only admins.
+// ═══════════════════════════════════════════════════════════════
+
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { getNotes, createNote, updateNote, deleteNote } from '../lib/db/notes'
-import { getDaysAgo } from '../lib/utils/format'
-import { useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+import { fmtDateTime, initials } from '../lib/utils'
+import { Avatar, PageHeader, Btn, Field, Textarea, Select, SearchInput, Loading, Empty, Pill, Confirm } from '../components/UI'
+
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
+
+const NOTE_TYPES = [
+  { value: 'general',  label: 'General',     color: '#3B82F6' },
+  { value: 'call',     label: 'Call Note',   color: '#10B981' },
+  { value: 'meeting',  label: 'Meeting',     color: '#8B5CF6' },
+  { value: 'followup', label: 'Follow Up',   color: '#F97316' },
+  { value: 'important',label: 'Important',   color: '#DC2626' },
+]
+
+async function fetchNotes(agentId, isAdmin) {
+  let q = supabase.from('audit_log')
+    .select('*, agents(id,name,color)')
+    .eq('action', 'note')
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (!isAdmin) q = q.eq('agent_id', agentId)
+  const { data } = await q
+  return data || []
+}
+
+async function saveNote(agentId, body, noteType, linkedTable, linkedId) {
+  return supabase.from('audit_log').insert({
+    agent_id:   agentId,
+    table_name: linkedTable || 'notes',
+    record_id:  linkedId   || '00000000-0000-0000-0000-000000000000',
+    action:     'note',
+    field_name: noteType || 'general',
+    new_value:  body,
+    metadata:   { description: body.slice(0, 100), type: noteType },
+    created_at: new Date().toISOString(),
+  })
+}
 
 export function Notes() {
-  const { agent } = useAuth()
+  const navigate = useNavigate()
+  const { agent, isAdmin } = useAuth()
   const { toast } = useApp()
-  const [notes, setNotes]     = useState([])
-  const [loading, setLoading] = useState(true)
-  const [text, setText]       = useState('')
-  const [saving, setSaving]   = useState(false)
-  const [editing, setEditing] = useState(null)
-  const [editText, setEditText] = useState('')
 
-  useEffect(() => {
-    getNotes({ agentId: agent?.id }).then(setNotes).catch(e=>toast(e.message,'#DC2626')).finally(()=>setLoading(false))
-  }, [])
+  const [notes,   setNotes]   = useState([])
+  const [loading, setLoading] = useState(true)
+  const [body,    setBody]    = useState('')
+  const [type,    setType]    = useState('general')
+  const [search,  setSearch]  = useState('')
+  const [saving,  setSaving]  = useState(false)
+  const [filterType, setFilterType] = useState('')
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const data = await fetchNotes(agent?.id, isAdmin)
+    setNotes(data)
+    setLoading(false)
+  }
 
   async function addNote() {
-    if(!text.trim()) return
+    if (!body.trim()) { toast('Write something first', '#DC2626'); return }
     setSaving(true)
     try {
-      const d = await createNote({ title: text.trim(), agent_id: agent?.id, status:'pinned' })
-      setNotes(p=>[d,...p]); setText(''); toast('✅ Note saved!')
-    } catch(e) { toast('Error: '+e.message,'#DC2626') }
-    finally { setSaving(false) }
+      await saveNote(agent.id, body, type, null, null)
+      setBody('')
+      toast('✅ Note saved')
+      await load()
+    } catch(e) {
+      toast('Failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
   }
 
-  async function saveEdit(id) {
-    try {
-      const d = await updateNote(id, { title: editText })
-      setNotes(p=>p.map(n=>n.id===id?d:n)); setEditing(null)
-    } catch(e) { toast(e.message,'#DC2626') }
-  }
+  const filtered = notes.filter(n => {
+    if (filterType && n.field_name !== filterType) return false
+    if (search && !n.new_value?.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
 
-  async function removeNote(id) {
-    try { await deleteNote(id); setNotes(p=>p.filter(n=>n.id!==id)); toast('Note deleted') }
-    catch(e) { toast(e.message,'#DC2626') }
-  }
+  const typeColor = (t) => NOTE_TYPES.find(x => x.value === t)?.color || '#3B82F6'
+  const typeLabel = (t) => NOTE_TYPES.find(x => x.value === t)?.label || t
 
   return (
-    <div>
-      <div style={{ fontSize:'18px',fontWeight:900,marginBottom:'14px' }}>📌 Notes</div>
-      <div style={{ display:'flex',gap:'8px',marginBottom:'16px' }}>
-        <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Write a note... (press Shift+Enter for new line, Enter to save)"
-          onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addNote()}}}
-          rows={2}
-          style={{ flex:1,background:'var(--inp)',border:'1.5px solid var(--border)',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'10px 12px',outline:'none',resize:'none' }}/>
-        <button onClick={addNote} disabled={saving||!text.trim()}
-          style={{ background:'#CC2200',border:'none',borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:700,padding:'10px 16px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif',opacity:(saving||!text.trim())?.5:1,alignSelf:'flex-end' }}>
-          Save
-        </button>
+    <div style={{ fontFamily: ff }}>
+      <PageHeader title="Notes" sub={`${notes.length} notes logged`} />
+
+      {/* Add Note */}
+      <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: '16px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+          <Select value={type} onChange={setType} options={NOTE_TYPES} style={{ width: '160px', flex: 'none' }} />
+        </div>
+        <Textarea value={body} onChange={setBody} placeholder="Write a note..." rows={3} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+          <Btn onClick={addNote} loading={saving}>Save Note</Btn>
+        </div>
       </div>
 
-      {loading && <div style={{ padding:'24px',textAlign:'center',color:'var(--muted)' }}>Loading...</div>}
-      {!loading&&notes.length===0&&<div style={{ padding:'48px',textAlign:'center',color:'var(--muted)',background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'14px' }}><div style={{ fontSize:'28px',marginBottom:'10px' }}>📌</div>No notes yet</div>}
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search notes..." style={{ flex: 1 }} />
+        <select value={filterType} onChange={e => setFilterType(e.target.value)}
+          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+          <option value="">All Types</option>
+          {NOTE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </div>
 
-      <div style={{ columns:'2',columnGap:'10px' }}>
-        {notes.map(n=>(
-          <div key={n.id} style={{ background:'var(--panel)',border:'1px solid var(--border)',borderRadius:'12px',padding:'14px',marginBottom:'10px',breakInside:'avoid' }}>
-            {editing===n.id
-              ? <div>
-                  <textarea value={editText} onChange={e=>setEditText(e.target.value)} autoFocus rows={3}
-                    style={{ width:'100%',background:'var(--inp)',border:'1.5px solid #CC2200',borderRadius:'8px',color:'var(--text)',fontSize:'13px',fontFamily:'Inter,system-ui,sans-serif',padding:'8px 10px',outline:'none',resize:'vertical',boxSizing:'border-box',marginBottom:'8px' }}/>
-                  <div style={{ display:'flex',gap:'6px' }}>
-                    <button onClick={()=>saveEdit(n.id)} style={{ flex:2,background:'#CC2200',border:'none',borderRadius:'8px',color:'#fff',fontSize:'11px',fontWeight:700,padding:'7px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif' }}>Save</button>
-                    <button onClick={()=>setEditing(null)} style={{ flex:1,background:'var(--dim)',border:'1px solid var(--border)',borderRadius:'8px',color:'var(--muted)',fontSize:'11px',padding:'7px',cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif' }}>Cancel</button>
-                  </div>
-                </div>
-              : <>
-                  <div style={{ fontSize:'13px',lineHeight:1.7,whiteSpace:'pre-wrap',marginBottom:'10px' }}>{n.title}</div>
-                  <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
-                    <div style={{ fontSize:'10px',color:'var(--muted)' }}>{getDaysAgo(n.created_at)}</div>
-                    <div style={{ display:'flex',gap:'6px' }}>
-                      <button onClick={()=>{setEditing(n.id);setEditText(n.title)}} style={{ background:'none',border:'none',cursor:'pointer',color:'var(--muted)',fontSize:'12px' }}>✏️</button>
-                      <button onClick={()=>removeNote(n.id)} style={{ background:'none',border:'none',cursor:'pointer',color:'#DC2626',fontSize:'12px' }}>🗑</button>
-                    </div>
-                  </div>
-                </>
-            }
+      {loading && <Loading />}
+      {!loading && filtered.length === 0 && (
+        <Empty icon="📝" title="No notes yet" sub="Add your first note above." />
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {filtered.map(n => (
+          <div key={n.id} style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: '14px 16px', borderLeft: `4px solid ${typeColor(n.field_name)}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <Avatar agent={n.agents} size={26} />
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{n.agents?.name || 'Unknown'}</span>
+                <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '8px' }}>{fmtDateTime(n.created_at)}</span>
+              </div>
+              <Pill label={typeLabel(n.field_name)} color={typeColor(n.field_name)} />
+            </div>
+            <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{n.new_value}</div>
           </div>
         ))}
       </div>

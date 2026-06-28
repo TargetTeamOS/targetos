@@ -1,0 +1,125 @@
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Dashboard Preferences
+// Saves widget layout, visibility, size, and color to Supabase.
+// Per-agent — each agent has their own layout saved in the DB.
+// ═══════════════════════════════════════════════════════════════
+
+import { supabase } from './supabase'
+
+const DEFAULT_WIDGETS = [
+  { id: 'gci_goal',        col: 1, size: 'md', color: '#CC2200',  visible: true  },
+  { id: 'team_goal',       col: 1, size: 'md', color: '#F5A623',  visible: true  },
+  { id: 'quick_stats',     col: 2, size: 'lg', color: '#3B82F6',  visible: true  },
+  { id: 'pipeline',        col: 1, size: 'md', color: '#10B981',  visible: true  },
+  { id: 'todays_tasks',    col: 1, size: 'md', color: '#8B5CF6',  visible: true  },
+  { id: 'hot_leads',       col: 1, size: 'md', color: '#DC2626',  visible: true  },
+  { id: 'active_deals',    col: 1, size: 'md', color: '#0EA5E9',  visible: true  },
+  { id: 'upcoming_close',  col: 1, size: 'md', color: '#F97316',  visible: true  },
+  { id: 'active_listings', col: 1, size: 'md', color: '#14B8A6',  visible: true  },
+  { id: 'leaderboard',     col: 2, size: 'lg', color: '#F5A623',  visible: true  },
+  { id: 'gci_chart',       col: 1, size: 'md', color: '#CC2200',  visible: true  },
+  { id: 'open_houses',     col: 1, size: 'md', color: '#84CC16',  visible: true  },
+  { id: 'gifts_pending',   col: 1, size: 'md', color: '#EC4899',  visible: true  },
+  { id: 'quick_add',       col: 2, size: 'lg', color: '#6366F1',  visible: true  },
+  { id: 'overdue_alert',   col: 2, size: 'lg', color: '#DC2626',  visible: false },
+  { id: 'announcements',   col: 2, size: 'lg', color: '#F5A623',  visible: false },
+]
+
+// ── LOAD PREFS FROM DB ────────────────────────────────────────────
+export async function loadDashPrefs(agentId) {
+  try {
+    const { data } = await supabase
+      .from('briefing_prefs')
+      .select('dashboard_widgets, dashboard_layout')
+      .eq('agent_id', agentId)
+      .single()
+
+    if (data?.dashboard_widgets?.length) {
+      return {
+        widgets: data.dashboard_widgets,
+        layout:  data.dashboard_layout || {},
+      }
+    }
+  } catch { /* no prefs yet — use defaults */ }
+
+  return { widgets: DEFAULT_WIDGETS, layout: {} }
+}
+
+// ── SAVE PREFS TO DB ──────────────────────────────────────────────
+export async function saveDashPrefs(agentId, widgets, layout = {}) {
+  // Check if a row already exists for this agent
+  const { data: existing } = await supabase
+    .from('briefing_prefs')
+    .select('agent_id')
+    .eq('agent_id', agentId)
+    .maybeSingle()
+
+  const payload = {
+    agent_id:          agentId,
+    dashboard_widgets: widgets,
+    dashboard_layout:  layout,
+    updated_at:        new Date().toISOString(),
+  }
+
+  let error
+  if (existing) {
+    // Row exists — UPDATE it
+    const result = await supabase
+      .from('briefing_prefs')
+      .update({ dashboard_widgets: widgets, dashboard_layout: layout, updated_at: new Date().toISOString() })
+      .eq('agent_id', agentId)
+    error = result.error
+  } else {
+    // No row yet — INSERT
+    const result = await supabase
+      .from('briefing_prefs')
+      .insert(payload)
+    error = result.error
+  }
+
+  if (error) throw new Error('saveDashPrefs failed: ' + error.message)
+}
+
+// ── LOAD AGENT GOALS FROM DB ──────────────────────────────────────
+export async function loadAgentGoals(agentId) {
+  const { data } = await supabase
+    .from('agents')
+    .select('goal_gci, goal_deals')
+    .eq('id', agentId)
+    .single()
+  return { goal_gci: data?.goal_gci || 250000, goal_deals: data?.goal_deals || 50 }
+}
+
+// ── SAVE AGENT GOAL (admin sets per-agent) ────────────────────────
+export async function saveAgentGoal(agentId, goalGci, goalDeals) {
+  await supabase
+    .from('agents')
+    .update({ goal_gci: goalGci, goal_deals: goalDeals, updated_at: new Date().toISOString() })
+    .eq('id', agentId)
+}
+
+// ── LOAD TEAM GOAL (shared, stored in briefing_prefs for agent 'team') ────
+export async function loadTeamGoal() {
+  try {
+    const { data } = await supabase
+      .from('briefing_prefs')
+      .select('dashboard_layout')
+      .eq('agent_id', '00000000-0000-0000-0000-000000000000')
+      .single()
+    return { team_gci: data?.dashboard_layout?.team_gci || 2000000, team_deals: data?.dashboard_layout?.team_deals || 200 }
+  } catch {
+    return { team_gci: 2000000, team_deals: 200 }
+  }
+}
+
+export async function saveTeamGoal(teamGci, teamDeals) {
+  await supabase
+    .from('briefing_prefs')
+    .upsert({
+      agent_id:        '00000000-0000-0000-0000-000000000000',
+      dashboard_layout:{ team_gci: teamGci, team_deals: teamDeals },
+      updated_at:      new Date().toISOString(),
+    }, { onConflict: 'agent_id' })
+}
+
+export { DEFAULT_WIDGETS }

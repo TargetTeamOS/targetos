@@ -1,42 +1,24 @@
-import React, { createContext, useContext, useReducer, useCallback } from 'react'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — App Context
+// Theme, toast notifications, sidebar state
+// ═══════════════════════════════════════════════════════════════
+
+import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react'
+import { lsGet, lsSet } from '../lib/utils'
 
 const AppContext = createContext(null)
 
 const initialState = {
-  user: null,
-  currentAgent: null,
-  theme: 'light',
-  contacts: [],
-  tasks: [],
-  listings: [],
-  transactions: [],
-  deals: [],
-  activityLog: [],
-  toast: null,
-  loading: {},
+  theme:     lsGet('tos_theme', 'light'),
+  collapsed: lsGet('tos_sidebar', false),
+  toast:     null,
 }
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'SET_USER':       return { ...state, user: action.payload }
-    case 'SET_AGENT':      return { ...state, currentAgent: action.payload }
-    case 'SET_THEME':      return { ...state, theme: action.theme || action.payload }
-    case 'SET_CONTACTS':   return { ...state, contacts: action.payload }
-    case 'ADD_CONTACT':    return { ...state, contacts: [action.payload, ...state.contacts] }
-    case 'DEL_CONTACT':    return { ...state, contacts: state.contacts.filter(c => c.id !== action.payload) }
-    case 'UPD_CONTACT':    return { ...state, contacts: state.contacts.map(c => c.id === action.payload.id ? action.payload : c) }
-    case 'SET_TASKS':      return { ...state, tasks: action.payload }
-    case 'ADD_TASK':       return { ...state, tasks: [action.payload, ...state.tasks] }
-    case 'DEL_TASK':       return { ...state, tasks: state.tasks.filter(t => t.id !== action.payload) }
-    case 'UPD_TASK':       return { ...state, tasks: state.tasks.map(t => t.id === action.payload.id ? action.payload : t) }
-    case 'SET_LISTINGS':   return { ...state, listings: action.payload }
-    case 'SET_DEALS':      return { ...state, deals: action.payload }
-    case 'SET_TRANSACTIONS': return { ...state, transactions: action.payload }
-    case 'ADD_LOG':        return { ...state, activityLog: [action.payload, ...state.activityLog].slice(0, 2000) }
-    case 'SET_LOG':        return { ...state, activityLog: action.payload }
-    case 'TOAST':          return { ...state, toast: action.payload }
-    case 'LOGOUT':         return { ...state, user: null, currentAgent: null }
-    case 'SET_LOADING':    return { ...state, loading: { ...state.loading, [action.key]: action.val } }
+    case 'SET_THEME':     return { ...state, theme: action.theme }
+    case 'SET_COLLAPSED': return { ...state, collapsed: action.collapsed }
+    case 'SET_TOAST':     return { ...state, toast: action.toast }
     default: return state
   }
 }
@@ -44,20 +26,34 @@ function reducer(state, action) {
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState)
 
-  const toast = useCallback((msg, color) => {
-    dispatch({ type: 'TOAST', payload: { msg, color, id: Date.now() } })
-    setTimeout(() => dispatch({ type: 'TOAST', payload: null }), 2800)
+  // Persist theme and sidebar to localStorage
+  useEffect(() => { lsSet('tos_theme', state.theme) }, [state.theme])
+  useEffect(() => { lsSet('tos_sidebar', state.collapsed) }, [state.collapsed])
+
+  // Apply theme to document
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', state.theme)
+  }, [state.theme])
+
+  const setTheme = useCallback((t) => dispatch({ type: 'SET_THEME', theme: t }), [])
+  const setSidebarCollapsed = useCallback((v) => dispatch({ type: 'SET_COLLAPSED', collapsed: v }), [])
+
+  const showToast = useCallback((msg, color = '#10B981', duration = 3000) => {
+    dispatch({ type: 'SET_TOAST', toast: { msg, color } })
+    setTimeout(() => dispatch({ type: 'SET_TOAST', toast: null }), duration)
   }, [])
 
-  const log = useCallback((entry) => {
-    dispatch({ type: 'ADD_LOG', payload: { ...entry, id: Date.now().toString(), timeLabel: new Date().toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}), timestamp: new Date().toISOString() } })
-  }, [])
+  const toast = useCallback((msg, color) => showToast(msg, color), [showToast])
 
   return (
-    <AppContext.Provider value={{ state, dispatch, toast, log }}>
+    <AppContext.Provider value={{ state, setTheme, setSidebarCollapsed, showToast, toast }}>
       {children}
     </AppContext.Provider>
   )
 }
 
-export const useApp = () => useContext(AppContext)
+export function useApp() {
+  const ctx = useContext(AppContext)
+  if (!ctx) throw new Error('useApp must be used inside AppProvider')
+  return ctx
+}

@@ -1,196 +1,327 @@
-import React, { useState } from 'react'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Tasks Page
+// Every task has its own URL. Full CRUD with priorities.
+// ═══════════════════════════════════════════════════════════════
+
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useTasks } from '../lib/hooks/useTasks'
 import { useApp } from '../context/AppContext'
-import { fmtDate } from '../lib/utils/format'
+import { useTasks, useAgents } from '../lib/hooks'
+import { fmtDate, today, isOverdue, isDueToday, isDueSoon } from '../lib/utils'
+import { TASK_PRIORITIES, TASK_STATUSES } from '../lib/constants'
+import {
+  PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
+  SearchInput, Avatar, ModalActions, Loading, Empty, Tabs,
+  SectionTitle, Confirm, Divider, Card
+} from '../components/UI'
 
-const PRIORITIES = ['urgent','high','normal','low']
-const PRIORITY_COLORS = { urgent:'#DC2626', high:'#D97706', normal:'#0EA5E9', low:'#94A3B8' }
-const EMPTY_FORM = { title:'', priority:'normal', due_date:'', notes:'' }
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-export function Tasks({ highlightId }) {
-  const { agent } = useAuth()
+const TASK_EXPORT_COLS = [
+  { key:'title',    label:'Title',    example:'Follow up with client' },
+  { key:'status',   label:'Status',   example:'pending' },
+  { key:'priority', label:'Priority', example:'normal' },
+  { key:'due_date', label:'Due Date', example:'2026-01-15', type:'date' },
+  { key:'notes',    label:'Notes',    example:'' },
+]
+
+const BLANK = {
+  title: '', priority: 'normal', status: 'pending', due_date: '',
+  notes: '', agent_id: '', deal_id: '', contact_id: ''
+}
+
+export function Tasks() {
+  const navigate = useNavigate()
+  const { id: urlId } = useParams()
+  const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
-  const [filter, setFilter]   = useState('pending')
+
+  const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
+  const { tasks, loading, add, update, complete, remove } = useTasks(filters)
+  const { agents } = useAgents()
+
+  const [search,      setSearch]      = useState('')
+  const [selectedIds, setSelectedIds] = useState([])
+  const [bulkDel,     setBulkDel]     = useState(false)
+  const [statusF, setStatusF] = useState('pending')
+  const [priorF,  setPriorF]  = useState('')
+  const [agentF,  setAgentF]  = useState('')
+  const [selected,setSelected] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm]       = useState(EMPTY_FORM)
-  const [saving, setSaving]   = useState(false)
+  const [form,    setForm]    = useState(BLANK)
+  const [saving,  setSaving]  = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const { tasks, loading, add, update, remove } = useTasks({
-    agentId: agent?.id,
-    status: filter === 'all' ? undefined : filter,
-  })
+  useEffect(() => {
+    if (urlId && tasks.length > 0 && urlId !== 'new') {
+      const t = tasks.find(x => x.id === urlId)
+      if (t) openTask(t)
+    }
+    if (urlId === 'new') { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); setShowAdd(true) }
+  }, [urlId, tasks.length])
 
-  const today    = new Date().toISOString().split('T')[0]
-  const overdue  = tasks.filter(t => t.status==='pending' && t.due_date && t.due_date < today)
-  const todayT   = tasks.filter(t => t.status==='pending' && t.due_date === today)
-  const upcoming = tasks.filter(t => t.status==='pending' && (!t.due_date || t.due_date > today))
+  function openTask(t) {
+    navigate('/tasks/' + t.id, { replace: true })
+    setSelected(t)
+    setForm({ ...BLANK, ...t })
+    setShowAdd(false)
+  }
 
-  async function handleAdd() {
-    if (!form.title.trim()) { toast('Title required', '#DC2626'); return }
+  function openAdd() {
+    setSelected(null)
+    setForm({ ...BLANK, agent_id: agent?.id, due_date: today() })
+    setShowAdd(true)
+    navigate('/tasks/new', { replace: true })
+  }
+
+  function closePanel() {
+    setSelected(null)
+    setShowAdd(false)
+    navigate('/tasks', { replace: true })
+  }
+
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
+
+  async function saveTask() {
+    if (!form.title.trim()) { toast('Task title is required', '#DC2626'); return }
     setSaving(true)
     try {
-      await add({ ...form, agent_id: agent?.id, created_by: agent?.id, status:'pending' })
-      toast('✅ Task added!')
-      setForm(EMPTY_FORM)
-      setShowAdd(false)
-    } catch(e) { toast('Error: '+e.message, '#DC2626') }
-    finally { setSaving(false) }
+      if (selected) {
+        const updated = await update(selected.id, form)
+        setSelected(updated)
+        toast('✅ Task saved')
+      } else {
+        await add({ ...form, agent_id: form.agent_id || agent?.id, created_by: agent?.id })
+        toast('✅ Task added')
+        closePanel()
+      }
+    } catch(e) {
+      toast('Save failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
   }
 
-  async function toggleDone(task) {
-    const newStatus = task.status === 'done' ? 'pending' : 'done'
+  async function markDone(task, e) {
+    e.stopPropagation()
     try {
-      await update(task.id, { status: newStatus, completed_at: newStatus==='done' ? new Date().toISOString() : null })
-    } catch(e) { toast('Error: '+e.message, '#DC2626') }
+      await complete(task.id)
+      toast('✅ Task completed')
+      if (selected?.id === task.id) closePanel()
+    } catch(e) {
+      toast('Failed: ' + e.message, '#DC2626')
+    }
   }
 
-  async function handleDelete(id) {
-    try { await remove(id); toast('Task deleted') }
-    catch(e) { toast('Error: '+e.message, '#DC2626') }
+  async function deleteTask() {
+    try {
+      await remove(selected.id)
+      toast('Task deleted')
+      closePanel()
+    } catch(e) {
+      toast('Delete failed: ' + e.message, '#DC2626')
+    } finally { setConfirmDelete(false) }
   }
 
-  const set = (k,v) => setForm(f=>({...f,[k]:v}))
+  const filtered = tasks.filter(t => {
+    if (statusF && t.status !== statusF) return false
+    if (priorF  && t.priority !== priorF) return false
+    if (agentF  && t.agent_id !== agentF) return false
+    if (search  && !t.title?.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
 
-  return (
-    <div>
-      {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px', flexWrap:'wrap', gap:'8px' }}>
-        <div>
-          <div style={{ fontSize:'18px', fontWeight:900 }}>✓ Tasks</div>
-          <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>
-            {overdue.length > 0 && <span style={{ color:'#DC2626', fontWeight:700 }}>{overdue.length} overdue · </span>}
-            {todayT.length} due today · {upcoming.length} upcoming
+  const priorityColor = (p) => TASK_PRIORITIES.find(x => x.value === p)?.color || '#94A3B8'
+  const statusColor   = (s) => TASK_STATUSES.find(x => x.value === s)?.color || '#94A3B8'
+
+  // Group by priority
+  const urgent = filtered.filter(t => t.priority === 'urgent' && t.status !== 'done')
+  const high   = filtered.filter(t => t.priority === 'high'   && t.status !== 'done')
+  const normal = filtered.filter(t => t.priority === 'normal' && t.status !== 'done')
+  const low    = filtered.filter(t => t.priority === 'low'    && t.status !== 'done')
+  const done   = filtered.filter(t => t.status === 'done')
+
+  function TaskCard({ task }) {
+    const overdue  = task.due_date && isOverdue(task.due_date) && task.status !== 'done'
+    const dueToday = task.due_date && isDueToday(task.due_date)
+
+    return (
+      <div onClick={() => openTask(task)}
+        style={{ background: 'var(--panel)', borderRadius: '10px', border: selected?.id === task.id ? '2px solid var(--brand)' : `1px solid ${overdue ? '#FECACA' : 'var(--border)'}`, padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: '10px', transition: 'box-shadow .12s', marginBottom: '6px' }}
+        onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
+        onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
+        {/* Check button */}
+        <button onClick={(e) => markDone(task, e)}
+          style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${priorityColor(task.priority)}`, background: task.status === 'done' ? priorityColor(task.priority) : 'transparent', cursor: 'pointer', flexShrink: 0, marginTop: '1px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#fff' }}>
+          {task.status === 'done' ? '✓' : ''}
+        </button>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: task.status === 'done' ? 'var(--muted)' : 'var(--text)', textDecoration: task.status === 'done' ? 'line-through' : 'none', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {task.title}
           </div>
+          {task.due_date && (
+            <div style={{ fontSize: '11px', color: overdue ? '#DC2626' : dueToday ? '#F97316' : 'var(--muted)', fontWeight: overdue || dueToday ? 600 : 400 }}>
+              {overdue ? '⚠️ Overdue — ' : dueToday ? '📅 Today — ' : '📅 '}
+              {fmtDate(task.due_date)}
+            </div>
+          )}
+          {task.notes && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.notes}</div>}
         </div>
-        <div style={{ display:'flex', gap:'7px' }}>
-          <div style={{ display:'flex', background:'var(--dim)', borderRadius:'8px', padding:'3px', gap:'2px' }}>
-            {[['pending','Open'],['done','Done'],['all','All']].map(([k,l])=>(
-              <button key={k} onClick={()=>setFilter(k)}
-                style={{ padding:'6px 12px', borderRadius:'6px', border:'none', cursor:'pointer', fontSize:'11px', fontWeight:600, fontFamily:'Inter,system-ui,sans-serif',
-                  background:filter===k?'var(--panel)':'transparent', color:filter===k?'var(--text)':'var(--muted)' }}>
-                {l}
-              </button>
-            ))}
-          </div>
-          <button onClick={()=>setShowAdd(s=>!s)}
-            style={{ background:'#CC2200', border:'none', borderRadius:'8px', color:'#fff', fontSize:'12px', fontWeight:700, padding:'8px 14px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
-            + Add Task
-          </button>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+          <Pill label={task.priority} color={priorityColor(task.priority)} />
+          {task.agents && <Avatar agent={task.agents} size={20} />}
         </div>
       </div>
+    )
+  }
 
-      {/* Add form */}
-      {showAdd && (
-        <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'12px', padding:'16px', marginBottom:'14px' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr auto auto', gap:'8px', marginBottom:'8px' }}>
-            <input value={form.title} onChange={e=>set('title',e.target.value)} placeholder="Task title..." autoFocus
-              onKeyDown={e=>e.key==='Enter'&&handleAdd()}
-              style={{ background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'13px', fontFamily:'Inter,system-ui,sans-serif', padding:'9px 12px', outline:'none' }}/>
-            <select value={form.priority} onChange={e=>set('priority',e.target.value)}
-              style={{ background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'9px 10px', outline:'none' }}>
-              {PRIORITIES.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-            </select>
-            <input type="date" value={form.due_date} onChange={e=>set('due_date',e.target.value)}
-              style={{ background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'9px 10px', outline:'none' }}/>
-          </div>
-          <div style={{ display:'flex', gap:'7px', justifyContent:'flex-end' }}>
-            <button onClick={()=>setShowAdd(false)}
-              style={{ background:'var(--dim)', border:'1px solid var(--border)', borderRadius:'8px', color:'var(--muted)', fontSize:'12px', padding:'8px 14px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
-              Cancel
-            </button>
-            <button onClick={handleAdd} disabled={saving}
-              style={{ background:'#CC2200', border:'none', borderRadius:'8px', color:'#fff', fontSize:'12px', fontWeight:700, padding:'8px 16px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', opacity:saving?.7:1 }}>
-              {saving?'Adding…':'Add Task'}
-            </button>
-          </div>
+  function Group({ title, tasks, color }) {
+    if (!tasks.length) return null
+    return (
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+          <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: color }} />
+          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{title} ({tasks.length})</span>
         </div>
-      )}
-
-      {loading && <div style={{ padding:'28px', textAlign:'center', color:'var(--muted)', fontSize:'13px' }}>Loading tasks...</div>}
-
-      {/* Overdue */}
-      {overdue.length > 0 && (
-        <Section title={`⚠️ Overdue (${overdue.length})`} color="#DC2626">
-          {overdue.map(t => <TaskRow key={t.id} task={t} today={today} onToggle={toggleDone} onDelete={handleDelete}/>)}
-        </Section>
-      )}
-
-      {/* Today */}
-      {todayT.length > 0 && (
-        <Section title={`📅 Due Today (${todayT.length})`} color="#D97706">
-          {todayT.map(t => <TaskRow key={t.id} task={t} today={today} onToggle={toggleDone} onDelete={handleDelete} highlight={t.id===highlightId}/>)}
-        </Section>
-      )}
-
-      {/* Upcoming */}
-      {upcoming.length > 0 && (
-        <Section title={`📋 Upcoming (${upcoming.length})`} color="#0EA5E9">
-          {upcoming.map(t => <TaskRow key={t.id} task={t} today={today} onToggle={toggleDone} onDelete={handleDelete}/>)}
-        </Section>
-      )}
-
-      {/* Done */}
-      {filter!=='pending' && tasks.filter(t=>t.status==='done').length > 0 && (
-        <Section title="✅ Completed" color="#16A34A">
-          {tasks.filter(t=>t.status==='done').map(t => <TaskRow key={t.id} task={t} today={today} onToggle={toggleDone} onDelete={handleDelete}/>)}
-        </Section>
-      )}
-
-      {!loading && tasks.length === 0 && (
-        <div style={{ padding:'48px', textAlign:'center', color:'var(--muted)', fontSize:'13px', background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'14px' }}>
-          <div style={{ fontSize:'32px', marginBottom:'12px' }}>🎯</div>
-          <div style={{ fontWeight:700, marginBottom:'4px' }}>No tasks yet</div>
-          <div>Click "+ Add Task" to get started</div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Section({ title, color, children }) {
-  const [open, setOpen] = useState(true)
-  return (
-    <div style={{ marginBottom:'10px', border:'1px solid var(--border)', borderRadius:'12px', overflow:'hidden' }}>
-      <div onClick={()=>setOpen(o=>!o)} style={{ padding:'10px 14px', background:'var(--dim)', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', borderLeft:`3px solid ${color}` }}>
-        <span style={{ fontSize:'12px', fontWeight:700, color }}>{title}</span>
-        <span style={{ color:'var(--muted)', fontSize:'12px' }}>{open?'▾':'▸'}</span>
+        {tasks.map(t => <TaskCard key={t.id} task={t} />)}
       </div>
-      {open && <div>{children}</div>}
-    </div>
-  )
-}
+    )
+  }
 
-function TaskRow({ task, today, onToggle, onDelete, highlight }) {
-  const isOverdue = task.status==='pending' && task.due_date && task.due_date < today
-  const isDone    = task.status === 'done'
-  const pColor    = PRIORITY_COLORS[task.priority] || '#94A3B8'
+  async function bulkDelete() {
+    if (!selectedIds.length) return
+    if (!window.confirm(`Delete ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}?`)) return
+    setBulkDel(true)
+    try {
+      await supabase.from('tasks').delete().in('id', selectedIds)
+      setSelectedIds([])
+      toast(`✅ Deleted ${selectedIds.length} task${selectedIds.length !== 1 ? 's' : ''}`)
+    } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+    finally { setBulkDel(false) }
+  }
+
+  async function bulkComplete() {
+    if (!selectedIds.length) return
+    try {
+      await supabase.from('tasks').update({ status: 'done', updated_at: new Date().toISOString() }).in('id', selectedIds)
+      setSelectedIds([])
+      toast(`✅ Marked ${selectedIds.length} tasks as done`)
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+  }
+
   return (
-    <div id={`task-${task.id}`} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'11px 14px', borderBottom:'1px solid var(--border)', background:highlight?'rgba(204,34,0,.03)':isDone?'rgba(0,0,0,.01)':'transparent' }}>
-      {/* Checkbox */}
-      <div onClick={()=>onToggle(task)}
-        style={{ width:20, height:20, borderRadius:'6px', border:`2px solid ${isDone?'#16A34A':pColor}`, background:isDone?'#16A34A':'transparent',
-          display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, transition:'all .15s' }}>
-        {isDone && <span style={{ color:'#fff', fontSize:'12px', lineHeight:1 }}>✓</span>}
-      </div>
-      {/* Priority dot */}
-      <div style={{ width:7, height:7, borderRadius:'2px', background:pColor, flexShrink:0 }}/>
-      {/* Title */}
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontSize:'13px', fontWeight:500, color:isDone?'var(--muted)':'var(--text)', textDecoration:isDone?'line-through':'none', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-          {task.title}
-        </div>
-        {task.due_date && (
-          <div style={{ fontSize:'10px', color:isOverdue?'#DC2626':'var(--muted)', fontWeight:isOverdue?700:400, marginTop:'2px' }}>
-            {isOverdue ? '⚠️ Overdue · ' : ''}{fmtDate(task.due_date)}
-          </div>
+    <div style={{ fontFamily: ff }}>
+      <PageHeader
+        title="Tasks"
+        sub={`${filtered.filter(t => t.status !== 'done').length} open · ${done.length} done`}
+        actions={<Btn onClick={openAdd}>+ Add Task</Btn>}
+      />
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search tasks..." style={{ flex: 1, minWidth: '200px' }} />
+        <select value={statusF} onChange={e => setStatusF(e.target.value)}
+          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+          <option value="">All Statuses</option>
+          {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+        <select value={priorF} onChange={e => setPriorF(e.target.value)}
+          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+          <option value="">All Priorities</option>
+          {TASK_PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
+        {(isAdmin || canManage) && (
+          <select value={agentF} onChange={e => setAgentF(e.target.value)}
+            style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+            <option value="">All Agents</option>
+            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
         )}
       </div>
-      {/* Delete */}
-      <button onClick={()=>onDelete(task.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'13px', opacity:.4, padding:'2px 4px' }}
-        onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='.4'}>
-        ✕
-      </button>
+
+      {/* Selection bar */}
+      {selectedIds.length > 0 && (
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 14px', background:'#1B2B4B', borderRadius:'10px', marginBottom:'10px', flexWrap:'wrap' }}>
+          <span style={{ fontSize:'13px', fontWeight:700, color:'#fff' }}>{selectedIds.length} task{selectedIds.length !== 1 ? 's' : ''} selected</span>
+          <div style={{ flex:1 }} />
+          <button onClick={bulkComplete}
+            style={{ padding:'5px 12px', borderRadius:'6px', border:'1px solid rgba(16,185,129,.5)', background:'rgba(16,185,129,.2)', color:'#6EE7B7', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            ✅ Mark done
+          </button>
+          <button onClick={bulkDelete} disabled={bulkDel}
+            style={{ padding:'5px 12px', borderRadius:'6px', border:'1px solid rgba(220,38,38,.5)', background:'rgba(220,38,38,.2)', color:'#FCA5A5', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            {bulkDel ? '⏳' : '🗑️'} Delete {selectedIds.length}
+          </button>
+          <button onClick={() => setSelectedIds([])}
+            style={{ padding:'5px 10px', borderRadius:'6px', border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'rgba(255,255,255,.7)', fontSize:'12px', cursor:'pointer', fontFamily:ff }}>
+            ✕ Clear
+          </button>
+        </div>
+      )}
+
+      {loading && <Loading />}
+      {!loading && filtered.length === 0 && (
+        <Empty icon="✅" title="No tasks" sub="Add your first task or create one via voice capture." action={<Btn onClick={openAdd}>+ Add Task</Btn>} />
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <div>
+          <Group title="Urgent" tasks={urgent} color="#DC2626" />
+          <Group title="High"   tasks={high}   color="#F97316" />
+          <Group title="Normal" tasks={normal}  color="#3B82F6" />
+          <Group title="Low"    tasks={low}     color="#94A3B8" />
+          {done.length > 0 && statusF !== 'pending' && (
+            <Group title="Completed" tasks={done} color="#10B981" />
+          )}
+        </div>
+      )}
+
+      {/* Task Detail Modal */}
+      <Modal open={!!(selected || showAdd)} onClose={closePanel} title={selected ? 'Edit Task' : 'New Task'} width={500}>
+        <Field label="Task Title" required>
+          <Input value={form.title} onChange={v => set('title', v)} placeholder="What needs to be done?" />
+        </Field>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <Field label="Priority">
+            <Select value={form.priority} onChange={v => set('priority', v)} options={TASK_PRIORITIES} />
+          </Field>
+          <Field label="Status">
+            <Select value={form.status} onChange={v => set('status', v)} options={TASK_STATUSES} />
+          </Field>
+          <Field label="Due Date">
+            <Input value={form.due_date} onChange={v => set('due_date', v)} type="date" />
+          </Field>
+          {(isAdmin || canManage) && (
+            <Field label="Assigned To">
+              <Select value={form.agent_id || ''} onChange={v => set('agent_id', v)} options={agents.map(a => ({ value: a.id, label: a.name }))} placeholder="Assign to agent" />
+            </Field>
+          )}
+        </div>
+
+        <Field label="Notes">
+          <Textarea value={form.notes} onChange={v => set('notes', v)} placeholder="Task details..." rows={3} />
+        </Field>
+
+        <ModalActions>
+          {selected && (
+            <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>
+          )}
+          {selected && selected.status !== 'done' && (
+            <Btn variant="success" onClick={(e) => { markDone(selected, e); closePanel() }}>Mark Done</Btn>
+          )}
+          <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
+          <Btn onClick={saveTask} loading={saving}>{selected ? 'Save' : 'Add Task'}</Btn>
+        </ModalActions>
+      </Modal>
+
+      <Confirm
+        open={confirmDelete}
+        message="Delete this task? This cannot be undone."
+        onConfirm={deleteTask}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }

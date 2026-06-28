@@ -1,187 +1,260 @@
-import React, { useState } from 'react'
+// ═══════════════════════════════════════════════════════════════
+// TargetOS V2 — Calendar Page
+// Monthly calendar view + list view. All events with own URLs.
+// ═══════════════════════════════════════════════════════════════
+
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useCalendar } from '../lib/hooks/useCalendar'
 import { useApp } from '../context/AppContext'
-import { fmtTime } from '../lib/utils/format'
+import { useCalendar, useAgents } from '../lib/hooks'
+import { fmtDate, today } from '../lib/utils'
+import {
+  PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
+  ModalActions, Loading, Empty, Confirm, Tabs, Avatar
+} from '../components/UI'
 
-const EVENT_TYPES = ['appointment','showing','open house','closing','inspection','meeting','personal','other']
-const TYPE_COLORS = { appointment:'#CC2200',showing:'#0EA5E9','open house':'#D97706',closing:'#16A34A',inspection:'#7C3AED',meeting:'#E8650A',personal:'#14B8A6',other:'#94A3B8' }
-const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-const EMPTY = { title:'', type:'appointment', start_date:'', start_time:'', end_time:'', all_day:false, location:'', description:'', color:'#CC2200' }
+const EVENT_TYPES = ['event','showing','closing','inspection','appointment','open house','other']
+const EVENT_COLORS = ['#CC2200','#0EA5E9','#10B981','#F5A623','#8B5CF6','#EC4899','#6B7280']
+
+const BLANK = {
+  title: '', type: 'event', start_date: today(), start_time: '',
+  end_date: '', end_time: '', all_day: false, location: '', description: '',
+  color: '#CC2200'
+}
 
 export function Calendar() {
-  const { agent } = useAuth()
+  const navigate = useNavigate()
+  const { id: urlId } = useParams()
+  const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
-  const [today]         = useState(new Date())
-  const [viewDate, setViewDate] = useState(new Date())
+
+  const now = new Date()
+  const [year,  setYear]  = useState(now.getFullYear())
+  const [month, setMonth] = useState(now.getMonth())
+  const [view,  setView]  = useState('month')
+
+  const startDate = new Date(year, month, 1).toISOString().slice(0,10)
+  const endDate   = new Date(year, month + 1, 0).toISOString().slice(0,10)
+
+  const filters = isAdmin || canManage
+    ? { from: startDate, to: endDate }
+    : { from: startDate, to: endDate, agent_id: agent?.id }
+
+  const { events, loading, add, update, remove } = useCalendar(filters)
+  const { agents } = useAgents()
+
   const [selected, setSelected] = useState(null)
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm]         = useState(EMPTY)
-  const [saving, setSaving]     = useState(false)
+  const [form,     setForm]     = useState(BLANK)
+  const [saving,   setSaving]   = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const year  = viewDate.getFullYear()
-  const month = viewDate.getMonth()
-  const firstDay = new Date(year, month, 1).getDay()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  useEffect(() => {
+    if (urlId && events.length > 0 && urlId !== 'new') {
+      const e = events.find(x => x.id === urlId)
+      if (e) { navigate('/calendar/' + e.id, { replace: true }); setSelected(e); setForm({ ...BLANK, ...e }) }
+    }
+  }, [urlId, events.length])
 
-  const startDate = `${year}-${String(month+1).padStart(2,'0')}-01`
-  const endDate   = `${year}-${String(month+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`
-
-  const { events, loading, add, update, remove } = useCalendar({ agentId: agent?.id, startDate, endDate })
-
-  const set = (k,v) => setForm(f=>({...f,[k]:v, ...(k==='type'?{color:TYPE_COLORS[v]||'#CC2200'}:{})}))
-
-  function getEventsForDay(day) {
-    const d = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-    return events.filter(e => e.start_date === d)
-  }
-
-  function openDay(day) {
-    const d = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-    setForm({ ...EMPTY, start_date: d })
+  function closePanel() {
     setSelected(null)
-    setShowForm(true)
+    navigate('/calendar', { replace: true })
   }
 
-  function openEvent(e) {
-    setForm({ ...EMPTY, ...e })
-    setSelected(e)
-    setShowForm(true)
-  }
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
-  async function handleSave() {
-    if (!form.title.trim() || !form.start_date) { toast('Title and date required','#DC2626'); return }
+  async function saveEvent() {
+    if (!form.title.trim()) { toast('Title required', '#DC2626'); return }
     setSaving(true)
     try {
-      if (selected) { await update(selected.id, { ...form, agent_id: agent?.id }); toast('✅ Event updated!') }
-      else          { await add({ ...form, agent_id: agent?.id }); toast('✅ Event added!') }
-      setShowForm(false); setSelected(null); setForm(EMPTY)
-    } catch(e) { toast('Error: '+e.message,'#DC2626') }
-    finally { setSaving(false) }
+      if (selected) {
+        const updated = await update(selected.id, form)
+        setSelected(updated)
+        toast('✅ Event saved')
+      } else {
+        await add({ ...form, agent_id: form.agent_id || agent?.id })
+        toast('✅ Event added')
+        closePanel()
+      }
+    } catch(e) {
+      toast('Save failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
   }
 
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
+  async function deleteEvent() {
+    try {
+      await remove(selected.id)
+      toast('Event deleted')
+      closePanel()
+    } catch(e) {
+      toast('Delete failed: ' + e.message, '#DC2626')
+    } finally { setConfirmDelete(false) }
+  }
 
-  const upcoming = events.filter(e => e.start_date >= todayStr).sort((a,b)=>a.start_date.localeCompare(b.start_date)).slice(0,8)
+  // Build calendar grid
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const todayStr = today()
+
+  function eventsOnDay(day) {
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+    return events.filter(e => e.start_date === dateStr)
+  }
+
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+
+  function prevMonth() { if (month === 0) { setMonth(11); setYear(y => y-1) } else setMonth(m => m-1) }
+  function nextMonth() { if (month === 11) { setMonth(0); setYear(y => y+1) } else setMonth(m => m+1) }
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'1fr 260px', gap:'14px' }}>
-      {/* Calendar grid */}
-      <div>
-        {/* Month nav */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
-          <button onClick={()=>setViewDate(new Date(year,month-1,1))} style={navBtn}>←</button>
-          <div style={{ fontSize:'18px', fontWeight:900 }}>{MONTHS[month]} {year}</div>
-          <button onClick={()=>setViewDate(new Date(year,month+1,1))} style={navBtn}>→</button>
-        </div>
-
-        {/* Day headers */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'2px', marginBottom:'4px' }}>
-          {DAYS.map(d=><div key={d} style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textAlign:'center', padding:'4px' }}>{d}</div>)}
-        </div>
-
-        {/* Calendar cells */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'2px' }}>
-          {Array(firstDay).fill(null).map((_,i)=><div key={'e'+i}/>)}
-          {Array(daysInMonth).fill(null).map((_,i)=>{
-            const day = i+1
-            const dayStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-            const dayEvents = getEventsForDay(day)
-            const isToday = dayStr === todayStr
-            return (
-              <div key={day} onClick={()=>openDay(day)}
-                style={{ minHeight:'80px', background:'var(--panel)', border:`1.5px solid ${isToday?'#CC2200':'var(--border)'}`, borderRadius:'8px', padding:'6px', cursor:'pointer', transition:'background .1s' }}
-                onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'}
-                onMouseLeave={e=>e.currentTarget.style.background='var(--panel)'}>
-                <div style={{ fontSize:'12px', fontWeight:isToday?900:500, color:isToday?'#CC2200':'var(--text)', marginBottom:'4px' }}>{day}</div>
-                {dayEvents.slice(0,3).map(ev=>(
-                  <div key={ev.id} onClick={e=>{e.stopPropagation();openEvent(ev)}}
-                    style={{ fontSize:'10px', fontWeight:600, padding:'2px 5px', borderRadius:'4px', marginBottom:'2px', background:(ev.color||'#CC2200')+'18', color:ev.color||'#CC2200', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                    {ev.start_time&&<span>{fmtTime(ev.start_time)} </span>}{ev.title}
-                  </div>
-                ))}
-                {dayEvents.length>3&&<div style={{ fontSize:'9px', color:'var(--muted)', fontWeight:600 }}>+{dayEvents.length-3} more</div>}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Upcoming sidebar */}
-      <div>
-        <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'14px', overflow:'hidden' }}>
-          <div style={{ padding:'13px 16px', borderBottom:'1px solid var(--border)', fontSize:'13px', fontWeight:700 }}>📅 Upcoming</div>
-          {loading && <div style={{ padding:'20px', textAlign:'center', color:'var(--muted)', fontSize:'12px' }}>Loading...</div>}
-          {!loading && upcoming.length===0 && <div style={{ padding:'20px', textAlign:'center', color:'var(--muted)', fontSize:'12px' }}>No upcoming events</div>}
-          {upcoming.map(ev=>(
-            <div key={ev.id} onClick={()=>openEvent(ev)} style={{ padding:'11px 16px', borderBottom:'1px solid var(--border)', cursor:'pointer', borderLeft:`3px solid ${ev.color||'#CC2200'}` }}
-              onMouseEnter={e=>e.currentTarget.style.background='var(--hov)'}
-              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <div style={{ fontSize:'12px', fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{ev.title}</div>
-              <div style={{ fontSize:'10px', color:'var(--muted)', marginTop:'2px' }}>
-                {ev.start_date} {ev.start_time&&fmtTime(ev.start_time)}
-              </div>
-            </div>
-          ))}
-          <div style={{ padding:'12px 16px' }}>
-            <button onClick={()=>{setForm({...EMPTY,start_date:todayStr});setSelected(null);setShowForm(true)}} style={{ width:'100%', background:'#CC2200', border:'none', borderRadius:'9px', color:'#fff', fontSize:'12px', fontWeight:700, padding:'9px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
-              + Add Event
-            </button>
+    <div style={{ fontFamily: ff }}>
+      <PageHeader
+        title="Calendar"
+        sub={`${events.length} events in ${MONTHS[month]} ${year}`}
+        actions={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Tabs tabs={[{id:'month',label:'Month'},{id:'list',label:'List'}]} active={view} onChange={setView} />
+            <Btn onClick={() => { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); navigate('/calendar/new') }}>+ Add Event</Btn>
           </div>
-        </div>
+        }
+      />
+
+      {/* Month Navigation */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+        <button onClick={prevMonth} style={{ background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer', color: 'var(--text)', fontFamily: ff }}>←</button>
+        <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>{MONTHS[month]} {year}</div>
+        <button onClick={nextMonth} style={{ background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer', color: 'var(--text)', fontFamily: ff }}>→</button>
+        <button onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()) }}
+          style={{ background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer', color: 'var(--muted)', fontSize: '12px', fontFamily: ff }}>Today</button>
       </div>
 
-      {/* Event form modal */}
-      {showForm && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:999, padding:'16px' }}
-          onClick={e=>{if(e.target===e.currentTarget){setShowForm(false);setSelected(null)}}}>
-          <div style={{ background:'var(--panel)', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'440px', maxHeight:'90vh', overflowY:'auto' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'18px' }}>
-              <div style={{ fontSize:'16px', fontWeight:800 }}>{selected?'Edit Event':'Add Event'}</div>
-              <button onClick={()=>{setShowForm(false);setSelected(null)}} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:'20px' }}>✕</button>
-            </div>
-            <F label="Title *" value={form.title} onChange={v=>set('title',v)} ph="Showing at 47 Prairie Ave"/>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-              <div><label style={lbl}>Type</label>
-                <select value={form.type} onChange={e=>set('type',e.target.value)} style={{ ...inp, display:'block' }}>
-                  {EVENT_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
-                </select>
-              </div>
-              <F label="Date *" value={form.start_date} onChange={v=>set('start_date',v)} type="date"/>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-              <F label="Start Time" value={form.start_time} onChange={v=>set('start_time',v)} type="time"/>
-              <F label="End Time"   value={form.end_time}   onChange={v=>set('end_time',v)}   type="time"/>
-            </div>
-            <F label="Location" value={form.location} onChange={v=>set('location',v)} ph="47 Prairie Ave, Suffern NY"/>
-            <F label="Notes"    value={form.description} onChange={v=>set('description',v)} rows={2} ph="Any notes..."/>
-            <div style={{ display:'flex', gap:'8px', marginTop:'12px' }}>
-              {selected&&<button onClick={async()=>{try{await remove(selected.id);toast('Deleted');setShowForm(false);setSelected(null)}catch(e){toast(e.message,'#DC2626')}}}
-                style={{ flex:1, background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)', borderRadius:'10px', color:'#DC2626', fontSize:'12px', fontWeight:700, padding:'11px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>Delete</button>}
-              <button onClick={handleSave} disabled={saving}
-                style={{ flex:2, background:'#CC2200', border:'none', borderRadius:'10px', color:'#fff', fontSize:'13px', fontWeight:700, padding:'11px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', opacity:saving?.7:1 }}>
-                {saving?'Saving…':selected?'Save Changes':'Add Event'}
-              </button>
-            </div>
+      {/* Month View */}
+      {view === 'month' && (
+        <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+          {/* Day headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '2px solid var(--border)' }}>
+            {DAYS.map(d => (
+              <div key={d} style={{ padding: '10px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{d}</div>
+            ))}
+          </div>
+          {/* Calendar grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+            {/* Empty cells for first week */}
+            {Array.from({ length: firstDay }).map((_, i) => (
+              <div key={`empty-${i}`} style={{ minHeight: '100px', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--dim)' }} />
+            ))}
+            {/* Day cells */}
+            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+              const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+              const isToday = dateStr === todayStr
+              const dayEvents = eventsOnDay(day)
+
+              return (
+                <div key={day}
+                  style={{ minHeight: '100px', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '6px', cursor: 'pointer', background: isToday ? 'rgba(204,34,0,.04)' : '' }}
+                  onClick={() => {
+                    setSelected(null)
+                    setForm({ ...BLANK, start_date: dateStr, agent_id: agent?.id })
+                    navigate('/calendar/new')
+                  }}>
+                  <div style={{ fontSize: '13px', fontWeight: isToday ? 800 : 500, color: isToday ? '#CC2200' : 'var(--muted)', marginBottom: '4px', display: 'inline-flex', width: '24px', height: '24px', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: isToday ? 'rgba(204,34,0,.15)' : 'transparent' }}>
+                    {day}
+                  </div>
+                  {dayEvents.slice(0,3).map(ev => (
+                    <div key={ev.id}
+                      onClick={(e) => { e.stopPropagation(); navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) }}
+                      style={{ fontSize: '11px', fontWeight: 600, color: '#fff', background: ev.color || '#CC2200', borderRadius: '4px', padding: '2px 5px', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ev.start_time && `${ev.start_time.slice(0,5)} `}{ev.title}
+                    </div>
+                  ))}
+                  {dayEvents.length > 3 && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>+{dayEvents.length - 3} more</div>}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
+
+      {/* List View */}
+      {view === 'list' && (
+        <div>
+          {loading && <Loading />}
+          {!loading && events.length === 0 && (
+            <Empty icon="📅" title="No events this month" sub="Add an event to get started." action={<Btn onClick={() => navigate('/calendar/new')}>+ Add Event</Btn>} />
+          )}
+          {events.map(ev => (
+            <div key={ev.id} onClick={() => { navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) }}
+              style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px 16px', marginBottom: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: `4px solid ${ev.color || '#CC2200'}`, transition: 'box-shadow .12s' }}
+              onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
+              onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
+              <div style={{ textAlign: 'center', minWidth: '44px' }}>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: ev.color || '#CC2200' }}>{new Date(ev.start_date + 'T00:00:00').getDate()}</div>
+                <div style={{ fontSize: '10px', color: 'var(--muted)', textTransform: 'uppercase' }}>{MONTHS[new Date(ev.start_date + 'T00:00:00').getMonth()]?.slice(0,3)}</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>{ev.title}</div>
+                {ev.start_time && <div style={{ fontSize: '12px', color: 'var(--muted)' }}>🕐 {ev.start_time}{ev.end_time ? ` — ${ev.end_time}` : ''}</div>}
+                {ev.location && <div style={{ fontSize: '12px', color: 'var(--muted)' }}>📍 {ev.location}</div>}
+              </div>
+              <Pill label={ev.type} color={ev.color || '#CC2200'} />
+              {ev.agents && <Avatar agent={ev.agents} size={24} />}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Event Modal */}
+      <Modal open={!!(selected || urlId === 'new')} onClose={closePanel} title={selected ? 'Edit Event' : 'New Event'} width={500}>
+        <Field label="Title" required>
+          <Input value={form.title} onChange={v => set('title', v)} placeholder="Event title" />
+        </Field>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <Field label="Type">
+            <Select value={form.type} onChange={v => set('type', v)} options={EVENT_TYPES} />
+          </Field>
+          <Field label="Color">
+            <div style={{ display: 'flex', gap: '6px', paddingTop: '4px' }}>
+              {EVENT_COLORS.map(c => (
+                <div key={c} onClick={() => set('color', c)}
+                  style={{ width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer', border: form.color === c ? '3px solid var(--text)' : '2px solid transparent' }} />
+              ))}
+            </div>
+          </Field>
+          <Field label="Start Date">
+            <Input value={form.start_date} onChange={v => set('start_date', v)} type="date" />
+          </Field>
+          <Field label="Start Time">
+            <Input value={form.start_time} onChange={v => set('start_time', v)} type="time" />
+          </Field>
+          <Field label="End Date">
+            <Input value={form.end_date} onChange={v => set('end_date', v)} type="date" />
+          </Field>
+          <Field label="End Time">
+            <Input value={form.end_time} onChange={v => set('end_time', v)} type="time" />
+          </Field>
+        </div>
+        <Field label="Location">
+          <Input value={form.location} onChange={v => set('location', v)} placeholder="Address or link" />
+        </Field>
+        <Field label="Description">
+          <Textarea value={form.description} onChange={v => set('description', v)} placeholder="Event details..." rows={3} />
+        </Field>
+        {(isAdmin || canManage) && (
+          <Field label="Agent">
+            <Select value={form.agent_id || ''} onChange={v => set('agent_id', v)} options={agents.map(a => ({ value: a.id, label: a.name }))} placeholder="Assign agent" />
+          </Field>
+        )}
+        <ModalActions>
+          {selected && <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>}
+          <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
+          <Btn onClick={saveEvent} loading={saving}>{selected ? 'Save' : 'Add Event'}</Btn>
+        </ModalActions>
+      </Modal>
+
+      <Confirm open={confirmDelete} message="Delete this event?" onConfirm={deleteEvent} onCancel={() => setConfirmDelete(false)} />
     </div>
   )
 }
-
-function F({ label, value, onChange, ph='', type='text', rows }) {
-  return (
-    <div style={{ marginBottom:'10px' }}>
-      {label&&<label style={lbl}>{label}</label>}
-      {rows ? <textarea value={value||''} onChange={e=>onChange(e.target.value)} placeholder={ph} rows={rows} style={{ ...inp, resize:'vertical', lineHeight:1.6 }}/>
-             : <input type={type} value={value||''} onChange={e=>onChange(e.target.value)} placeholder={ph} style={inp}/>}
-    </div>
-  )
-}
-
-const navBtn = { background:'var(--dim)', border:'1px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'14px', padding:'7px 14px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }
-const inp    = { width:'100%', background:'var(--inp)', border:'1.5px solid var(--border)', borderRadius:'8px', color:'var(--text)', fontSize:'12px', fontFamily:'Inter,system-ui,sans-serif', padding:'8px 10px', outline:'none', boxSizing:'border-box' }
-const lbl    = { display:'block', fontSize:'9px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:'4px' }
