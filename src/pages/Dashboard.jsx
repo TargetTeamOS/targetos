@@ -102,146 +102,387 @@ function MiniBar({ data, color = '#CC2200' }) {
 // display mode (count, list, or table).
 // ═══════════════════════════════════════════════════════════════
 
+
 const BOARD_OPTIONS = [
-  { id: 'contacts',      label: 'Contacts',      icon: '👤', table: 'contacts',     statusField: 'status',  nameField: 'first_name', statusOptions: ['New','Hot','Warm','Cold','Active','Nurturing','Closed','Unresponsive'] },
-  { id: 'deals',         label: 'Deals',         icon: '💼', table: 'deals',        statusField: 'stage',   nameField: 'addr',       statusOptions: ['Negotiations','Offer Accapted','Under Shtar','Under Contract','Closed','Deal Fell Through'] },
-  { id: 'tasks',         label: 'Tasks',         icon: '✅', table: 'tasks',        statusField: 'status',  nameField: 'title',      statusOptions: ['pending','in_progress','done','cancelled'] },
-  { id: 'listings',      label: 'Listings',      icon: '🏡', table: 'listings',     statusField: 'status',  nameField: 'addr',       statusOptions: ['Active','Under Contract','Sold','Expired','Withdrawn'] },
-  { id: 'calls',         label: 'Calls',         icon: '📞', table: 'calls',        statusField: 'outcome', nameField: 'contact_name',statusOptions: ['Answered','Voicemail','No Answer','Busy','Left Message'] },
-  { id: 'gifts',         label: 'Gifts',         icon: '🎁', table: 'gifts',        statusField: 'status',  nameField: 'client_name', statusOptions: ['Pending','Ordered','Delivered'] },
-  { id: 'open_houses',   label: 'Open Houses',   icon: '🚪', table: 'open_houses',  statusField: null,      nameField: 'listing_addr',statusOptions: [] },
-  { id: 'offers',        label: 'Offers',        icon: '📝', table: 'offers',       statusField: 'status',  nameField: 'addr',        statusOptions: ['Pending','Accepted','Rejected','Countered'] },
-  { id: 'announcements', label: 'Announcements', icon: '📣', table: 'announcements',statusField: 'priority',nameField: 'title',       statusOptions: ['low','normal','high','urgent'] },
+  {
+    id:'contacts', label:'Contacts', icon:'👤', table:'contacts',
+    statusField:'status', nameField:'first_name', subField:'last_name', valueField:null,
+    statusOptions:['New','Hot','Warm','Cold','Active','Nurturing','Closed','Unresponsive'],
+    extraFilters:[{field:'source',label:'Source'},{field:'type',label:'Type'}],
+    sortOptions:[{field:'created_at',label:'Newest'},{field:'last_activity',label:'Last Activity'},{field:'first_name',label:'Name A-Z'}],
+    displayCols:[{field:'first_name',label:'Name'},{field:'phone',label:'Phone'},{field:'email',label:'Email'},{field:'status',label:'Status'},{field:'source',label:'Source'}],
+  },
+  {
+    id:'deals', label:'Deals', icon:'💼', table:'deals',
+    statusField:'stage', nameField:'addr', subField:'client_legal_name', valueField:'gci',
+    statusOptions:['Negotiations','Offer Accapted','Under Shtar','Under Contract','Closed','Deal Fell Through'],
+    extraFilters:[{field:'side',label:'Side'},{field:'sale_type',label:'Sale Type'}],
+    sortOptions:[{field:'created_at',label:'Newest'},{field:'ao_date',label:'A/O Date'},{field:'gci',label:'GCI High-Low'}],
+    displayCols:[{field:'addr',label:'Address'},{field:'stage',label:'Stage'},{field:'side',label:'Side'},{field:'gci',label:'GCI'},{field:'close_date',label:'Close Date'}],
+  },
+  {
+    id:'tasks', label:'Tasks', icon:'✅', table:'tasks',
+    statusField:'status', nameField:'title', subField:'due_date', valueField:null,
+    statusOptions:['pending','in_progress','done','cancelled'],
+    extraFilters:[{field:'priority',label:'Priority'}],
+    sortOptions:[{field:'due_date',label:'Due Date'},{field:'created_at',label:'Newest'},{field:'priority',label:'Priority'}],
+    displayCols:[{field:'title',label:'Task'},{field:'status',label:'Status'},{field:'priority',label:'Priority'},{field:'due_date',label:'Due'}],
+  },
+  {
+    id:'listings', label:'Listings', icon:'🏡', table:'listings',
+    statusField:'status', nameField:'addr', subField:'mls_number', valueField:'list_price',
+    statusOptions:['Active','Under Contract','Sold','Expired','Withdrawn','Coming Soon'],
+    extraFilters:[{field:'side',label:'Side'}],
+    sortOptions:[{field:'created_at',label:'Newest'},{field:'list_price',label:'Price High-Low'},{field:'list_date',label:'List Date'}],
+    displayCols:[{field:'addr',label:'Address'},{field:'status',label:'Status'},{field:'list_price',label:'Price'},{field:'beds',label:'Beds'},{field:'baths',label:'Baths'}],
+  },
+  {
+    id:'calls', label:'Calls', icon:'📞', table:'calls',
+    statusField:'outcome', nameField:'contact_name', subField:'from_number', valueField:null,
+    statusOptions:['Connected','Voicemail','No Answer','Hot Lead','Appointment Set','Not Interested'],
+    extraFilters:[{field:'direction',label:'Direction'}],
+    sortOptions:[{field:'called_at',label:'Newest'},{field:'contact_name',label:'Contact'}],
+    displayCols:[{field:'contact_name',label:'Contact'},{field:'direction',label:'Dir'},{field:'outcome',label:'Outcome'},{field:'called_at',label:'Date'}],
+  },
+  {
+    id:'gifts', label:'Gifts', icon:'🎁', table:'gifts',
+    statusField:'order_status', nameField:'client_name', subField:'gift_type', valueField:null,
+    statusOptions:['Pending','Ordered','Shipped','Delivered'],
+    extraFilters:[{field:'gift_type',label:'Type'}],
+    sortOptions:[{field:'created_at',label:'Newest'},{field:'client_name',label:'Name'}],
+    displayCols:[{field:'client_name',label:'Client'},{field:'gift_type',label:'Type'},{field:'order_status',label:'Status'},{field:'sent_date',label:'Sent'}],
+  },
+  {
+    id:'offers', label:'Offers', icon:'📝', table:'offers',
+    statusField:'status', nameField:'listing_addr', subField:'client_name', valueField:'offer_price',
+    statusOptions:['Pending','Accepted','Rejected','Countered','Withdrawn'],
+    extraFilters:[],
+    sortOptions:[{field:'offer_date',label:'Newest'},{field:'offer_price',label:'Price'}],
+    displayCols:[{field:'listing_addr',label:'Address'},{field:'status',label:'Status'},{field:'offer_price',label:'Price'},{field:'offer_date',label:'Date'}],
+  },
+  {
+    id:'open_houses', label:'Open Houses', icon:'🚪', table:'open_houses',
+    statusField:null, nameField:'listing_addr', subField:'date', valueField:null,
+    statusOptions:[],
+    extraFilters:[],
+    sortOptions:[{field:'date',label:'Date'},{field:'created_at',label:'Newest'}],
+    displayCols:[{field:'listing_addr',label:'Address'},{field:'date',label:'Date'},{field:'start_time',label:'Time'}],
+  },
 ]
 
-const DISPLAY_OPTIONS = [
-  { id: 'count',  label: 'Count only',    icon: '🔢' },
-  { id: 'list',   label: 'Item list',     icon: '📋' },
-  { id: 'table',  label: 'Mini table',   icon: '📊' },
+const DISPLAY_MODES = [
+  { id:'count', label:'Count only',   icon:'🔢', desc:'Big number — how many items match' },
+  { id:'list',  label:'Item list',    icon:'📋', desc:'Scrollable list of names' },
+  { id:'table', label:'Mini table',   icon:'📊', desc:'Compact table with columns' },
+  { id:'donut', label:'Status donut', icon:'🍩', desc:'Pie chart by status' },
 ]
 
-function CustomWidgetBuilder({ onSave, onClose }) {
-  const [step,     setStep]    = useState(1) // 1=board, 2=filter, 3=display
-  const [board,    setBoard]   = useState(null)
-  const [statuses, setStatus]  = useState([]) // [] = all
-  const [display,  setDisplay] = useState('list')
-  const [label,    setLabel]   = useState('')
-  const [color,    setColor]   = useState('#3B82F6')
-  const ff2 = 'Inter,system-ui,sans-serif'
+const DATE_RANGES = [
+  { id:'all',       label:'All time' },
+  { id:'today',     label:'Today' },
+  { id:'week',      label:'This week' },
+  { id:'month',     label:'This month' },
+  { id:'quarter',   label:'This quarter' },
+  { id:'year',      label:'This year' },
+]
+
+function getDateRange(rangeId) {
+  const now = new Date()
+  const today = now.toISOString().slice(0,10)
+  if (rangeId === 'today')   return { from: today, to: today }
+  if (rangeId === 'week')    { const d = new Date(now); d.setDate(d.getDate() - 7); return { from: d.toISOString().slice(0,10), to: today } }
+  if (rangeId === 'month')   { const d = new Date(now); d.setMonth(d.getMonth() - 1); return { from: d.toISOString().slice(0,10), to: today } }
+  if (rangeId === 'quarter') { const d = new Date(now); d.setMonth(d.getMonth() - 3); return { from: d.toISOString().slice(0,10), to: today } }
+  if (rangeId === 'year')    return { from: now.getFullYear() + '-01-01', to: today }
+  return null
+}
+
+// ── CUSTOM WIDGET BUILDER ────────────────────────────────────────
+function CustomWidgetBuilder({ onSave, onClose, agents }) {
+  const [step,       setStep]      = useState(1)
+  const [board,      setBoard]     = useState(null)
+  const [statuses,   setStatuses]  = useState([])
+  const [extraVals,  setExtraVals] = useState({})  // {field: [values]}
+  const [display,    setDisplay]   = useState('list')
+  const [label,      setLabel]     = useState('')
+  const [color,      setColor]     = useState('#3B82F6')
+  const [dateRange,  setDateRange] = useState('all')
+  const [agentScope, setAgentScope]= useState('mine')  // 'mine' | 'all' | agentId
+  const [columns,    setColumns]   = useState([])
+  const [sortBy,     setSortBy]    = useState('')
+  const [limitRows,  setLimitRows] = useState(10)
+  const [liveCount,  setLiveCount] = useState(null)
+  const [loadingCnt, setLoadingCnt]= useState(false)
 
   const boardDef = BOARD_OPTIONS.find(b => b.id === board)
 
+  // Auto-set default columns when board changes
+  React.useEffect(function() {
+    if (boardDef) {
+      setColumns(boardDef.displayCols.slice(0,3).map(function(c){ return c.field }))
+      setSortBy(boardDef.sortOptions[0]?.field || 'created_at')
+    }
+  }, [board])
+
+  // Live count preview
+  React.useEffect(function() {
+    if (!boardDef) return
+    let cancelled = false
+    setLoadingCnt(true)
+    async function loadCount() {
+      try {
+        let q = supabase.from(boardDef.table).select('id', { count: 'exact', head: true })
+        if (statuses.length && boardDef.statusField) q = q.in(boardDef.statusField, statuses)
+        const dr = getDateRange(dateRange)
+        if (dr) q = q.gte('created_at', dr.from).lte('created_at', dr.to + 'T23:59:59')
+        const { count } = await q
+        if (!cancelled) setLiveCount(count || 0)
+      } catch(e) { if (!cancelled) setLiveCount(null) }
+      finally { if (!cancelled) setLoadingCnt(false) }
+    }
+    loadCount()
+    return function() { cancelled = true }
+  }, [board, JSON.stringify(statuses), dateRange])
+
+  function toggleStatus(s) {
+    setStatuses(function(prev) { return prev.includes(s) ? prev.filter(function(x){return x!==s}) : [...prev, s] })
+  }
+
+  function toggleColumn(f) {
+    setColumns(function(prev) { return prev.includes(f) ? prev.filter(function(x){return x!==f}) : [...prev, f] })
+  }
+
   function finish() {
     if (!board) return
-    const widgetLabel = label.trim() || (boardDef?.label + (statuses.length ? ' · ' + statuses.slice(0,2).join(', ') : ''))
+    const widgetLabel = label.trim() || ((boardDef?.label || '') + (statuses.length ? ' · ' + statuses.slice(0,2).join(', ') : '') + (dateRange !== 'all' ? ' · ' + dateRange : ''))
     onSave({
       id:           'custom_' + Date.now(),
       size:         'md',
       color,
       visible:      true,
-      customConfig: { board, statuses, display, label: widgetLabel, icon: boardDef?.icon || '🔲' },
+      customConfig: {
+        board, statuses, extraVals, display, label: widgetLabel,
+        icon: boardDef?.icon || '🔲', dateRange, agentScope,
+        columns: columns.length ? columns : (boardDef?.displayCols.slice(0,3).map(function(c){return c.field}) || []),
+        sortBy: sortBy || 'created_at',
+        limitRows: parseInt(limitRows) || 10,
+      },
     })
   }
 
+  const STEPS = ['Board', 'Filters', 'Display']
+  const canNext = step === 1 ? !!board : true
+
   return (
-    <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
-      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px', fontFamily:ff2 }}>
-      <div style={{ background:'var(--panel)', borderRadius:'14px', width:'100%', maxWidth:'520px', boxShadow:'0 20px 50px rgba(0,0,0,.3)', display:'flex', flexDirection:'column', maxHeight:'90vh', overflow:'hidden' }}>
+    <div onClick={function(e){ if(e.target===e.currentTarget) onClose() }}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px', fontFamily:ff }}>
+      <div style={{ background:'var(--panel)', borderRadius:'14px', width:'100%', maxWidth:'580px', boxShadow:'0 20px 50px rgba(0,0,0,.3)', display:'flex', flexDirection:'column', maxHeight:'92vh', overflow:'hidden' }}>
 
         {/* Header */}
-        <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:'10px' }}>
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:'10px', flexShrink:0 }}>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:'15px', fontWeight:800, color:'var(--text)' }}>🔲 Create Custom Widget</div>
-            <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>Step {step} of 3</div>
+            <div style={{ fontSize:'15px', fontWeight:800, color:'var(--text)' }}>🔲 Add Custom Widget</div>
+            <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>Step {step} of 3 — {STEPS[step-1]}</div>
           </div>
-          {/* Progress dots */}
           <div style={{ display:'flex', gap:'5px' }}>
-            {[1,2,3].map(s => (
-              <div key={s} style={{ width:8, height:8, borderRadius:'50%', background: step >= s ? '#CC2200' : 'var(--border)', transition:'background .2s' }} />
-            ))}
+            {STEPS.map(function(s, i) {
+              return <div key={i} style={{ width:8, height:8, borderRadius:'50%', background:step>i?'#CC2200':'var(--border)', transition:'background .2s' }} />
+            })}
           </div>
+          {liveCount !== null && (
+            <div style={{ padding:'4px 12px', borderRadius:20, background:'rgba(204,34,0,.1)', border:'1px solid rgba(204,34,0,.3)', fontSize:12, fontWeight:700, color:'#CC2200' }}>
+              {loadingCnt ? '…' : liveCount} items
+            </div>
+          )}
           <button onClick={onClose} style={{ background:'none', border:'none', fontSize:'18px', cursor:'pointer', color:'var(--muted)' }}>✕</button>
         </div>
 
         <div style={{ flex:1, overflowY:'auto', padding:'16px 18px' }}>
-          {/* Step 1: Choose board */}
+
+          {/* ── STEP 1: BOARD ── */}
           {step === 1 && (
             <div>
               <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'12px' }}>Which board do you want to show?</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-                {BOARD_OPTIONS.map(b => (
-                  <div key={b.id} onClick={() => { setBoard(b.id); setStatus([]) }}
-                    style={{ padding:'12px', borderRadius:'9px', border:"2px solid " + (board === b.id ? '#CC2200' : 'var(--border)'), background: board === b.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', display:'flex', alignItems:'center', gap:'8px' }}>
-                    <span style={{ fontSize:'20px' }}>{b.icon}</span>
-                    <span style={{ fontSize:'13px', fontWeight:700, color: board === b.id ? '#CC2200' : 'var(--text)' }}>{b.label}</span>
-                  </div>
-                ))}
+                {BOARD_OPTIONS.map(function(b) {
+                  const active = board === b.id
+                  return (
+                    <div key={b.id} onClick={function(){ setBoard(b.id); setStatuses([]); setExtraVals({}) }}
+                      style={{ padding:'12px', borderRadius:'9px', border:'2px solid '+(active?'#CC2200':'var(--border)'), background:active?'rgba(204,34,0,.06)':'var(--dim)', cursor:'pointer', display:'flex', alignItems:'center', gap:'8px', transition:'all .15s' }}>
+                      <span style={{ fontSize:'22px' }}>{b.icon}</span>
+                      <div>
+                        <div style={{ fontSize:'13px', fontWeight:700, color:active?'#CC2200':'var(--text)' }}>{b.label}</div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
 
-          {/* Step 2: Filter by status */}
+          {/* ── STEP 2: FILTERS ── */}
           {step === 2 && boardDef && (
-            <div>
-              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'4px' }}>Filter by status (optional)</div>
-              <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'12px' }}>Leave all unchecked to show everything</div>
-              {boardDef.statusOptions.length > 0 ? (
-                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'16px' }}>
-                  {boardDef.statusOptions.map(s => {
-                    const on = statuses.includes(s)
+            <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+              {/* Widget name */}
+              <div>
+                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Widget Title</div>
+                <input value={label} onChange={function(e){setLabel(e.target.value)}}
+                  placeholder={boardDef.label + (statuses.length ? ' · ' + statuses[0] : '')}
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, boxSizing:'border-box' }} />
+              </div>
+
+              {/* Status filter */}
+              {boardDef.statusOptions.length > 0 && (
+                <div>
+                  <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>
+                    Filter by {boardDef.statusField || 'Status'} <span style={{ fontWeight:400 }}>(leave empty = show all)</span>
+                  </div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+                    {boardDef.statusOptions.map(function(s) {
+                      const on = statuses.includes(s)
+                      return (
+                        <div key={s} onClick={function(){toggleStatus(s)}}
+                          style={{ padding:'5px 12px', borderRadius:'20px', border:'1px solid '+(on?'#CC2200':'var(--border)'), background:on?'rgba(204,34,0,.1)':'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color:on?'#CC2200':'var(--muted)', transition:'all .12s' }}>
+                          {s}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Date range */}
+              <div>
+                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Date Range</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+                  {DATE_RANGES.map(function(dr) {
+                    const on = dateRange === dr.id
                     return (
-                      <div key={s} onClick={() => setStatus(prev => on ? prev.filter(x => x !== s) : [...prev, s])}
-                        style={{ padding:'5px 12px', borderRadius:'20px', border:"1px solid " + (on ? '#CC2200' : 'var(--border)'), background: on ? 'rgba(204,34,0,.1)' : 'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color: on ? '#CC2200' : 'var(--muted)' }}>
-                        {s}
+                      <div key={dr.id} onClick={function(){setDateRange(dr.id)}}
+                        style={{ padding:'5px 12px', borderRadius:'20px', border:'1px solid '+(on?'#3B82F6':'var(--border)'), background:on?'rgba(59,130,246,.1)':'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color:on?'#3B82F6':'var(--muted)', transition:'all .12s' }}>
+                        {dr.label}
                       </div>
                     )
                   })}
                 </div>
-              ) : (
-                <div style={{ padding:'12px', background:'var(--dim)', borderRadius:'8px', fontSize:'12px', color:'var(--muted)', marginBottom:'16px' }}>
-                  This board has no status filter — all items will be shown.
+              </div>
+
+              {/* Scope */}
+              <div>
+                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Show data for</div>
+                <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                  {[['mine','My records only'],['all','All agents']].concat((agents||[]).map(function(a){return [a.id, a.name]})).map(function(opt) {
+                    const on = agentScope === opt[0]
+                    return (
+                      <div key={opt[0]} onClick={function(){setAgentScope(opt[0])}}
+                        style={{ padding:'5px 12px', borderRadius:'20px', border:'1px solid '+(on?'#10B981':'var(--border)'), background:on?'rgba(16,185,129,.1)':'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color:on?'#10B981':'var(--muted)', transition:'all .12s' }}>
+                        {opt[1]}
+                      </div>
+                    )
+                  })}
                 </div>
-              )}
-              <div style={{ marginBottom:'12px' }}>
-                <div style={{ fontSize:'12px', fontWeight:600, color:'var(--muted)', marginBottom:'6px' }}>Widget name (optional)</div>
-                <input value={label} onChange={e => setLabel(e.target.value)}
-                  placeholder={boardDef.label + (statuses.length ? ' · ' + statuses[0] : '')}
-                  style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff2, boxSizing:'border-box' }} />
+              </div>
+
+              {/* Sort */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div>
+                  <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Sort by</div>
+                  <select value={sortBy} onChange={function(e){setSortBy(e.target.value)}}
+                    style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
+                    {boardDef.sortOptions.map(function(s) { return <option key={s.field} value={s.field}>{s.label}</option> })}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Max rows</div>
+                  <select value={limitRows} onChange={function(e){setLimitRows(e.target.value)}}
+                    style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
+                    {[5,10,15,20,50].map(function(n){ return <option key={n} value={n}>{n} rows</option> })}
+                  </select>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Step 3: Display + color */}
+          {/* ── STEP 3: DISPLAY ── */}
           {step === 3 && (
-            <div>
-              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'12px' }}>How should it display?</div>
-              <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'20px' }}>
-                {DISPLAY_OPTIONS.map(d => (
-                  <div key={d.id} onClick={() => setDisplay(d.id)}
-                    style={{ padding:'12px 14px', borderRadius:'9px', border:"2px solid " + (display === d.id ? '#CC2200' : 'var(--border)'), background: display === d.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', display:'flex', alignItems:'center', gap:'10px' }}>
-                    <span style={{ fontSize:'18px' }}>{d.icon}</span>
-                    <div>
-                      <div style={{ fontSize:'13px', fontWeight:700, color: display === d.id ? '#CC2200' : 'var(--text)' }}>{d.label}</div>
-                    </div>
-                  </div>
-                ))}
+            <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+              {/* Display mode */}
+              <div>
+                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Display mode</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  {DISPLAY_MODES.map(function(d) {
+                    const active = display === d.id
+                    return (
+                      <div key={d.id} onClick={function(){setDisplay(d.id)}}
+                        style={{ padding:'12px', borderRadius:'9px', border:'2px solid '+(active?'#CC2200':'var(--border)'), background:active?'rgba(204,34,0,.06)':'var(--dim)', cursor:'pointer', transition:'all .15s' }}>
+                        <div style={{ fontSize:'20px', marginBottom:4 }}>{d.icon}</div>
+                        <div style={{ fontSize:'13px', fontWeight:700, color:active?'#CC2200':'var(--text)' }}>{d.label}</div>
+                        <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:2 }}>{d.desc}</div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-              <div style={{ fontSize:'12px', fontWeight:600, color:'var(--muted)', marginBottom:'8px' }}>Widget color</div>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                {['#CC2200','#10B981','#3B82F6','#F5A623','#8B5CF6','#EC4899','#14B8A6','#F97316','#84CC16','#0EA5E9'].map(c => (
-                  <div key={c} onClick={() => setColor(c)}
-                    style={{ width:24, height:24, borderRadius:'50%', background:c, cursor:'pointer', border: color === c ? '3px solid var(--text)' : '2px solid transparent', transition:'border .1s' }} />
-                ))}
+
+              {/* Columns (for table mode) */}
+              {display === 'table' && boardDef && (
+                <div>
+                  <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Table columns</div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                    {boardDef.displayCols.map(function(col) {
+                      const on = columns.includes(col.field)
+                      return (
+                        <div key={col.field} onClick={function(){toggleColumn(col.field)}}
+                          style={{ padding:'5px 12px', borderRadius:'20px', border:'1px solid '+(on?'#8B5CF6':'var(--border)'), background:on?'rgba(139,92,246,.1)':'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color:on?'#8B5CF6':'var(--muted)' }}>
+                          {on?'✓ ':''}{col.label}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Color */}
+              <div>
+                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Accent color</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                  {['#CC2200','#DC2626','#F97316','#F5A623','#10B981','#0EA5E9','#3B82F6','#8B5CF6','#EC4899','#14B8A6','#84CC16','#6366F1'].map(function(c) {
+                    return (
+                      <div key={c} onClick={function(){setColor(c)}}
+                        style={{ width:26, height:26, borderRadius:'50%', background:c, cursor:'pointer', border:color===c?'3px solid var(--text)':'2px solid transparent', transition:'border .1s' }} />
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div style={{ padding:'12px 14px', background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', fontSize:12, color:'var(--muted)', lineHeight:1.7 }}>
+                <strong style={{ color:'var(--text)' }}>Summary:</strong>{' '}
+                {boardDef?.icon} {boardDef?.label}
+                {statuses.length > 0 ? ' · ' + statuses.join(', ') : ' · All statuses'}
+                {dateRange !== 'all' ? ' · ' + dateRange : ''}
+                {' · ' + (display === 'count' ? 'count' : display === 'list' ? 'list view' : display === 'table' ? 'table view' : 'donut chart')}
+                {liveCount !== null && <span style={{ color:'#CC2200', fontWeight:700 }}> · {liveCount} items match</span>}
               </div>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px', justifyContent:'flex-end' }}>
-          {step > 1 && <Btn variant="secondary" onClick={() => setStep(s => s - 1)}>← Back</Btn>}
-          {step < 3 && <Btn onClick={() => { if (!board && step === 1) return; setStep(s => s + 1) }} style={{ opacity: !board && step === 1 ? 0.5 : 1 }}>Next →</Btn>}
-          {step === 3 && <Btn onClick={finish} style={{ background:'#10B981', border:'none' }}>✅ Add Widget</Btn>}
+        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px', justifyContent:'flex-end', flexShrink:0 }}>
+          {step > 1 && <button onClick={function(){setStep(function(s){return s-1})}} style={{ padding:'8px 16px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', cursor:'pointer', fontFamily:ff, fontSize:13 }}>← Back</button>}
+          {step < 3 && (
+            <button onClick={function(){ if(!board && step===1) return; setStep(function(s){return s+1}) }}
+              style={{ padding:'8px 18px', borderRadius:8, border:'none', background:canNext?'#CC2200':'var(--dim)', color:canNext?'#fff':'var(--muted)', cursor:canNext?'pointer':'default', fontFamily:ff, fontSize:13, fontWeight:700 }}>
+              Next →
+            </button>
+          )}
+          {step === 3 && (
+            <button onClick={finish}
+              style={{ padding:'8px 20px', borderRadius:8, border:'none', background:'#10B981', color:'#fff', cursor:'pointer', fontFamily:ff, fontSize:13, fontWeight:700 }}>
+              ✅ Add to Dashboard
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -249,92 +490,212 @@ function CustomWidgetBuilder({ onSave, onClose }) {
 }
 
 // ── CUSTOM WIDGET RENDERER ────────────────────────────────────────
-function CustomWidgetContent({ config, agentId }) {
-  const [items, setItems] = useState([])
-  const [count, setCount] = useState(0)
+function CustomWidgetContent({ config, agentId, allAgents }) {
+  const navigate = useNavigate()
+  const [items,   setItems]   = useState([])
+  const [count,   setCount]   = useState(0)
   const [loading, setLoading] = useState(true)
-  const { supabase: sb } = { supabase } // use global supabase
 
-  useEffect(() => {
+  useEffect(function() {
     if (!config?.board) return
-    const boardDef = BOARD_OPTIONS.find(b => b.id === config.board)
+    const boardDef = BOARD_OPTIONS.find(function(b){ return b.id === config.board })
     if (!boardDef) return
+    let cancelled = false
 
     async function load() {
       setLoading(true)
       try {
-        let q = supabase.from(boardDef.table).select('*').eq('agent_id', agentId).limit(50)
+        let q = supabase.from(boardDef.table).select('*').limit(config.limitRows || 10)
+
+        // Scope
+        const scope = config.agentScope || 'mine'
+        if (scope === 'mine' && agentId) q = q.eq('agent_id', agentId)
+        else if (scope !== 'all' && scope !== 'mine') q = q.eq('agent_id', scope)
+
+        // Status filter
         if (config.statuses?.length && boardDef.statusField) {
           q = q.in(boardDef.statusField, config.statuses)
         }
-        const { data, count: cnt } = await q
-        setItems(data || [])
-        setCount(cnt || (data?.length || 0))
-      } catch { setItems([]); setCount(0) }
-      finally { setLoading(false) }
+
+        // Date range
+        const dr = getDateRange(config.dateRange || 'all')
+        if (dr) q = q.gte('created_at', dr.from).lte('created_at', dr.to + 'T23:59:59')
+
+        // Sort
+        const sortField = config.sortBy || 'created_at'
+        q = q.order(sortField, { ascending: false, nullsFirst: false })
+
+        const { data, error } = await q
+        if (!cancelled) {
+          setItems(data || [])
+          setCount(data?.length || 0)
+        }
+      } catch(e) {
+        if (!cancelled) { setItems([]); setCount(0) }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     load()
-  }, [config?.board, JSON.stringify(config?.statuses), agentId])
+    return function() { cancelled = true }
+  }, [config?.board, JSON.stringify(config?.statuses), config?.dateRange, config?.agentScope, config?.sortBy, config?.limitRows, agentId])
 
-  const boardDef = BOARD_OPTIONS.find(b => b.id === config?.board)
-  if (!boardDef) return <div style={{ color:'var(--muted)', fontSize:'12px' }}>Board not found</div>
-  if (loading)   return <div style={{ color:'var(--muted)', fontSize:'12px' }}>Loading...</div>
+  const boardDef = BOARD_OPTIONS.find(function(b){ return b.id === config?.board })
+  if (!boardDef) return <div style={{ color:'var(--muted)', fontSize:12 }}>Board not configured</div>
+  if (loading)   return <div style={{ color:'var(--muted)', fontSize:12, padding:'12px 0', textAlign:'center' }}>Loading...</div>
 
+  const route = {
+    contacts:'contacts', deals:'production', tasks:'tasks',
+    listings:'listings', calls:'calls', gifts:'gifts', offers:'offers',
+    open_houses:'open-house',
+  }[config.board] || config.board
+
+  // ── COUNT MODE ──
   if (config.display === 'count') {
     return (
-      <div style={{ textAlign:'center', padding:'16px 0' }}>
-        <div style={{ fontSize:'48px', fontWeight:900, color:'var(--text)' }}>{count}</div>
-        <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'4px' }}>
+      <div style={{ textAlign:'center', padding:'12px 0', cursor:'pointer' }} onClick={function(){ navigate('/'+route) }}>
+        <div style={{ fontSize:52, fontWeight:900, color:'var(--text)', lineHeight:1 }}>{count}</div>
+        <div style={{ fontSize:12, color:'var(--muted)', marginTop:6 }}>
           {config.statuses?.length ? config.statuses.join(', ') : 'Total'} {boardDef.label}
+        </div>
+        {config.dateRange && config.dateRange !== 'all' && (
+          <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>({config.dateRange})</div>
+        )}
+      </div>
+    )
+  }
+
+  // ── DONUT MODE ──
+  if (config.display === 'donut') {
+    if (!boardDef.statusField || items.length === 0) {
+      return <div style={{ color:'var(--muted)', fontSize:12, textAlign:'center', padding:'16px 0' }}>No data to chart</div>
+    }
+    const counts = {}
+    items.forEach(function(it) { const v = it[boardDef.statusField]||'Unknown'; counts[v]=(counts[v]||0)+1 })
+    const total = items.length
+    const slices = Object.entries(counts)
+    const COLORS = ['#CC2200','#3B82F6','#10B981','#F5A623','#8B5CF6','#EC4899','#14B8A6','#84CC16']
+    return (
+      <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+        <div style={{ position:'relative', width:80, height:80, flexShrink:0 }}>
+          <svg width={80} height={80} viewBox="0 0 80 80">
+            {(function() {
+              let offset = 0
+              const circ = 2*Math.PI*28
+              return slices.map(function([status, cnt], i) {
+                const pctVal = cnt / total
+                const dash = pctVal * circ
+                const el = (
+                  <circle key={status} cx={40} cy={40} r={28} fill="none"
+                    stroke={COLORS[i%COLORS.length]} strokeWidth={14}
+                    strokeDasharray={dash + ' ' + (circ - dash)}
+                    strokeDashoffset={-offset}
+                    transform="rotate(-90 40 40)" />
+                )
+                offset += dash
+                return el
+              })
+            })()}
+          </svg>
+          <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:900, color:'var(--text)' }}>{total}</div>
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          {slices.map(function([status, cnt], i) {
+            return (
+              <div key={status} style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                <div style={{ width:8, height:8, borderRadius:'50%', background:COLORS[i%COLORS.length], flexShrink:0 }} />
+                <div style={{ flex:1, fontSize:11, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{status}</div>
+                <div style={{ fontSize:11, fontWeight:700, color:'var(--text)', flexShrink:0 }}>{cnt}</div>
+              </div>
+            )
+          })}
         </div>
       </div>
     )
   }
 
+  // ── LIST MODE ──
   if (config.display === 'list') {
     return (
       <div>
-        {items.slice(0,6).map((item, i) => (
-          <div key={i} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
-            <span style={{ fontSize:'12px' }}>{boardDef.icon}</span>
-            <div style={{ flex:1, fontSize:'12px', fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-              {item[boardDef.nameField] || 'Untitled'}
+        {items.length === 0 && <div style={{ color:'var(--muted)', fontSize:12, padding:'8px 0', fontStyle:'italic' }}>No items match this filter</div>}
+        {items.map(function(item, i) {
+          const name = boardDef.nameField === 'first_name'
+            ? ((item.first_name||'') + ' ' + (item.last_name||'')).trim()
+            : (item[boardDef.nameField] || '—')
+          const sub  = boardDef.subField ? (item[boardDef.subField] || '') : ''
+          const val  = boardDef.valueField ? (item[boardDef.valueField] ? fmt$(item[boardDef.valueField]) : '') : ''
+          const statusVal = boardDef.statusField ? item[boardDef.statusField] : null
+          return (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
+              <span style={{ fontSize:13, flexShrink:0 }}>{boardDef.icon}</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{name}</div>
+                {sub && <div style={{ fontSize:10, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
+              </div>
+              {val && <div style={{ fontSize:11, fontWeight:700, color:'#10B981', flexShrink:0 }}>{val}</div>}
+              {statusVal && <div style={{ fontSize:10, padding:'2px 7px', borderRadius:10, background:'var(--dim)', color:'var(--muted)', fontWeight:600, flexShrink:0, whiteSpace:'nowrap' }}>{statusVal}</div>}
             </div>
-            {boardDef.statusField && item[boardDef.statusField] && (
-              <span style={{ fontSize:'10px', color:'var(--muted)', fontWeight:600, flexShrink:0 }}>{item[boardDef.statusField]}</span>
-            )}
+          )
+        })}
+        {items.length > 0 && (
+          <div style={{ marginTop:8, textAlign:'right' }}>
+            <button onClick={function(){ navigate('/'+route) }}
+              style={{ fontSize:11, color:'#CC2200', background:'none', border:'none', cursor:'pointer', fontFamily:ff, fontWeight:700, padding:0 }}>
+              View all in {boardDef.label} →
+            </button>
           </div>
-        ))}
-        {count === 0 && <div style={{ textAlign:'center', padding:'12px', color:'var(--muted)', fontSize:'12px' }}>No items</div>}
-        {count > 6 && <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'6px', textAlign:'right' }}>+{count - 6} more</div>}
+        )}
       </div>
     )
   }
 
-  // table display
+  // ── TABLE MODE ──
+  const cols = config.columns?.length
+    ? config.columns.map(function(f){ return boardDef.displayCols.find(function(c){return c.field===f}) || { field:f, label:f } })
+    : boardDef.displayCols.slice(0,3)
+
   return (
     <div style={{ overflowX:'auto' }}>
-      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'11px' }}>
-        <thead>
-          <tr style={{ borderBottom:'1px solid var(--border)' }}>
-            <th style={{ textAlign:'left', padding:'4px 0', color:'var(--muted)', fontWeight:700 }}>Name</th>
-            {boardDef.statusField && <th style={{ textAlign:'left', padding:'4px 8px', color:'var(--muted)', fontWeight:700 }}>Status</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {items.slice(0,8).map((item, i) => (
-            <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
-              <td style={{ padding:'4px 0', color:'var(--text)', fontWeight:600, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                {item[boardDef.nameField] || 'Untitled'}
-              </td>
-              {boardDef.statusField && (
-                <td style={{ padding:'4px 8px', color:'var(--muted)' }}>{item[boardDef.statusField] || '—'}</td>
-              )}
+      {items.length === 0 && <div style={{ color:'var(--muted)', fontSize:12, padding:'8px 0', fontStyle:'italic' }}>No items match</div>}
+      {items.length > 0 && (
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+          <thead>
+            <tr>
+              {cols.map(function(col) {
+                return <th key={col.field} style={{ padding:'4px 8px 4px 0', textAlign:'left', fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap', borderBottom:'2px solid var(--border)' }}>{col.label}</th>
+              })}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {count === 0 && <div style={{ textAlign:'center', padding:'12px', color:'var(--muted)', fontSize:'12px' }}>No items</div>}
+          </thead>
+          <tbody>
+            {items.map(function(item, i) {
+              return (
+                <tr key={i}>
+                  {cols.map(function(col) {
+                    let val = item[col.field]
+                    if (val === null || val === undefined) val = '—'
+                    if (typeof val === 'number' && col.field.includes('price') || col.field === 'gci' || col.field === 'production') val = fmt$(val)
+                    if (col.field === 'first_name') val = ((item.first_name||'')+' '+(item.last_name||'')).trim() || '—'
+                    return (
+                      <td key={col.field} style={{ padding:'5px 8px 5px 0', borderBottom:'1px solid var(--border)', color:'var(--text)', overflow:'hidden', maxWidth:120, textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {String(val)}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+      {items.length > 0 && (
+        <div style={{ marginTop:8, textAlign:'right' }}>
+          <button onClick={function(){ navigate('/'+route) }}
+            style={{ fontSize:11, color:'#CC2200', background:'none', border:'none', cursor:'pointer', fontFamily:ff, fontWeight:700, padding:0 }}>
+            View all →
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1600,6 +1961,17 @@ export function Dashboard() {
       )
     }
 
+    // ── CUSTOM WIDGET FALLBACK ──
+    if (isCustom && w.customConfig) {
+      return shell(
+        <CustomWidgetContent
+          config={w.customConfig}
+          agentId={viewAgentId}
+          allAgents={agents}
+        />
+      )
+    }
+
     return null
   }
 
@@ -1967,6 +2339,7 @@ export function Dashboard() {
             toast('✅ Custom widget added — click Save Layout to lock it in')
           }}
           onClose={() => setShowCustomWidget(false)}
+          agents={agents}
         />
       )}
       {showGoals && (
