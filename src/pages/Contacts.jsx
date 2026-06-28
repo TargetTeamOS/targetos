@@ -220,6 +220,7 @@ export function Contacts() {
   const [popupContact, setPopupContact] = useState(null)   // quick info popup
   const [popupDeals,   setPopupDeals]   = useState([])     // deals for popup
   const [popupFields,  setPopupFields]  = useState(['phone','email','source','status','agent']) // configurable
+  const [viewMode,     setViewMode]     = useState('grid') // 'grid' | 'list'
 
   // Auto-open from URL param
   useEffect(() => {
@@ -363,6 +364,15 @@ export function Contacts() {
               label="Contacts"
               onImport={refetch}
             />
+            <div style={{ display:'flex', background:'var(--dim)', borderRadius:'8px', padding:'2px', gap:'2px' }}>
+              {[['grid','⊞'],['list','☰']].map(([v,icon]) => (
+                <button key={v} onClick={() => setViewMode(v)}
+                  title={v === 'grid' ? 'Grid view' : 'List view'}
+                  style={{ padding:'5px 10px', borderRadius:'6px', border:'none', background: viewMode===v ? 'var(--panel)' : 'transparent', color: viewMode===v ? 'var(--text)' : 'var(--muted)', fontSize:'14px', cursor:'pointer', fontFamily:ff, boxShadow: viewMode===v ? '0 1px 3px rgba(0,0,0,.12)' : 'none' }}>
+                  {icon}
+                </button>
+              ))}
+            </div>
             <Btn onClick={openAdd}>+ Add Contact</Btn>
           </div>
         }
@@ -409,56 +419,135 @@ export function Contacts() {
         <Empty icon="👥" title="No contacts yet" sub="Add your first lead using the button above or voice capture." action={<Btn onClick={openAdd}>+ Add Contact</Btn>} />
       )}
 
-      {/* Contact Grid */}
-      {!loading && filtered.length > 0 && (
+      {/* Contact Grid / List */}
+      {!loading && filtered.length > 0 && viewMode === 'grid' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-          {filtered.map(c => (
-            <div key={c.id} onClick={() => setPopupContact(c)}
-              style={{ background: selectedIds.includes(c.id) ? 'rgba(204,34,0,.04)' : 'var(--panel)', borderRadius: 'var(--radius)', border: selectedIds.includes(c.id) ? '2px solid #CC220044' : popupContact?.id === c.id ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s', position: 'relative' }}
-              onMouseEnter={e => { if (!selectedIds.includes(c.id)) e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
-              onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
-              {/* Selection checkbox */}
-              <div
-                onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]) }}
-                style={{ position:'absolute', top:10, left:10, width:16, height:16, borderRadius:'4px', border:'2px solid ' + (selectedIds.includes(c.id) ? '#CC2200' : 'var(--border)') + '', background: selectedIds.includes(c.id) ? '#CC2200' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, transition:'all .12s' }}>
-                {selectedIds.includes(c.id) && <span style={{ color:'#fff', fontSize:'9px', fontWeight:900, lineHeight:1 }}>✓</span>}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                <div style={{ width: 38, height: 38, borderRadius: '50%', background: statusColor(c.status), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, flexShrink: 0 }}>
-                  {initials(c.first_name + ' ' + (c.last_name || ''))}
+          {filtered.map(c => {
+            const isSelected = selectedIds.includes(c.id)
+            const isPopup    = popupContact?.id === c.id
+            return (
+              <div key={c.id} onClick={() => setPopupContact(c)}
+                style={{ background: isSelected ? 'rgba(204,34,0,.04)' : 'var(--panel)', borderRadius: 'var(--radius)', border: isSelected ? '2px solid #CC220044' : isPopup ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s', position: 'relative' }}
+                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
+                onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
+                <div onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]) }}
+                  style={{ position:'absolute', top:10, left:10, width:16, height:16, borderRadius:'4px', border:'2px solid ' + (isSelected ? '#CC2200' : 'var(--border)'), background: isSelected ? '#CC2200' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, transition:'all .12s' }}>
+                  {isSelected && <span style={{ color:'#fff', fontSize:'9px', fontWeight:900, lineHeight:1 }}>✓</span>}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span
-                    onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
-                    style={{ fontWeight: 700, fontSize: '14px', color: 'var(--brand)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
-                    {c.first_name} {c.last_name}
-                  </span>
-                  {c.phone && <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>{fmtPhone(c.phone)}</div>}
-                  {c.email && <div style={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  <div style={{ width: 38, height: 38, borderRadius: '50%', background: statusColor(c.status), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, flexShrink: 0 }}>
+                    {initials(c.first_name + ' ' + (c.last_name || ''))}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
+                      style={{ fontWeight: 700, fontSize: '14px', color: 'var(--brand)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
+                      {c.first_name} {c.last_name}
+                    </span>
+                    {c.phone && <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>{fmtPhone(c.phone)}</div>}
+                    {c.email && <div style={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>}
+                  </div>
+                  <Pill label={c.status} color={statusColor(c.status)} />
+                  {c.phone && (
+                    <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')} onClick={e => e.stopPropagation()} title={'Call ' + c.first_name}
+                      style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:28, height:28, borderRadius:'50%', background:'#10B98118', color:'#10B981', border:'1px solid #10B98144', textDecoration:'none', fontSize:13, flexShrink:0, marginLeft:4 }}>
+                      &#128222;
+                    </a>
+                  )}
                 </div>
-                <Pill label={c.status} color={statusColor(c.status)} />
-                {c.phone && (
-                  <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')}
-                    onClick={e => e.stopPropagation()}
-                    title={'Call ' + c.first_name}
-                    style={{ display:'inline-flex', alignItems:'center', justifyContent:'center',
-                      width:28, height:28, borderRadius:'50%', background:'#10B98118',
-                      color:'#10B981', border:'1px solid #10B98144', textDecoration:'none',
-                      fontSize:13, flexShrink:0, marginLeft:4 }}>
-                    &#128222;
-                  </a>
+                {c.address && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📍 {c.address}</div>}
+                {c.source  && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>📌 {c.source}</div>}
+                {c.agents  && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '8px' }}>
+                    <Avatar agent={c.agents} size={18} />
+                    <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{c.agents.name}</span>
+                  </div>
                 )}
               </div>
-              {c.address && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📍 {c.address}</div>}
-              {c.source && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>📌 {c.source}</div>}
-              {c.agents && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '8px' }}>
-                  <Avatar agent={c.agents} size={18} />
-                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{c.agents.name}</span>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── LIST VIEW ── */}
+      {!loading && filtered.length > 0 && viewMode === 'list' && (
+        <div style={{ background:'var(--panel)', borderRadius:'var(--radius)', border:'1px solid var(--border)', overflow:'hidden' }}>
+          {/* Table header */}
+          <div style={{ display:'grid', gridTemplateColumns:'32px 2fr 1.4fr 1.4fr 1fr 1fr 1fr 100px', gap:0, padding:'8px 12px', background:'var(--dim)', borderBottom:'2px solid var(--border)' }}>
+            {['','Name','Phone','Email','Status','Source','Agent',''].map((h,i) => (
+              <div key={i} style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', padding:'0 6px' }}>{h}</div>
+            ))}
+          </div>
+          {filtered.map((c, idx) => {
+            const isSelected = selectedIds.includes(c.id)
+            const isPopup    = popupContact?.id === c.id
+            const sc         = statusColor(c.status)
+            return (
+              <div key={c.id}
+                style={{ display:'grid', gridTemplateColumns:'32px 2fr 1.4fr 1.4fr 1fr 1fr 1fr 100px', gap:0, padding:'9px 12px', borderBottom: idx < filtered.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(204,34,0,.03)' : isPopup ? 'rgba(204,34,0,.02)' : 'transparent', cursor:'pointer', transition:'background .1s', alignItems:'center' }}
+                onClick={() => setPopupContact(c)}
+                onMouseEnter={e => { if(!isSelected) e.currentTarget.style.background='var(--hov)' }}
+                onMouseLeave={e => e.currentTarget.style.background = isSelected ? 'rgba(204,34,0,.03)' : 'transparent'}>
+                {/* Checkbox */}
+                <div onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(c.id) ? prev.filter(x=>x!==c.id) : [...prev,c.id]) }}
+                  style={{ width:16, height:16, borderRadius:'4px', border:'2px solid '+(isSelected?'#CC2200':'var(--border)'), background:isSelected?'#CC2200':'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .12s' }}>
+                  {isSelected && <span style={{ color:'#fff', fontSize:'9px', fontWeight:900 }}>✓</span>}
                 </div>
-              )}
-            </div>
-          ))}
+                {/* Name + avatar */}
+                <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'0 6px', minWidth:0 }}>
+                  <div style={{ width:30, height:30, borderRadius:'50%', background:sc, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'11px', fontWeight:700, flexShrink:0 }}>
+                    {initials(c.first_name + ' ' + (c.last_name || ''))}
+                  </div>
+                  <div style={{ minWidth:0 }}>
+                    <span onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
+                      style={{ fontWeight:700, fontSize:'13px', color:'var(--brand)', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', cursor:'pointer' }}>
+                      {c.first_name} {c.last_name}
+                    </span>
+                    {c.address && <div style={{ fontSize:'11px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.address}</div>}
+                  </div>
+                </div>
+                {/* Phone */}
+                <div style={{ padding:'0 6px', fontSize:'12px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {c.phone ? (
+                    <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')} onClick={e=>e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none' }}>{fmtPhone(c.phone)}</a>
+                  ) : '—'}
+                </div>
+                {/* Email */}
+                <div style={{ padding:'0 6px', fontSize:'12px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {c.email ? (
+                    <a href={'mailto:' + c.email} onClick={e=>e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none' }}>{c.email}</a>
+                  ) : '—'}
+                </div>
+                {/* Status */}
+                <div style={{ padding:'0 6px' }}>
+                  {c.status ? <span style={{ fontSize:'11px', padding:'2px 8px', borderRadius:'12px', background:sc+'22', color:sc, fontWeight:700, whiteSpace:'nowrap' }}>{c.status}</span> : '—'}
+                </div>
+                {/* Source */}
+                <div style={{ padding:'0 6px', fontSize:'12px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.source || '—'}</div>
+                {/* Agent */}
+                <div style={{ padding:'0 6px', display:'flex', alignItems:'center', gap:'5px' }}>
+                  {c.agents ? (
+                    <>
+                      <Avatar agent={c.agents} size={18} />
+                      <span style={{ fontSize:'11px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.agents.name.split(' ')[0]}</span>
+                    </>
+                  ) : '—'}
+                </div>
+                {/* Actions */}
+                <div style={{ padding:'0 6px', display:'flex', gap:'5px', justifyContent:'flex-end' }}>
+                  {c.phone && (
+                    <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')} onClick={e=>e.stopPropagation()}
+                      style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:26, height:26, borderRadius:'50%', background:'#10B98118', color:'#10B981', border:'1px solid #10B98144', textDecoration:'none', fontSize:12 }}>
+                      &#128222;
+                    </a>
+                  )}
+                  <button onClick={e => { e.stopPropagation(); openContact(c) }}
+                    style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:26, height:26, borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', cursor:'pointer', fontSize:12, fontFamily:ff }}>
+                    ✏️
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
