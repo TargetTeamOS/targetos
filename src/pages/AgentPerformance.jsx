@@ -173,6 +173,212 @@ function AgentCard({ agent, stats, rank, maxGCI, year }) {
   )
 }
 
+
+
+// ── GOAL PROGRESS BAR ────────────────────────────────────────────
+function GoalBar({ value, goal, color, label, fmt }) {
+  const pct  = goal > 0 ? Math.min(100, (value / goal) * 100) : 0
+  const over = goal > 0 && value >= goal
+  return (
+    <div style={{ marginBottom:12 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:4 }}>
+        <span style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</span>
+        <span style={{ fontSize:12, fontWeight:800, color: over ? '#10B981' : 'var(--text)' }}>
+          {fmt ? fmt(value) : value}
+          <span style={{ color:'var(--muted)', fontWeight:400 }}> / {fmt ? fmt(goal) : goal}</span>
+          {over && <span style={{ color:'#10B981', marginLeft:5 }}>✓</span>}
+        </span>
+      </div>
+      <div style={{ height:8, background:'var(--border)', borderRadius:4, overflow:'hidden' }}>
+        <div style={{ width: pct + '%', height:'100%', background: over ? '#10B981' : color, borderRadius:4, transition:'width .5s' }} />
+      </div>
+      <div style={{ display:'flex', justifyContent:'flex-end', marginTop:2 }}>
+        <span style={{ fontSize:10, color: over ? '#10B981' : 'var(--muted)', fontWeight: over ? 700 : 400 }}>
+          {pct.toFixed(0)}%{over ? ' — Goal reached! 🎉' : ''}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ── GOALS TAB ────────────────────────────────────────────────────
+function GoalsTab({ agents, year, goals, setGoals, agentStats, contacts, savingGoal, setSavingGoal, toast, isAdmin, canManage, me }) {
+  const canEdit  = isAdmin || canManage
+  const [editing, setEditing] = useState(null)  // agentId being edited
+  const [form,    setForm]    = useState({ deals:0, gci:0, production:0, leads:0 })
+
+  function openEdit(agentId) {
+    const existing = goals[agentId + '_' + year] || {}
+    setForm({
+      deals:      existing.deals      || 0,
+      gci:        existing.gci        || 0,
+      production: existing.production || 0,
+      leads:      existing.leads      || 0,
+    })
+    setEditing(agentId)
+  }
+
+  async function saveGoal(agentId) {
+    setSavingGoal(agentId)
+    try {
+      const row = {
+        agent_id:   agentId,
+        year:       parseInt(year),
+        deals:      parseInt(form.deals)      || 0,
+        gci:        parseFloat(form.gci)      || 0,
+        production: parseFloat(form.production)|| 0,
+        leads:      parseInt(form.leads)      || 0,
+        updated_at: new Date().toISOString(),
+      }
+      const { error } = await supabase.from('agent_goals').upsert(row, { onConflict: 'agent_id,year' })
+      if (error) {
+        // Table doesn't exist yet — show SQL
+        toast('Create the agent_goals table first — see instructions below', '#F5A623')
+      } else {
+        setGoals(prev => ({ ...prev, [agentId + '_' + year]: row }))
+        setEditing(null)
+        toast('\u2705 Goal saved for ' + (agents.find(a=>a.id===agentId)?.name||'agent'))
+      }
+    } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
+    finally { setSavingGoal(null) }
+  }
+
+  // Show only agents with deals OR all agents if admin
+  const displayAgents = canEdit ? agents : agents.filter(a => a.id === me?.id)
+
+  return (
+    <div>
+      {/* SQL setup notice */}
+      <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:'12px 16px', marginBottom:20, fontSize:12, color:'var(--muted)', lineHeight:1.7 }}>
+        <strong style={{ color:'var(--text)' }}>One-time Supabase setup:</strong><br/>
+        <code style={{ fontFamily:'monospace', color:'#CC2200', fontSize:11, wordBreak:'break-all' }}>
+          create table if not exists agent_goals (id uuid default gen_random_uuid() primary key, agent_id uuid references agents(id) on delete cascade, year int not null, deals int default 0, gci numeric default 0, production numeric default 0, leads int default 0, updated_at timestamptz default now(), unique(agent_id, year)); alter table agent_goals enable row level security; create policy "Allow all" on agent_goals for all using (true);
+        </code>
+      </div>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        {displayAgents.map(ag => {
+          const key     = ag.id + '_' + year
+          const goal    = goals[key] || {}
+          const stats   = agentStats.find(s => s.agent.id === ag.id) || { gci:0, production:0, deals:[] }
+          const closed  = (stats.deals || []).filter(d => d.stage === 'Closed')
+          const leadCount = contacts[ag.id] || 0
+          const isEditing = editing === ag.id
+          const hasGoal = goal.gci > 0 || goal.deals > 0 || goal.production > 0 || goal.leads > 0
+
+          return (
+            <div key={ag.id} style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', overflow:'hidden' }}>
+              {/* Agent header */}
+              <div style={{ padding:'14px 18px', display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ width:40, height:40, borderRadius:'50%', background:ag.color||'#CC2200',
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, color:'#fff', flexShrink:0 }}>
+                  {(ag.name||'').split(' ').map(n=>n[0]).join('').slice(0,2)}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:800, color:'var(--text)' }}>{ag.name}</div>
+                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>{ag.role || 'Agent'} · {year} Goals</div>
+                </div>
+                {/* Quick stats */}
+                <div style={{ display:'flex', gap:16, flexShrink:0, flexWrap:'wrap' }}>
+                  {[
+                    { label:'Deals',      value: closed.length,    goal: goal.deals,      color:'#3B82F6' },
+                    { label:'GCI',        value: fmt$(stats.gci),  goal: goal.gci,        color:'#10B981', isMoney:true },
+                    { label:'Volume',     value: fmt$(stats.production), goal: goal.production, color:'#8B5CF6', isMoney:true },
+                    { label:'Leads',      value: leadCount,        goal: goal.leads,      color:'#F5A623' },
+                  ].map(s => {
+                    const pct   = s.goal > 0 ? Math.min(100, (typeof s.value === 'string'
+                      ? (parseFloat(String(s.value).replace(/[^0-9.]/g,''))||0)
+                      : s.value) / s.goal * 100) : null
+                    const over  = pct !== null && pct >= 100
+                    return (
+                      <div key={s.label} style={{ textAlign:'center', minWidth:52 }}>
+                        <div style={{ fontSize:15, fontWeight:900, color: over?'#10B981':'var(--text)' }}>
+                          {typeof s.value === 'number' ? s.value : s.value}
+                        </div>
+                        <div style={{ fontSize:9, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em' }}>{s.label}</div>
+                        {s.goal > 0 && (
+                          <div style={{ fontSize:9, color: over?'#10B981':'var(--muted)', fontWeight:over?700:400 }}>
+                            {pct !== null ? pct.toFixed(0) + '%' : ''}
+                            {over ? ' ✓' : ''}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                {canEdit && (
+                  <button onClick={() => isEditing ? setEditing(null) : openEdit(ag.id)}
+                    style={{ padding:'7px 14px', borderRadius:8, border:'1px solid '+(isEditing?'#CC2200':'var(--border)'), background:isEditing?'rgba(204,34,0,.1)':'var(--dim)', color:isEditing?'#CC2200':'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', flexShrink:0 }}>
+                    {isEditing ? 'Cancel' : hasGoal ? '✏️ Edit' : '+ Set Goals'}
+                  </button>
+                )}
+              </div>
+
+              {/* Goal editor */}
+              {isEditing && (
+                <div style={{ padding:'14px 18px', borderTop:'1px solid var(--border)', background:'var(--dim)' }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:12 }}>
+                    Set {year} Goals for {ag.name}
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, marginBottom:14 }}>
+                    {[
+                      { k:'deals',      label:'Deals Closed',     placeholder:'20',         prefix:'' },
+                      { k:'gci',        label:'GCI Goal ($)',      placeholder:'200000',      prefix:'$' },
+                      { k:'production', label:'Production Vol. ($)',placeholder:'5000000',    prefix:'$' },
+                      { k:'leads',      label:'Total Leads (contacts)',placeholder:'100',    prefix:'' },
+                    ].map(f => (
+                      <div key={f.k}>
+                        <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>{f.label}</div>
+                        <div style={{ position:'relative' }}>
+                          {f.prefix && <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:13, color:'var(--muted)' }}>{f.prefix}</span>}
+                          <input type="number" min="0" value={form[f.k]} onChange={e => setForm(p => ({ ...p, [f.k]: e.target.value }))}
+                            placeholder={f.placeholder}
+                            style={{ width:'100%', padding:'8px 10px', paddingLeft: f.prefix?'22px':'10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:'Inter,system-ui,sans-serif', boxSizing:'border-box' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => saveGoal(ag.id)} disabled={savingGoal===ag.id}
+                    style={{ padding:'9px 20px', borderRadius:8, border:'none', background:'#CC2200', color:'#fff', fontSize:13, fontWeight:700, cursor:savingGoal===ag.id?'default':'pointer', fontFamily:'Inter,system-ui,sans-serif', opacity:savingGoal===ag.id?.7:1 }}>
+                    {savingGoal === ag.id ? 'Saving...' : '💾 Save Goals'}
+                  </button>
+                </div>
+              )}
+
+              {/* Progress bars */}
+              {!isEditing && hasGoal && (
+                <div style={{ padding:'14px 18px', borderTop:'1px solid var(--border)' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:'0 32px' }}>
+                    {goal.deals > 0 && (
+                      <GoalBar value={closed.length} goal={goal.deals} color='#3B82F6' label='Deals Closed' />
+                    )}
+                    {goal.gci > 0 && (
+                      <GoalBar value={stats.gci} goal={goal.gci} color='#10B981' label='GCI' fmt={fmt$} />
+                    )}
+                    {goal.production > 0 && (
+                      <GoalBar value={stats.production} goal={goal.production} color='#8B5CF6' label='Production Volume' fmt={fmt$} />
+                    )}
+                    {goal.leads > 0 && (
+                      <GoalBar value={leadCount} goal={goal.leads} color='#F5A623' label='Leads in CRM' />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* No goal set yet */}
+              {!isEditing && !hasGoal && canEdit && (
+                <div style={{ padding:'10px 18px', borderTop:'1px solid var(--border)', fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>
+                  No goals set for {year} yet. Click "+ Set Goals" to add targets.
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ═════════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ═════════════════════════════════════════════════════════════════
@@ -180,10 +386,14 @@ export function AgentPerformance() {
   const { agent: me, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
 
-  const [deals,   setDeals]   = useState([])
-  const [agents,  setAgents]  = useState([])
-  const [loading, setLoading] = useState(true)
-  const [year,    setYear]    = useState(new Date().getFullYear().toString())
+  const [deals,     setDeals]     = useState([])
+  const [agents,    setAgents]    = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [year,      setYear]      = useState(new Date().getFullYear().toString())
+  const [activeTab, setActiveTab] = useState('leaderboard')
+  const [goals,     setGoals]     = useState({})       // agentId_year -> { deals, gci, production, leads }
+  const [savingGoal,setSavingGoal]= useState(null)
+  const [contacts,  setContacts]  = useState([])
 
   useEffect(() => { load() }, [year])
 
@@ -200,6 +410,27 @@ export function AgentPerformance() {
       if (agentsRes.error) throw agentsRes.error
       setDeals(dealsRes.data || [])
       setAgents(agentsRes.data || [])
+
+      // Load goals for this year
+      try {
+        const { data: goalsData } = await supabase
+          .from('agent_goals')
+          .select('*')
+          .eq('year', parseInt(year))
+        const goalsMap = {}
+        ;(goalsData || []).forEach(g => { goalsMap[g.agent_id + '_' + g.year] = g })
+        setGoals(goalsMap)
+      } catch(e) { /* goals table may not exist yet */ }
+
+      // Load contact counts per agent
+      try {
+        const { data: contactData } = await supabase
+          .from('contacts')
+          .select('agent_id')
+        const cMap = {}
+        ;(contactData || []).forEach(c => { cMap[c.agent_id] = (cMap[c.agent_id] || 0) + 1 })
+        setContacts(cMap)
+      } catch(e) {}
     } catch(e) {
       toast('Failed to load: ' + e.message, '#DC2626')
     } finally { setLoading(false) }
@@ -247,7 +478,7 @@ export function AgentPerformance() {
             {agentStats.length} agents · {totalClosed} closed deals · {fmt$(teamGCI)} total GCI
           </div>
         </div>
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display:'flex', gap:10, alignItems:'center' }}>
           <select value={year} onChange={e => setYear(e.target.value)}
             style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: 13, fontFamily: ff }}>
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
@@ -255,7 +486,22 @@ export function AgentPerformance() {
         </div>
       </div>
 
-      {loading ? <Loading /> : (
+      {/* Tabs */}
+      <div style={{ display:'flex', borderBottom:'2px solid var(--border)', marginBottom:20, gap:0 }}>
+        {[['leaderboard','📈 Leaderboard'],['goals','🎯 Goals']].map(([id, label]) => {
+          const active = activeTab === id
+          return (
+            <button key={id} onClick={() => setActiveTab(id)}
+              style={{ padding:'9px 18px', border:'none', background:'none', cursor:'pointer',
+                borderBottom: active?'2px solid #CC2200':'2px solid transparent', marginBottom:'-2px',
+                fontSize:13, fontWeight:active?700:500, color:active?'#CC2200':'var(--muted)', fontFamily:ff }}>
+              {label}
+            </button>
+          )
+        })}
+      </div>
+
+      {activeTab === 'leaderboard' && (loading ? <Loading /> : (
         <>
           {/* Team totals */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
@@ -290,6 +536,24 @@ export function AgentPerformance() {
             />
           ))}
         </>
+      ))}
+
+      {/* ── GOALS TAB ── */}
+      {activeTab === 'goals' && (
+        <GoalsTab
+          agents={agents}
+          year={year}
+          goals={goals}
+          setGoals={setGoals}
+          agentStats={agentStats}
+          contacts={contacts}
+          savingGoal={savingGoal}
+          setSavingGoal={setSavingGoal}
+          toast={toast}
+          isAdmin={isAdmin}
+          canManage={canManage}
+          me={me}
+        />
       )}
     </div>
   )
