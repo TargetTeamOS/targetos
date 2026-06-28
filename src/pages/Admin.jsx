@@ -20,7 +20,7 @@ const BLANK  = { name:'', email:'', phone:'', color:'#CC2200', role:'agent', act
 
 export function Admin() {
   const { agent: me, isAdmin } = useAuth()
-  const { toast } = useApp()
+  const { toast, setCustom, resetCustom, state, setTheme } = useApp()
   const { agents, loading, refetch } = useAgents()
 
   const [tab,       setTab]       = useState('team')
@@ -35,6 +35,7 @@ export function Admin() {
   const [newPwd,     setNewPwd]     = useState('')
   const [resetting,  setResetting]  = useState(false)
   const [showInactive, setShowInactive] = useState(false)
+  const custom = state?.custom || {}
 
   if (!isAdmin) return (
     <div style={{fontFamily:ff}}>
@@ -192,9 +193,10 @@ export function Admin() {
       <PageHeader title="Admin" sub="Team management and system settings" />
 
       <Tabs tabs={[
-        { id:'team',   label:'👥 Team' },
-        { id:'rules',  label:'⚙️ Data Rules' },
-        { id:'system', label:'🔌 System' },
+        { id:'team',        label:'Team' },
+        { id:'customize',   label:'Customize' },
+        { id:'rules',       label:'Data Rules' },
+        { id:'system',      label:'System' },
       ]} active={tab} onChange={setTab} />
 
       {/* ── TEAM TAB ── */}
@@ -286,6 +288,182 @@ export function Admin() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── CUSTOMIZE TAB ── */}
+      {tab==='customize' && (
+        <div>
+          {/* Brand Colors */}
+          <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:20,marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:14}}>Brand Colors</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:14}}>
+              {[
+                {key:'brandColor',  label:'Primary Brand Color',    hint:'Main action color, buttons, links'},
+                {key:'brandColor2', label:'Secondary Brand Color',  hint:'Hover states, gradients'},
+                {key:'sidebarColor',label:'Sidebar Background',     hint:'Left navigation panel'},
+                {key:'accentColor', label:'Accent / Gold Color',    hint:'Highlights, badges, gold accents'},
+              ].map(item => (
+                <div key={item.key}>
+                  <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>{item.label}</div>
+                  <div style={{fontSize:10,color:'var(--muted)',marginBottom:6}}>{item.hint}</div>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <input type="color" value={custom[item.key]||'#CC2200'}
+                      onChange={e => setCustom({[item.key]: e.target.value})}
+                      style={{width:40,height:36,borderRadius:8,border:'1px solid var(--border)',cursor:'pointer',padding:2,background:'var(--inp)'}}/>
+                    <input value={custom[item.key]||''} onChange={e => setCustom({[item.key]: e.target.value})}
+                      placeholder="#CC2200"
+                      style={{flex:1,padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:12,fontFamily:ff}}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Theme */}
+          <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:20,marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:14}}>Theme</div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+              {[
+                {id:'light', label:'Light',  bg:'#F0F2F5', panel:'#fff',    text:'#0F172A'},
+                {id:'dark',  label:'Dark',   bg:'#0F1A2E', panel:'#1A2744', text:'#F1F5F9'},
+                {id:'slate', label:'Slate',  bg:'#1E1E2E', panel:'#2A2A3C', text:'#CDD6F4'},
+              ].map(t => (
+                <div key={t.id} onClick={() => setTheme(t.id)}
+                  style={{cursor:'pointer',borderRadius:10,border:'2px solid '+(state.theme===t.id ? 'var(--brand)' : 'var(--border)'),overflow:'hidden',width:110,flexShrink:0}}>
+                  <div style={{background:t.bg,padding:'10px 10px 6px',display:'flex',gap:3,marginBottom:4}}>
+                    <div style={{width:8,height:8,borderRadius:'50%',background:'#DC2626'}}/>
+                    <div style={{width:8,height:8,borderRadius:'50%',background:'#F5A623'}}/>
+                    <div style={{width:8,height:8,borderRadius:'50%',background:'#10B981'}}/>
+                  </div>
+                  <div style={{background:t.bg,padding:'0 10px 10px',display:'flex',gap:6}}>
+                    <div style={{width:20,background:t.panel,borderRadius:4,height:30}}/>
+                    <div style={{flex:1}}>
+                      <div style={{height:4,background:t.text,borderRadius:2,marginBottom:3,opacity:.7}}/>
+                      <div style={{height:3,background:t.text,borderRadius:2,width:'70%',opacity:.4}}/>
+                    </div>
+                  </div>
+                  <div style={{background:t.panel,padding:'6px 10px',fontSize:11,fontWeight:700,color:t.text,textAlign:'center',borderTop:'1px solid rgba(128,128,128,.15)'}}>
+                    {t.label}{state.theme===t.id ? ' ✓' : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Typography */}
+          <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:20,marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:14}}>Typography</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Font Family</div>
+                <select value={custom.fontFamily||'Inter'} onChange={e => setCustom({fontFamily: e.target.value})}
+                  style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff}}>
+                  {['Inter','Roboto','Poppins','DM Sans','Nunito','System'].map(f => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Base Font Size</div>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <input type="range" min={11} max={16} value={parseInt(custom.fontSize)||13}
+                    onChange={e => setCustom({fontSize: e.target.value})}
+                    style={{flex:1,accentColor:'var(--brand)'}}/>
+                  <div style={{fontSize:12,fontWeight:700,color:'var(--text)',minWidth:30,textAlign:'right'}}>{custom.fontSize||13}px</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Layout */}
+          <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:20,marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:14}}>Layout</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Border Radius</div>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <input type="range" min={0} max={20} value={parseInt(custom.borderRadius)||12}
+                    onChange={e => setCustom({borderRadius: e.target.value})}
+                    style={{flex:1,accentColor:'var(--brand)'}}/>
+                  <div style={{fontSize:12,fontWeight:700,color:'var(--text)',minWidth:30,textAlign:'right'}}>{custom.borderRadius||12}px</div>
+                </div>
+                <div style={{display:'flex',gap:6,marginTop:8}}>
+                  {[0,6,12,18].map(r => (
+                    <div key={r} onClick={() => setCustom({borderRadius: String(r)})}
+                      style={{width:32,height:24,border:'2px solid '+(parseInt(custom.borderRadius)===r?'var(--brand)':'var(--border)'),borderRadius:r+'px',cursor:'pointer',background:'var(--dim)'}}/>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Sidebar Width</div>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <input type="range" min={180} max={280} step={10} value={parseInt(custom.sidebarWidth)||220}
+                    onChange={e => setCustom({sidebarWidth: e.target.value})}
+                    style={{flex:1,accentColor:'var(--brand)'}}/>
+                  <div style={{fontSize:12,fontWeight:700,color:'var(--text)',minWidth:36,textAlign:'right'}}>{custom.sidebarWidth||220}px</div>
+                </div>
+              </div>
+            </div>
+            <div style={{marginTop:14,display:'flex',alignItems:'center',gap:10}}>
+              <input type="checkbox" checked={!!custom.compactMode} onChange={e => setCustom({compactMode: e.target.checked})}
+                style={{width:16,height:16,accentColor:'var(--brand)',cursor:'pointer'}}/>
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:'var(--text)'}}>Compact Mode</div>
+                <div style={{fontSize:11,color:'var(--muted)'}}>Reduce padding and spacing throughout the app</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Organization */}
+          <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:20,marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:14}}>Organization Branding</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Team Name</div>
+                <input value={custom.orgName||''} onChange={e => setCustom({orgName: e.target.value})}
+                  placeholder="Target Team"
+                  style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff,boxSizing:'border-box'}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Subtitle / Brokerage</div>
+                <input value={custom.orgSubtitle||''} onChange={e => setCustom({orgSubtitle: e.target.value})}
+                  placeholder="KW Valley Realty"
+                  style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff,boxSizing:'border-box'}}/>
+              </div>
+            </div>
+            <div style={{marginTop:12}}>
+              <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Logo URL (optional)</div>
+              <input value={custom.logoUrl||''} onChange={e => setCustom({logoUrl: e.target.value})}
+                placeholder="https://yourdomain.com/logo.png"
+                style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff,boxSizing:'border-box'}}/>
+              {custom.logoUrl && (
+                <img src={custom.logoUrl} alt="Logo preview"
+                  style={{marginTop:8,height:40,borderRadius:6,border:'1px solid var(--border)'}}
+                  onError={e => { e.target.style.display='none' }}/>
+              )}
+            </div>
+          </div>
+
+          {/* Live Preview */}
+          <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:20,marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:12}}>Live Preview</div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+              <div style={{padding:'8px 16px',borderRadius:'var(--radius)',background:'var(--brand)',color:'#fff',fontSize:13,fontWeight:700}}>Primary Button</div>
+              <div style={{padding:'8px 16px',borderRadius:'var(--radius)',background:'var(--dim)',color:'var(--text)',fontSize:13,fontWeight:600,border:'1px solid var(--border)'}}>Secondary</div>
+              <div style={{padding:'3px 10px',borderRadius:99,background:'var(--brand)18',color:'var(--brand)',fontSize:11,fontWeight:700}}>Pill Badge</div>
+              <div style={{padding:'3px 10px',borderRadius:99,background:'var(--gold)18',color:'var(--gold)',fontSize:11,fontWeight:700}}>Gold Badge</div>
+              <div style={{width:36,height:36,borderRadius:'var(--radius-sm)',background:'var(--sidebar)',border:'1px solid var(--border)'}}/>
+            </div>
+          </div>
+
+          {/* Reset */}
+          <div style={{display:'flex',justifyContent:'flex-end'}}>
+            <button onClick={() => { if(window.confirm('Reset all customization to defaults?')) resetCustom() }}
+              style={{padding:'8px 16px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',color:'var(--muted)',fontSize:12,cursor:'pointer',fontFamily:ff}}>
+              Reset to Defaults
+            </button>
+          </div>
         </div>
       )}
 

@@ -63,8 +63,18 @@ export function Layout({ children }) {
         <div style={{ padding: collapsed ? '18px 0' : '18px 16px', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between', borderBottom: '1px solid rgba(255,255,255,.08)', flexShrink: 0 }}>
           {!collapsed && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: 28, height: 28, borderRadius: '8px', background: '#CC2200', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 900, color: '#fff' }}>T</div>
-              <div style={{ color: '#fff', fontWeight: 800, fontSize: '16px', letterSpacing: '-.02em' }}>Target<span style={{ color: '#F5A623' }}>OS</span></div>
+              {custom.logoUrl ? (
+                <img src={custom.logoUrl} alt="logo" style={{ width:28, height:28, borderRadius:8, objectFit:'cover' }}
+                  onError={e => { e.target.style.display='none' }} />
+              ) : (
+                <div style={{ width: 28, height: 28, borderRadius: '8px', background: custom.brandColor||'#CC2200', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 900, color: '#fff' }}>
+                  {(custom.orgName||'T')[0].toUpperCase()}
+                </div>
+              )}
+              <div>
+                <div style={{ color: '#fff', fontWeight: 800, fontSize: '14px', letterSpacing: '-.01em', lineHeight: 1.2 }}>{custom.orgName||'Target Team'}</div>
+                {custom.orgSubtitle && <div style={{ color: 'rgba(255,255,255,.45)', fontSize: '9px', fontWeight: 500 }}>{custom.orgSubtitle}</div>}
+              </div>
             </div>
           )}
           <button onClick={() => setSidebarCollapsed(!collapsed)}
@@ -83,7 +93,7 @@ export function Layout({ children }) {
             return (
               <button key={item.id} onClick={() => go(item.id)}
                 title={collapsed ? item.label : ''}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: collapsed ? '10px 0' : '9px 14px', justifyContent: collapsed ? 'center' : 'flex-start', border: 'none', background: active ? 'rgba(204,34,0,.3)' : 'transparent', color: active ? '#fff' : 'rgba(255,255,255,.65)', fontSize: '13px', fontWeight: active ? 700 : 500, cursor: 'pointer', borderRadius: '0', fontFamily: ff, borderLeft: active ? '3px solid #CC2200' : '3px solid transparent', transition: 'all .12s' }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: collapsed ? '10px 0' : '9px 14px', justifyContent: collapsed ? 'center' : 'flex-start', border: 'none', background: active ? (custom.brandColor||'#CC2200') + '40' : 'transparent', color: active ? '#fff' : 'rgba(255,255,255,.65)', fontSize: '13px', fontWeight: active ? 700 : 500, cursor: 'pointer', borderRadius: '0', fontFamily: ff, borderLeft: active ? '3px solid ' + (custom.brandColor||'#CC2200') : '3px solid transparent', transition: 'all .12s' }}
                 onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,.05)' }}
                 onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}>
                 <span style={{ fontSize: '16px', flexShrink: 0, width: '20px', textAlign: 'center' }}>{item.icon}</span>
