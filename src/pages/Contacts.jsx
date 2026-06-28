@@ -193,6 +193,168 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
   )
 }
 
+// ── CALLS TAB ────────────────────────────────────────────────
+// Self-contained: no external imports needed beyond what Contacts already imports
+const CALL_OUTCOMES = ['Answered', 'Voicemail', 'No Answer', 'Busy', 'Left Message', 'Callback Requested']
+const OUTCOME_COLORS = {
+  Answered: '#10B981', 'Left Message': '#3B82F6', Voicemail: '#8B5CF6',
+  'Callback Requested': '#F5A623', 'No Answer': '#94A3B8', Busy: '#DC2626',
+}
+
+function fmtCallDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const now = new Date()
+  const diff = now - d
+  if (diff < 60000)    return 'just now'
+  if (diff < 3600000)  return Math.floor(diff / 60000) + 'm ago'
+  if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago'
+  if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined })
+}
+
+function fmtDur(s) {
+  if (!s || s < 1) return null
+  return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's'
+}
+
+function CallsTab({ contact, agent, toast }) {
+  const [calls,   setCalls]   = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [showLog, setShowLog] = React.useState(false)
+  const [saving,  setSaving]  = React.useState(false)
+  const [form,    setForm]    = React.useState({ outcome: 'Answered', duration: '', notes: '', called_at: new Date().toISOString().slice(0, 16) })
+
+  React.useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    supabase.from('calls')
+      .select('id, direction, outcome, duration, notes, called_at, to_number, agents(name)')
+      .eq('contact_id', contact.id)
+      .order('called_at', { ascending: false })
+      .then(({ data }) => { if (!cancelled) { setCalls(data || []); setLoading(false) } })
+      .catch(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [contact.id])
+
+  function setF(k, v) { setForm(f => ({ ...f, [k]: v })) }
+
+  async function saveLog() {
+    if (!form.outcome) { toast('Select an outcome', '#DC2626'); return }
+    setSaving(true)
+    try {
+      const phone = (contact.phone || '').replace(/\D/g, '')
+      const e164  = phone ? (phone.startsWith('1') ? '+' + phone : '+1' + phone) : null
+      const { data, error } = await supabase.from('calls').insert({
+        contact_id:   contact.id,
+        contact_name: (contact.first_name || '') + ' ' + (contact.last_name || ''),
+        to_number:    e164,
+        from_number:  '+18453271778',
+        direction:    'Outbound',
+        outcome:      form.outcome,
+        duration:     form.duration ? parseInt(form.duration, 10) : null,
+        notes:        form.notes.trim() || null,
+        called_at:    form.called_at ? new Date(form.called_at).toISOString() : new Date().toISOString(),
+        agent_id:     agent ? agent.id : null,
+        status:       'completed',
+      }).select('id, direction, outcome, duration, notes, called_at, to_number, agents(name)').single()
+      if (error) throw error
+      setCalls(prev => [data, ...prev])
+      toast('Call logged')
+      setShowLog(false)
+      setForm({ outcome: 'Answered', duration: '', notes: '', called_at: new Date().toISOString().slice(0, 16) })
+    } catch(e) {
+      toast('Failed: ' + e.message, '#DC2626')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputStyle = { width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: 13, fontFamily: 'Inter,system-ui,sans-serif', boxSizing: 'border-box' }
+  const labelStyle = { fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 4 }
+
+  return (
+    <div style={{ fontFamily: 'Inter,system-ui,sans-serif', padding: '2px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
+          {calls.length} call{calls.length !== 1 ? 's' : ''} logged
+        </span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {contact.phone && (
+            <ClickToCall phone={contact.phone} contactName={(contact.first_name || '') + ' ' + (contact.last_name || '')} contactId={contact.id} size="sm" />
+          )}
+          <button onClick={() => setShowLog(s => !s)}
+            style={{ padding: '5px 11px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--dim)', color: 'var(--muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+            + Log call
+          </button>
+        </div>
+      </div>
+
+      {showLog && (
+        <div style={{ background: 'var(--dim)', borderRadius: 10, border: '1px solid var(--border)', padding: 14, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <div>
+              <label style={labelStyle}>Outcome</label>
+              <select value={form.outcome} onChange={e => setF('outcome', e.target.value)} style={{ ...inputStyle }}>
+                {CALL_OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Duration (seconds)</label>
+              <input type="number" value={form.duration} onChange={e => setF('duration', e.target.value)} placeholder="e.g. 120" style={inputStyle} />
+            </div>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <label style={labelStyle}>Date &amp; Time</label>
+            <input type="datetime-local" value={form.called_at} onChange={e => setF('called_at', e.target.value)} style={inputStyle} />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={labelStyle}>Notes</label>
+            <textarea value={form.notes} onChange={e => setF('notes', e.target.value)} placeholder="What did you discuss? Follow-up needed?" rows={3}
+              style={{ ...inputStyle, resize: 'vertical' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={() => setShowLog(false)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+            <Btn onClick={saveLog} loading={saving}>Save Call</Btn>
+          </div>
+        </div>
+      )}
+
+      {loading && <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)', fontSize: 12 }}>Loading...</div>}
+
+      {!loading && calls.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted)' }}>
+          <div style={{ fontSize: 28, marginBottom: 6 }}>📞</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>No calls yet</div>
+          <div style={{ fontSize: 11, marginTop: 3 }}>Use the Call button above or log a call manually.</div>
+        </div>
+      )}
+
+      {!loading && calls.map(call => {
+        const color = OUTCOME_COLORS[call.outcome] || '#94A3B8'
+        return (
+          <div key={call.id} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ width: 30, height: 30, borderRadius: '50%', background: color + '18', border: '1px solid ' + color + '44', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0, color: color, fontWeight: 700 }}>
+              {call.direction === 'Inbound' ? 'IN' : 'OUT'}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{call.direction || 'Outbound'}</span>
+                {call.outcome && <span style={{ fontSize: 10, fontWeight: 700, color: color, background: color + '18', padding: '1px 7px', borderRadius: 10 }}>{call.outcome}</span>}
+                {fmtDur(call.duration) && <span style={{ fontSize: 10, color: 'var(--muted)' }}>{fmtDur(call.duration)}</span>}
+              </div>
+              {call.notes && <div style={{ fontSize: 11, color: 'var(--text)', marginTop: 4, lineHeight: 1.5, background: 'var(--dim)', padding: '4px 8px', borderRadius: 6 }}>{call.notes}</div>}
+              <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>
+                {call.agents ? call.agents.name : ''}{call.agents ? ' · ' : ''}{fmtCallDate(call.called_at)}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function Contacts() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
@@ -465,7 +627,7 @@ export function Contacts() {
       <Modal open={!!(selected || showAdd)} onClose={closePanel} title={selected ? `${selected.first_name} ${selected.last_name || ''}` : 'New Contact'} width={560}>
 
         {selected && (
-          <Tabs tabs={['info','notes','files','activity']} active={tab} onChange={setTab} />
+          <Tabs tabs={['info','calls','notes','files','activity']} active={tab} onChange={setTab} />
         )}
 
         {(!selected || tab === 'info') && (
@@ -526,6 +688,10 @@ export function Contacts() {
         {selected && tab === 'files' && (
           <FileAttachments tableName="contacts" recordId={selected.id} />
         )}
+        {selected && tab === 'calls' && (
+          <CallsTab contact={selected} agent={agent} toast={toast} />
+        )}
+
         {selected && tab === 'activity' && (
           <RecordActivity recordType="contacts" recordId={selected.id} />
         )}
