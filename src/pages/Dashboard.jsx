@@ -1145,7 +1145,7 @@ function WidgetConfigModal({ widget, agents, onSave, onClose }) {
 // ═══════════════════════════════════════════════════════════════
 // WIDGET MANAGER — add/remove/reorder widgets from a central panel
 // ═══════════════════════════════════════════════════════════════
-function WidgetManager({ widgets, role, onSave, onClose }) {
+function WidgetManager({ widgets, role, onSave, onClose, onAddCustom }) {
   const [wids, setWids] = useState(() => {
     // Ensure all known widget IDs are represented
     const existing = new Set(widgets.map(w => w.id))
@@ -1265,7 +1265,12 @@ function WidgetManager({ widgets, role, onSave, onClose }) {
         </div>
 
         {/* Footer */}
-        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px', justifyContent:'flex-end' }}>
+        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px', alignItems:'center' }}>
+          <button onClick={onAddCustom}
+            style={{ display:'flex', alignItems:'center', gap:'6px', padding:'7px 14px', borderRadius:'8px', border:'2px dashed #CC2200', background:'rgba(204,34,0,.04)', color:'#CC2200', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            🔲 + Custom Widget
+          </button>
+          <div style={{ flex:1 }} />
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
           <Btn onClick={() => { onSave(wids); onClose() }} style={{ background:'#10B981', border:'none' }}>
             💾 Save Changes
@@ -2047,9 +2052,7 @@ export function Dashboard() {
                 title="Refresh">↻</button>
               <Btn size="sm" variant="secondary" onClick={() => setShowGoals(true)}>🎯 Goals</Btn>
               {isAdmin && <Btn size="sm" variant="secondary" onClick={() => setShowAgentView(true)}>👥 Agent Views</Btn>}
-              {isAdmin && (
-                <Btn size="sm" variant="secondary" onClick={() => setShowWidgetMgr(true)}>+ Widgets</Btn>
-              )}
+              <Btn size="sm" variant="secondary" onClick={() => setShowWidgetMgr(true)}>⚙️ Customize</Btn>
             </>
           )}
 
@@ -2283,14 +2286,12 @@ export function Dashboard() {
             {widgets.filter(w => !w.visible && WIDGET_DEFS[w.id]?.roles.includes(agent.role)).length === 0 && (
               <span style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>All widgets are visible</span>
             )}
-            {/* Add custom widget button — admin only */}
-            {isAdmin && (
-              <button
-                onClick={() => setShowCustomWidget(true)}
-                style={{ display:'flex', alignItems:'center', gap:'6px', padding:'6px 12px', borderRadius:'8px', border:'2px dashed #CC2200', background:'rgba(204,34,0,.04)', color:'#CC2200', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
-                🔲 + Custom Widget
-              </button>
-            )}
+            {/* Add custom widget button — visible to all */}
+            <button
+              onClick={() => setShowCustomWidget(true)}
+              style={{ display:'flex', alignItems:'center', gap:'6px', padding:'6px 12px', borderRadius:'8px', border:'2px dashed #CC2200', background:'rgba(204,34,0,.04)', color:'#CC2200', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+              🔲 + Custom Widget
+            </button>
           </div>
         </div>
       )}
@@ -2311,6 +2312,7 @@ export function Dashboard() {
             toast('✅ Widget layout saved')
           }}
           onClose={() => setShowWidgetMgr(false)}
+          onAddCustom={() => { setShowWidgetMgr(false); setShowCustomWidget(true) }}
         />
       )}
 
