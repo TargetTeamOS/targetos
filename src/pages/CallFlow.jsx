@@ -1,5 +1,6 @@
 // TargetOS V2 — Call Flow Builder
-// Full drag-to-connect visual flow editor
+// Fixed: SVG coordinate scaling, enlarged hit zones, reliable drag-connect
+// New: Hold Music node, Custom Audio node, Language node
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp }    from '../context/AppContext'
@@ -8,15 +9,20 @@ import { Btn }       from '../components/UI'
 import { useAgents } from '../lib/hooks'
 
 const ff  = 'Inter, system-ui, sans-serif'
-const NW  = 210  // node width
-const NH  = 72   // node height
-const PR  = 8    // port radius
-const PHZ = 20   // port hit zone radius
+const NW  = 220   // node width
+const NH  = 76    // node height
+const PR  = 9     // port circle radius
+const PHZ = 26    // port hit zone — enlarged for reliable clicking
+const INR = 14    // input port hit zone radius (left side)
 
+// ── NODE DEFINITIONS ─────────────────────────────────────────────
 const NODE_DEFS = [
   { type:'incoming',   label:'Incoming Call',  color:'#10B981', icon:'📞', cat:'trigger' },
   { type:'greeting',   label:'Play Greeting',  color:'#3B82F6', icon:'🔊', cat:'voice'   },
   { type:'menu',       label:'IVR Menu',       color:'#8B5CF6', icon:'🎛', cat:'voice'   },
+  { type:'hold',       label:'Hold Music',     color:'#0EA5E9', icon:'🎵', cat:'voice'   },
+  { type:'audio',      label:'Custom Audio',   color:'#6366F1', icon:'🔈', cat:'voice'   },
+  { type:'language',   label:'Language Select',color:'#F97316', icon:'🌐', cat:'voice'   },
   { type:'condition',  label:'If / Condition', color:'#F5A623', icon:'🔀', cat:'routing' },
   { type:'dial',       label:'Dial Agent',     color:'#CC2200', icon:'📲', cat:'routing' },
   { type:'roundrobin', label:'Round Robin',    color:'#6366F1', icon:'🔄', cat:'routing' },
@@ -36,22 +42,67 @@ const CATS = [
 
 const PORT_COLORS = ['#CC2200','#3B82F6','#10B981','#F5A623','#8B5CF6','#EC4899','#14B8A6','#6366F1']
 
-function nd(type) { return NODE_DEFS.find(n => n.type === type) || NODE_DEFS[0] }
+// Hold music options — Twilio built-in + custom URL
+const HOLD_MUSIC = [
+  { id:'twilio',    label:'Twilio default hold music' },
+  { id:'classical', label:'Classical (Mozart)' },
+  { id:'jazz',      label:'Jazz' },
+  { id:'pop',       label:'Pop / Upbeat' },
+  { id:'silence',   label:'Silence' },
+  { id:'custom',    label:'Custom URL / uploaded file' },
+]
+
+const TWILIO_HOLD_URLS = {
+  twilio:    '',  // empty = Twilio default
+  classical: 'https://demo.twilio.com/docs/classic.mp3',
+  jazz:      'https://demo.twilio.com/docs/jazz.mp3',
+  pop:       'http://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP-Borghestral.mp3',
+  silence:   'https://demo.twilio.com/docs/silence.mp3',
+}
+
+const TTS_VOICES = [
+  { id:'Polly.Joanna',   label:'Joanna (English, US) — Female' },
+  { id:'Polly.Matthew',  label:'Matthew (English, US) — Male' },
+  { id:'Polly.Salli',    label:'Salli (English, US) — Female' },
+  { id:'Polly.Joey',     label:'Joey (English, US) — Male' },
+  { id:'Polly.Amy',      label:'Amy (English, UK) — Female' },
+  { id:'Polly.Brian',    label:'Brian (English, UK) — Male' },
+  { id:'Polly.Lea',      label:'Lea (French) — Female' },
+  { id:'Polly.Mathieu',  label:'Mathieu (French) — Male' },
+  { id:'Polly.Vicki',    label:'Vicki (German) — Female' },
+  { id:'Polly.Lupe',     label:'Lupe (Spanish, US) — Female' },
+  { id:'Polly.Miguel',   label:'Miguel (Spanish, US) — Male' },
+  { id:'Polly.Penelope', label:'Penélope (Spanish, US) — Female' },
+  { id:'Polly.Conchita', label:'Conchita (Spanish, ES) — Female' },
+  { id:'Polly.Carla',    label:'Carla (Italian) — Female' },
+  { id:'Polly.Giorgio',  label:'Giorgio (Italian) — Male' },
+  { id:'Polly.Celine',   label:'Céline (French) — Female' },
+  { id:'Polly.Zhiyu',    label:'Zhiyu (Chinese Mandarin)' },
+  { id:'Polly.Takumi',   label:'Takumi (Japanese) — Male' },
+  { id:'Polly.Mizuki',   label:'Mizuki (Japanese) — Female' },
+  { id:'Polly.Seoyeon',  label:'Seoyeon (Korean) — Female' },
+  { id:'Polly.Vitoria',  label:'Vitória (Portuguese, BR)' },
+]
+
+function nd(type) { return NODE_DEFS.find(n => n.type === type) || { type:'unknown', label:'Unknown', color:'#94A3B8', icon:'?', cat:'action' } }
 
 function defCfg(type) {
-  if (type === 'menu')       return { text:'For sales press 1. For any agent press 0. To leave a voicemail press 9.', timeout:10, options:[{key:'1',label:'Sales',say:'Connecting to sales...'},{key:'0',label:'Any Agent',say:'Connecting to next available agent...'},{key:'9',label:'Voicemail',say:'Please leave your message after the tone.'}] }
-  if (type === 'condition')  return { condition:'known_contact', yesLabel:'Yes', noLabel:'No' }
-  if (type === 'greeting')   return { text:'Thank you for calling Target Team. Please hold while we connect you.' }
-  if (type === 'dial')       return { agent_id:'', timeout:30 }
-  if (type === 'roundrobin') return { agent_ids:[], timeout:30 }
-  if (type === 'ringall')    return { agent_ids:[], timeout:30 }
-  if (type === 'voicemail')  return { text:'Please leave your name and number after the tone.', transcribe:true, notify_agent:true, max_length:120 }
-  if (type === 'savelead')   return { source:'Inbound Call', assign:'round_robin' }
-  if (type === 'sms')        return { text:'Thanks for calling Target Team! An agent will reach out shortly.', send_to:'caller' }
+  if (type === 'menu')      return { text:'For sales press 1. To leave a voicemail press 9.', timeout:10, voice:'Polly.Joanna', options:[{key:'1',label:'Sales',say:'Connecting to sales...'},{key:'9',label:'Voicemail',say:'Please leave your message.'}] }
+  if (type === 'condition') return { condition:'known_contact', yesLabel:'Yes', noLabel:'No' }
+  if (type === 'greeting')  return { text:'Thank you for calling Target Team. Please hold while we connect you.', voice:'Polly.Joanna' }
+  if (type === 'dial')      return { agent_id:'', timeout:30 }
+  if (type === 'roundrobin')return { agent_ids:[], timeout:30 }
+  if (type === 'ringall')   return { agent_ids:[], timeout:30 }
+  if (type === 'voicemail') return { text:'Please leave your name and number after the tone.', voice:'Polly.Joanna', transcribe:true, notify_agent:true, max_length:120 }
+  if (type === 'savelead')  return { source:'Inbound Call', assign:'round_robin' }
+  if (type === 'sms')       return { text:'Thanks for calling Target Team! An agent will reach out shortly.', send_to:'caller' }
+  if (type === 'hold')      return { music:'twilio', custom_url:'', duration:30, say_first:'', voice:'Polly.Joanna' }
+  if (type === 'audio')     return { url:'', voice:'Polly.Joanna', say_first:'', loop:1 }
+  if (type === 'language')  return { prompt:'For English press 1. Para Español oprima 2.', options:[{key:'1',language:'en-US',voice:'Polly.Joanna',label:'English'},{key:'2',language:'es-US',voice:'Polly.Lupe',label:'Spanish'}], timeout:10 }
   return {}
 }
 
-// Get output ports for a node type
+// ── OUTPUT PORTS ─────────────────────────────────────────────────
 function getPorts(node) {
   const cfg  = node.config || {}
   const opts = cfg.options || []
@@ -59,95 +110,115 @@ function getPorts(node) {
     { id:'yes', label: cfg.yesLabel || 'YES', color:'#10B981', y: NH * 0.33 },
     { id:'no',  label: cfg.noLabel  || 'NO',  color:'#DC2626', y: NH * 0.67 },
   ]
-  if (node.type === 'menu') return opts.map(function(o, i) {
-    return { id:'key_' + o.key, label:'Press ' + o.key, color: PORT_COLORS[i % PORT_COLORS.length], y: (NH / (opts.length + 1)) * (i + 1) }
+  if (node.type === 'menu' || node.type === 'language') return opts.map(function(o, i) {
+    return { id:'key_' + o.key, label: node.type === 'language' ? (o.label || o.key) : 'Press ' + o.key, color: PORT_COLORS[i % PORT_COLORS.length], y: (NH / (opts.length + 1)) * (i + 1) }
   })
   if (node.type === 'dial' || node.type === 'roundrobin' || node.type === 'ringall') return [
     { id:'answered', label:'Answered', color:'#10B981', y: NH * 0.33 },
     { id:'noanswer', label:'No Answer', color:'#DC2626', y: NH * 0.67 },
   ]
   if (node.type === 'hangup') return []
-  return [{ id:'out', label:'Next', color: nd(node.type).color, y: NH * 0.5 }]
+  // All others: single 'out' port
+  return [{ id:'out', label:'', color: nd(node.type).color, y: NH * 0.5 }]
 }
 
-// ── SVG NODE ────────────────────────────────────────────────────
-function FlowNode({ node, selected, agents, connectedPorts, dragPort, onMouseDownNode, onMouseDownPort, onClickNode }) {
-  const def    = nd(node.type)
-  const cfg    = node.config || {}
-  const ports  = getPorts(node)
+// ── SVG COORDINATE HELPER ─────────────────────────────────────────
+// Converts mouse event coords to SVG canvas coords, accounting for scale
+function svgCoords(e, svgEl) {
+  const rect   = svgEl.getBoundingClientRect()
+  const scaleX = rect.width  > 0 ? rect.width  / rect.width  : 1  // SVG fills container, no viewBox scaling
+  const scaleY = rect.height > 0 ? rect.height / rect.height : 1
+  return {
+    x: (e.clientX - rect.left),
+    y: (e.clientY - rect.top),
+  }
+}
 
-  // Subtitle
+// ── FLOW NODE SVG ─────────────────────────────────────────────────
+function FlowNode({ node, selected, agents, connectedPorts, dragPort, onMouseDownNode, onMouseDownPort, onPortDrop, onClickNode }) {
+  const def   = nd(node.type)
+  const cfg   = node.config || {}
+  const ports = getPorts(node)
+
   let sub = ''
   if (node.type === 'menu')        sub = (cfg.options || []).length + ' options'
-  else if (node.type === 'condition') sub = (cfg.condition || '').split('_').join(' ')
-  else if (node.type === 'dial')    sub = agents && cfg.agent_id ? (agents.find(a => a.id === cfg.agent_id) || {}).name || 'tap to configure' : 'tap to configure'
-  else if (node.type === 'roundrobin' || node.type === 'ringall') sub = (cfg.agent_ids || []).length + ' agents'
-  else if (node.type === 'greeting') sub = (cfg.text || '').slice(0, 28)
-  else if (node.type === 'sms')     sub = (cfg.text || '').slice(0, 28)
-  else if (node.type === 'voicemail') sub = cfg.transcribe ? 'with transcription' : 'no transcription'
+  else if (node.type === 'language') sub = (cfg.options || []).length + ' languages'
+  else if (node.type === 'condition') sub = (cfg.condition || '').replace(/_/g,' ')
+  else if (node.type === 'dial')    sub = cfg.agent_id && agents ? ((agents.find(a => a.id === cfg.agent_id)||{}).name || 'select agent') : 'select agent'
+  else if (node.type === 'roundrobin'||node.type === 'ringall') sub = (cfg.agent_ids||[]).length + ' agents'
+  else if (node.type === 'greeting'||node.type === 'voicemail') sub = (cfg.text||'').slice(0,28)
+  else if (node.type === 'hold')    sub = HOLD_MUSIC.find(m=>m.id===cfg.music)?.label?.slice(0,28) || 'Twilio default'
+  else if (node.type === 'audio')   sub = cfg.url ? 'Custom file' : 'no file set'
+  else if (node.type === 'sms')     sub = (cfg.text||'').slice(0,28)
   else sub = def.label.toLowerCase()
 
   const fill   = selected ? def.color : 'var(--panel)'
   const stroke = selected ? def.color : 'var(--border)'
-  const sw     = selected ? 2.5 : 1.5
   const tFill  = selected ? '#fff' : 'var(--text)'
   const sFill  = selected ? 'rgba(255,255,255,.7)' : 'var(--muted)'
 
   return (
     <g transform={'translate(' + node.x + ',' + node.y + ')'}>
-      {/* Shadow */}
-      <rect x={3} y={4} width={NW} height={NH} rx={11} fill="rgba(0,0,0,.08)" />
-      {/* Body — drag handle */}
-      <rect x={0} y={0} width={NW} height={NH} rx={11} fill={fill} stroke={stroke} strokeWidth={sw}
+      {/* Drop shadow */}
+      <rect x={2} y={3} width={NW} height={NH} rx={12} fill="rgba(0,0,0,.1)" />
+      {/* Body */}
+      <rect x={0} y={0} width={NW} height={NH} rx={12} fill={fill} stroke={stroke} strokeWidth={selected?2.5:1.5}
         style={{cursor:'grab'}}
-        onMouseDown={function(e) { onMouseDownNode(e, node.id) }}
-        onClick={function(e) { e.stopPropagation(); onClickNode(node.id) }}
+        onMouseDown={function(e){ onMouseDownNode(e, node.id) }}
+        onClick={function(e){ e.stopPropagation(); onClickNode(node.id) }}
       />
-      {/* Color bar */}
-      <rect x={0} y={0} width={7} height={NH} rx={5} fill={def.color} />
+      {/* Color sidebar */}
+      <rect x={0} y={0} width={8} height={NH} rx={6} fill={def.color} />
       {/* Icon */}
-      <text x={20} y={NH/2 - 6} fontSize={18} dominantBaseline="middle">{def.icon}</text>
+      <text x={22} y={NH/2} fontSize={20} dominantBaseline="middle">{def.icon}</text>
       {/* Label */}
-      <text x={46} y={NH/2 - 6} fontSize={13} fontWeight={700} fill={tFill} fontFamily={ff} dominantBaseline="middle">{def.label}</text>
+      <text x={50} y={NH/2 - 7} fontSize={13} fontWeight={700} fill={tFill} fontFamily={ff} dominantBaseline="middle">{def.label}</text>
       {/* Sub */}
-      <text x={46} y={NH/2 + 12} fontSize={10} fill={sFill} fontFamily={ff} dominantBaseline="middle"
-        style={{overflow:'hidden'}}>{sub.length > 30 ? sub.slice(0,28) + '…' : sub}</text>
+      <text x={50} y={NH/2 + 10} fontSize={10} fill={sFill} fontFamily={ff} dominantBaseline="middle">
+        {sub.length > 28 ? sub.slice(0,26)+'…' : sub}
+      </text>
 
-      {/* Input port (left) — all nodes except incoming */}
+      {/* Input port — LEFT — enlarged hit zone so drops land reliably */}
       {node.type !== 'incoming' && (
-        <circle cx={0} cy={NH/2} r={PR} fill="var(--panel)" stroke={def.color} strokeWidth={2} />
-      )}
-
-      {/* Delete button when selected */}
-      {selected && node.type !== 'incoming' && (
-        <g style={{cursor:'pointer'}} onMouseDown={function(e) { e.stopPropagation() }}
-          onClick={function(e) { e.stopPropagation(); onClickNode('__delete__' + node.id) }}>
-          <circle cx={NW - 11} cy={11} r={9} fill="#DC2626" />
-          <text x={NW - 11} y={11} textAnchor="middle" dominantBaseline="middle" fontSize={14} fill="#fff" fontFamily={ff} fontWeight={700}>×</text>
+        <g>
+          {/* Invisible large hit target for drops */}
+          <rect x={-INR} y={NH/2 - INR} width={INR*2} height={INR*2} fill="transparent"
+            onMouseUp={function(e){ e.stopPropagation(); onPortDrop(node.id) }}
+          />
+          <circle cx={0} cy={NH/2} r={PR} fill="var(--panel)" stroke={def.color} strokeWidth={2} style={{pointerEvents:'none'}} />
         </g>
       )}
 
-      {/* Output ports (right) */}
+      {/* Delete × when selected */}
+      {selected && node.type !== 'incoming' && (
+        <g style={{cursor:'pointer'}}
+          onMouseDown={function(e){ e.stopPropagation() }}
+          onClick={function(e){ e.stopPropagation(); onClickNode('__delete__' + node.id) }}>
+          <circle cx={NW - 12} cy={12} r={10} fill="#DC2626" />
+          <text x={NW - 12} y={12} textAnchor="middle" dominantBaseline="middle" fontSize={15} fill="#fff" fontFamily={ff} fontWeight={700}>×</text>
+        </g>
+      )}
+
+      {/* Output ports — RIGHT */}
       {ports.map(function(p) {
-        const isConnected = connectedPorts && connectedPorts.has(node.id + ':' + p.id)
-        const isActive    = dragPort && dragPort.fromId === node.id && dragPort.portId === p.id
+        const connected = connectedPorts && connectedPorts.has(node.id + ':' + p.id)
+        const active    = dragPort && dragPort.fromId === node.id && dragPort.portId === p.id
         return (
           <g key={p.id}>
-            {/* Port hit zone */}
+            {/* Large invisible hit zone */}
             <circle cx={NW} cy={p.y} r={PHZ} fill="transparent" style={{cursor:'crosshair'}}
-              onMouseDown={function(e) { e.stopPropagation(); e.preventDefault(); onMouseDownPort(e, node.id, p.id) }} />
-            {/* Port visual */}
-            <circle cx={NW} cy={p.y} r={isActive ? PR + 3 : PR}
-              fill={isConnected ? p.color : 'var(--panel)'}
-              stroke={p.color} strokeWidth={isActive ? 3 : 2}
-              style={{cursor:'crosshair', transition:'r .1s'}}
-              onMouseDown={function(e) { e.stopPropagation(); e.preventDefault(); onMouseDownPort(e, node.id, p.id) }}
+              onMouseDown={function(e){ e.stopPropagation(); e.preventDefault(); onMouseDownPort(e, node.id, p.id) }}
             />
-            {/* Port label */}
+            {/* Visual port */}
+            <circle cx={NW} cy={p.y} r={active ? PR + 4 : PR}
+              fill={connected ? p.color : 'var(--panel)'}
+              stroke={p.color} strokeWidth={active ? 3 : 2}
+              style={{cursor:'crosshair', transition:'r .1s', pointerEvents:'none'}}
+            />
+            {/* Label — inside node, left of port */}
             {p.label && (
-              <text x={NW - PR - 5} y={p.y} textAnchor="end" dominantBaseline="middle"
-                fontSize={9} fontWeight={700} fill={p.color} fontFamily={ff}
-                style={{pointerEvents:'none', userSelect:'none'}}>
+              <text x={NW - PR - 6} y={p.y} textAnchor="end" dominantBaseline="middle"
+                fontSize={9} fontWeight={700} fill={p.color} fontFamily={ff} style={{pointerEvents:'none', userSelect:'none'}}>
                 {p.label}
               </text>
             )}
@@ -162,696 +233,676 @@ function FlowNode({ node, selected, agents, connectedPorts, dragPort, onMouseDow
 function ConfigPanel({ node, agents, onSave, onClose }) {
   const def = nd(node.type)
   const [cfg, setCfg] = useState(Object.assign({}, node.config || {}))
-  const safeAgents = agents || []
+  const sa = agents || []
 
-  function set(k, v) { setCfg(function(p) { return Object.assign({}, p, {[k]: v}) }) }
+  const set = (k, v) => setCfg(p => Object.assign({}, p, {[k]: v}))
 
-  function setOpt(i, k, v) {
-    const o = (cfg.options || []).slice()
-    o[i] = Object.assign({}, o[i], {[k]: v})
-    set('options', o)
-  }
-  function addOpt() {
-    const o = (cfg.options || []).slice()
-    const nextKey = o.length < 9 ? String(o.length + 1) : '#'
-    o.push({ key: nextKey, label: '', say: '' })
-    set('options', o)
-  }
-  function delOpt(i) {
-    const o = (cfg.options || []).slice()
-    o.splice(i, 1)
-    set('options', o)
-  }
+  function setOpt(i, k, v) { const o=[...(cfg.options||[])]; o[i]=Object.assign({},o[i],{[k]:v}); set('options',o) }
+  function addOpt() { const o=[...(cfg.options||[])]; o.push(node.type==='language' ? {key:String(o.length+1),language:'en-US',voice:'Polly.Joanna',label:'English'} : {key:String(o.length+1),label:'',say:''}); set('options',o) }
+  function delOpt(i) { const o=[...(cfg.options||[])]; o.splice(i,1); set('options',o) }
 
-  const inp = { width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff, boxSizing:'border-box' }
-  const ta  = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff, resize:'vertical', boxSizing:'border-box' }
-  const sel = { width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }
-  const lbl = { fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', display:'block', marginBottom:5 }
-  const info = { padding:'9px 12px', background:'var(--dim)', borderRadius:8, border:'1px solid var(--border)', fontSize:11, color:'var(--muted)', lineHeight:1.6 }
-  const row  = { marginBottom:14 }
+  const I = {width:'100%',padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff,boxSizing:'border-box'}
+  const TA= {width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff,resize:'vertical',boxSizing:'border-box'}
+  const S = {width:'100%',padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff}
+  const L = {fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',display:'block',marginBottom:5}
+  const INFO={padding:'9px 12px',background:'var(--dim)',borderRadius:8,border:'1px solid var(--border)',fontSize:11,color:'var(--muted)',lineHeight:1.6}
+  const R = {marginBottom:14}
+
+  // Voice selector (shared)
+  const VoicePicker = ({k}) => (
+    <div style={R}>
+      <label style={L}>Voice / Language</label>
+      <select value={cfg[k]||'Polly.Joanna'} onChange={e=>set(k,e.target.value)} style={S}>
+        {TTS_VOICES.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+      </select>
+    </div>
+  )
 
   return (
-    <div style={{width:310, borderLeft:'1px solid var(--border)', background:'var(--panel)', display:'flex', flexDirection:'column', flexShrink:0, fontFamily:ff, overflow:'hidden'}}>
-      {/* Header */}
-      <div style={{padding:'13px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10, background:def.color, flexShrink:0}}>
+    <div style={{width:320,borderLeft:'1px solid var(--border)',background:'var(--panel)',display:'flex',flexDirection:'column',flexShrink:0,fontFamily:ff,overflow:'hidden'}}>
+      <div style={{padding:'13px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:10,background:def.color,flexShrink:0}}>
         <span style={{fontSize:20}}>{def.icon}</span>
-        <div style={{flex:1, fontSize:14, fontWeight:800, color:'#fff'}}>{def.label}</div>
-        <button onClick={onClose} style={{background:'rgba(255,255,255,.2)', border:'none', cursor:'pointer', color:'#fff', fontSize:16, borderRadius:6, width:26, height:26, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:ff}}>×</button>
+        <div style={{flex:1,fontSize:14,fontWeight:800,color:'#fff'}}>{def.label}</div>
+        <button onClick={onClose} style={{background:'rgba(255,255,255,.2)',border:'none',cursor:'pointer',color:'#fff',fontSize:18,borderRadius:6,width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
       </div>
 
-      <div style={{flex:1, overflowY:'auto', padding:16}}>
+      <div style={{flex:1,overflowY:'auto',padding:16}}>
 
-        {(node.type === 'incoming' || node.type === 'hangup') && (
-          <div style={info}>{node.type === 'incoming' ? '📞 Entry point for every inbound call. Drag the port on the right to connect to your first step.' : '🔴 Ends the call. No configuration needed.'}</div>
-        )}
+        {/* ── INCOMING ── */}
+        {node.type === 'incoming' && <div style={INFO}>📞 Every call starts here. Drag the green port on the right to connect to your first step.</div>}
+        {/* ── HANGUP ── */}
+        {node.type === 'hangup'   && <div style={INFO}>🔴 Ends the call cleanly. No configuration needed.</div>}
 
-        {node.type === 'greeting' && (
-          <div style={row}>
-            <label style={lbl}>Message spoken to caller (Text-to-Speech)</label>
-            <textarea value={cfg.text || ''} onChange={function(e){set('text',e.target.value)}} rows={4} style={ta} placeholder="Thank you for calling Target Team..." />
+        {/* ── GREETING ── */}
+        {node.type === 'greeting' && (<>
+          <div style={R}><label style={L}>Message (spoken via TTS)</label><textarea value={cfg.text||''} onChange={e=>set('text',e.target.value)} rows={4} style={TA} placeholder="Thank you for calling..." /></div>
+          <VoicePicker k="voice" />
+        </>)}
+
+        {/* ── HOLD MUSIC ── */}
+        {node.type === 'hold' && (<>
+          <div style={R}>
+            <label style={L}>Say first (optional)</label>
+            <input value={cfg.say_first||''} onChange={e=>set('say_first',e.target.value)} placeholder="Please hold, connecting you now..." style={I} />
           </div>
-        )}
+          <VoicePicker k="voice" />
+          <div style={R}>
+            <label style={L}>Music selection</label>
+            <select value={cfg.music||'twilio'} onChange={e=>set('music',e.target.value)} style={S}>
+              {HOLD_MUSIC.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          </div>
+          {cfg.music === 'custom' && (
+            <div style={R}>
+              <label style={L}>Custom music URL (.mp3 or .wav)</label>
+              <input value={cfg.custom_url||''} onChange={e=>set('custom_url',e.target.value)} placeholder="https://your-domain.com/hold.mp3" style={I} />
+              <div style={{fontSize:10,color:'var(--muted)',marginTop:4}}>Host your audio file publicly. Twilio fetches it when the call holds.</div>
+            </div>
+          )}
+          <div style={R}>
+            <label style={L}>Hold duration (seconds, 0 = unlimited)</label>
+            <input type="number" min={0} max={600} value={cfg.duration||30} onChange={e=>set('duration',parseInt(e.target.value)||30)} style={I} />
+          </div>
+        </>)}
 
-        {node.type === 'menu' && (
-          <div>
-            <div style={row}>
-              <label style={lbl}>Menu prompt (spoken to caller)</label>
-              <textarea value={cfg.text || ''} onChange={function(e){set('text',e.target.value)}} rows={4} style={ta} placeholder="For sales press 1. For any agent press 0..." />
-            </div>
-            <div style={row}>
-              <label style={lbl}>Input timeout (seconds)</label>
-              <input type="number" value={cfg.timeout || 10} onChange={function(e){set('timeout',parseInt(e.target.value)||10)}} style={inp} />
-            </div>
-            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8}}>
-              <label style={Object.assign({},lbl,{marginBottom:0})}>Keypress options</label>
-              <button onClick={addOpt} style={{padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', fontSize:11, cursor:'pointer', fontFamily:ff}}>+ Add</button>
-            </div>
-            {(cfg.options || []).map(function(opt, i) {
-              const color = PORT_COLORS[i % PORT_COLORS.length]
-              return (
-                <div key={i} style={{background:'var(--dim)', borderRadius:9, border:'2px solid ' + color + '44', padding:'10px 12px', marginBottom:8}}>
-                  <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:8}}>
-                    <div style={{width:34, height:34, borderRadius:8, background:color, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
-                      <input value={opt.key || ''} onChange={function(e){setOpt(i,'key',e.target.value)}}
-                        style={{width:26, textAlign:'center', background:'transparent', border:'none', color:'#fff', fontSize:16, fontWeight:900, fontFamily:ff, outline:'none'}} />
-                    </div>
-                    <input value={opt.label || ''} onChange={function(e){setOpt(i,'label',e.target.value)}} placeholder="Label (e.g. Sales)"
-                      style={{flex:1, padding:'5px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff}} />
-                    <button onClick={function(){delOpt(i)}} style={{background:'none', border:'none', cursor:'pointer', color:'#DC2626', fontSize:18, lineHeight:1}}>×</button>
-                  </div>
-                  <label style={Object.assign({},lbl,{marginBottom:4})}>Say when pressed</label>
-                  <input value={opt.say || ''} onChange={function(e){setOpt(i,'say',e.target.value)}} placeholder={'Connecting to ' + (opt.label||'agent') + '...'}
-                    style={Object.assign({},inp,{marginBottom:4})} />
-                  <div style={{fontSize:10, color:color, marginTop:4}}>→ Drag the "{opt.key}" port on the node to connect</div>
+        {/* ── CUSTOM AUDIO ── */}
+        {node.type === 'audio' && (<>
+          <div style={R}>
+            <label style={L}>Say first (optional, TTS before audio plays)</label>
+            <input value={cfg.say_first||''} onChange={e=>set('say_first',e.target.value)} placeholder="Please listen to the following message..." style={I} />
+          </div>
+          <VoicePicker k="voice" />
+          <div style={R}>
+            <label style={L}>Audio file URL (.mp3 or .wav)</label>
+            <input value={cfg.url||''} onChange={e=>set('url',e.target.value)} placeholder="https://your-domain.com/message.mp3" style={I} />
+            <div style={{fontSize:10,color:'var(--muted)',marginTop:4}}>Host your audio file publicly. Use for pre-recorded messages in any language.</div>
+          </div>
+          <div style={R}>
+            <label style={L}>Loop count (1 = play once)</label>
+            <input type="number" min={1} max={10} value={cfg.loop||1} onChange={e=>set('loop',parseInt(e.target.value)||1)} style={I} />
+          </div>
+        </>)}
+
+        {/* ── LANGUAGE SELECT ── */}
+        {node.type === 'language' && (<>
+          <div style={R}>
+            <label style={L}>Language menu prompt</label>
+            <textarea value={cfg.prompt||''} onChange={e=>set('prompt',e.target.value)} rows={3} style={TA} placeholder="For English press 1. Para Español oprima 2." />
+          </div>
+          <div style={R}>
+            <label style={L}>Input timeout (seconds)</label>
+            <input type="number" value={cfg.timeout||10} onChange={e=>set('timeout',parseInt(e.target.value)||10)} style={I} />
+          </div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+            <label style={{...L,marginBottom:0}}>Language options</label>
+            <button onClick={addOpt} style={{padding:'3px 10px',borderRadius:6,border:'1px solid var(--border)',background:'var(--dim)',color:'var(--muted)',fontSize:11,cursor:'pointer',fontFamily:ff}}>+ Add</button>
+          </div>
+          {(cfg.options||[]).map((opt,i) => (
+            <div key={i} style={{background:'var(--dim)',borderRadius:9,border:'2px solid '+PORT_COLORS[i%PORT_COLORS.length]+'44',padding:'10px 12px',marginBottom:8}}>
+              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+                <div style={{width:32,height:32,borderRadius:8,background:PORT_COLORS[i%PORT_COLORS.length],display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,color:'#fff',fontSize:14,fontWeight:900}}>{opt.key}</div>
+                <input value={opt.label||''} onChange={e=>setOpt(i,'label',e.target.value)} placeholder="English"
+                  style={{flex:1,padding:'5px 8px',borderRadius:6,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:12,fontFamily:ff}} />
+                <button onClick={()=>delOpt(i)} style={{background:'none',border:'none',cursor:'pointer',color:'#DC2626',fontSize:18}}>×</button>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:6}}>
+                <div>
+                  <label style={L}>Press key</label>
+                  <input value={opt.key||''} onChange={e=>setOpt(i,'key',e.target.value)} style={{...I,fontSize:14,textAlign:'center',fontWeight:800}} />
                 </div>
-              )
-            })}
-          </div>
-        )}
-
-        {node.type === 'condition' && (
-          <div>
-            <div style={row}>
-              <label style={lbl}>Check if...</label>
-              <select value={cfg.condition || 'known_contact'} onChange={function(e){set('condition',e.target.value)}} style={sel}>
-                <option value="known_contact">Caller is a known contact</option>
-                <option value="has_agent">Contact has an assigned agent</option>
-                <option value="business_hours">Currently business hours (9am–6pm ET)</option>
-                <option value="after_hours">Currently after hours</option>
-                <option value="repeat_caller">Caller has called before</option>
-              </select>
-            </div>
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:14}}>
-              <div>
-                <label style={Object.assign({},lbl,{color:'#10B981'})}>YES label</label>
-                <input value={cfg.yesLabel || 'YES'} onChange={function(e){set('yesLabel',e.target.value)}}
-                  style={{width:'100%', padding:'6px 8px', borderRadius:7, border:'1px solid #10B98155', background:'#10B98108', color:'#10B981', fontSize:12, fontFamily:ff, boxSizing:'border-box'}} />
+                <div>
+                  <label style={L}>Voice</label>
+                  <select value={opt.voice||'Polly.Joanna'} onChange={e=>setOpt(i,'voice',e.target.value)} style={{...S,fontSize:11}}>
+                    {TTS_VOICES.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
+                  </select>
+                </div>
               </div>
-              <div>
-                <label style={Object.assign({},lbl,{color:'#DC2626'})}>NO label</label>
-                <input value={cfg.noLabel || 'NO'} onChange={function(e){set('noLabel',e.target.value)}}
-                  style={{width:'100%', padding:'6px 8px', borderRadius:7, border:'1px solid #DC262655', background:'#DC262608', color:'#DC2626', fontSize:12, fontFamily:ff, boxSizing:'border-box'}} />
+              <div style={{fontSize:10,color:PORT_COLORS[i%PORT_COLORS.length],marginTop:2}}>→ Connect this port to the flow for {opt.label||'this language'}</div>
+            </div>
+          ))}
+        </>)}
+
+        {/* ── IVR MENU ── */}
+        {node.type === 'menu' && (<>
+          <div style={R}><label style={L}>Menu prompt (spoken to caller)</label><textarea value={cfg.text||''} onChange={e=>set('text',e.target.value)} rows={4} style={TA} placeholder="For sales press 1..." /></div>
+          <VoicePicker k="voice" />
+          <div style={R}><label style={L}>Input timeout (seconds)</label><input type="number" value={cfg.timeout||10} onChange={e=>set('timeout',parseInt(e.target.value)||10)} style={I} /></div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+            <label style={{...L,marginBottom:0}}>Keypress options</label>
+            <button onClick={addOpt} style={{padding:'3px 10px',borderRadius:6,border:'1px solid var(--border)',background:'var(--dim)',color:'var(--muted)',fontSize:11,cursor:'pointer',fontFamily:ff}}>+ Add</button>
+          </div>
+          {(cfg.options||[]).map((opt,i) => {
+            const c = PORT_COLORS[i%PORT_COLORS.length]
+            return (
+              <div key={i} style={{background:'var(--dim)',borderRadius:9,border:'2px solid '+c+'44',padding:'10px 12px',marginBottom:8}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+                  <div style={{width:32,height:32,borderRadius:8,background:c,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    <input value={opt.key||''} onChange={e=>setOpt(i,'key',e.target.value)} style={{width:24,textAlign:'center',background:'transparent',border:'none',color:'#fff',fontSize:16,fontWeight:900,fontFamily:ff,outline:'none'}} />
+                  </div>
+                  <input value={opt.label||''} onChange={e=>setOpt(i,'label',e.target.value)} placeholder="Label"
+                    style={{flex:1,padding:'5px 8px',borderRadius:6,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:12,fontFamily:ff}} />
+                  <button onClick={()=>delOpt(i)} style={{background:'none',border:'none',cursor:'pointer',color:'#DC2626',fontSize:18}}>×</button>
+                </div>
+                <label style={L}>Say when pressed</label>
+                <input value={opt.say||''} onChange={e=>setOpt(i,'say',e.target.value)} placeholder={'Connecting to '+(opt.label||'agent')+'...'}
+                  style={{...I,marginBottom:4}} />
+                <div style={{fontSize:10,color:c,marginTop:2}}>→ Drag port "{opt.key}" to connect to next step</div>
               </div>
-            </div>
-            <div style={info}>Two output ports are created: green YES and red NO. Drag each to its destination node.</div>
-          </div>
-        )}
+            )
+          })}
+        </>)}
 
-        {node.type === 'dial' && (
-          <div>
-            <div style={row}>
-              <label style={lbl}>Ring this agent</label>
-              <select value={cfg.agent_id || ''} onChange={function(e){set('agent_id',e.target.value)}} style={sel}>
-                <option value="">— Select agent —</option>
-                {safeAgents.map(function(a){return <option key={a.id} value={a.id}>{a.name}</option>})}
-              </select>
-            </div>
-            <div style={row}>
-              <label style={lbl}>Ring timeout (seconds)</label>
-              <input type="number" value={cfg.timeout || 30} onChange={function(e){set('timeout',parseInt(e.target.value)||30)}} style={inp} />
-            </div>
-            <div style={info}>Two ports: <strong style={{color:'#10B981'}}>Answered</strong> — call was picked up. <strong style={{color:'#DC2626'}}>No Answer</strong> — connect to voicemail or another step.</div>
+        {/* ── CONDITION ── */}
+        {node.type === 'condition' && (<>
+          <div style={R}>
+            <label style={L}>Check if...</label>
+            <select value={cfg.condition||'known_contact'} onChange={e=>set('condition',e.target.value)} style={S}>
+              <option value="known_contact">Caller is a known contact</option>
+              <option value="has_agent">Contact has an assigned agent</option>
+              <option value="business_hours">Currently business hours (9am–6pm ET)</option>
+              <option value="after_hours">Currently after hours</option>
+              <option value="repeat_caller">Caller has called before</option>
+            </select>
           </div>
-        )}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
+            <div><label style={{...L,color:'#10B981'}}>YES label</label><input value={cfg.yesLabel||'YES'} onChange={e=>set('yesLabel',e.target.value)} style={{...I,borderColor:'#10B98155',background:'#10B98108',color:'#10B981'}} /></div>
+            <div><label style={{...L,color:'#DC2626'}}>NO label</label><input value={cfg.noLabel||'NO'} onChange={e=>set('noLabel',e.target.value)} style={{...I,borderColor:'#DC262655',background:'#DC262608',color:'#DC2626'}} /></div>
+          </div>
+          <div style={INFO}>Two ports: green YES and red NO. Connect each to the appropriate next step.</div>
+        </>)}
 
-        {(node.type === 'roundrobin' || node.type === 'ringall') && (
-          <div>
-            <div style={row}>
-              <label style={lbl}>{node.type === 'ringall' ? 'Ring all simultaneously' : 'Agents in rotation (least-recent first)'}</label>
-              <div style={{display:'flex', flexWrap:'wrap', gap:5}}>
-                {safeAgents.map(function(a) {
-                  const ids = cfg.agent_ids || []
-                  const on  = ids.indexOf(a.id) >= 0
-                  return (
-                    <button key={a.id}
-                      onClick={function(){set('agent_ids', on ? ids.filter(function(x){return x!==a.id}) : ids.concat([a.id]))}}
-                      style={{padding:'5px 12px', borderRadius:20, border:'1px solid ' + (on?'#CC2200':'var(--border)'), background:on?'rgba(204,34,0,.1)':'transparent', color:on?'#CC2200':'var(--muted)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff}}>
-                      {on ? '✓ ' : ''}{a.name.split(' ')[0]}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-            <div style={row}>
-              <label style={lbl}>Timeout (seconds)</label>
-              <input type="number" value={cfg.timeout || 30} onChange={function(e){set('timeout',parseInt(e.target.value)||30)}} style={inp} />
-            </div>
+        {/* ── DIAL AGENT ── */}
+        {node.type === 'dial' && (<>
+          <div style={R}>
+            <label style={L}>Ring this agent</label>
+            <select value={cfg.agent_id||''} onChange={e=>set('agent_id',e.target.value)} style={S}>
+              <option value="">— Select agent —</option>
+              {sa.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
           </div>
-        )}
+          <div style={R}><label style={L}>Ring timeout (seconds)</label><input type="number" value={cfg.timeout||30} onChange={e=>set('timeout',parseInt(e.target.value)||30)} style={I} /></div>
+          <div style={INFO}><strong style={{color:'#10B981'}}>Answered</strong> — call picked up. <strong style={{color:'#DC2626'}}>No Answer</strong> — connect to voicemail or another step.</div>
+        </>)}
 
-        {node.type === 'voicemail' && (
-          <div>
-            <div style={row}>
-              <label style={lbl}>Greeting before the beep</label>
-              <textarea value={cfg.text || ''} onChange={function(e){set('text',e.target.value)}} rows={3} style={ta} placeholder="Please leave your name and number after the tone." />
+        {/* ── ROUND ROBIN / RING ALL ── */}
+        {(node.type === 'roundrobin'||node.type === 'ringall') && (<>
+          <div style={R}>
+            <label style={L}>{node.type==='ringall' ? 'Ring all simultaneously' : 'Rotation (least-calls-first)'}</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+              {sa.map(a=>{const ids=cfg.agent_ids||[]; const on=ids.includes(a.id); return (
+                <button key={a.id} onClick={()=>set('agent_ids',on?ids.filter(x=>x!==a.id):ids.concat([a.id]))}
+                  style={{padding:'5px 12px',borderRadius:20,border:'1px solid '+(on?'#CC2200':'var(--border)'),background:on?'rgba(204,34,0,.1)':'transparent',color:on?'#CC2200':'var(--muted)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:ff}}>
+                  {on?'✓ ':''}{a.name.split(' ')[0]}
+                </button>
+              )})}
             </div>
-            <div style={row}>
-              <label style={lbl}>Max recording length (seconds)</label>
-              <input type="number" value={cfg.max_length || 120} onChange={function(e){set('max_length',parseInt(e.target.value)||120)}} style={inp} />
-            </div>
-            <label style={{display:'flex', alignItems:'center', gap:8, marginBottom:10, cursor:'pointer', fontSize:13, color:'var(--text)', fontFamily:ff}}>
-              <input type="checkbox" checked={!!cfg.transcribe} onChange={function(e){set('transcribe',e.target.checked)}} />
-              Transcribe voicemail to text
-            </label>
-            <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:'var(--text)', fontFamily:ff}}>
-              <input type="checkbox" checked={!!cfg.notify_agent} onChange={function(e){set('notify_agent',e.target.checked)}} />
-              Notify assigned agent by email
-            </label>
           </div>
-        )}
+          <div style={R}><label style={L}>Timeout (seconds)</label><input type="number" value={cfg.timeout||30} onChange={e=>set('timeout',parseInt(e.target.value)||30)} style={I} /></div>
+        </>)}
 
-        {node.type === 'savelead' && (
-          <div>
-            <div style={row}>
-              <label style={lbl}>Source tag</label>
-              <input value={cfg.source || 'Inbound Call'} onChange={function(e){set('source',e.target.value)}} style={inp} />
-            </div>
-            <div style={row}>
-              <label style={lbl}>Assign to</label>
-              <select value={cfg.assign || 'round_robin'} onChange={function(e){set('assign',e.target.value)}} style={sel}>
-                <option value="round_robin">Round robin</option>
-                <option value="fewest_leads">Agent with fewest leads</option>
-                <option value="specific">Specific agent</option>
-              </select>
-            </div>
-            {cfg.assign === 'specific' && (
-              <div style={row}>
-                <label style={lbl}>Agent</label>
-                <select value={cfg.agent_id || ''} onChange={function(e){set('agent_id',e.target.value)}} style={sel}>
-                  <option value="">— Select agent —</option>
-                  {safeAgents.map(function(a){return <option key={a.id} value={a.id}>{a.name}</option>})}
-                </select>
-              </div>
-            )}
-            <div style={info}>Creates or updates a Contact record in TargetOS from the caller's phone number.</div>
-          </div>
-        )}
+        {/* ── VOICEMAIL ── */}
+        {node.type === 'voicemail' && (<>
+          <div style={R}><label style={L}>Greeting before the beep</label><textarea value={cfg.text||''} onChange={e=>set('text',e.target.value)} rows={3} style={TA} placeholder="Please leave your name and number after the tone." /></div>
+          <VoicePicker k="voice" />
+          <div style={R}><label style={L}>Max length (seconds)</label><input type="number" value={cfg.max_length||120} onChange={e=>set('max_length',parseInt(e.target.value)||120)} style={I} /></div>
+          <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,cursor:'pointer',fontSize:13,color:'var(--text)'}}>
+            <input type="checkbox" checked={!!cfg.transcribe} onChange={e=>set('transcribe',e.target.checked)} /> Transcribe voicemail to text
+          </label>
+          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,color:'var(--text)'}}>
+            <input type="checkbox" checked={!!cfg.notify_agent} onChange={e=>set('notify_agent',e.target.checked)} /> Notify assigned agent by email
+          </label>
+        </>)}
 
-        {node.type === 'sms' && (
-          <div>
-            <div style={row}>
-              <label style={lbl}>SMS message text</label>
-              <textarea value={cfg.text || ''} onChange={function(e){set('text',e.target.value)}} rows={3} style={ta} placeholder="Thanks for calling! An agent will reach out shortly." />
-            </div>
-            <div style={row}>
-              <label style={lbl}>Send to</label>
-              <select value={cfg.send_to || 'caller'} onChange={function(e){set('send_to',e.target.value)}} style={sel}>
-                <option value="caller">Caller</option>
-                <option value="agent">Assigned agent</option>
-                <option value="both">Both</option>
-              </select>
-            </div>
+        {/* ── SAVE LEAD ── */}
+        {node.type === 'savelead' && (<>
+          <div style={R}><label style={L}>Source tag</label><input value={cfg.source||'Inbound Call'} onChange={e=>set('source',e.target.value)} style={I} /></div>
+          <div style={R}>
+            <label style={L}>Assign to</label>
+            <select value={cfg.assign||'round_robin'} onChange={e=>set('assign',e.target.value)} style={S}>
+              <option value="round_robin">Round robin</option>
+              <option value="fewest_leads">Agent with fewest leads</option>
+              <option value="specific">Specific agent</option>
+            </select>
           </div>
-        )}
+          {cfg.assign==='specific' && <div style={R}><label style={L}>Agent</label><select value={cfg.agent_id||''} onChange={e=>set('agent_id',e.target.value)} style={S}><option value="">— Select —</option>{sa.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>}
+          <div style={INFO}>Creates or updates a Contact from the caller's phone number.</div>
+        </>)}
+
+        {/* ── SMS ── */}
+        {node.type === 'sms' && (<>
+          <div style={R}><label style={L}>SMS text</label><textarea value={cfg.text||''} onChange={e=>set('text',e.target.value)} rows={3} style={TA} /></div>
+          <div style={R}>
+            <label style={L}>Send to</label>
+            <select value={cfg.send_to||'caller'} onChange={e=>set('send_to',e.target.value)} style={S}>
+              <option value="caller">Caller</option>
+              <option value="agent">Assigned agent</option>
+              <option value="both">Both</option>
+            </select>
+          </div>
+        </>)}
 
       </div>
 
-      <div style={{padding:'12px 16px', borderTop:'1px solid var(--border)', flexShrink:0}}>
-        <Btn onClick={function(){onSave(node.id, cfg); onClose()}} style={{width:'100%'}}>✓ Save Changes</Btn>
+      <div style={{padding:'12px 16px',borderTop:'1px solid var(--border)',flexShrink:0}}>
+        <Btn onClick={()=>{onSave(node.id,cfg);onClose()}} style={{width:'100%'}}>✓ Save Changes</Btn>
       </div>
     </div>
   )
 }
 
-// ── EDGE PATH ────────────────────────────────────────────────────
-function edgePath(from, portId, to, nodes) {
-  const fromNode = nodes.find(function(n){return n.id === from})
-  const toNode   = nodes.find(function(n){return n.id === to})
+// ── EDGE HELPERS ─────────────────────────────────────────────────
+function edgePath(fromNode, portId, toNode) {
   if (!fromNode || !toNode) return ''
-  const ports  = getPorts(fromNode)
-  const port   = ports.find(function(p){return p.id === portId})
-  const sy     = port ? port.y : NH / 2
-  const x1 = fromNode.x + NW
-  const y1 = fromNode.y + sy
-  const x2 = toNode.x
-  const y2 = toNode.y + NH / 2
-  const cx = x1 + Math.max(60, (x2 - x1) * 0.5)
-  const cy = y2
-  return 'M ' + x1 + ' ' + y1 + ' C ' + cx + ' ' + y1 + ', ' + cx + ' ' + cy + ', ' + x2 + ' ' + y2
+  const ports = getPorts(fromNode)
+  const port  = ports.find(p => p.id === portId)
+  const sy    = port ? port.y : NH/2
+  const x1 = fromNode.x + NW, y1 = fromNode.y + sy
+  const x2 = toNode.x,        y2 = toNode.y + NH/2
+  const cx = x1 + Math.max(60, (x2-x1)*0.5)
+  return 'M'+x1+' '+y1+' C'+cx+' '+y1+','+cx+' '+y2+','+x2+' '+y2
 }
-
-function edgeColor(portId, fromNode) {
-  if (!portId) return '#94A3B8'
-  if (portId === 'yes' || portId === 'answered') return '#10B981'
-  if (portId === 'no'  || portId === 'noanswer') return '#DC2626'
-  if (portId.indexOf('key_') === 0) {
-    if (!fromNode) return '#94A3B8'
-    const opts = (fromNode.config && fromNode.config.options) || []
-    const key  = portId.slice(4)
-    const idx  = opts.findIndex(function(o){return o.key === key})
-    return PORT_COLORS[idx >= 0 ? idx % PORT_COLORS.length : 0]
+function eColor(portId, fromNode) {
+  if (portId==='yes'||portId==='answered') return '#10B981'
+  if (portId==='no' ||portId==='noanswer') return '#DC2626'
+  if (portId?.startsWith('key_')) {
+    const opts=(fromNode?.config?.options)||[]
+    const key=portId.slice(4), idx=opts.findIndex(o=>o.key===key)
+    return PORT_COLORS[idx>=0?idx%PORT_COLORS.length:0]
   }
-  if (fromNode) return nd(fromNode.type).color
-  return '#94A3B8'
+  return nd(fromNode?.type)?.color || '#94A3B8'
 }
-
-function edgeLabel(portId, fromNode) {
-  if (!portId || portId === 'out') return ''
-  if (portId === 'yes')       return 'YES'
-  if (portId === 'no')        return 'NO'
-  if (portId === 'answered')  return 'Answered'
-  if (portId === 'noanswer')  return 'No Answer'
-  if (portId.indexOf('key_') === 0) {
-    const key = portId.slice(4)
-    if (!fromNode) return 'Press ' + key
-    const opts = (fromNode.config && fromNode.config.options) || []
-    const opt  = opts.find(function(o){return o.key === key})
-    return 'Press ' + key + (opt && opt.label ? ' · ' + opt.label : '')
+function eLabel(portId, fromNode) {
+  if (!portId||portId==='out') return ''
+  if (portId==='yes')       return 'YES'
+  if (portId==='no')        return 'NO'
+  if (portId==='answered')  return 'Answered'
+  if (portId==='noanswer')  return 'No Answer'
+  if (portId?.startsWith('key_')) {
+    const key=portId.slice(4), opts=(fromNode?.config?.options)||[]
+    const opt=opts.find(o=>o.key===key)
+    return (fromNode?.type==='language' ? (opt?.label||key) : 'Press '+key+(opt?.label?' · '+opt.label:''))
   }
   return ''
 }
 
-// ── MAIN COMPONENT ───────────────────────────────────────────────
+// ── MAIN ─────────────────────────────────────────────────────────
 export function CallFlow() {
-  const { toast } = useApp()
+  const { toast }  = useApp()
   const { agents } = useAgents()
   const navigate   = useNavigate()
   const svgRef     = useRef(null)
   const nextId     = useRef(200)
 
-  const [nodes,     setNodes]     = useState([{ id:'start', type:'incoming', x:80, y:220, config:{} }])
+  const [nodes,     setNodes]     = useState([{id:'start',type:'incoming',x:80,y:200,config:{}}])
   const [edges,     setEdges]     = useState([])
-  const [selected,  setSelected]  = useState(null)   // nodeId
+  const [selected,  setSelected]  = useState(null)
   const [flowName,  setFlowName]  = useState('Main Call Flow')
   const [savedId,   setSavedId]   = useState(null)
   const [saving,    setSaving]    = useState(false)
   const [showHelp,  setShowHelp]  = useState(false)
+  const [isDragging,setIsDragging]= useState(false) // for cursor style
 
-  // Drag-node state
-  const dragNode   = useRef(null)  // { id, ox, oy }
-  // Drag-wire state
-  const dragWire   = useRef(null)  // { fromId, portId, x, y }
-  const [wirePos,   setWirePos]   = useState(null)  // live wire preview end point
-  const [activeDragPort, setActiveDragPort] = useState(null)
+  const dragNode = useRef(null) // {id, ox, oy}
+  const dragWire = useRef(null) // {fromId, portId}
+  const [wirePos,setWirePos]    = useState(null)
+  const [actPort,setActPort]    = useState(null)
 
   // ── LOAD ─────────────────────────────────────────────────────
-  useEffect(function() {
+  useEffect(() => {
     supabase.from('phone_ivr').select('*').order('updated_at',{ascending:false}).limit(1).maybeSingle()
-      .then(function(r) {
+      .then(r => {
         const d = r.data
-        if (d && d.flow_nodes && d.flow_nodes.length) {
+        if (d?.flow_nodes?.length) {
           setNodes(d.flow_nodes)
-          setEdges(d.flow_edges || [])
-          setFlowName(d.name || 'Main Call Flow')
+          setEdges(d.flow_edges||[])
+          setFlowName(d.name||'Main Call Flow')
           setSavedId(d.id)
         }
-      }).catch(function(e) { console.warn('load:', e.message) })
-  }, [])
+      }).catch(e => console.warn('load:',e.message))
+  },[])
 
   // ── SAVE ─────────────────────────────────────────────────────
   function saveFlow() {
     setSaving(true)
-    const menuNode  = nodes.find(function(n){return n.type==='menu'})
-    const greetNode = nodes.find(function(n){return n.type==='greeting'})
-    const gText = (greetNode && greetNode.config && greetNode.config.text) || (menuNode && menuNode.config && menuNode.config.text) || ''
-    const mOpts = (menuNode && menuNode.config && menuNode.config.options) ? menuNode.config.options.map(function(o){return{key:o.key,label:o.label,say:o.say,action:'extension',value:''}}) : []
-    const payload = { name:flowName, flow_nodes:nodes, flow_edges:edges, greeting_text:gText, menu_options:mOpts, updated_at:new Date().toISOString() }
+    const mn = nodes.find(n=>n.type==='menu')
+    const gn = nodes.find(n=>n.type==='greeting')
+    const payload = {
+      name: flowName,
+      flow_nodes: nodes,
+      flow_edges: edges,
+      greeting_text: (gn?.config?.text)||(mn?.config?.text)||'',
+      menu_options: (mn?.config?.options||[]).map(o=>({key:o.key,label:o.label,say:o.say,action:'extension',value:''})),
+      updated_at: new Date().toISOString(),
+    }
     const p = savedId
       ? supabase.from('phone_ivr').update(payload).eq('id',savedId)
-      : supabase.from('phone_ivr').insert(Object.assign({},payload,{is_active:false,voicemail_extension:'9',created_at:new Date().toISOString()})).select().single()
-    p.then(function(r){
-      if (!savedId && r.data) setSavedId(r.data.id)
-      toast('✅ Flow saved')
-    }).catch(function(e){toast('Save failed: '+e.message,'#DC2626')}).finally(function(){setSaving(false)})
+      : supabase.from('phone_ivr').insert({...payload,is_active:false,voicemail_extension:'9',created_at:new Date().toISOString()}).select().single()
+    p.then(r=>{ if(!savedId&&r.data) setSavedId(r.data.id); toast('✅ Flow saved') })
+     .catch(e=>toast('Save failed: '+e.message,'#DC2626'))
+     .finally(()=>setSaving(false))
   }
 
   function addNode(type) {
-    const id = 'n' + (++nextId.current)
-    setNodes(function(p){return p.concat([{id,type,x:260+Math.random()*220,y:80+Math.random()*300,config:defCfg(type)}])})
+    const id = 'n'+(++nextId.current)
+    setNodes(p=>p.concat([{id,type,x:300+Math.random()*240,y:60+Math.random()*320,config:defCfg(type)}]))
   }
-
   function deleteNode(id) {
-    setNodes(function(p){return p.filter(function(n){return n.id!==id})})
-    setEdges(function(p){return p.filter(function(e){return e.from!==id && e.to!==id})})
+    setNodes(p=>p.filter(n=>n.id!==id))
+    setEdges(p=>p.filter(e=>e.from!==id&&e.to!==id))
     setSelected(null)
   }
-
   function updateCfg(id, cfg) {
-    setNodes(function(p){return p.map(function(n){return n.id===id ? Object.assign({},n,{config:cfg}) : n})})
-    // When menu options change, remove edges for ports that no longer exist
-    setEdges(function(prev) {
-      const node = nodes.find(function(n){return n.id===id})
-      if (!node || node.type !== 'menu') return prev
-      const newOpts = (cfg.options || []).map(function(o){return 'key_'+o.key})
-      return prev.filter(function(e){
-        if (e.from !== id) return true
-        if (e.port.indexOf('key_') !== 0) return true
-        return newOpts.indexOf(e.port) >= 0
-      })
+    setNodes(p=>p.map(n=>n.id===id?{...n,config:cfg}:n))
+    setEdges(prev=>{
+      const node=nodes.find(n=>n.id===id)
+      if (!node||(node.type!=='menu'&&node.type!=='language')) return prev
+      const valid=(cfg.options||[]).map(o=>'key_'+o.key)
+      return prev.filter(e=>e.from!==id||!e.port.startsWith('key_')||valid.includes(e.port))
     })
   }
 
-  // ── NODE DRAG ────────────────────────────────────────────────
+  // ── MOUSE HELPERS ─────────────────────────────────────────────
+  function getXY(e) {
+    const r = svgRef.current.getBoundingClientRect()
+    return { x: e.clientX - r.left, y: e.clientY - r.top }
+  }
+
   function onMouseDownNode(e, id) {
-    if (dragWire.current) return  // wire dragging takes priority
-    e.preventDefault()
-    e.stopPropagation()
-    const node = nodes.find(function(n){return n.id===id})
+    if (dragWire.current) return
+    e.preventDefault(); e.stopPropagation()
+    const node = nodes.find(n=>n.id===id)
     if (!node) return
-    const svgRect = svgRef.current.getBoundingClientRect()
-    dragNode.current = { id, ox: e.clientX - svgRect.left - node.x, oy: e.clientY - svgRect.top - node.y }
+    const {x,y} = getXY(e)
+    dragNode.current = {id, ox:x-node.x, oy:y-node.y}
     setSelected(id)
+    setIsDragging(true)
   }
 
-  // ── PORT DRAG (wire drawing) ─────────────────────────────────
   function onMouseDownPort(e, fromId, portId) {
-    e.preventDefault()
-    e.stopPropagation()
-    dragNode.current = null  // cancel any node drag
-    const svgRect = svgRef.current.getBoundingClientRect()
-    const x = e.clientX - svgRect.left
-    const y = e.clientY - svgRect.top
-    dragWire.current = { fromId, portId, x, y }
-    setActiveDragPort({ fromId, portId })
-    setWirePos({ x, y })
-  }
-
-  // ── SVG MOUSE MOVE ───────────────────────────────────────────
-  function onSvgMouseMove(e) {
-    const svgRect = svgRef.current.getBoundingClientRect()
-    const x = e.clientX - svgRect.left
-    const y = e.clientY - svgRect.top
-
-    if (dragNode.current) {
-      const { id, ox, oy } = dragNode.current
-      setNodes(function(p){return p.map(function(n){return n.id===id ? Object.assign({},n,{x:Math.max(0,x-ox),y:Math.max(0,y-oy)}) : n})})
-    }
-    if (dragWire.current) {
-      setWirePos({ x, y })
-    }
-  }
-
-  // ── SVG MOUSE UP ─────────────────────────────────────────────
-  function onSvgMouseUp(e) {
-    const svgRect = svgRef.current.getBoundingClientRect()
-    const x = e.clientX - svgRect.left
-    const y = e.clientY - svgRect.top
-
-    if (dragWire.current) {
-      const { fromId, portId } = dragWire.current
-      // Find which node was released on
-      const toNode = nodes.find(function(n) {
-        return n.id !== fromId &&
-          x >= n.x - PR && x <= n.x + NW + PR &&
-          y >= n.y - PR && y <= n.y + NH + PR
-      })
-      if (toNode) {
-        // Remove existing edge from this port (one connection per port)
-        const eid = 'e_' + fromId + '_' + portId + '_' + toNode.id
-        setEdges(function(prev) {
-          const filtered = prev.filter(function(e){return !(e.from===fromId && e.port===portId)})
-          return filtered.concat([{id:eid, from:fromId, port:portId, to:toNode.id}])
-        })
-      }
-      dragWire.current = null
-      setWirePos(null)
-      setActiveDragPort(null)
-    }
-
+    e.preventDefault(); e.stopPropagation()
     dragNode.current = null
+    const {x,y} = getXY(e)
+    dragWire.current = {fromId, portId}
+    setActPort({fromId, portId})
+    setWirePos({x,y})
+    setIsDragging(true)
   }
 
-  // ── CLICK CANVAS (deselect) ───────────────────────────────────
+  // Called when mouse is released on a node's input port area
+  function onPortDrop(toNodeId) {
+    if (!dragWire.current) return
+    const {fromId, portId} = dragWire.current
+    if (fromId === toNodeId) return  // no self-connections
+    finishWire(toNodeId)
+  }
+
+  function onSvgMouseMove(e) {
+    const {x,y} = getXY(e)
+    if (dragNode.current) {
+      const {id,ox,oy} = dragNode.current
+      setNodes(p=>p.map(n=>n.id===id?{...n,x:Math.max(0,x-ox),y:Math.max(0,y-oy)}:n))
+    }
+    if (dragWire.current) setWirePos({x,y})
+  }
+
+  function finishWire(toId) {
+    const {fromId, portId} = dragWire.current
+    const eid = 'e_'+fromId+'_'+portId+'_'+toId
+    setEdges(prev=>{
+      const filtered = prev.filter(e=>!(e.from===fromId&&e.port===portId))
+      return filtered.concat([{id:eid, from:fromId, port:portId, to:toId}])
+    })
+    dragWire.current = null
+    setWirePos(null)
+    setActPort(null)
+    setIsDragging(false)
+  }
+
+  function onSvgMouseUp(e) {
+    if (dragWire.current) {
+      const {x,y} = getXY(e)
+      // Hit-test against node bodies (enlarged by 20px on all sides for easier drops)
+      const hit = nodes.find(n =>
+        n.id !== dragWire.current.fromId &&
+        x >= n.x - 20 && x <= n.x + NW + 20 &&
+        y >= n.y - 20 && y <= n.y + NH + 20
+      )
+      if (hit) finishWire(hit.id)
+      else {
+        dragWire.current = null
+        setWirePos(null)
+        setActPort(null)
+      }
+    }
+    dragNode.current = null
+    setIsDragging(false)
+  }
+
   function onSvgClick(e) {
-    if (e.target === svgRef.current || e.target.tagName === 'rect' && e.target.getAttribute('fill') === 'url(#cfgrid)') {
-      setSelected(null)
-    }
+    if (e.target === svgRef.current) setSelected(null)
   }
-
-  // Handle delete from node click
   function onClickNode(id) {
-    if (id.indexOf('__delete__') === 0) {
-      deleteNode(id.slice(10))
-      return
-    }
-    setSelected(function(prev){return prev === id ? null : id})
+    if (id.startsWith('__delete__')) { deleteNode(id.slice(10)); return }
+    setSelected(p=>p===id?null:id)
   }
+  function deleteEdge(id) { setEdges(p=>p.filter(e=>e.id!==id)) }
 
-  function deleteEdge(id) {
-    setEdges(function(p){return p.filter(function(e){return e.id!==id})})
-  }
+  const connectedPorts = new Set(edges.map(e=>e.from+':'+e.port))
 
-  // Build set of connected port keys for visual feedback
-  const connectedPorts = new Set(edges.map(function(e){return e.from + ':' + e.port}))
-
-  // Live wire path
   function livePath() {
-    if (!dragWire.current || !wirePos) return ''
-    const fromNode = nodes.find(function(n){return n.id===dragWire.current.fromId})
-    if (!fromNode) return ''
-    const ports  = getPorts(fromNode)
-    const port   = ports.find(function(p){return p.id===dragWire.current.portId})
-    const sy     = port ? port.y : NH/2
-    const x1 = fromNode.x + NW
-    const y1 = fromNode.y + sy
-    const x2 = wirePos.x
-    const y2 = wirePos.y
-    const cx = x1 + Math.max(40, (x2-x1)*0.5)
-    return 'M ' + x1 + ' ' + y1 + ' C ' + cx + ' ' + y1 + ', ' + cx + ' ' + y2 + ', ' + x2 + ' ' + y2
+    if (!dragWire.current||!wirePos) return ''
+    const fn = nodes.find(n=>n.id===dragWire.current.fromId)
+    if (!fn) return ''
+    const ports = getPorts(fn)
+    const port  = ports.find(p=>p.id===dragWire.current.portId)
+    const sy = port ? port.y : NH/2
+    const x1=fn.x+NW, y1=fn.y+sy, x2=wirePos.x, y2=wirePos.y
+    const cx=x1+Math.max(40,(x2-x1)*0.5)
+    return 'M'+x1+' '+y1+' C'+cx+' '+y1+','+cx+' '+y2+','+x2+' '+y2
   }
 
-  const selectedNode = nodes.find(function(n){return n.id===selected})
-
-  // ── VALIDATE FLOW ─────────────────────────────────────────────
+  // ── VALIDATE ─────────────────────────────────────────────────
   function validateFlow() {
     const issues = []
-    const startNode = nodes.find(function(n){return n.type==='incoming'})
-    if (!startNode) { issues.push('No Incoming Call node found.'); return issues }
-    const startEdge = edges.find(function(e){return e.from===startNode.id})
-    if (!startEdge) issues.push('Incoming Call is not connected to anything yet.')
-    // Nodes that end the call — no outgoing connection required
-    const TERMINAL = { hangup:true, voicemail:true }
-    // Nodes whose single "out" port is optional (they work fine as endpoints)
-    const OPTIONAL_OUT = { savelead:true, sms:true, greeting:true }
-    nodes.forEach(function(node) {
-      if (node.type === 'incoming' || TERMINAL[node.type]) return
-      const ports = getPorts(node)
-      ports.forEach(function(p) {
-        if (p.id === 'out' && OPTIONAL_OUT[node.type]) return
-        const hasEdge = edges.some(function(e){return e.from===node.id && e.port===p.id})
-        if (!hasEdge) issues.push(nd(node.type).label + ': "' + (p.label||p.id) + '" is not connected.')
+    const start = nodes.find(n=>n.type==='incoming')
+    if (!start) { issues.push('No Incoming Call node.'); return issues }
+    if (!edges.find(e=>e.from===start.id)) issues.push('Incoming Call has no connection.')
+    const TERMINAL = {hangup:true, voicemail:true}
+    const OPTIONAL  = {savelead:true, sms:true, greeting:true, hold:true, audio:true}
+    nodes.forEach(node => {
+      if (node.type==='incoming'||TERMINAL[node.type]) return
+      getPorts(node).forEach(p=>{
+        if (p.id==='out'&&OPTIONAL[node.type]) return
+        if (!edges.some(e=>e.from===node.id&&e.port===p.id))
+          issues.push(nd(node.type).label+': "'+( p.label||p.id)+'" not connected.')
       })
     })
     return issues
   }
-    const flowIssues = validateFlow()
+  const flowIssues = validateFlow()
+  const selectedNode = nodes.find(n=>n.id===selected)
+
+  // Arrow markers for each color
+  const MARKERS = [
+    {id:'aG',color:'#10B981'},{id:'aR',color:'#DC2626'},{id:'aB',color:'#3B82F6'},
+    {id:'aP',color:'#8B5CF6'},{id:'aO',color:'#F5A623'},{id:'aC',color:'#CC2200'},
+    {id:'a0',color:PORT_COLORS[0]},{id:'a1',color:PORT_COLORS[1]},{id:'a2',color:PORT_COLORS[2]},
+    {id:'a3',color:PORT_COLORS[3]},{id:'a4',color:PORT_COLORS[4]},{id:'a5',color:PORT_COLORS[5]},
+  ]
+  function markerFor(color) {
+    const m = MARKERS.find(m=>m.color===color)
+    return m ? 'url(#'+m.id+')' : 'url(#aG)'
+  }
 
   return (
-    <div style={{fontFamily:ff, height:'calc(100vh - 56px)', display:'flex', flexDirection:'column', overflow:'hidden', background:'var(--bg)'}}>
+    <div style={{fontFamily:ff,height:'calc(100vh - 56px)',display:'flex',flexDirection:'column',overflow:'hidden',background:'var(--bg)'}}>
 
-      {/* ── TOOLBAR ─────────────────────────────────────────── */}
-      <div style={{display:'flex', alignItems:'center', gap:10, padding:'8px 14px', borderBottom:'1px solid var(--border)', flexShrink:0, background:'var(--panel)', flexWrap:'wrap'}}>
-        <button onClick={function(){navigate('/calls')}}
-          style={{background:'none', border:'none', cursor:'pointer', fontSize:12, color:'var(--muted)', fontFamily:ff, display:'flex', alignItems:'center', gap:4}}>
-          ← Phone System
-        </button>
-        <div style={{width:1, height:16, background:'var(--border)'}} />
-        <div style={{fontSize:15, fontWeight:800, color:'var(--text)'}}>📞 Call Flow Builder</div>
-        <input value={flowName} onChange={function(e){setFlowName(e.target.value)}}
-          style={{padding:'5px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff, width:200}} />
-        {flowIssues.length > 0 && (
-          <div style={{display:'flex', alignItems:'center', gap:6, padding:'4px 10px', borderRadius:20, background:'#FEF2F2', border:'1px solid #FECACA', fontSize:11, color:'#DC2626', fontWeight:700}}>
+      {/* TOOLBAR */}
+      <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 14px',borderBottom:'1px solid var(--border)',flexShrink:0,background:'var(--panel)',flexWrap:'wrap'}}>
+        <button onClick={()=>navigate('/calls')} style={{background:'none',border:'none',cursor:'pointer',fontSize:12,color:'var(--muted)',fontFamily:ff}}>← Phone System</button>
+        <div style={{width:1,height:16,background:'var(--border)'}} />
+        <div style={{fontSize:15,fontWeight:800,color:'var(--text)'}}>📞 Call Flow Builder</div>
+        <input value={flowName} onChange={e=>setFlowName(e.target.value)}
+          style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff,width:200}} />
+        {flowIssues.length>0 && (
+          <div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:20,background:'#FEF2F2',border:'1px solid #FECACA',fontSize:11,color:'#DC2626',fontWeight:700}}>
             ⚠ {flowIssues.length} issue{flowIssues.length>1?'s':''}
           </div>
         )}
         <div style={{flex:1}} />
-        <button onClick={function(){setShowHelp(function(h){return !h})}}
-          style={{padding:'5px 10px', borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:ff}}>
-          {showHelp ? 'Hide help' : '? Help'}
+        <button onClick={()=>setShowHelp(h=>!h)} style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:'transparent',color:'var(--muted)',fontSize:12,cursor:'pointer',fontFamily:ff}}>
+          {showHelp?'Hide help':'? Help'}
         </button>
-        <button onClick={function(){if(window.confirm('Clear canvas? This cannot be undone.')){setNodes([{id:'start',type:'incoming',x:80,y:220,config:{}}]);setEdges([]);setSelected(null)}}}
-          style={{padding:'5px 10px', borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:ff}}>
+        <button onClick={()=>{if(window.confirm('Clear canvas?')){setNodes([{id:'start',type:'incoming',x:80,y:200,config:{}}]);setEdges([]);setSelected(null)}}}
+          style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:'transparent',color:'var(--muted)',fontSize:12,cursor:'pointer',fontFamily:ff}}>
           Clear
         </button>
         <Btn onClick={saveFlow} loading={saving}>💾 Save Flow</Btn>
       </div>
 
-      {/* ── HELP BAR ────────────────────────────────────────── */}
+      {/* HELP */}
       {showHelp && (
-        <div style={{padding:'10px 16px', background:'#EFF6FF', borderBottom:'1px solid #BFDBFE', flexShrink:0}}>
-          <div style={{display:'flex', gap:24, flexWrap:'wrap', fontSize:12, color:'#1E40AF'}}>
-            <span><strong>1.</strong> Click nodes in the palette to add them to the canvas</span>
-            <span><strong>2.</strong> Click a node to configure it in the right panel</span>
-            <span><strong>3.</strong> <strong>Drag from a colored port</strong> on the right side of a node to another node to connect them</span>
-            <span><strong>4.</strong> Click an arrow/connection to delete it</span>
-            <span><strong>5.</strong> Click × on a selected node to delete it</span>
+        <div style={{padding:'10px 16px',background:'#EFF6FF',borderBottom:'1px solid #BFDBFE',flexShrink:0}}>
+          <div style={{display:'flex',gap:24,flexWrap:'wrap',fontSize:12,color:'#1E40AF'}}>
+            <span><strong>1.</strong> Click palette nodes to add them</span>
+            <span><strong>2.</strong> Click a node to configure it on the right</span>
+            <span><strong>3.</strong> <strong>Drag from a colored dot</strong> on the right of a node → drop onto any other node to connect</span>
+            <span><strong>4.</strong> The entire target node body is a drop zone — you don't have to be precise</span>
+            <span><strong>5.</strong> Click a wire/arrow to delete it · Click × on selected node to delete node</span>
           </div>
-          {flowIssues.length > 0 && (
-            <div style={{marginTop:8, padding:'6px 10px', background:'#FEF2F2', borderRadius:6, border:'1px solid #FECACA'}}>
-              {flowIssues.map(function(issue, i){return <div key={i} style={{fontSize:11, color:'#DC2626'}}>⚠ {issue}</div>})}
+          {flowIssues.length>0 && (
+            <div style={{marginTop:8,padding:'6px 10px',background:'#FEF2F2',borderRadius:6,border:'1px solid #FECACA'}}>
+              {flowIssues.map((i,idx)=><div key={idx} style={{fontSize:11,color:'#DC2626'}}>⚠ {i}</div>)}
             </div>
           )}
         </div>
       )}
 
-      <div style={{flex:1, display:'flex', overflow:'hidden'}}>
+      <div style={{flex:1,display:'flex',overflow:'hidden'}}>
 
-        {/* ── PALETTE ─────────────────────────────────────── */}
-        <div style={{width:158, borderRight:'1px solid var(--border)', background:'var(--dim)', overflowY:'auto', flexShrink:0, padding:'8px 6px'}}>
-          {CATS.map(function(cat) {
-            const catNodes = NODE_DEFS.filter(function(n){return n.cat===cat.id && n.type!=='incoming'})
+        {/* PALETTE */}
+        <div style={{width:162,borderRight:'1px solid var(--border)',background:'var(--dim)',overflowY:'auto',flexShrink:0,padding:'8px 6px'}}>
+          {CATS.map(cat => {
+            const catNodes = NODE_DEFS.filter(n=>n.cat===cat.id&&n.type!=='incoming')
             return (
               <div key={cat.id} style={{marginBottom:6}}>
-                <div style={{fontSize:9, fontWeight:700, color:cat.color, textTransform:'uppercase', letterSpacing:'.08em', padding:'6px 8px 4px'}}>
-                  {cat.label}
-                </div>
-                {catNodes.map(function(t) {
-                  return (
-                    <div key={t.type} onClick={function(){addNode(t.type)}}
-                      style={{display:'flex', alignItems:'center', gap:7, padding:'7px 9px', borderRadius:8, cursor:'pointer', marginBottom:2, border:'1px solid transparent', background:'var(--panel)', transition:'all .12s'}}
-                      onMouseEnter={function(e){e.currentTarget.style.borderColor=t.color; e.currentTarget.style.background=t.color+'14'}}
-                      onMouseLeave={function(e){e.currentTarget.style.borderColor='transparent'; e.currentTarget.style.background='var(--panel)'}}>
-                      <span style={{fontSize:15}}>{t.icon}</span>
-                      <span style={{fontSize:11, fontWeight:700, color:'var(--text)', lineHeight:1.3}}>{t.label}</span>
-                    </div>
-                  )
-                })}
+                <div style={{fontSize:9,fontWeight:700,color:cat.color,textTransform:'uppercase',letterSpacing:'.08em',padding:'6px 8px 4px'}}>{cat.label}</div>
+                {catNodes.map(t => (
+                  <div key={t.type} onClick={()=>addNode(t.type)}
+                    style={{display:'flex',alignItems:'center',gap:7,padding:'7px 9px',borderRadius:8,cursor:'pointer',marginBottom:2,border:'1px solid transparent',background:'var(--panel)',transition:'all .12s'}}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor=t.color;e.currentTarget.style.background=t.color+'14'}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor='transparent';e.currentTarget.style.background='var(--panel)'}}>
+                    <span style={{fontSize:15}}>{t.icon}</span>
+                    <span style={{fontSize:11,fontWeight:700,color:'var(--text)',lineHeight:1.3}}>{t.label}</span>
+                  </div>
+                ))}
               </div>
             )
           })}
         </div>
 
-        {/* ── CANVAS ──────────────────────────────────────── */}
-        <div style={{flex:1, position:'relative', overflow:'hidden', cursor: dragWire.current ? 'crosshair' : 'default'}}>
+        {/* CANVAS */}
+        <div style={{flex:1,position:'relative',overflow:'hidden',cursor:isDragging?(dragWire.current?'crosshair':'grabbing'):'default'}}>
 
-          {/* Grid background */}
-          <svg style={{position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none', zIndex:0}}>
+          {/* Grid bg */}
+          <svg style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:0}}>
             <defs>
-              <pattern id="cfgrid" width={30} height={30} patternUnits="userSpaceOnUse">
-                <path d="M 30 0 L 0 0 0 30" fill="none" stroke="var(--border)" strokeWidth={0.6} />
+              <pattern id="cfgrid" width={28} height={28} patternUnits="userSpaceOnUse">
+                <path d="M 28 0 L 0 0 0 28" fill="none" stroke="var(--border)" strokeWidth={0.5} />
               </pattern>
             </defs>
             <rect width="100%" height="100%" fill="url(#cfgrid)" />
           </svg>
 
-          {/* Main SVG canvas */}
-          <svg
-            ref={svgRef}
-            style={{position:'absolute', inset:0, width:'100%', height:'100%', overflow:'visible', zIndex:1, userSelect:'none'}}
+          {/* Main SVG */}
+          <svg ref={svgRef}
+            style={{position:'absolute',inset:0,width:'100%',height:'100%',overflow:'visible',zIndex:1,userSelect:'none'}}
             onMouseMove={onSvgMouseMove}
             onMouseUp={onSvgMouseUp}
             onMouseLeave={onSvgMouseUp}
-            onClick={onSvgClick}
-          >
+            onClick={onSvgClick}>
+
             <defs>
-              <marker id="arrowG" markerWidth={8} markerHeight={8} refX={6} refY={3} orient="auto">
-                <path d="M 0 0 L 6 3 L 0 6 z" fill="#10B981" />
-              </marker>
-              <marker id="arrowR" markerWidth={8} markerHeight={8} refX={6} refY={3} orient="auto">
-                <path d="M 0 0 L 6 3 L 0 6 z" fill="#DC2626" />
-              </marker>
-              <marker id="arrowB" markerWidth={8} markerHeight={8} refX={6} refY={3} orient="auto">
-                <path d="M 0 0 L 6 3 L 0 6 z" fill="#3B82F6" />
-              </marker>
-              <marker id="arrowN" markerWidth={8} markerHeight={8} refX={6} refY={3} orient="auto">
-                <path d="M 0 0 L 6 3 L 0 6 z" fill="#94A3B8" />
-              </marker>
-              <marker id="arrowP" markerWidth={8} markerHeight={8} refX={6} refY={3} orient="auto">
-                <path d="M 0 0 L 6 3 L 0 6 z" fill="#8B5CF6" />
-              </marker>
+              {MARKERS.map(m=>(
+                <marker key={m.id} id={m.id} markerWidth={8} markerHeight={8} refX={7} refY={3} orient="auto">
+                  <path d="M 0 0 L 7 3 L 0 6 z" fill={m.color} />
+                </marker>
+              ))}
             </defs>
 
             {/* Edges */}
-            {edges.map(function(edge) {
-              const fromNode = nodes.find(function(n){return n.id===edge.from})
-              const toNode   = nodes.find(function(n){return n.id===edge.to})
-              const path = edgePath(edge.from, edge.port, edge.to, nodes)
+            {edges.map(edge => {
+              const fn = nodes.find(n=>n.id===edge.from)
+              const tn = nodes.find(n=>n.id===edge.to)
+              const path = edgePath(fn, edge.port, tn)
               if (!path) return null
-              const color = edgeColor(edge.port, fromNode)
-              const label = edgeLabel(edge.port, fromNode)
-              const markerColor = color === '#10B981' ? '#arrowG' : color === '#DC2626' ? '#arrowR' : color === '#3B82F6' ? '#arrowB' : color === '#8B5CF6' ? '#arrowP' : '#arrowN'
-              // Midpoint for label
-              const mx = fromNode && toNode ? (fromNode.x + NW + toNode.x) / 2 : 0
-              const my = fromNode && toNode ? (fromNode.y + toNode.y) / 2 + NH / 2 : 0
+              const color = eColor(edge.port, fn)
+              const label = eLabel(edge.port, fn)
+              const mx = fn&&tn ? (fn.x+NW+tn.x)/2 : 0
+              const my = fn&&tn ? (fn.y+tn.y)/2+NH/2 : 0
               return (
                 <g key={edge.id}>
-                  {/* Fat invisible hit zone */}
-                  <path d={path} fill="none" stroke="transparent" strokeWidth={16} style={{cursor:'pointer'}}
-                    onClick={function(e){e.stopPropagation(); deleteEdge(edge.id)}} />
-                  {/* Visible path */}
-                  <path d={path} fill="none" stroke={color} strokeWidth={2.5} opacity={0.85} markerEnd={'url(' + markerColor + ')'} />
-                  {/* Label pill */}
+                  {/* Fat hit zone */}
+                  <path d={path} fill="none" stroke="transparent" strokeWidth={20} style={{cursor:'pointer'}}
+                    onClick={e=>{e.stopPropagation();deleteEdge(edge.id)}} />
+                  {/* Visible wire */}
+                  <path d={path} fill="none" stroke={color} strokeWidth={2.5} opacity={0.88} markerEnd={markerFor(color)} />
+                  {/* Label */}
                   {label && (
                     <g>
-                      <rect x={mx-36} y={my-9} width={72} height={18} rx={9} fill={color} opacity={0.92} />
-                      <text x={mx} y={my+4} textAnchor="middle" fontSize={9} fontWeight={700} fill="#fff" fontFamily={ff}>{label}</text>
+                      <rect x={mx-38} y={my-10} width={76} height={20} rx={10} fill={color} opacity={0.92} />
+                      <text x={mx} y={my+5} textAnchor="middle" fontSize={9} fontWeight={700} fill="#fff" fontFamily={ff}>{label}</text>
                     </g>
                   )}
                 </g>
               )
             })}
 
-            {/* Live wire preview while dragging */}
+            {/* Live wire */}
             {dragWire.current && wirePos && (
-              <path d={livePath()} fill="none" stroke="#CC2200" strokeWidth={2.5} strokeDasharray="8 4" opacity={0.7} />
+              <path d={livePath()} fill="none" stroke="#CC2200" strokeWidth={2.5} strokeDasharray="8 4" opacity={0.75} />
             )}
 
             {/* Nodes */}
-            {nodes.map(function(node) {
-              return (
-                <g key={node.id} data-nid={node.id}>
-                  <FlowNode
-                    node={node}
-                    selected={selected === node.id}
-                    agents={agents || []}
-                    connectedPorts={connectedPorts}
-                    dragPort={activeDragPort}
-                    onMouseDownNode={onMouseDownNode}
-                    onMouseDownPort={onMouseDownPort}
-                    onClickNode={onClickNode}
-                  />
-                </g>
-              )
-            })}
+            {nodes.map(node => (
+              <g key={node.id}>
+                <FlowNode
+                  node={node}
+                  selected={selected===node.id}
+                  agents={agents||[]}
+                  connectedPorts={connectedPorts}
+                  dragPort={actPort}
+                  onMouseDownNode={onMouseDownNode}
+                  onMouseDownPort={onMouseDownPort}
+                  onPortDrop={onPortDrop}
+                  onClickNode={onClickNode}
+                />
+              </g>
+            ))}
           </svg>
 
-          {/* Wire hint */}
+          {/* Drop hint */}
           {dragWire.current && wirePos && (
-            <div style={{position:'absolute', top:14, left:'50%', transform:'translateX(-50%)', padding:'7px 18px', borderRadius:20, background:'#CC2200', color:'#fff', fontSize:12, fontWeight:700, zIndex:10, pointerEvents:'none', boxShadow:'0 4px 16px rgba(0,0,0,.25)', whiteSpace:'nowrap'}}>
-              Release over a node to connect
+            <div style={{position:'absolute',top:14,left:'50%',transform:'translateX(-50%)',padding:'7px 20px',borderRadius:20,background:'#CC2200',color:'#fff',fontSize:12,fontWeight:700,zIndex:10,pointerEvents:'none',boxShadow:'0 4px 16px rgba(0,0,0,.25)',whiteSpace:'nowrap'}}>
+              Drop onto any node to connect
             </div>
           )}
 
-          {/* Empty state */}
-          {nodes.length <= 1 && (
-            <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none'}}>
-              <div style={{textAlign:'center', padding:40, opacity:0.35}}>
-                <div style={{fontSize:40, marginBottom:12}}>🔀</div>
-                <div style={{fontSize:15, fontWeight:800, color:'var(--text)', marginBottom:6}}>Start building your call flow</div>
-                <div style={{fontSize:13, color:'var(--muted)'}}>Click any node in the palette on the left to add it</div>
+          {/* Empty */}
+          {nodes.length<=1 && (
+            <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+              <div style={{textAlign:'center',padding:40,opacity:0.35}}>
+                <div style={{fontSize:40,marginBottom:12}}>🔀</div>
+                <div style={{fontSize:15,fontWeight:800,color:'var(--text)',marginBottom:6}}>Build your call flow</div>
+                <div style={{fontSize:13,color:'var(--muted)'}}>Click nodes in the left panel to add them</div>
               </div>
             </div>
           )}
         </div>
 
-        {/* ── CONFIG PANEL ────────────────────────────────── */}
+        {/* CONFIG PANEL */}
         {selectedNode && (
-          <ConfigPanel
-            node={selectedNode}
-            agents={agents || []}
-            onSave={updateCfg}
-            onClose={function(){setSelected(null)}}
-          />
+          <ConfigPanel node={selectedNode} agents={agents||[]} onSave={updateCfg} onClose={()=>setSelected(null)} />
         )}
       </div>
     </div>

@@ -19,9 +19,9 @@ function getRawBody(req) {
 }
 
 const wrap = (xml) => '<?xml version="1.0" encoding="UTF-8"?><Response>' + xml + '</Response>'
-const say  = (t)   => '<Say voice="Polly.Joanna">' + t + '</Say>'
-const vmXml = (greeting) =>
-  say(greeting || 'Please leave your message after the tone.') +
+const say  = (t, voice) => '<Say voice="' + (voice || 'Polly.Joanna') + '">' + t + '</Say>'
+const vmXml = (greeting, voice) =>
+  say(greeting || 'Please leave your message after the tone.', voice) +
   '<Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />'
 
 // ── FLOW WALKER ──────────────────────────────────────────────
@@ -40,7 +40,7 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 
   // ── GREETING ─────────────────────────────────────────────
   if (node.type === 'greeting') {
-    twiml += say(cfg.text || 'Thank you for calling.')
+    twiml += say(cfg.text || 'Thank you for calling.', cfg.voice)
     nextEdge = edges.find(function(e) { return e.from === nodeId && e.port === 'out' })
     if (nextEdge) twiml += await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth + 1)
     return twiml
@@ -164,6 +164,41 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
     nextEdge = edges.find(function(e) { return e.from === nodeId && e.port === 'out' })
     if (nextEdge) return await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth + 1)
     return ''
+  }
+
+  // ── HOLD MUSIC ───────────────────────────────────────────
+  if (node.type === 'hold') {
+    var HOLDURLS = { classical:'https://demo.twilio.com/docs/classic.mp3', jazz:'https://demo.twilio.com/docs/jazz.mp3', pop:'http://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP-Borghestral.mp3', silence:'https://demo.twilio.com/docs/silence.mp3' }
+    var holdVoice = cfg.voice || 'Polly.Joanna'
+    var musicId   = cfg.music || 'twilio'
+    var musicUrl  = musicId === 'custom' ? (cfg.custom_url||'') : (HOLDURLS[musicId]||'')
+    var holdDur   = cfg.duration || 30
+    if (cfg.say_first) twiml += say(cfg.say_first, holdVoice)
+    if (musicUrl) { twiml += '<Play loop="' + Math.max(1, Math.ceil(holdDur/30)) + '">' + musicUrl + '</Play>' }
+    else { twiml += '<Pause length="' + holdDur + '" />' }
+    nextEdge = edges.find(function(e) { return e.from === nodeId && e.port === 'out' })
+    if (nextEdge) twiml += await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth + 1)
+    return twiml
+  }
+
+  // ── CUSTOM AUDIO ──────────────────────────────────────────
+  if (node.type === 'audio') {
+    var audioVoice = cfg.voice || 'Polly.Joanna'
+    if (cfg.say_first) twiml += say(cfg.say_first, audioVoice)
+    if (cfg.url) twiml += '<Play loop="' + (cfg.loop||1) + '">' + cfg.url + '</Play>'
+    nextEdge = edges.find(function(e) { return e.from === nodeId && e.port === 'out' })
+    if (nextEdge) twiml += await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth + 1)
+    return twiml
+  }
+
+  // ── LANGUAGE SELECT ───────────────────────────────────────
+  if (node.type === 'language') {
+    var langCtx = encodeURIComponent(JSON.stringify({ nodes: nodes, edges: edges, menuNodeId: nodeId }))
+    twiml += '<Gather numDigits="1" action="/api/twilio-menu?ctx=' + langCtx + '" method="POST" timeout="' + (cfg.timeout || 10) + '">'
+    twiml += say(cfg.prompt || 'For English press 1.', cfg.voice)
+    twiml += '</Gather>'
+    twiml += say('We did not receive your selection. Goodbye.', cfg.voice)
+    return twiml
   }
 
   // ── SMS ──────────────────────────────────────────────────
