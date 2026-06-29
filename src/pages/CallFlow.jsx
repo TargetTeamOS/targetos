@@ -351,7 +351,7 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
       <div style={{padding:'13px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:10,background:def.color,flexShrink:0}}>
         <span style={{fontSize:20}}>{def.icon}</span>
         <div style={{flex:1,fontSize:14,fontWeight:800,color:'#fff'}}>{def.label}</div>
-        <button onClick={onClose} style={{background:'rgba(255,255,255,.2)',border:'none',cursor:'pointer',color:'#fff',fontSize:18,borderRadius:6,width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+        <button onClick={()=>{onSave(node.id,cfg);onClose()}} title='Save & close' style={{background:'rgba(255,255,255,.2)',border:'none',cursor:'pointer',color:'#fff',fontSize:18,borderRadius:6,width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
       </div>
 
       <div style={{flex:1,overflowY:'auto',padding:16}}>
@@ -678,6 +678,7 @@ export function CallFlow() {
   const [flowName,  setFlowName]  = useState('Main Call Flow')
   const [savedId,   setSavedId]   = useState(null)
   const [saving,    setSaving]    = useState(false)
+  const [dirty,     setDirty]     = useState(false)
   const [testPhone, setTestPhone] = useState('')
   const [testing,   setTesting]   = useState(false)
   const [showTest,  setShowTest]  = useState(false)
@@ -737,6 +738,7 @@ export function CallFlow() {
         }
       }
       toast('✅ Flow saved — ' + flowName)
+      setDirty(false)
     } catch(e) {
       console.error('saveFlow:', e)
       toast('Save failed: ' + e.message, '#DC2626')
@@ -769,20 +771,29 @@ export function CallFlow() {
   function addNode(type) {
     const id = 'n'+(++nextId.current)
     setNodes(p=>p.concat([{id,type,x:300+Math.random()*240,y:60+Math.random()*320,config:defCfg(type)}]))
+    setDirty(true)
   }
   function deleteNode(id) {
     setNodes(p=>p.filter(n=>n.id!==id))
     setEdges(p=>p.filter(e=>e.from!==id&&e.to!==id))
     setSelected(null)
+    setDirty(true)
   }
-  function updateCfg(id, cfg) {
-    setNodes(p=>p.map(n=>n.id===id?{...n,config:cfg}:n))
-    setEdges(prev=>{
-      const node=nodes.find(n=>n.id===id)
-      if (!node||(node.type!=='menu'&&node.type!=='language')) return prev
-      const valid=(cfg.options||[]).map(o=>'key_'+o.key)
-      return prev.filter(e=>e.from!==id||!e.port.startsWith('key_')||valid.includes(e.port))
+  function updateCfg(id, newCfg) {
+    // Update nodes — use functional update to avoid stale closure
+    setNodes(p => p.map(n => n.id === id ? {...n, config: newCfg} : n))
+    // Clean up edges for menu/language nodes if options changed
+    setEdges(prev => {
+      const node = prev.length > 0 ? null : null  // don't use stale nodes here
+      // We'll pass the node type through a ref instead
+      const valid = (newCfg.options || []).map(o => 'key_' + o.key)
+      return prev.filter(e => {
+        if (e.from !== id) return true
+        if (!e.port.startsWith('key_')) return true
+        return valid.includes(e.port)
+      })
     })
+    setDirty(true)
   }
 
   // ── MOUSE HELPERS ─────────────────────────────────────────────
@@ -836,6 +847,7 @@ export function CallFlow() {
       const filtered = prev.filter(e=>!(e.from===fromId&&e.port===portId))
       return filtered.concat([{id:eid, from:fromId, port:portId, to:toId}])
     })
+    setDirty(true)
     dragWire.current = null
     setWirePos(null)
     setActPort(null)
@@ -946,7 +958,12 @@ export function CallFlow() {
           style={{ padding:'8px 14px', borderRadius:8, border:'1px solid #10B981', background:'rgba(16,185,129,.1)', color:'#10B981', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
           📞 Test Call
         </button>
-        <Btn onClick={saveFlow} loading={saving}>💾 Save Flow</Btn>
+        {dirty && (
+          <div style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 10px', borderRadius:7, background:'rgba(245,166,35,.15)', border:'1px solid rgba(245,166,35,.4)', fontSize:11, color:'#D97706', fontWeight:700 }}>
+            ● Unsaved changes
+          </div>
+        )}
+        <Btn onClick={saveFlow} loading={saving} style={{ background: dirty ? '#CC2200' : undefined }}>💾 Save Flow</Btn>
       </div>
 
       {/* HELP */}

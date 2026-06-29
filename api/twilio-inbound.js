@@ -289,11 +289,17 @@ module.exports = async function handler(req, res) {
 
     var callData = { from: from, to: to, callSid: callSid, contact: contact, isRepeat: isRepeat }
 
-    // Load the active flow
+    // Load the active flow — try is_active=true first, fall back to most recent saved
     var flowRes = await supabase.from('phone_ivr').select('*').eq('is_active', true).maybeSingle()
     var flow    = flowRes.data
+    if (!flow) {
+      // Fall back: load the most recently updated flow regardless of is_active
+      var fallbackRes = await supabase.from('phone_ivr').select('*').order('updated_at', {ascending: false}).limit(1).maybeSingle()
+      flow = fallbackRes.data || null
+    }
 
     // If flow has visual nodes — walk them
+    console.log('Flow found:', flow ? flow.name : 'none', 'nodes:', flow && flow.flow_nodes ? flow.flow_nodes.length : 0)
     if (flow && flow.flow_nodes && flow.flow_nodes.length > 1) {
       var startNode = flow.flow_nodes.find(function(n) { return n.type === 'incoming' })
       if (startNode) {
