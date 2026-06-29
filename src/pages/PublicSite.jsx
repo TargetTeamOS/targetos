@@ -3,7 +3,7 @@
 // Pulls live MLS data from OneKey via SimplyRETS
 // All content editable from CRM Website Builder
 import React, { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 
@@ -149,7 +149,7 @@ function PublicNav({ s, active }) {
         </div>
 
         {/* CTA */}
-        <a href={`tel:${(s?.settings?.phone || '8454241014').replace(/\D/g,'')}`}
+        <a href={"tel:" + (s?.settings?.phone || "8454241014").replace(/[^0-9]/g,"")}
           style={{ marginLeft: 'auto', padding: '8px 18px', borderRadius: 8, background: accent, color: '#fff', fontSize: 13, fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap' }}>
           📞 {s?.settings?.phone || '845.424.1014'}
         </a>
@@ -190,8 +190,8 @@ function PublicFooter({ s }) {
           </div>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Follow Us</div>
-            {s?.settings?.facebook && <a href={`https://facebook.com/${s.settings.facebook}`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,.55)', textDecoration: 'none', marginBottom: 8 }}>📘 Facebook</a>}
-            {s?.settings?.instagram && <a href={`https://instagram.com/${s.settings.instagram}`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,.55)', textDecoration: 'none', marginBottom: 8 }}>📸 Instagram</a>}
+            {s?.settings?.facebook && <a href={'https://facebook.com/' + s.settings.facebook} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,.55)', textDecoration: 'none', marginBottom: 8 }}>📘 Facebook</a>}
+            {s?.settings?.instagram && <a href={'https://instagram.com/' + s.settings.instagram} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,.55)', textDecoration: 'none', marginBottom: 8 }}>📸 Instagram</a>}
             <Link to="/public/contact" style={{ display: 'inline-block', marginTop: 12, padding: '8px 18px', borderRadius: 8, background: accent, color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>Contact Us</Link>
           </div>
         </div>
@@ -216,7 +216,7 @@ function ListingCard({ listing, accent }) {
   const sc    = status === 'Active' ? '#10B981' : status === 'Pending' ? '#F5A623' : accent
 
   return (
-    <Link to={`/public/listing/${listing.mlsId}`} style={{ textDecoration: 'none', display: 'block' }}>
+    <Link to={'/public/listing/' + listing.mlsId} style={{ textDecoration: 'none', display: 'block' }}>
       <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,.08)', transition: 'transform .2s, box-shadow .2s' }}
         onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,.14)' }}
         onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,.08)' }}>
@@ -272,7 +272,7 @@ export function PublicHome() {
 
       {/* HERO */}
       <div style={{
-        background: hero.bgImage ? `url(${hero.bgImage}) center/cover no-repeat` : `linear-gradient(135deg, ${navy} 0%, ${accent} 100%)`,
+        background: hero.bgImage ? 'url(' + hero.bgImage + ') center/cover no-repeat' : 'linear-gradient(135deg, ' + navy + ' 0%, ' + accent + ' 100%)',
         padding: '80px 20px 60px', textAlign: 'center', position: 'relative', overflow: 'hidden',
       }}>
         {/* Overlay if bg image */}
@@ -294,12 +294,12 @@ export function PublicHome() {
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && navigate(`/public/listings?q=${encodeURIComponent(search)}`)}
+                onKeyDown={e => e.key === 'Enter' && navigate('/public/listings?q=' + encodeURIComponent(search))}
                 placeholder="City, address, or MLS#..."
                 style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, fontFamily: 'inherit', background: 'transparent', color: '#1E293B' }}
               />
               <button
-                onClick={() => navigate(`/public/listings?q=${encodeURIComponent(search)}`)}
+                onClick={() => navigate('/public/listings?q=' + encodeURIComponent(search))}
                 style={{ padding: '10px 22px', borderRadius: 9, border: 'none', background: accent, color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 🔍 Search
               </button>
@@ -376,7 +376,7 @@ export function PublicHome() {
 
       {/* TESTIMONIALS */}
       {testimonials.length > 0 && (
-        <div style={{ background: `linear-gradient(135deg, ${navy}, ${navy}EE)`, padding: '60px 20px' }}>
+        <div style={{ background: 'linear-gradient(135deg, ' + navy + ', ' + navy + 'EE)', padding: '60px 20px' }}>
           <div style={{ maxWidth: 1100, margin: '0 auto' }}>
             <div style={{ textAlign: 'center', marginBottom: 40 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 8 }}>What Our Clients Say</div>
@@ -400,7 +400,7 @@ export function PublicHome() {
         <h2 style={{ fontSize: 28, fontWeight: 900, color: '#fff', marginBottom: 8 }}>Ready to Find Your Dream Home?</h2>
         <p style={{ fontSize: 15, color: 'rgba(255,255,255,.8)', marginBottom: 24 }}>Contact us today for a free consultation.</p>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <a href={`tel:${(settings.phone||'').replace(/\D/g,'')}`}
+          <a href={'tel:' + (settings.phone||'').replace(/[^0-9]/g,'')}
             style={{ padding: '12px 28px', borderRadius: 10, background: '#fff', color: accent, fontSize: 14, fontWeight: 800, textDecoration: 'none' }}>
             📞 Call Now
           </a>
@@ -424,9 +424,9 @@ export function PublicListings() {
   const navy     = settings.secondaryColor || '#1B2B4B'
 
   const navigate = useNavigate()
-  const urlParams = new URLSearchParams(window.location.search)
+  const [searchParams] = useSearchParams()
 
-  const [query,    setQuery]    = useState(urlParams.get('q') || '')
+  const [query,    setQuery]    = useState(searchParams.get('q') || '')
   const [city,     setCity]     = useState('')
   const [minBeds,  setMinBeds]  = useState('')
   const [minPrice, setMinPrice] = useState('')
@@ -452,7 +452,7 @@ export function PublicListings() {
             {status === 'Active' ? '🏡 Available Listings' : '🏆 Sold Properties'}
           </h1>
           <p style={{ fontSize: 14, color: 'rgba(255,255,255,.55)', marginBottom: 0 }}>
-            {total > 0 ? `${total.toLocaleString()} ${status.toLowerCase()} properties` : 'Search the OneKey MLS'}
+            {total > 0 ? total.toLocaleString() + ' ' + status.toLowerCase() + ' properties' : 'Search the OneKey MLS'}
           </p>
         </div>
       </div>
@@ -551,7 +551,7 @@ export function PublicListingDetail() {
 
   useEffect(() => {
     if (!id) return
-    fetch(`https://api.simplyrets.com/properties/${id}`, {
+    fetch('https://api.simplyrets.com/properties/' + id, {
       headers: { 'Authorization': 'Basic ' + btoa(MLS_USER + ':' + MLS_PASS) }
     }).then(r => r.json())
       .then(data => setListing(data))
@@ -606,7 +606,7 @@ export function PublicListingDetail() {
       phone:      form.phone,
       source:     'Website Inquiry',
       status:     'New',
-      notes:      `Inquiry about ${street}: ${form.message}`,
+      notes:      'Inquiry about ' + street + ': ' + form.message,
       created_at: new Date().toISOString(),
     }).catch(() => {})
   }
@@ -643,7 +643,7 @@ export function PublicListingDetail() {
           <div style={{ display: 'flex', gap: 6, marginBottom: 24, overflowX: 'auto' }}>
             {photos.map((ph, i) => (
               <img key={i} src={ph} alt="" onClick={() => setPhotoIdx(i)}
-                style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 6, cursor: 'pointer', border: photoIdx===i?`2px solid ${accent}`:'2px solid transparent', flexShrink: 0 }} />
+                style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 6, cursor: 'pointer', border: photoIdx===i ? '2px solid ' + accent : '2px solid transparent', flexShrink: 0 }} />
             ))}
           </div>
         )}
@@ -699,7 +699,7 @@ export function PublicListingDetail() {
                 <div style={{ borderRadius: 12, overflow: 'hidden', height: 300 }}>
                   <iframe
                     title="map"
-                    src={`https://www.google.com/maps/embed/v1/place?key=${GKEY}&q=${listing.geo.lat},${listing.geo.lng}&zoom=15`}
+                    src={"https://www.google.com/maps/embed/v1/place?key=" + GKEY + "&q=" + listing.geo.lat + "," + listing.geo.lng + "&zoom=15"}
                     style={{ width: '100%', height: '100%', border: 'none' }}
                   />
                 </div>
@@ -728,7 +728,7 @@ export function PublicListingDetail() {
                       style={{ display: 'block', width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 13, fontFamily: 'inherit', marginBottom: 8, boxSizing: 'border-box', color: '#1E293B', outline: 'none' }} />
                   ))}
                   <textarea value={form.message} onChange={e => setForm(f => ({...f, message: e.target.value}))}
-                    placeholder={`I'm interested in ${street}...`} rows={3}
+                    placeholder={'I am interested in ' + street + '...'} rows={3}
                     style={{ display: 'block', width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 12, boxSizing: 'border-box', color: '#1E293B', outline: 'none' }} />
                   <button onClick={submitInquiry}
                     style={{ width: '100%', padding: 13, borderRadius: 9, border: 'none', background: accent, color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -744,11 +744,11 @@ export function PublicListingDetail() {
               )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
-                <a href={`tel:${(settings.phone||'').replace(/\D/g,'')}`}
-                  style={{ padding: '10px', borderRadius: 8, border: `1px solid ${accent}`, color: accent, fontSize: 13, fontWeight: 700, textDecoration: 'none', textAlign: 'center' }}>
+                <a href={'tel:' + (settings.phone||'').replace(/[^0-9]/g,'')}
+                  style={{ padding: '10px', borderRadius: 8, border: '1px solid ' + accent, color: accent, fontSize: 13, fontWeight: 700, textDecoration: 'none', textAlign: 'center' }}>
                   📞 Call
                 </a>
-                <a href={`https://wa.me/${(settings.phone||'').replace(/\D/g,'')}`} target="_blank" rel="noopener noreferrer"
+                <a href={'https://wa.me/' + (settings.phone||'').replace(/[^0-9]/g,'')} target="_blank" rel="noopener noreferrer"
                   style={{ padding: '10px', borderRadius: 8, border: '1px solid #25D366', color: '#25D366', fontSize: 13, fontWeight: 700, textDecoration: 'none', textAlign: 'center' }}>
                   💬 WhatsApp
                 </a>
@@ -759,7 +759,7 @@ export function PublicListingDetail() {
             {(agent.firstName || settings.logoText) && (
               <div style={{ background: navy, borderRadius: 14, padding: 16, textAlign: 'center' }}>
                 <div style={{ width: 52, height: 52, borderRadius: '50%', background: accent, margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 900, color: '#fff' }}>TT</div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{agent.firstName ? `${agent.firstName} ${agent.lastName}` : 'Target Team'}</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{agent.firstName ? agent.firstName + ' ' + agent.lastName : 'Target Team'}</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)', marginTop: 3 }}>KW Valley Realty</div>
               </div>
             )}
@@ -864,7 +864,7 @@ export function PublicContact() {
       phone:      form.phone,
       source:     'Website Contact Form',
       status:     'New',
-      notes:      `Looking to: ${form.type}\n\n${form.message}`,
+      notes:      'Looking to: ' + form.type + '\n\n' + form.message,
       created_at: new Date().toISOString(),
     }).catch(() => {})
     setSent(true)
@@ -888,8 +888,8 @@ export function PublicContact() {
         <div>
           <h2 style={{ fontSize: 24, fontWeight: 800, color: '#1E293B', marginBottom: 24 }}>Contact Information</h2>
           {[
-            ['📞', 'Phone', settings.phone, `tel:${(settings.phone||'').replace(/\D/g,'')}`],
-            ['📧', 'Email', settings.email, `mailto:${settings.email}`],
+            ['📞', 'Phone', settings.phone, 'tel:' + (settings.phone||'').replace(/[^0-9]/g,'')],
+            ['📧', 'Email', settings.email, "mailto:" + settings.email],
             ['📍', 'Location', settings.address, null],
           ].filter(([,,v]) => v).map(([icon, label, value, href]) => (
             <div key={label} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 20 }}>
@@ -907,13 +907,13 @@ export function PublicContact() {
           {/* Social */}
           <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
             {settings.facebook && (
-              <a href={`https://facebook.com/${settings.facebook}`} target="_blank" rel="noopener noreferrer"
+              <a href={'https://facebook.com/' + settings.facebook} target="_blank" rel="noopener noreferrer"
                 style={{ padding: '10px 18px', borderRadius: 9, background: '#1877F2', color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
                 📘 Facebook
               </a>
             )}
             {settings.instagram && (
-              <a href={`https://instagram.com/${settings.instagram}`} target="_blank" rel="noopener noreferrer"
+              <a href={'https://instagram.com/' + settings.instagram} target="_blank" rel="noopener noreferrer"
                 style={{ padding: '10px 18px', borderRadius: 9, background: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)', color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
                 📸 Instagram
               </a>

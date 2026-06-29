@@ -138,25 +138,24 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
     const win = window.open('', '_blank')
     const rows = shortlist.map(l => {
       const p = l.property || {}
-      return `<tr>
-        <td style="padding:10px;border-bottom:1px solid #eee">
-          <strong style="font-size:14px">${mlsFullAddr(l)}</strong><br/>
-          <span style="color:#666;font-size:12px">MLS# ${l.mlsId || '—'}</span>
-        </td>
-        <td style="padding:10px;border-bottom:1px solid #eee;font-weight:800;font-size:15px">${fmt$(l.listPrice)}</td>
-        <td style="padding:10px;border-bottom:1px solid #eee;font-size:12px;color:#555">${[p.bedrooms&&p.bedrooms+' bd', p.bathsFull&&p.bathsFull+' ba', p.area&&Number(p.area).toLocaleString()+' sqft'].filter(Boolean).join(' · ')}</td>
-        <td style="padding:10px;border-bottom:1px solid #eee;font-size:11px;color:#888">${l.remarks?l.remarks.slice(0,120)+'...':''}</td>
-      </tr>`
+      var beds = [p.bedrooms&&p.bedrooms+' bd', p.bathsFull&&p.bathsFull+' ba', p.area&&Number(p.area).toLocaleString()+' sqft'].filter(Boolean).join(' · ')
+      return '<tr>' +
+        '<td style="padding:10px;border-bottom:1px solid #eee"><strong style="font-size:14px">' + mlsFullAddr(l) + '</strong><br/><span style="color:#666;font-size:12px">MLS# ' + (l.mlsId||'—') + '</span></td>' +
+        '<td style="padding:10px;border-bottom:1px solid #eee;font-weight:800;font-size:15px">' + fmt$(l.listPrice) + '</td>' +
+        '<td style="padding:10px;border-bottom:1px solid #eee;font-size:12px;color:#555">' + beds + '</td>' +
+        '<td style="padding:10px;border-bottom:1px solid #eee;font-size:11px;color:#888">' + (l.remarks?l.remarks.slice(0,120)+'...':'') + '</td>' +
+        '</tr>'
     }).join('')
-    win.document.write(`<!DOCTYPE html><html><head><title>Property Shortlist — Target Team</title>
-      <style>body{font-family:Arial,sans-serif;padding:30px;color:#1a1a1a}h1{font-size:20px;margin-bottom:4px}p{color:#888;font-size:13px;margin-bottom:24px}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;background:#1B2B4B;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:.06em}@media print{button{display:none}}</style>
-    </head><body>
-      <h1>🏡 Property Shortlist</h1>
-      <p>Target Team · KW Valley Realty · ${new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
-      <table><thead><tr><th>Address</th><th>Price</th><th>Details</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>
-      <div style="margin-top:30px;font-size:11px;color:#aaa">Target Team · KW Valley Realty · 845.424.1014 · @thetargetteam</div>
-      <script>window.onload=function(){window.print()}</script>
-    </body></html>`)
+    var html = '<!DOCTYPE html><html><head><title>Property Shortlist - Target Team</title>' +
+      '<style>body{font-family:Arial,sans-serif;padding:30px;color:#1a1a1a}h1{font-size:20px;margin-bottom:4px}p{color:#888;font-size:13px;margin-bottom:24px}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;background:#1B2B4B;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:.06em}@media print{button{display:none}}</style>' +
+      '</head><body>' +
+      '<h1>Property Shortlist</h1>' +
+      '<p>Target Team - KW Valley Realty - ' + new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) + '</p>' +
+      '<table><thead><tr><th>Address</th><th>Price</th><th>Details</th><th>Notes</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>' +
+      '<div style="margin-top:30px;font-size:11px;color:#aaa">Target Team - KW Valley Realty - 845.424.1014 - @thetargetteam</div>' +
+      '<script>window.onload=function(){window.print()}<\/script>' +
+      '</body></html>'
+    win.document.write(html)
     win.document.close()
   }
 
