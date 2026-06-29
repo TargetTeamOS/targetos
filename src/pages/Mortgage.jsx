@@ -5,10 +5,11 @@ import React, { useState, useMemo } from 'react'
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 const TABS = [
-  { id:'mortgage',  label:'🏦 Mortgage',       desc:'Monthly payment calculator' },
-  { id:'closing',   label:'📋 Closing Costs',  desc:'Buyer & seller net sheets' },
-  { id:'pnl',       label:'💰 Agent P&L',       desc:'Commission & profit breakdown' },
-  { id:'deal',      label:'📊 Deal Analyzer',   desc:'Full deal side-by-side' },
+  { id:'mortgage',    label:'🏦 Mortgage',       desc:'Monthly payment calculator' },
+  { id:'closing',     label:'📋 Closing Costs',  desc:'Buyer & seller net sheets' },
+  { id:'pnl',         label:'💰 Agent P&L',       desc:'Commission & profit breakdown' },
+  { id:'deal',        label:'📊 Deal Analyzer',   desc:'Full deal side-by-side' },
+  { id:'investment',  label:'🏘 Investment',      desc:'Cash on cash return & cap rate' },
 ]
 
 function fmt$(n) {
@@ -486,6 +487,440 @@ function DealAnalyzer() {
   )
 }
 
+
+// ── INVESTMENT P&L CALCULATOR ─────────────────────────────────────
+function InvestmentCalc() {
+  const printRef = React.useRef(null)
+
+  // Purchase
+  const [price,       setPrice]       = useState('450000')
+  const [down,        setDown]        = useState('25')
+  const [rate,        setRate]        = useState('7.25')
+  const [term,        setTerm]        = useState('30')
+  const [closingPct,  setClosingPct]  = useState('3')
+
+  // Income
+  const [units,       setUnits]       = useState('2')
+  const [rents,       setRents]       = useState(['3000','2800'])
+
+  // Operating expenses
+  const [propTax,     setPropTax]     = useState('1200')
+  const [insurance,   setInsurance]   = useState('250')
+  const [waterSewer,  setWaterSewer]  = useState('150')
+  const [electric,    setElectric]    = useState('0')
+  const [gas,         setGas]         = useState('0')
+  const [hoa,         setHoa]         = useState('0')
+  const [mgmtPct,     setMgmtPct]     = useState('8')
+  const [maintenance, setMaintenance] = useState('300')
+  const [vacancy,     setVacancy]     = useState('5')
+  const [capex,       setCapex]       = useState('150')
+  const [trash,       setTrash]       = useState('75')
+  const [other,       setOther]       = useState('0')
+  const [propName,    setPropName]    = useState('')
+
+  // Share modal
+  const [showShare,   setShowShare]   = useState(false)
+
+  function setRent(i, v) {
+    setRents(prev => { const n=[...prev]; n[i]=v; return n })
+  }
+  function syncUnits(v) {
+    const n = Math.max(1, parseInt(v)||1)
+    setUnits(String(n))
+    setRents(prev => {
+      const next = [...prev]
+      while (next.length < n) next.push('0')
+      return next.slice(0, n)
+    })
+  }
+
+  const calc = React.useMemo(() => {
+    const p    = num(price)
+    const dpPct = num(down)/100
+    const dp   = p * dpPct
+    const loan = p - dp
+    const closing = p * (num(closingPct)/100)
+    const totalInvested = dp + closing
+
+    // Mortgage
+    const r = num(rate)/100/12
+    const n = num(term)*12
+    const mortgage = r > 0 ? loan*(r*Math.pow(1+r,n))/(Math.pow(1+r,n)-1) : loan/n
+
+    // Gross income
+    const grossMonthly = rents.slice(0, parseInt(units)||1).reduce((s,v)=>s+num(v),0)
+    const grossAnnual  = grossMonthly * 12
+    const vacancyLoss  = grossAnnual * (num(vacancy)/100)
+    const effectiveIncome = grossAnnual - vacancyLoss
+
+    // Operating expenses (monthly → annual)
+    const mgmtFee  = effectiveIncome * (num(mgmtPct)/100)
+    const opExpenses = {
+      propTax:     num(propTax)*12,
+      insurance:   num(insurance)*12,
+      waterSewer:  num(waterSewer)*12,
+      electric:    num(electric)*12,
+      gas:         num(gas)*12,
+      hoa:         num(hoa)*12,
+      management:  mgmtFee,
+      maintenance: num(maintenance)*12,
+      capex:       num(capex)*12,
+      trash:       num(trash)*12,
+      other:       num(other)*12,
+    }
+    const totalOpEx = Object.values(opExpenses).reduce((a,b)=>a+b,0)
+    const noi       = effectiveIncome - totalOpEx
+    const annualDebt = mortgage * 12
+    const cashFlow  = noi - annualDebt
+    const monthlyCF = cashFlow / 12
+
+    // Metrics
+    const capRate    = p > 0 ? (noi / p * 100) : 0
+    const cocReturn  = totalInvested > 0 ? (cashFlow / totalInvested * 100) : 0
+    const grm        = grossAnnual > 0 ? (p / grossAnnual) : 0
+    const dscr       = annualDebt > 0 ? (noi / annualDebt) : 0
+    const breakEven  = grossAnnual > 0 ? ((totalOpEx + annualDebt) / grossAnnual * 100) : 0
+    const pricePerUnit = parseInt(units) > 0 ? p / parseInt(units) : p
+
+    // 5-year projection (2% annual rent growth, 3% appreciation)
+    const projections = []
+    let bal = loan
+    for (let yr = 1; yr <= 5; yr++) {
+      const rentGrowth = grossAnnual * Math.pow(1.02, yr)
+      const appreciation = p * Math.pow(1.03, yr)
+      const expGrowth = totalOpEx * Math.pow(1.025, yr)
+      // Pay down principal over year
+      let interest = 0
+      const startBal = bal
+      for (let m = 0; m < 12; m++) {
+        const mo_int = bal * r
+        const mo_prin = mortgage - mo_int
+        interest += mo_int
+        bal -= mo_prin
+      }
+      const equity = appreciation - bal
+      const cf = rentGrowth * (1-num(vacancy)/100) - expGrowth - annualDebt
+      projections.push({ yr, rent: rentGrowth, value: appreciation, equity, cashFlow: cf, equity_built: startBal - bal })
+    }
+
+    return {
+      p, dp, loan, closing, totalInvested, mortgage,
+      grossMonthly, grossAnnual, vacancyLoss, effectiveIncome,
+      opExpenses, totalOpEx, noi, annualDebt, cashFlow, monthlyCF,
+      capRate, cocReturn, grm, dscr, breakEven, pricePerUnit, projections,
+    }
+  }, [price, down, rate, term, closingPct, rents, units, propTax, insurance, waterSewer, electric, gas, hoa, mgmtPct, maintenance, vacancy, capex, trash, other])
+
+  const c = calc
+
+  // Color helpers
+  function metricColor(v, good, ok) { return v >= good ? '#10B981' : v >= ok ? '#F5A623' : '#DC2626' }
+
+  function buildReport() {
+    const rows = [
+      ['INCOME',                    ''],
+      ['Gross Rent (monthly)',       fmt$(Math.round(c.grossMonthly))],
+      ['Gross Rent (annual)',        fmt$(Math.round(c.grossAnnual))],
+      ['Vacancy Loss (' + vacancy + '%)',  '- ' + fmt$(Math.round(c.vacancyLoss))],
+      ['Effective Gross Income',     fmt$(Math.round(c.effectiveIncome))],
+      ['',                          ''],
+      ['OPERATING EXPENSES',        ''],
+      ['Property Tax',               fmt$(Math.round(c.opExpenses.propTax))],
+      ['Insurance',                  fmt$(Math.round(c.opExpenses.insurance))],
+      ['Water/Sewer',                fmt$(Math.round(c.opExpenses.waterSewer))],
+      ['Property Management',        fmt$(Math.round(c.opExpenses.management))],
+      ['Maintenance',                fmt$(Math.round(c.opExpenses.maintenance))],
+      ['CapEx Reserve',              fmt$(Math.round(c.opExpenses.capex))],
+      ['Total Operating Expenses',   fmt$(Math.round(c.totalOpEx))],
+      ['',                          ''],
+      ['NET OPERATING INCOME (NOI)', fmt$(Math.round(c.noi))],
+      ['Annual Debt Service',        '- ' + fmt$(Math.round(c.annualDebt))],
+      ['Annual Cash Flow',           fmt$(Math.round(c.cashFlow))],
+      ['Monthly Cash Flow',          fmt$(Math.round(c.monthlyCF))],
+      ['',                          ''],
+      ['KEY METRICS',               ''],
+      ['Cap Rate',                   c.capRate.toFixed(2) + '%'],
+      ['Cash on Cash Return',        c.cocReturn.toFixed(2) + '%'],
+      ['DSCR',                       c.dscr.toFixed(2) + 'x'],
+      ['GRM',                        c.grm.toFixed(1) + 'x'],
+      ['Break-Even Occupancy',       c.breakEven.toFixed(1) + '%'],
+      ['',                          ''],
+      ['PURCHASE',                  ''],
+      ['Purchase Price',             fmt$(c.p)],
+      ['Down Payment (' + down + '%)','+ ' + fmt$(Math.round(c.dp))],
+      ['Closing Costs (' + closingPct + '%)','+ ' + fmt$(Math.round(c.closing))],
+      ['Total Cash Invested',        fmt$(Math.round(c.totalInvested))],
+    ]
+
+    const tableRows = rows.map(([l,v]) => {
+      const isSec = l === l.toUpperCase() && l !== ''
+      const isBlank = l === ''
+      if (isBlank) return '<tr><td colspan="2" style="height:10px"></td></tr>'
+      if (isSec) return '<tr><td colspan="2" style="padding:10px 10px 4px;font-size:11px;font-weight:800;color:#1B2B4B;text-transform:uppercase;letter-spacing:.08em;border-top:2px solid #1B2B4B;background:#F8FAFC">' + l + '</td></tr>'
+      const hl = l.includes('Cash Flow') || l.includes('NOI') || l.includes('Cap Rate') || l.includes('Cash on Cash') || l.includes('Total Cash')
+      return '<tr style="background:' + (hl?'#F0FDF4':'transparent') + '"><td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:13px;color:#374151">' + l + '</td><td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:13px;font-weight:' + (hl?'800':'600') + ';color:' + (hl?'#059669':'#1F2937') + ';text-align:right">' + v + '</td></tr>'
+    }).join('')
+
+    const projRows = c.projections.map(p2 => {
+      const cfColor = p2.cashFlow >= 0 ? '#059669' : '#DC2626'
+      return '<tr><td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:12px">Year ' + p2.yr + '</td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:12px;text-align:right">' + fmt$(Math.round(p2.rent/12)) + '/mo</td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:12px;text-align:right">' + fmt$(Math.round(p2.value)) + '</td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:12px;font-weight:700;color:' + cfColor + ';text-align:right">' + fmt$(Math.round(p2.cashFlow/12)) + '/mo</td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:12px;font-weight:700;color:#059669;text-align:right">' + fmt$(Math.round(p2.equity)) + '</td></tr>'
+    }).join('')
+
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Investment Analysis — ' + (propName || num(price) ? fmt$(num(price)) : '') + '</title>' +
+      '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;background:#F8FAFC;padding:30px;color:#1F2937}@page{size:A4;margin:20mm}@media print{body{background:#fff;padding:0}button{display:none}}</style>' +
+    '</head><body>' +
+      '<div style="background:linear-gradient(135deg,#0F1A2E,#1B2B4B);padding:28px 32px;border-radius:10px 10px 0 0;margin-bottom:0">' +
+        '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Investment Property Analysis</div>' +
+        '<div style="font-size:24px;font-weight:900;color:#fff;margin-bottom:3px">' + (propName || 'Property Analysis') + '</div>' +
+        '<div style="font-size:13px;color:rgba(255,255,255,.5)">' + new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) + '</div>' +
+        '<div style="display:flex;gap:32px;margin-top:18px">' +
+          '<div><div style="font-size:22px;font-weight:900;color:' + metricColor(c.cocReturn,8,5) + '">' + c.cocReturn.toFixed(2) + '%</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Cash on Cash</div></div>' +
+          '<div><div style="font-size:22px;font-weight:900;color:' + metricColor(c.capRate,6,4) + '">' + c.capRate.toFixed(2) + '%</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Cap Rate</div></div>' +
+          '<div><div style="font-size:22px;font-weight:900;color:' + (c.monthlyCF>=0?'#4ADE80':'#F87171') + '">' + fmt$(Math.round(c.monthlyCF)) + '</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Monthly Cash Flow</div></div>' +
+          '<div><div style="font-size:22px;font-weight:900;color:' + metricColor(c.dscr,1.25,1.0) + '">' + c.dscr.toFixed(2) + 'x</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">DSCR</div></div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="background:#fff;border-radius:0 0 10px 10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08)">' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">' +
+          '<table style="width:100%;border-collapse:collapse">' + tableRows + '</table>' +
+          '<div style="padding:20px;background:#F8FAFC;border-left:1px solid #E2E8F0">' +
+            '<div style="font-size:11px;font-weight:800;color:#1B2B4B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;border-bottom:2px solid #1B2B4B;padding-bottom:5px">5-Year Projection</div>' +
+            '<table style="width:100%;border-collapse:collapse">' +
+              '<tr style="background:#F0F4F8"><th style="padding:6px 8px;font-size:10px;text-align:left;color:#6B7280">Yr</th><th style="padding:6px 8px;font-size:10px;text-align:right;color:#6B7280">Rent</th><th style="padding:6px 8px;font-size:10px;text-align:right;color:#6B7280">Value</th><th style="padding:6px 8px;font-size:10px;text-align:right;color:#6B7280">CF/mo</th><th style="padding:6px 8px;font-size:10px;text-align:right;color:#6B7280">Equity</th></tr>' +
+              projRows +
+            '</table>' +
+            '<div style="margin-top:16px;font-size:10px;color:#9CA3AF;line-height:1.6">Assumptions: 2% annual rent growth, 3% appreciation, 2.5% expense growth</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:20px;text-align:center;font-size:11px;color:#9CA3AF">Target Team · KW Valley Realty · 845.424.1014 · @thetargetteam</div>' +
+      '<button onclick="window.print()" style="margin-top:16px;padding:10px 24px;background:#1B2B4B;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial">🖨 Print / Save as PDF</button>' +
+    '</body></html>'
+  }
+
+  function printReport() {
+    const win = window.open('', '_blank')
+    win.document.write(buildReport())
+    win.document.close()
+  }
+
+  function shareReport() {
+    const data = {
+      address: propName || fmt$(num(price)),
+      price: num(price), down: num(down), rate: num(rate),
+      units: units, rents, capRate: c.capRate.toFixed(2),
+      coc: c.cocReturn.toFixed(2), noi: Math.round(c.noi),
+      cashFlow: Math.round(c.monthlyCF),
+    }
+    const encoded = btoa(JSON.stringify(data))
+    const url = window.location.origin + '/mortgage?inv=' + encoded
+    navigator.clipboard.writeText(url).then(() => {
+      // toast handled below
+    }).catch(() => {})
+    setShowShare(url)
+  }
+
+  const inp2 = { ...inp(), marginBottom:0 }
+  const metBg = (v, g, o) => ({ background: v>=g ? '#F0FDF4' : v>=o ? '#FFFBEB' : '#FEF2F2', borderRadius:10, padding:'12px 14px', textAlign:'center' })
+
+  return (
+    <div style={{ fontFamily:ff }}>
+
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:10 }}>
+        <div>
+          <div style={{ fontSize:17, fontWeight:900, color:'var(--text)', marginBottom:2 }}>🏘 Investment Property Analyzer</div>
+          <div style={{ fontSize:12, color:'var(--muted)' }}>NOI · Cap Rate · Cash on Cash Return · DSCR · 5-Year Projection</div>
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={shareReport}
+            style={{ padding:'8px 16px', borderRadius:9, border:'1px solid var(--border)', background:'var(--panel)', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, display:'flex', alignItems:'center', gap:6 }}>
+            🔗 Share Link
+          </button>
+          <button onClick={printReport}
+            style={{ padding:'8px 16px', borderRadius:9, border:'none', background:'#CC2200', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, display:'flex', alignItems:'center', gap:6 }}>
+            🖨 Download PDF
+          </button>
+        </div>
+      </div>
+
+      {/* Share toast */}
+      {showShare && (
+        <div style={{ padding:'10px 16px', background:'#EFF6FF', borderRadius:10, border:'1px solid #BFDBFE', marginBottom:14, display:'flex', alignItems:'center', gap:10, justifyContent:'space-between' }}>
+          <span style={{ fontSize:12, color:'#1E40AF', fontWeight:700 }}>✅ Link copied to clipboard — share with your client or investor</span>
+          <button onClick={() => setShowShare(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#94A3B8', fontSize:16 }}>×</button>
+        </div>
+      )}
+
+      {/* KEY METRICS — top row */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:20 }}>
+        {[
+          { label:'Cash on Cash', value: c.cocReturn.toFixed(2)+'%', good:8, ok:5, v:c.cocReturn, tip:'Goal: 8%+' },
+          { label:'Cap Rate',     value: c.capRate.toFixed(2)+'%',   good:6, ok:4, v:c.capRate,   tip:'Goal: 6%+' },
+          { label:'Monthly CF',   value: fmt$(Math.round(c.monthlyCF)), good:0, ok:-200, v:c.monthlyCF, tip:c.monthlyCF>=0?'Positive':'Negative' },
+          { label:'DSCR',         value: c.dscr.toFixed(2)+'x',      good:1.25, ok:1.0, v:c.dscr,    tip:'Banks want 1.25x+' },
+        ].map(m => (
+          <div key={m.label} style={{ ...metBg(m.v, m.good, m.ok) }}>
+            <div style={{ fontSize:22, fontWeight:900, color: metricColor(m.v,m.good,m.ok), lineHeight:1 }}>{m.value}</div>
+            <div style={{ fontSize:11, fontWeight:700, color:'var(--text)', marginTop:4 }}>{m.label}</div>
+            <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>{m.tip}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'340px 1fr', gap:20 }}>
+
+        {/* LEFT: Inputs */}
+        <div>
+          <Section title="Property">
+            <Field label="Property Name / Address">
+              <input value={propName} onChange={e=>setPropName(e.target.value)} placeholder="e.g. 15 Oak Lane, Monsey NY" style={inp2} />
+            </Field>
+            <Field label="Purchase Price"><NumInput prefix="$" value={price} onChange={setPrice} placeholder="450,000" /></Field>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              <Field label="Down Payment %"><NumInput value={down} onChange={setDown} placeholder="25" /></Field>
+              <Field label="Interest Rate %"><NumInput value={rate} onChange={setRate} placeholder="7.25" /></Field>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              <Field label="Loan Term">
+                <select value={term} onChange={e=>setTerm(e.target.value)} style={inp2}>
+                  {[10,15,20,25,30].map(t=><option key={t} value={t}>{t} years</option>)}
+                </select>
+              </Field>
+              <Field label="Closing Costs %"><NumInput value={closingPct} onChange={setClosingPct} placeholder="3" /></Field>
+            </div>
+          </Section>
+
+          <Section title="Rental Income">
+            <Field label="Number of Units">
+              <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+                {[1,2,3,4,5,6].map(n=>(
+                  <button key={n} onClick={()=>syncUnits(n)}
+                    style={{ flex:1, padding:'6px', borderRadius:7, border:'1px solid var(--border)', background:parseInt(units)===n?'#1B2B4B':'var(--dim)', color:parseInt(units)===n?'#fff':'var(--muted)', fontSize:12, fontWeight:parseInt(units)===n?700:400, cursor:'pointer', fontFamily:ff }}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            {Array.from({length:Math.min(parseInt(units)||1,6)},(_,i)=>(
+              <Field key={i} label={'Unit ' + (i+1) + ' Monthly Rent'}>
+                <NumInput prefix="$" value={rents[i]||''} onChange={v=>setRent(i,v)} placeholder="2,500" />
+              </Field>
+            ))}
+            <div style={{ padding:'8px 10px', background:'var(--dim)', borderRadius:8, fontSize:12, fontWeight:700, color:'var(--text)', display:'flex', justifyContent:'space-between' }}>
+              <span>Total Gross Monthly</span>
+              <span style={{ color:'#10B981' }}>{fmt$(c.grossMonthly)}</span>
+            </div>
+          </Section>
+        </div>
+
+        {/* RIGHT: Expenses + Results */}
+        <div>
+          <Section title="Operating Expenses (monthly)">
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
+              <Field label="Property Tax"><NumInput prefix="$" value={propTax} onChange={setPropTax} placeholder="1,200" /></Field>
+              <Field label="Insurance"><NumInput prefix="$" value={insurance} onChange={setInsurance} placeholder="250" /></Field>
+              <Field label="Water / Sewer"><NumInput prefix="$" value={waterSewer} onChange={setWaterSewer} placeholder="150" /></Field>
+              <Field label="Electric (if owner pays)"><NumInput prefix="$" value={electric} onChange={setElectric} placeholder="0" /></Field>
+              <Field label="Gas (if owner pays)"><NumInput prefix="$" value={gas} onChange={setGas} placeholder="0" /></Field>
+              <Field label="HOA"><NumInput prefix="$" value={hoa} onChange={setHoa} placeholder="0" /></Field>
+              <Field label={'Property Mgmt (' + mgmtPct + '% of rent)'}>
+                <NumInput value={mgmtPct} onChange={setMgmtPct} placeholder="8" />
+              </Field>
+              <Field label="Maintenance / Repairs"><NumInput prefix="$" value={maintenance} onChange={setMaintenance} placeholder="300" /></Field>
+              <Field label="CapEx Reserve"><NumInput prefix="$" value={capex} onChange={setCapex} placeholder="150" /></Field>
+              <Field label="Trash / Landscaping"><NumInput prefix="$" value={trash} onChange={setTrash} placeholder="75" /></Field>
+              <Field label={'Vacancy Rate (' + vacancy + '%)'}>
+                <NumInput value={vacancy} onChange={setVacancy} placeholder="5" />
+              </Field>
+              <Field label="Other"><NumInput prefix="$" value={other} onChange={setOther} placeholder="0" /></Field>
+            </div>
+          </Section>
+
+          <Section title="Annual Income Statement" accent="#10B981">
+            <Row label="Gross Rental Income"       value={fmt$(Math.round(c.grossAnnual))} bold />
+            <Row label={'Vacancy (' + vacancy + '%)'}      value={'- ' + fmt$(Math.round(c.vacancyLoss))} color="#F5A623" muted />
+            <Row label="Effective Gross Income"    value={fmt$(Math.round(c.effectiveIncome))} />
+            <div style={{ height:6 }} />
+            {[
+              ['Property Tax',        c.opExpenses.propTax],
+              ['Insurance',           c.opExpenses.insurance],
+              ['Water/Sewer',         c.opExpenses.waterSewer],
+              ['Electric',            c.opExpenses.electric],
+              ['Gas',                 c.opExpenses.gas],
+              ['HOA',                 c.opExpenses.hoa],
+              ['Property Management', c.opExpenses.management],
+              ['Maintenance',         c.opExpenses.maintenance],
+              ['CapEx Reserve',       c.opExpenses.capex],
+              ['Trash/Landscaping',   c.opExpenses.trash],
+              ['Other',               c.opExpenses.other],
+            ].filter(([,v])=>v>0).map(([l,v])=>(
+              <Row key={l} label={l} value={'- ' + fmt$(Math.round(v))} color="#DC2626" muted />
+            ))}
+            <Row label="Total Operating Expenses"  value={'- ' + fmt$(Math.round(c.totalOpEx))} bold color="#DC2626" />
+            <div style={{ height:6 }} />
+            <Row label="Net Operating Income (NOI)" value={fmt$(Math.round(c.noi))} bold color="#10B981" highlight />
+            <Row label="Annual Debt Service"       value={'- ' + fmt$(Math.round(c.annualDebt))} color="#DC2626" />
+            <Row label="Annual Cash Flow"          value={fmt$(Math.round(c.cashFlow))} bold color={c.cashFlow>=0?'#10B981':'#DC2626'} highlight />
+            <Row label="Monthly Cash Flow"         value={fmt$(Math.round(c.monthlyCF)) + ' / month'} bold color={c.monthlyCF>=0?'#10B981':'#DC2626'} />
+          </Section>
+
+          <Section title="Full Investment Summary" accent="#1B2B4B">
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 24px' }}>
+              <div>
+                <Row label="Purchase Price"      value={fmt$(c.p)} />
+                <Row label={'Down Payment (' + down + '%)'}   value={fmt$(Math.round(c.dp))} />
+                <Row label={'Closing Costs (' + closingPct + '%)'}  value={fmt$(Math.round(c.closing))} />
+                <Row label="Total Cash Invested" value={fmt$(Math.round(c.totalInvested))} bold />
+                <Row label="Loan Amount"         value={fmt$(Math.round(c.loan))} />
+                <Row label="Monthly Mortgage"    value={fmt$(Math.round(c.mortgage))} />
+              </div>
+              <div>
+                <Row label="Cap Rate"            value={c.capRate.toFixed(2)+'%'} bold color={metricColor(c.capRate,6,4)} />
+                <Row label="Cash on Cash Return" value={c.cocReturn.toFixed(2)+'%'} bold color={metricColor(c.cocReturn,8,5)} />
+                <Row label="GRM"                 value={c.grm.toFixed(1)+'x'} />
+                <Row label="DSCR"                value={c.dscr.toFixed(2)+'x'} bold color={metricColor(c.dscr,1.25,1.0)} />
+                <Row label="Break-Even Occ."     value={c.breakEven.toFixed(1)+'%'} />
+                <Row label="Price / Unit"        value={fmt$(Math.round(c.pricePerUnit))} />
+              </div>
+            </div>
+          </Section>
+
+          {/* 5-year projection */}
+          <Section title="5-Year Projection (2% rent growth · 3% appreciation)" accent="#8B5CF6">
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:'var(--dim)' }}>
+                    {['Year','Avg Rent/mo','Property Value','Cash Flow/mo','Total Equity'].map(h=>(
+                      <th key={h} style={{ padding:'7px 10px', textAlign: h==='Year'?'left':'right', fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', borderBottom:'2px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {c.projections.map((p2,i) => (
+                    <tr key={i} style={{ background: i%2===0?'transparent':'var(--dim)' }}>
+                      <td style={{ padding:'8px 10px', fontWeight:700, color:'var(--text)', borderBottom:'1px solid var(--border)' }}>Year {p2.yr}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', color:'var(--muted)', borderBottom:'1px solid var(--border)' }}>{fmt$(Math.round(p2.rent/12))}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', color:'var(--text)', borderBottom:'1px solid var(--border)' }}>{fmt$(Math.round(p2.value))}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', fontWeight:700, color:p2.cashFlow>=0?'#10B981':'#DC2626', borderBottom:'1px solid var(--border)' }}>{fmt$(Math.round(p2.cashFlow/12))}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', fontWeight:700, color:'#8B5CF6', borderBottom:'1px solid var(--border)' }}>{fmt$(Math.round(p2.equity))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── MAIN ──────────────────────────────────────────────────────────
 export function Mortgage() {
   const [tab, setTab] = useState('mortgage')
@@ -516,7 +951,8 @@ export function Mortgage() {
       {tab === 'mortgage' && <MortgageCalc />}
       {tab === 'closing'  && <ClosingCosts />}
       {tab === 'pnl'      && <AgentPnL />}
-      {tab === 'deal'     && <DealAnalyzer />}
+      {tab === 'deal'        && <DealAnalyzer />}
+      {tab === 'investment'  && <InvestmentCalc />}
     </div>
   )
 }
