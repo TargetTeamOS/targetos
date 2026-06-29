@@ -143,7 +143,23 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 
   // ── VOICEMAIL ────────────────────────────────────────────
   if (node.type === 'voicemail') {
-    return vmXml(cfg.text)
+    if (cfg.pin_enabled && cfg.pin) {
+      var vmCtx = encodeURIComponent(JSON.stringify({
+        greeting: cfg.text || 'Please leave your message after the tone.',
+        voice: cfg.voice || 'Polly.Joanna',
+        pin: cfg.pin,
+        max_length: cfg.max_length || 120,
+        transcribe: cfg.transcribe !== false,
+        attempts: cfg.pin_attempts || 3,
+        attempt: 0,
+      }))
+      twiml += '<Gather numDigits="' + String(cfg.pin).length + '" action="/api/twilio-voicemail-access?ctx=' + vmCtx + '" method="POST" timeout="15">'
+      twiml += say('Please enter your ' + String(cfg.pin).length + '-digit voicemail PIN.', cfg.voice || 'Polly.Joanna')
+      twiml += '</Gather>'
+      twiml += say('No PIN entered. Goodbye.', cfg.voice || 'Polly.Joanna')
+      return twiml
+    }
+    return vmXml(cfg.text, cfg.voice)
   }
 
   // ── SAVE LEAD ────────────────────────────────────────────

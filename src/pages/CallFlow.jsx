@@ -24,6 +24,7 @@ const NODE_DEFS = [
   { type:'audio',      label:'Custom Audio',   color:'#6366F1', icon:'🔈', cat:'voice'   },
   { type:'language',   label:'Language Select',color:'#F97316', icon:'🌐', cat:'voice'   },
   { type:'condition',  label:'If / Condition', color:'#F5A623', icon:'🔀', cat:'routing' },
+  { type:'assigned',   label:'Assigned Agent',  color:'#10B981', icon:'🎯', cat:'routing' },
   { type:'dial',       label:'Dial Agent',     color:'#CC2200', icon:'📲', cat:'routing' },
   { type:'roundrobin', label:'Round Robin',    color:'#6366F1', icon:'🔄', cat:'routing' },
   { type:'ringall',    label:'Ring All',       color:'#EC4899', icon:'📣', cat:'routing' },
@@ -93,7 +94,7 @@ function defCfg(type) {
   if (type === 'dial')      return { agent_id:'', timeout:30 }
   if (type === 'roundrobin')return { agent_ids:[], timeout:30 }
   if (type === 'ringall')   return { agent_ids:[], timeout:30 }
-  if (type === 'voicemail') return { text:'Please leave your name and number after the tone.', voice:'Polly.Joanna', transcribe:true, notify_agent:true, max_length:120 }
+  if (type === 'voicemail') return { text:'Please leave your name and number after the tone.', voice:'Polly.Joanna', transcribe:true, notify_agent:true, max_length:120, pin_enabled:false, pin:'1234', pin_attempts:3 }
   if (type === 'savelead')  return { source:'Inbound Call', assign:'round_robin' }
   if (type === 'sms')       return { text:'Thanks for calling Target Team! An agent will reach out shortly.', send_to:'caller' }
   if (type === 'hold')      return { music:'twilio', custom_url:'', duration:30, say_first:'', voice:'Polly.Joanna' }
@@ -109,6 +110,10 @@ function getPorts(node) {
   if (node.type === 'condition') return [
     { id:'yes', label: cfg.yesLabel || 'YES', color:'#10B981', y: NH * 0.33 },
     { id:'no',  label: cfg.noLabel  || 'NO',  color:'#DC2626', y: NH * 0.67 },
+  ]
+  if (node.type === 'assigned') return [
+    { id:'found',    label:'Agent Found',  color:'#10B981', y: NH * 0.33 },
+    { id:'notfound', label:'No Agent',     color:'#DC2626', y: NH * 0.67 },
   ]
   if (node.type === 'menu' || node.type === 'language') return opts.map(function(o, i) {
     return { id:'key_' + o.key, label: node.type === 'language' ? (o.label || o.key) : 'Press ' + o.key, color: PORT_COLORS[i % PORT_COLORS.length], y: (NH / (opts.length + 1)) * (i + 1) }
@@ -145,6 +150,7 @@ function FlowNode({ node, selected, agents, connectedPorts, dragPort, onMouseDow
   else if (node.type === 'language') sub = (cfg.options || []).length + ' languages'
   else if (node.type === 'condition') sub = (cfg.condition || '').replace(/_/g,' ')
   else if (node.type === 'dial')    sub = cfg.agent_id && agents ? ((agents.find(a => a.id === cfg.agent_id)||{}).name || 'select agent') : 'select agent'
+  else if (node.type === 'assigned') sub = 'routes to caller\'s agent'
   else if (node.type === 'roundrobin'||node.type === 'ringall') sub = (cfg.agent_ids||[]).length + ' agents'
   else if (node.type === 'greeting'||node.type === 'voicemail') sub = (cfg.text||'').slice(0,28)
   else if (node.type === 'hold')    sub = HOLD_MUSIC.find(m=>m.id===cfg.music)?.label?.slice(0,28) || 'Twilio default'
@@ -497,6 +503,30 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
           <div style={INFO}>Two ports: green YES and red NO. Connect each to the appropriate next step.</div>
         </>)}
 
+
+        {/* ── ASSIGNED AGENT ── */}
+        {node.type === 'assigned' && (<>
+          <div style={INFO}>
+            🎯 When a call comes in, this node looks up the caller's phone number in your CRM Contacts, finds their assigned agent, and automatically dials that agent's phone number.
+          </div>
+          <div style={R}>
+            <label style={L}>Ring timeout (seconds)</label>
+            <input type="number" value={cfg.timeout||30} onChange={e=>set('timeout',parseInt(e.target.value)||30)} style={I} />
+          </div>
+          <div style={R}>
+            <label style={L}>If no agent assigned or agent doesn't answer</label>
+            <select value={cfg.fallback||'roundrobin'} onChange={e=>set('fallback',e.target.value)} style={S}>
+              <option value="roundrobin">Ring all available agents (round robin)</option>
+              <option value="voicemail">Go to voicemail</option>
+              <option value="next">Continue to next node</option>
+            </select>
+          </div>
+          <div style={{...INFO, marginTop:8}}>
+            <strong style={{color:'var(--text)'}}>Port: Agent Found</strong> — fires when the assigned agent answers.<br/>
+            <strong style={{color:'var(--text)'}}>Port: No Agent</strong> — fires when caller has no assigned agent, or agent doesn't answer.
+          </div>
+        </>)}
+
         {/* ── DIAL AGENT ── */}
         {node.type === 'dial' && (<>
           <div style={R}>
@@ -537,6 +567,29 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
           <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,color:'var(--text)'}}>
             <input type="checkbox" checked={!!cfg.notify_agent} onChange={e=>set('notify_agent',e.target.checked)} /> Notify assigned agent by email
           </label>
+          <div style={{marginTop:16,paddingTop:14,borderTop:'1px solid var(--border)'}}>
+            <div style={{fontSize:12,fontWeight:800,color:'var(--text)',marginBottom:10}}>🔒 Voicemail PIN Protection</div>
+            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,color:'var(--text)',marginBottom:10}}>
+              <input type="checkbox" checked={!!cfg.pin_enabled} onChange={e=>set('pin_enabled',e.target.checked)} />
+              Require PIN to listen to voicemails
+            </label>
+            {cfg.pin_enabled && (<>
+              <div style={R}>
+                <label style={L}>PIN (4–8 digits)</label>
+                <input type="password" value={cfg.pin||'1234'} onChange={e=>set('pin',e.target.value.replace(/[^0-9]/g,'').slice(0,8))}
+                  placeholder="e.g. 1234" maxLength={8} style={I} />
+                <div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>Callers dialing into voicemail will be prompted to enter this PIN before hearing messages.</div>
+              </div>
+              <div style={R}>
+                <label style={L}>Max PIN attempts</label>
+                <select value={cfg.pin_attempts||3} onChange={e=>set('pin_attempts',parseInt(e.target.value))} style={S}>
+                  <option value={2}>2 attempts</option>
+                  <option value={3}>3 attempts</option>
+                  <option value={5}>5 attempts</option>
+                </select>
+              </div>
+            </>)}
+          </div>
         </>)}
 
         {/* ── SAVE LEAD ── */}
