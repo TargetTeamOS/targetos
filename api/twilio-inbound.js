@@ -299,12 +299,27 @@ module.exports = async function handler(req, res) {
     }
 
     // If flow has visual nodes — walk them
-    console.log('Flow found:', flow ? flow.name : 'none', 'nodes:', flow && flow.flow_nodes ? flow.flow_nodes.length : 0)
-    if (flow && flow.flow_nodes && flow.flow_nodes.length > 1) {
-      var startNode = flow.flow_nodes.find(function(n) { return n.type === 'incoming' })
+    // Parse flow_nodes/edges if returned as string (Supabase sometimes returns jsonb as string)
+    var flowNodes = flow && flow.flow_nodes
+      ? (typeof flow.flow_nodes === 'string' ? JSON.parse(flow.flow_nodes) : flow.flow_nodes)
+      : []
+    var flowEdges = flow && flow.flow_edges
+      ? (typeof flow.flow_edges === 'string' ? JSON.parse(flow.flow_edges) : flow.flow_edges)
+      : []
+
+    console.log('Flow loaded:', flow ? flow.name : 'none',
+      '| nodes:', flowNodes.length,
+      '| edges:', flowEdges.length,
+      '| is_active:', flow ? flow.is_active : 'n/a')
+
+    if (flowNodes.length >= 1) {
+      var startNode = flowNodes.find(function(n) { return n.type === 'incoming' })
       if (startNode) {
-        var twiml = await walkFlow(flow.flow_nodes, flow.flow_edges || [], startNode.id, callData, supabase, 0)
+        var twiml = await walkFlow(flowNodes, flowEdges, startNode.id, callData, supabase, 0)
+        console.log('TwiML generated, length:', twiml.length)
         return res.send(wrap(twiml))
+      } else {
+        console.log('No incoming node found in flow. Node types:', flowNodes.map(function(n){return n.type}))
       }
     }
 

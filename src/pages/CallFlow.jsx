@@ -690,18 +690,34 @@ export function CallFlow() {
   const [wirePos,setWirePos]    = useState(null)
   const [actPort,setActPort]    = useState(null)
 
+  const [dbStatus, setDbStatus] = useState(null) // null | 'ok' | 'no_columns' | 'empty'
+
   // ── LOAD ─────────────────────────────────────────────────────
   useEffect(() => {
     supabase.from('phone_ivr').select('*').order('updated_at',{ascending:false}).limit(1).maybeSingle()
       .then(r => {
         const d = r.data
-        if (d?.flow_nodes?.length) {
-          setNodes(d.flow_nodes)
-          setEdges(d.flow_edges||[])
+        if (!d) {
+          setDbStatus('empty')
+          return
+        }
+        // Check if flow_nodes column actually returned data
+        if (!d.flow_nodes) {
+          setDbStatus('no_columns')
+          return
+        }
+        const fn = typeof d.flow_nodes === 'string' ? JSON.parse(d.flow_nodes) : d.flow_nodes
+        const fe = d.flow_edges ? (typeof d.flow_edges === 'string' ? JSON.parse(d.flow_edges) : d.flow_edges) : []
+        if (fn?.length) {
+          setNodes(fn)
+          setEdges(fe)
           setFlowName(d.name||'Main Call Flow')
           setSavedId(d.id)
+          setDbStatus('ok')
+        } else {
+          setDbStatus('empty')
         }
-      }).catch(e => console.warn('load:',e.message))
+      }).catch(e => { console.warn('load:',e.message); setDbStatus('no_columns') })
   },[])
 
   // ── SAVE ─────────────────────────────────────────────────────
@@ -986,6 +1002,19 @@ export function CallFlow() {
 
       <div style={{flex:1,display:'flex',overflow:'hidden'}}>
 
+        {/* SQL WARNING BANNER */}
+        {dbStatus === 'no_columns' && (
+          <div style={{ position:'absolute', top:0, left:0, right:0, zIndex:20, padding:'10px 16px', background:'#FEF3C7', borderBottom:'1px solid #FDE68A', fontSize:12, color:'#92400E', display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:16 }}>⚠️</span>
+            <div style={{ flex:1 }}>
+              <strong>Database columns missing.</strong> Run this SQL in Supabase, then save again:
+              <code style={{ marginLeft:8, fontFamily:'monospace', background:'rgba(0,0,0,.08)', padding:'2px 6px', borderRadius:4 }}>
+                alter table phone_ivr add column if not exists flow_nodes jsonb; alter table phone_ivr add column if not exists flow_edges jsonb; alter table phone_ivr add column if not exists is_active boolean default true;
+              </code>
+            </div>
+            <button onClick={() => setDbStatus(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'#92400E', fontSize:16 }}>×</button>
+          </div>
+        )}
         {/* PALETTE */}
         <div style={{width:162,borderRight:'1px solid var(--border)',background:'var(--dim)',overflowY:'auto',flexShrink:0,padding:'8px 6px'}}>
           {CATS.map(cat => {
