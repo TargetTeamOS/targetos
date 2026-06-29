@@ -41,6 +41,8 @@ import { Settings }      from './pages/Settings'
 import { Admin }         from './pages/Admin'
 import { ActivityLog }   from './pages/ActivityLog'
 import { Mortgage }      from './pages/Mortgage'
+import { WebsiteBuilder } from './pages/WebsiteBuilder'
+import { PublicHome, PublicListings, PublicListingDetail, PublicAbout, PublicContact } from './pages/PublicSite'
 import { Route as RoutePage } from './pages/Route'
 
 // ── ERROR BOUNDARY ───────────────────────────────────────────────
@@ -160,6 +162,7 @@ function AppShell() {
           <Route path="/admin"               element={<Admin />} />
           <Route path="/activitylog"         element={<ActivityLog />} />
           <Route path="/mortgage"            element={<Mortgage />} />
+          <Route path="/website"             element={<WebsiteBuilder />} />
           <Route path="/route"               element={<RoutePage />} />
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />
@@ -183,13 +186,33 @@ function LocationAwareTools() {
   )
 }
 
+// ── ROOT ROUTER — public + private ──────────────────────────────
+function RootRouter() {
+  const { pathname } = useLocation()
+  // Public routes skip auth entirely
+  if (pathname.startsWith('/public/')) {
+    return (
+      <Routes>
+        <Route path="/public/home"        element={<PublicHome />} />
+        <Route path="/public/listings"    element={<PublicListings />} />
+        <Route path="/public/sold"        element={<PublicListings />} />
+        <Route path="/public/listing/:id" element={<PublicListingDetail />} />
+        <Route path="/public/about"       element={<PublicAbout />} />
+        <Route path="/public/contact"     element={<PublicContact />} />
+        <Route path="*"                   element={<Navigate to="/public/home" replace />} />
+      </Routes>
+    )
+  }
+  return <AppShell />
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
         <AuthProvider>
           <AppProvider>
-            <AppShell />
+            <RootRouter />
           </AppProvider>
         </AuthProvider>
       </BrowserRouter>
