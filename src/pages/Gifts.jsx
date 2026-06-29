@@ -4,6 +4,7 @@
 // exactly — all status labels, colors, and fields.
 // ═══════════════════════════════════════════════════════════════
 
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -175,7 +176,7 @@ export function Gifts() {
             <Input value={form.phone} onChange={v => set('phone', v)} placeholder="(845) 555-1234" type="tel" />
           </Field>
           <Field label="Address">
-            <Input value={form.address} onChange={v => set('address', v)} placeholder="123 Main St" />
+            <AddressAutocomplete value={form.address||''} onChange={v => set('address', v)} placeholder="123 Main St, Monsey NY" />
           </Field>
           <Field label="Unit">
             <Input value={form.unit} onChange={v => set('unit', v)} placeholder="Apt 2B" />

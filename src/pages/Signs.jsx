@@ -27,7 +27,7 @@ const SIGNS_EXPORT_COLS = [
   { key: 'order_status',   label: 'Order Status',    example: 'On Property' },
   { key: 'upper_rider',    label: 'Upper Rider',     example: 'For Sale' },
   { key: 'lower_rider',    label: 'Lower Rider',     example: 'Under Contract' },
-  { key: 'date_installed', label: 'Date Installed',  example: '2026-01-15', type: 'date' },
+  { key: 'date_installed', label: 'Date Entered',  example: '2026-01-15', type: 'date' },
   { key: 'date_removed',   label: 'Date Removed',    example: '2026-06-01', type: 'date' },
   { key: 'comments',       label: 'Comments',        example: '' },
 ]
@@ -62,10 +62,13 @@ const GROUPS = [
   { id: 'removed',     label: 'Removed' },
 ]
 
-const BLANK = {
-  addr: '', city: '', state: '', zip: '', lat: null, lng: null, agent_id: '', upper_rider: '', lower_rider: '',
-  order_status: 'Order Sent In', date_installed: '', date_removed: '', comments: '',
+function blankSign() {
+  return {
+    addr: '', city: '', state: '', zip: '', lat: null, lng: null, agent_id: '', upper_rider: '', lower_rider: '',
+    order_status: 'Order Sent In', date_installed: new Date().toISOString().slice(0,10), date_removed: '', comments: '',
+  }
 }
+const BLANK = blankSign()
 
 // ── STATUS BADGE ──────────────────────────────────────────────────
 function StatusBadge({ status, size = 'sm' }) {
@@ -238,13 +241,37 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
   }, [onSignClick])
 
   if (!GOOGLE_MAPS_KEY) {
-    return (
-      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', background: 'var(--dim)', borderRadius: '12px' }}>
-        <div style={{ fontSize: '32px' }}>🗺️</div>
-        <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>Google Maps not configured</div>
-        <div style={{ fontSize: '12px', color: 'var(--muted)', textAlign: 'center', maxWidth: '260px' }}>
-          Add <code>VITE_GOOGLE_MAPS_KEY=your_key</code> to Vercel environment variables, then redeploy.
+    // Fallback: show pins as a static Google Maps embed with markers
+    const pinned = signs.filter(s => s.lat && s.lng)
+    const withAddr = signs.filter(s => s.addr && !s.lat)
+    if (pinned.length === 0 && withAddr.length === 0) {
+      return (
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', background: 'var(--dim)', borderRadius: '12px' }}>
+          <div style={{ fontSize: '32px' }}>🗺️</div>
+          <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>Google Maps not configured</div>
+          <div style={{ fontSize: '12px', color: 'var(--muted)', textAlign: 'center', maxWidth: '260px' }}>
+            Add <code>VITE_GOOGLE_MAPS_KEY=your_key</code> to Vercel environment variables.
+          </div>
         </div>
+      )
+    }
+    // Show addresses as a list with map links as fallback
+    return (
+      <div style={{ height: '100%', overflowY: 'auto', padding: '12px', background: 'var(--dim)', borderRadius: '12px' }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', marginBottom: '10px' }}>
+          ⚠️ Google Maps key not configured — showing address list. Add VITE_GOOGLE_MAPS_KEY to Vercel to enable map view.
+        </div>
+        {signs.map(s => (
+          <a key={s.id} href={'https://maps.google.com/?q=' + encodeURIComponent(s.addr || '')} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'var(--panel)', borderRadius: '8px', marginBottom: '6px', textDecoration: 'none', border: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '16px' }}>📍</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{s.addr}</div>
+              <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{s.order_status}</div>
+            </div>
+            <span style={{ fontSize: '11px', color: '#3B82F6' }}>Open in Maps →</span>
+          </a>
+        ))}
       </div>
     )
   }
@@ -253,8 +280,9 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
     <div style={{ position: 'relative', height: '100%', borderRadius: '12px', overflow: 'hidden' }}>
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
       {geocoding && (
-        <div style={{ position: 'absolute', bottom: '12px', left: '12px', background: 'rgba(0,0,0,.7)', color: '#fff', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600 }}>
-          📍 Mapping {signs.filter(s => s.addr?.length > 5).length} active signs...
+        <div style={{ position: 'absolute', bottom: '12px', left: '12px', background: 'rgba(0,0,0,.8)', color: '#fff', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981', animation: 'pulse 1s infinite' }} />
+          Placing {geocoded} of {signs.filter(s => s.addr?.length > 5).length} pins...
         </div>
       )}
     </div>
@@ -263,7 +291,7 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
 
 // ── SIGN EDIT MODAL ───────────────────────────────────────────────
 function SignModal({ sign, agents, onSave, onClose, saving }) {
-  const [f, setF] = useState(() => sign || { ...BLANK })
+  const [f, setF] = useState(() => sign ? { ...sign } : blankSign())
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
 
   const Lbl = ({ children }) => (
@@ -335,7 +363,7 @@ function SignModal({ sign, agents, onSave, onClose, saving }) {
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div><Lbl>Date Installed</Lbl><Inp k="date_installed" type="date" /></div>
+            <div><Lbl>Date Entered</Lbl><Inp k="date_installed" type="date" /></div>
             <div><Lbl>Date Removed</Lbl><Inp k="date_removed" type="date" /></div>
           </div>
           <div>

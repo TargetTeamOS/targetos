@@ -3,6 +3,7 @@
 // Private offer tracking per agent. Mirrors Agent Offers board.
 // ═══════════════════════════════════════════════════════════════
 
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -173,7 +174,7 @@ export function Offers() {
       <Modal open={!!(selected || urlId === 'new')} onClose={closePanel} title={selected ? "Offer — " + (selected.listing_addr) : 'New Offer'} width={500}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <Field label="Listing Address" required>
-            <Input value={form.listing_addr} onChange={v => set('listing_addr', v)} placeholder="123 Main St" />
+            <AddressAutocomplete value={form.listing_addr||''} onChange={v => set('listing_addr', v)} placeholder="123 Main St, Monsey NY" />
           </Field>
           <Field label="Buyer Name">
             <Input value={form.buyer_name} onChange={v => set('buyer_name', v)} placeholder="John Smith" />

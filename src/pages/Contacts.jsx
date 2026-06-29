@@ -578,7 +578,7 @@ export function Contacts() {
             </div>
 
             <Field label="Address">
-              <Input value={form.address} onChange={v => set('address', v)} placeholder="123 Main St" />
+              <AddressAutocomplete value={form.address||''} onChange={v => set('address', v)} placeholder="123 Main St, Monsey NY" />
             </Field>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>

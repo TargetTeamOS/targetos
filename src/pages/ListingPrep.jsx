@@ -4,6 +4,7 @@
 // prep checklist with checkable items.
 // ═══════════════════════════════════════════════════════════════
 
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -131,7 +132,7 @@ export function ListingPrep() {
 
       <Modal open={!!(selected || urlId === 'new')} onClose={closePanel} title={selected?.listing_addr || 'New Listing Prep'} width={500}>
         <Field label="Listing Address" required>
-          <Input value={form.listing_addr} onChange={v => set('listing_addr', v)} placeholder="123 Main St" />
+          <AddressAutocomplete value={form.listing_addr||''} onChange={v => set('listing_addr', v)} placeholder="123 Main St, Monsey NY" />
         </Field>
 
         {(isAdmin || canManage) && (

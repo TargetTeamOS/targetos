@@ -4,6 +4,7 @@
 // Mirrors the Closing board from Monday.com exactly.
 // ═══════════════════════════════════════════════════════════════
 
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -192,7 +193,7 @@ export function Transactions() {
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <Field label="Address" required>
-                <Input value={form.addr} onChange={v => set('addr', v)} placeholder="123 Main St" />
+                <AddressAutocomplete value={form.addr||''} onChange={v => set('addr', v)} placeholder="123 Main St, Monsey NY" />
               </Field>
               <Field label="Side">
                 <Select value={form.side} onChange={v => set('side', v)} options={SIDES} />
