@@ -254,7 +254,7 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
       {geocoding && (
         <div style={{ position: 'absolute', bottom: '12px', left: '12px', background: 'rgba(0,0,0,.7)', color: '#fff', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600 }}>
-          📍 Mapping signs... {geocoded}/{signs.filter(s => s.addr?.length > 5).length}
+          📍 Mapping {signs.filter(s => s.addr?.length > 5).length} active signs...
         </div>
       )}
     </div>
@@ -547,6 +547,10 @@ export function Signs() {
   const orderSent  = signs.filter(s => s.order_status === 'Order Sent In').length
   const missing    = signs.filter(s => s.order_status === 'Missing - broken').length
 
+  // Map always shows ALL signs that are NOT removed — independent of list filter
+  const REMOVED = ['Took Away', 'Removal Order Sent', 'Auto Remove Order']
+  const mapSigns = signs.filter(s => !REMOVED.includes(s.order_status))
+
   return (
     <div style={{ fontFamily: ff, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)' }}>
 
@@ -636,9 +640,14 @@ export function Signs() {
 
           {/* MAP PANEL */}
           {(viewMode === 'split' || viewMode === 'map') && (
-            <div style={{ borderRadius: '12px', overflow: 'hidden', minHeight: '400px' }}>
+            <div style={{ borderRadius: '12px', overflow: 'hidden', minHeight: '400px', position: 'relative' }}>
+              {/* Active pins badge */}
+              <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, background: 'rgba(27,43,75,.92)', color: '#fff', padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,.3)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
+                {mapSigns.length} {mapSigns.length !== 1 ? 'signs' : 'sign'} on map - removed signs hidden
+              </div>
               <SignsMap
-                signs={filtered}
+                signs={mapSigns}
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
                 onSignClick={id => { const s = signs.find(x => x.id === id); if (s) setEditSign(s) }}
