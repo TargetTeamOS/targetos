@@ -49,45 +49,62 @@ function parseLine(line) {
 }
 
 function parseCSV(text) {
-  // Strip UTF-8 BOM and normalise line endings
-  const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
-  const lines  = clean.split('\n')
-  if (lines.length < 2) return { headers: [], rows: [] }
+  // Strip BOM and normalize line endings
+  const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const rawLines = clean.split('\n')
 
-  // Find the header row — it's the first row with 3+ non-empty cells
-  let headerIdx = 0
-  for (let i = 0; i < Math.min(5, lines.length); i++) {
-    const cells = parseLine(lines[i]).map(h => h.replace(/^"|"$/g, '').trim())
-    if (cells.filter(c => c.length > 0).length >= 3) { headerIdx = i; break }
+  // Find the real header row: first row with 3+ non-empty quoted/unquoted cells
+  let headerIdx = -1
+  let headers = []
+  for (let i = 0; i < Math.min(10, rawLines.length); i++) {
+    const line = rawLines[i].trim()
+    if (!line) continue
+    const cells = parseLine(line).map(c => c.replace(/^"|"$/g, '').trim())
+    const filled = cells.filter(c => c.length > 0)
+    if (filled.length >= 3) {
+      // Make sure it looks like a header (not all numbers)
+      const looksLikeHeader = cells.some(c => c.length > 0 && !/^\d+$/.test(c))
+      if (looksLikeHeader) {
+        headerIdx = i
+        headers = cells
+        break
+      }
+    }
   }
 
-  const headers = parseLine(lines[headerIdx]).map(h => h.replace(/^"|"$/g, '').trim())
-  if (!headers.length || headers.every(h => !h)) return { headers: [], rows: [] }
+  if (headerIdx === -1 || headers.length === 0) {
+    return { headers: [], rows: [], rawCount: 0, skippedCount: 0 }
+  }
 
   const rows = []
-  for (let i = headerIdx + 1; i < lines.length; i++) {
-    const line = lines[i]
-    if (!line.trim()) continue  // skip blank lines
+  let skippedCount = 0
 
-    const vals = parseLine(line)
-    const obj  = {}
-    headers.forEach((h, idx) => {
-      obj[h] = (vals[idx] || '').replace(/^"|"$/g, '').trim()
-    })
+  for (let i = headerIdx + 1; i < rawLines.length; i++) {
+    const line = rawLines[i]
+    if (!line.trim()) { skippedCount++; continue }
 
-    // Count how many cells have values
-    const filledCount = Object.values(obj).filter(v => v !== '').length
-    if (filledCount === 0) continue  // completely blank row
+    const vals = parseLine(line).map(c => c.replace(/^"|"$/g, '').trim())
+    const obj = {}
+    headers.forEach((h, idx) => { if (h) obj[h] = vals[idx] || '' })
+
+    // Count non-empty cells
+    const filledCount = Object.values(obj).filter(v => v.length > 0).length
+    if (filledCount === 0) { skippedCount++; continue }
+
+    // Monday.com group header: only 1 cell has content and it's not numeric
     if (filledCount === 1) {
-      // Single-value row = Monday.com group header — mark it but skip
-      continue
+      const onlyVal = Object.values(obj).find(v => v.length > 0) || ''
+      const isGroupHeader = !/\d{3,}/.test(onlyVal) // no 3+ digit numbers = probably a label
+      if (isGroupHeader) { skippedCount++; continue }
     }
 
     rows.push(obj)
   }
 
-  return { headers, rows }
+  return { headers, rows, rawCount: rawLines.length - headerIdx - 1, skippedCount }
 }
+
+
 
 function downloadFile(content, filename, type = 'text/csv;charset=utf-8;') {
   const blob = new Blob([content], { type })
@@ -138,9 +155,13 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     if (!file) return
     const reader = new FileReader()
     reader.onload = ev => {
-      const { headers, rows } = parseCSV(ev.target.result)
+      const allParsed = parseCSV(ev.target.result)
+        const { headers, rows } = allParsed
       if (!headers.length) { toast('Could not read CSV headers — make sure the file is a .csv and not .xlsx', '#DC2626'); return }
-      if (!rows.length) { toast('CSV has headers but no data rows', '#DC2626'); return }
+      if (!rows.length) {
+          toast('CSV parsed but found 0 data rows. Raw rows: ' + (allParsed.rawCount||0) + ', skipped: ' + (allParsed.skippedCount||0) + '. Check your CSV has an Address/Name column.', '#DC2626')
+          return
+        }
       // Auto-map CSV headers to column keys
       const autoMap = {}
       // Extra aliases for common import sources (Monday.com exports, Excel, etc.)
@@ -171,7 +192,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         if (lower === 'a/o date' || lower === 'a/o') { autoMap[h] = 'ao_date' }
       })
       setMapping(autoMap)
-      setPreview({ headers, rows: rows.slice(0, 5), allRows: rows })
+      setPreview({ headers, rows: rows.slice(0, 5), allRows: rows, rawCount: allParsed.rawCount || rows.length, skippedCount: allParsed.skippedCount || 0 })
       setImportDone(null)
     }
     reader.readAsText(file)
@@ -590,9 +611,16 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
               <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', marginBottom: '4px' }}>
                 Map CSV columns → {label} fields
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '14px' }}>
-                {preview.allRows.length} rows detected. Map each CSV column to a {label.slice(0,-1).toLowerCase()} field.
+              <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '10px', lineHeight: 1.6 }}>
+                <strong style={{ color: 'var(--text)', fontSize: 14 }}>{preview.allRows.length} data rows</strong> ready to import.
+                {preview.skippedCount > 0 && <span style={{ color: '#F5A623' }}> ({preview.skippedCount} blank/header rows auto-skipped from your CSV)</span>}
               </div>
+              {preview.allRows.length < 200 && preview.rawCount > preview.allRows.length + preview.skippedCount && (
+                <div style={{ padding: '8px 12px', background: '#FEF2F2', borderRadius: 8, border: '1px solid #FECACA', fontSize: 12, color: '#DC2626', marginBottom: 10 }}>
+                  ⚠️ Only {preview.allRows.length} of {preview.rawCount} raw CSV rows were parsed.
+                  This usually means the address column isn't mapped — make sure "Address" (or "Name", "Item Name") maps to the <strong>Address</strong> field below.
+                </div>
+              )}
 
               {/* Duplicate handling */}
               <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'10px 12px', background:'var(--dim)', borderRadius:'8px', border:'1px solid var(--border)', marginBottom:'14px' }}>

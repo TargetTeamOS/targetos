@@ -477,7 +477,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
       {/* ── Rows ── */}
       {!collapsed && (
         <div style={{ overflowX: 'auto', borderBottom: '1px solid #e6e9ef' }}>
-          <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', background: '#fff' }}>
+          <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', background: '#fff', borderRight: '1px solid #e6e9ef' }}>
             <tbody>
               {deals.map(d => (
                 <DealRow key={d.id} deal={d} agents={agents} onOpen={onOpen} onQuickUpdate={onQuickUpdate}
@@ -1267,22 +1267,25 @@ export function Production() {
   })
 
   // Board groups
+  // All stage values that are claimed by a group
+  const allClaimedStages = new Set(activeGroups.flatMap(g => g.stages || []))
+
   const groupedDeals = activeGroups.map(group => ({
     ...group,
     deals: filtered.filter(d => {
-      const stageMatch = group.stages.includes(d.stage)
+      // Custom group with no stages: catch all deals whose stage isn't in any group
+      if (group.custom && (!group.stages || group.stages.length === 0)) {
+        return !allClaimedStages.has(d.stage)
+      }
+      const stageMatch = (group.stages || []).includes(d.stage)
       if (!stageMatch) return false
       if (group.yearMatch) {
         const year = d.close_date?.slice(0, 4) || d.ao_date?.slice(0, 4) || d.created_at?.slice(0, 4)
         return year === group.yearMatch
       }
-      // Active groups: no year filter needed (show regardless of year)
-      if (!group.yearMatch && (group.id === 'active' || group.id === 'under_shtar' || group.id === 'under_contract')) {
-        return true
-      }
-      return false
+      return true
     }),
-  })).filter(g => g.yearMatch ? true : g.deals.length > 0 || ['active','under_shtar','under_contract'].includes(g.id))
+  })).filter(g => g.custom ? true : g.yearMatch ? true : g.deals.length > 0 || ['active','under_shtar','under_contract'].includes(g.id))
 
   // Stats
   const totalGCIAll   = filtered.reduce((s, d) => s + parseNum(d.gci), 0)
@@ -1295,9 +1298,9 @@ export function Production() {
     <div style={{ fontFamily: ff }}>
 
       {/* ── HEADER ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text)' }}>📊 Production Sheet</div>
+          <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-.3px' }}>📊 Production Board</div>
           <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
             {filtered.length} deals · {fmt$(totalGCIAll)} GCI
           </div>
@@ -1483,21 +1486,19 @@ export function Production() {
           action={<Btn onClick={openNew}>+ Add Deal</Btn>} />
       ) : viewMode === 'board' ? (
         /* BOARD VIEW — Monday.com style */
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', background: '#fff' }}>
-          {/* Sticky column header */}
-          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fff', borderBottom: '2px solid #e6e9ef', display: 'flex', height: 40 }}>
-            <div style={{ width: 50, flexShrink: 0, borderRight: '1px solid #e6e9ef' }} />
-            <div style={{ minWidth: 220, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 12px', borderRight: '1px solid #e6e9ef', position: 'sticky', left: 50, background: '#fff', zIndex: 4 }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', background: '#fff', border: '1px solid #e6e9ef', borderRadius: 4 }}>
+          {/* Sticky column header — Monday.com style */}
+          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f5f6f8', borderBottom: '1px solid #c5c7d0', display: 'flex', height: 40, minWidth: 'max-content', width: '100%' }}>
+            <div style={{ width: 50, flexShrink: 0, borderRight: '1px solid #e6e9ef', height: 40 }} />
+            <div style={{ minWidth: 220, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 12px', borderRight: '1px solid #e6e9ef', background: '#f5f6f8' }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.06em' }}>Item</span>
             </div>
-            <div style={{ display: 'flex', overflowX: 'auto', flex: 1 }}>
-              {visibleCols.map(col => (
-                <div key={col.key} style={{ minWidth: col.width, display: 'flex', alignItems: 'center', justifyContent: col.type==='number'?'flex-end':'center', padding: '0 10px', borderRight: '1px solid #e6e9ef', flexShrink: 0 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{col.label}</span>
-                </div>
-              ))}
-              <div style={{ minWidth: 36, borderRight: '1px solid #e6e9ef' }} />
-            </div>
+            {visibleCols.map(col => (
+              <div key={col.key} style={{ minWidth: col.width, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: col.type==='number'?'flex-end':'center', padding: '0 10px', borderRight: '1px solid #e6e9ef', height: 40 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{col.label}</span>
+              </div>
+            ))}
+            <div style={{ minWidth: 36, flexShrink: 0, borderRight: '1px solid #e6e9ef' }} />
           </div>
 
           {/* Groups */}
