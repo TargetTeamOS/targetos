@@ -20,6 +20,7 @@ import { FilterBar } from '../components/FilterBar'
 import { ImportExport } from '../components/ImportExport'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
+import { MLSSearch } from '../components/MLSSearch'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -518,6 +519,7 @@ export function Listings() {
   const [minPrice,    setMinPrice]    = useState('')
   const [maxPrice,    setMaxPrice]    = useState('')
   const [selected,    setSelected]    = useState(null)
+  const [activeMainTab, setActiveMainTab] = useState('my') // 'my' | 'mls'
   const [showAdd,     setShowAdd]     = useState(false)
   const [showRoute,   setShowRoute]   = useState(false)
   const [confirmDel,  setConfirmDel]  = useState(false)
@@ -656,6 +658,35 @@ export function Listings() {
 
   return (
     <div style={{ fontFamily:ff }}>
+
+      {/* ── TOP TABS: My Listings vs MLS Search ── */}
+      <div style={{ display:'flex', alignItems:'center', gap:0, marginBottom:0, borderBottom:'2px solid var(--border)', marginTop:-8 }}>
+        {[['my','🏡 My Listings'],['mls','🔍 MLS Search']].map(function([id, label]) {
+          const active = activeMainTab === id
+          return (
+            <button key={id} onClick={() => setActiveMainTab(id)}
+              style={{ padding:'10px 20px', border:'none', background:'none', cursor:'pointer',
+                borderBottom: active ? '2px solid #CC2200' : '2px solid transparent',
+                marginBottom: '-2px', fontSize:13, fontWeight:active?700:500,
+                color:active?'#CC2200':'var(--muted)', fontFamily:ff, whiteSpace:'nowrap' }}>
+              {label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── MLS SEARCH TAB ── */}
+      {activeMainTab === 'mls' && (
+        <div style={{ marginTop:20 }}>
+          <MLSSearch
+            agents={agents || []}
+            onImported={() => { setActiveMainTab('my'); load() }}
+          />
+        </div>
+      )}
+
+      {activeMainTab === 'my' && <>
+
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16, flexWrap:'wrap' }}>
         <div>
@@ -799,6 +830,8 @@ export function Listings() {
       {showRoute && <RoutePlanner listings={listings} onClose={() => setShowRoute(false)} />}
 
       <Confirm open={confirmDel} message={"Delete " + (selected?.addr) + "?"} onConfirm={deleteListing} onCancel={() => setConfirmDel(false)} />
+    </>
+    }
     </div>
   )
 }
