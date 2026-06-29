@@ -209,7 +209,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         const rawVal = row[actualKey]
         const strVal = (rawVal === null || rawVal === undefined) ? '' : String(rawVal).trim()
 
-        if (dbKey === '_agent_name') { agentName = strVal || null; continue }
+        if (dbKey === '_agent_name' || dbKey.startsWith('_')) { if (dbKey === '_agent_name') agentName = strVal || null; continue }
 
         const col = columns.find(c => c.key === dbKey)
         if (strVal === '' || strVal === 'null' || strVal === 'None' || strVal === 'undefined') {
@@ -246,10 +246,18 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       }
 
       if (!idField) {
-        const nonEmpty = Object.keys(record).filter(function(k) { return record[k] && String(record[k]).trim() })
-        const firstRaw = String(Object.values(row)[0] || '').slice(0, 60)
-        errors.push('Row ' + (ri+1) + ' skipped — no identifier field found. Keys mapped: [' + (nonEmpty.join(', ') || 'nothing') + ']. First CSV cell: "' + firstRaw + '"')
-        continue
+        // For deals: if no idField found, use the raw first value as addr
+        // This handles cases where the column is named differently
+        const firstVal = String(Object.values(row)[0] || '').trim()
+        if (firstVal && (table === 'deals' || table === 'contacts')) {
+          if (table === 'deals') { record['addr'] = firstVal; idField = 'addr' }
+          else { record['first_name'] = firstVal.split(' ')[0]; record['last_name'] = firstVal.split(' ').slice(1).join(' '); idField = 'first_name' }
+        } else {
+          const nonEmpty = Object.keys(record).filter(function(k) { return record[k] && String(record[k]).trim() })
+          const firstRaw = String(Object.values(row)[0] || '').slice(0, 60)
+          errors.push('Row ' + (ri+1) + ': no identifier found. Mapped keys: [' + (nonEmpty.join(', ') || 'none') + ']. First cell: "' + firstRaw + '"')
+          continue
+        }
       }
 
       records.push({ record: record, idField: idField })
@@ -258,6 +266,8 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     // ── FORCE MODE: skip all dup detection, insert everything ──────
     if (dupMode === 'force') {
       setImportProgress('Inserting all ' + records.length + ' rows (force mode)...')
+      console.log('FORCE IMPORT: records to insert:', records.length)
+      console.log('Sample record[0]:', JSON.stringify(records[0]))
       const BATCH = 50
       for (let i = 0; i < records.length; i += BATCH) {
         const chunk = records.slice(i, i + BATCH).map(r => ({
@@ -265,19 +275,26 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }))
+        console.log('Inserting batch', i/BATCH+1, 'size:', chunk.length, 'sample:', JSON.stringify(chunk[0]))
         try {
-          const { error } = await supabase.from(table).insert(chunk)
-          if (error) throw error
-          inserted += chunk.length
+          const { data: inserted_data, error } = await supabase.from(table).insert(chunk).select('id')
+          if (error) {
+            console.error('Insert error:', error)
+            errors.push('Batch ' + (i/BATCH+1) + ' failed: ' + error.message + ' | code: ' + error.code + ' | hint: ' + (error.hint||''))
+          } else {
+            inserted += (inserted_data || chunk).length
+            console.log('Batch', i/BATCH+1, 'inserted:', (inserted_data||chunk).length)
+          }
         } catch(e) {
-          errors.push('Insert batch ' + (i/BATCH+1) + ' failed: ' + e.message)
+          console.error('Insert exception:', e)
+          errors.push('Batch ' + (i/BATCH+1) + ' exception: ' + e.message)
         }
-        setImportProgress('Inserted ' + Math.min(inserted + errors.length, records.length) + ' of ' + records.length + '...')
+        setImportProgress('Inserted ' + inserted + ' of ' + records.length + '...')
       }
       setImportDone({ inserted, updated, skipped, errors })
       setImporting(false)
       if (onImport) onImport()
-      toast('✅ Force import: ' + inserted + ' added' + (errors.length ? ', ' + errors.length + ' errors' : ''))
+      toast(inserted > 0 ? '✅ Force import: ' + inserted + ' added' + (errors.length ? ', ' + errors.length + ' errors' : '') : '❌ Import failed — check errors below')
       return
     }
 
@@ -599,7 +616,13 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
                 </button>
                 <button onClick={doImport} disabled={importing}
                   style={{ flex: 1, padding: '9px', borderRadius: '8px', border: 'none', background: importing ? '#94A3B8' : '#CC2200', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: importing ? 'wait' : 'pointer', fontFamily: ff }}>
-                  {importing ? "⏳ Importing " + (preview.allRows.length) + " rows..." : "⬆ Import " + (preview.allRows.length) + " rows"}
+                  {importing
+                    ? ('⏳ ' + importProgress + ' — DO NOT CLOSE')
+                    : (dupMode === 'force'
+                        ? '➕ Force insert all ' + preview.allRows.length + ' rows as NEW'
+                        : '⬆ Import ' + preview.allRows.length + ' rows (' + dupMode + ' duplicates)'
+                    )
+                  }
                 </button>
               </div>
             </div>
