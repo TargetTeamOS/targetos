@@ -95,7 +95,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
   const [mode,        setMode]        = useState('export') // 'export' | 'import'
   const [preview,     setPreview]     = useState(null)    // { headers, rows }
   const [mapping,     setMapping]     = useState({})      // csvHeader → dbColumn
-  const [dupMode,     setDupMode]     = useState('skip')  // 'skip' | 'update'
+  const [dupMode,     setDupMode]     = useState('update')  // 'skip' | 'update' | 'force'
   const [importing,   setImporting]   = useState(false)
   const [importProgress, setImportProgress] = useState('')  // status message during import
   const [importDone,  setImportDone]  = useState(null)    // { inserted, skipped, updated, errors }
@@ -255,6 +255,32 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       records.push({ record: record, idField: idField })
     }
 
+    // ── FORCE MODE: skip all dup detection, insert everything ──────
+    if (dupMode === 'force') {
+      setImportProgress('Inserting all ' + records.length + ' rows (force mode)...')
+      const BATCH = 50
+      for (let i = 0; i < records.length; i += BATCH) {
+        const chunk = records.slice(i, i + BATCH).map(r => ({
+          ...r.record,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }))
+        try {
+          const { error } = await supabase.from(table).insert(chunk)
+          if (error) throw error
+          inserted += chunk.length
+        } catch(e) {
+          errors.push('Insert batch ' + (i/BATCH+1) + ' failed: ' + e.message)
+        }
+        setImportProgress('Inserted ' + Math.min(inserted + errors.length, records.length) + ' of ' + records.length + '...')
+      }
+      setImportDone({ inserted, updated, skipped, errors })
+      setImporting(false)
+      if (onImport) onImport()
+      toast('✅ Force import: ' + inserted + ' added' + (errors.length ? ', ' + errors.length + ' errors' : ''))
+      return
+    }
+
     setImportProgress('Checking for duplicates (' + records.length + ' rows)...')
     // ── Step 3: Smart duplicate detection ─────────────────────────
     // For contacts: match on normalized phone number (most reliable)
@@ -292,22 +318,28 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         }
       } catch(e) { errors.push('Could not fetch existing contacts: ' + e.message) }
     } else {
-      // Generic: fetch by idField in batches
+      // Fetch ALL existing records for this table (prevents missed matches)
       const idField0 = records[0]?.idField || 'addr'
-      const allIds   = records.map(function(r) { return r.record[r.idField] }).filter(Boolean)
-      for (let i = 0; i < allIds.length; i += BATCH) {
-        const chunk = allIds.slice(i, i + BATCH)
-        try {
-          const selectFields = 'id, ' + idField0 + (table === 'deals' ? ', side' : '')
-          const { data } = await supabase.from(table).select(selectFields).in(idField0, chunk)
-          ;(data || []).forEach(function(row) {
-            const normVal  = String(row[idField0] || '').trim().toLowerCase()
+      try {
+        let offset = 0, done = false
+        while (!done) {
+          const selectFields = 'id, ' + idField0 + (table === 'deals' ? ', side, agent_id' : '')
+          const { data } = await supabase.from(table).select(selectFields).range(offset, offset + 999)
+          if (!data || data.length === 0) { done = true; break }
+          data.forEach(function(row) {
+            // Normalize: lowercase, collapse whitespace, trim
+            const normVal  = String(row[idField0] || '').toLowerCase().replace(/\s+/g,' ').trim()
             const normSide = row.side ? String(row.side).trim().toLowerCase() : ''
-            const key = normVal + (normSide ? '||' + normSide : '')
-            existingMap[key] = { id: row.id, row }
+            if (normVal) {
+              existingMap[normVal] = { id: row.id, row }
+              if (normSide) existingMap[normVal + '||' + normSide] = { id: row.id, row }
+            }
           })
-        } catch(e) { errors.push('Fetch batch failed: ' + e.message) }
-      }
+          offset += 1000
+          if (data.length < 1000) done = true
+        }
+        console.log('Loaded', Object.keys(existingMap).length, 'existing records for dup detection')
+      } catch(e) { errors.push('Could not fetch existing records: ' + e.message) }
     }
 
     // ── Step 4: Split into inserts vs updates ─────────────────────
@@ -327,10 +359,11 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
           if (nameKey && nameKey.length > 1) existingEntry = existingMap['name:' + nameKey]
         }
       } else {
-        const normVal  = String(record[idField] || '').trim().toLowerCase()
+        // Normalize the same way as the existingMap keys
+        const normVal  = String(record[idField] || '').toLowerCase().replace(/\s+/g,' ').trim()
         const normSide = record.side ? String(record.side).trim().toLowerCase() : ''
-        const key = normVal + (normSide ? '||' + normSide : '')
-        existingEntry = existingMap[key]
+        // Try with side first, then without
+        existingEntry = existingMap[normVal + (normSide ? '||' + normSide : '')] || existingMap[normVal]
       }
 
       if (existingEntry) {
@@ -507,10 +540,14 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
                 <span style={{ fontSize:'14px' }}>🔁</span>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:'12px', fontWeight:700, color:'var(--text)' }}>If a record already exists (matched by phone/name/address):</div>
-                  <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:2 }}>Deleted records will always be re-imported. Any changed field triggers an update.</div>
+                  <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:2 }}>
+                    <strong style={{color:'var(--text)'}}>Update</strong> — match by address, update changed fields, add new ones.<br/>
+                    <strong style={{color:'var(--text)'}}>Skip</strong> — skip any row that matches an existing record.<br/>
+                    <strong style={{color:'var(--text)'}}>Force Add All</strong> — insert every row as new, ignore duplicates.
+                  </div>
                 </div>
                 <div style={{ display:'flex', background:'var(--panel)', borderRadius:'7px', padding:'2px', gap:'2px' }}>
-                  {[['skip','⏭ Skip'],['update','✏️ Update']].map(([m,l]) => (
+                  {[['update','✏️ Update'],['skip','⏭ Skip'],['force','➕ Force Add All']].map(([m,l]) => (
                     <button key={m} onClick={() => setDupMode(m)}
                       style={{ padding:'4px 10px', borderRadius:'5px', border:'none', background: dupMode===m ? '#CC2200' : 'transparent', color: dupMode===m ? '#fff' : 'var(--muted)', fontSize:'11px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
                       {l}
