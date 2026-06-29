@@ -4,7 +4,7 @@
 // input DOM node. No custom dropdown management — Google handles
 // everything. Input is uncontrolled to prevent cursor-jump.
 // ═══════════════════════════════════════════════════════════════
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 const ff  = 'Inter, system-ui, -apple-system, sans-serif'
 const KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
@@ -51,8 +51,15 @@ function ensureMapsLoaded(cb) {
   script.async    = true
   script.defer    = true
   script.onload   = () => { _state = 'ready'; _cbs.forEach(f => f()); _cbs.length = 0 }
-  script.onerror  = () => { console.error('Google Maps failed to load'); _state = 'idle' }
+  script.onerror  = () => { console.error('Google Maps failed to load'); _state = 'error' }
   document.head.appendChild(script)
+
+  // Suppress Google's "can't load" dialog — happens when key has wrong restrictions
+  const origAlert = window.alert
+  window.alert = function(msg) {
+    if (typeof msg === 'string' && msg.toLowerCase().includes('google maps')) return
+    origAlert.call(window, msg)
+  }
 }
 
 // ── Component ───────────────────────────────────────────────────
@@ -66,6 +73,7 @@ export function AddressAutocomplete({
   required,
   name,
 }) {
+  const [keyError, setKeyError] = useState(false)
   const inputRef = useRef(null)
   const acRef    = useRef(null)   // google.maps.places.Autocomplete instance
   const initDone = useRef(false)
@@ -88,6 +96,12 @@ export function AddressAutocomplete({
   })
 
   // ── Attach Google Autocomplete to the input ──────────────────
+  // Google fires this when API key is invalid/restricted
+  useEffect(() => {
+    window.gm_authFailure = () => { setKeyError(true) }
+    return () => { delete window.gm_authFailure }
+  }, [])
+
   useEffect(() => {
     const el = inputRef.current
     if (!el || initDone.current) return
@@ -175,7 +189,13 @@ export function AddressAutocomplete({
       />
       {!KEY && (
         <div style={{ fontSize: 10, color: '#F5A623', marginTop: 3, fontFamily: ff }}>
-          ⚠️ VITE_GOOGLE_MAPS_KEY not set in environment
+          ⚠️ VITE_GOOGLE_MAPS_KEY not set — add to Vercel environment variables
+        </div>
+      )}
+      {keyError && (
+        <div style={{ fontSize: 10, color: '#DC2626', marginTop: 3, fontFamily: ff, lineHeight: 1.5 }}>
+          ⚠️ Google Maps key error — check API key restrictions in Google Cloud Console.<br/>
+          Make sure <strong>app.targetreteam.com</strong> is allowed and Places API + Maps JS API are enabled with billing.
         </div>
       )}
     </div>
