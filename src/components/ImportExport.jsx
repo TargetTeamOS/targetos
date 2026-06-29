@@ -246,21 +246,43 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       }
 
       if (!idField) {
-        // For deals: if no idField found, use the raw first value as addr
-        // This handles cases where the column is named differently
-        const firstVal = String(Object.values(row)[0] || '').trim()
-        if (firstVal && (table === 'deals' || table === 'contacts')) {
-          if (table === 'deals') { record['addr'] = firstVal; idField = 'addr' }
-          else { record['first_name'] = firstVal.split(' ')[0]; record['last_name'] = firstVal.split(' ').slice(1).join(' '); idField = 'first_name' }
-        } else {
+        // Row has no identifier — likely a blank row, group header, or subtotal row
+        // Silently skip these (they're common in Monday.com / Excel exports)
+        const allVals = Object.values(row).map(function(v) { return String(v||'').trim() })
+        const hasAnyData = allVals.some(function(v) { return v && v.length > 0 })
+        if (hasAnyData) {
+          // Has some data but no identifier — log as minor warning
           const nonEmpty = Object.keys(record).filter(function(k) { return record[k] && String(record[k]).trim() })
-          const firstRaw = String(Object.values(row)[0] || '').slice(0, 60)
-          errors.push('Row ' + (ri+1) + ': no identifier found. Mapped keys: [' + (nonEmpty.join(', ') || 'none') + ']. First cell: "' + firstRaw + '"')
-          continue
+          if (nonEmpty.length > 0) {
+            errors.push('Row ' + (ri+1) + ': skipped — address column is blank. Only found: [' + nonEmpty.join(', ') + ']')
+          }
         }
+        // else: truly blank row — skip silently
+        continue
       }
 
+      // Skip group header rows: rows where only 1-2 fields have values
+      // (common in Monday.com exports where group names appear as rows)
+      const filledFields = Object.keys(record).filter(function(k) { 
+        return record[k] !== null && record[k] !== undefined && String(record[k]).trim() !== ''
+      })
+      if (filledFields.length < 2) {
+        // Only 1 field filled (just the addr/name) — likely a group header row
+        // Skip silently unless it has a meaningful identifier
+        const addrVal = String(record[idField] || '')
+        const looksLikeGroupHeader = addrVal.length < 4 || /^[A-Za-z\s]+$/.test(addrVal)
+        if (looksLikeGroupHeader) {
+          continue  // skip group headers
+        }
+      }
       records.push({ record: record, idField: idField })
+    }
+
+    console.log('ImportExport: allRows=' + allRows.length + ' valid records=' + records.length + ' pre-import errors=' + errors.length)
+    if (records.length === 0) {
+      setImportDone({ inserted: 0, updated: 0, skipped: 0, errors: errors.length > 0 ? errors : ['No valid rows found — check that your address/name column is mapped correctly'] })
+      setImporting(false)
+      return
     }
 
     // ── FORCE MODE: skip all dup detection, insert everything ──────
@@ -294,8 +316,12 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       setImportDone({ inserted, updated, skipped, errors })
       setImporting(false)
       if (onImport) onImport()
-      toast(inserted > 0 ? '✅ Force import: ' + inserted + ' added' + (errors.length ? ', ' + errors.length + ' errors' : '') : '❌ Import failed — check errors below')
-      return
+      const blankCount = allRows.length - records.length - errors.length
+    const msg = inserted > 0
+      ? '✅ ' + inserted + ' deals added' + (blankCount > 0 ? ' (' + blankCount + ' blank/header rows skipped)' : '') + (errors.length ? ', ' + errors.length + ' errors' : '')
+      : '❌ Import failed — 0 rows inserted. Check column mapping.'
+    toast(msg)
+    return
     }
 
     setImportProgress('Checking for duplicates (' + records.length + ' rows)...')
@@ -439,7 +465,10 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     setImportDone({ inserted, updated, skipped, errors })
     setImporting(false)
     if (onImport) onImport()
-    toast(`✅ Import complete: ${inserted} added, ${skipped} skipped, ${updated} updated${errors.length ? ", " + (errors.length) + " errors" : ''}`)
+    const blankSkipped2 = allRows.length - records.length
+    toast('✅ Import complete: ' + inserted + ' added, ' + updated + ' updated, ' + skipped + ' skipped' + 
+      (blankSkipped2 > 0 ? ', ' + blankSkipped2 + ' blank/header rows skipped' : '') +
+      (errors.length ? ', ' + errors.length + ' errors' : ''))
   }
 
   if (!open) {
