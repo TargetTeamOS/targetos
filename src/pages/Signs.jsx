@@ -116,11 +116,16 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
     if (window.google?.maps) { setMapReady(true); return }
     if (!GOOGLE_MAPS_KEY) { console.warn('VITE_GOOGLE_MAPS_KEY not set'); setMapReady(true); return }
 
-    const existing = document.getElementById('gmap-script')
-    if (existing) { existing.onload = () => setMapReady(true); return }
+    // Reuse the same script tag as AddressAutocomplete component
+    const existing = document.getElementById('__gmaps__') || document.getElementById('gmap-script')
+    if (existing) {
+      if (window.google?.maps) { setMapReady(true); return }
+      existing.addEventListener('load', () => setMapReady(true), { once: true })
+      return
+    }
 
     const script = document.createElement('script')
-    script.id  = 'gmap-script'
+    script.id  = '__gmaps__'
     script.src = "https://maps.googleapis.com/maps/api/js?key=" + (GOOGLE_MAPS_KEY) + "&libraries=places"
     script.async = true
     script.onload = () => setMapReady(true)
