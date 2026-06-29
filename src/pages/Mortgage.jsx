@@ -733,8 +733,9 @@ function InvestmentCalc() {
   const [other,       setOther]       = useState('0')
   const [propName,    setPropName]    = useState('')
 
-  // Share modal
+  // Share card
   const [showShare,   setShowShare]   = useState(false)
+  const invCanvasRef = React.useRef(null)
 
   function setRent(i, v) { setRents(prev => { const n=[...prev]; n[i]=v; return n }) }
   function setCurrentRent(i, v) { setCurrentRents(prev => { const n=[...prev]; n[i]=v; return n }) }
@@ -1261,6 +1262,34 @@ function InvestmentCalc() {
               </table>
             </div>
           </Section>
+        </div>
+      </div>
+
+      {/* ── INVESTMENT SHARE CARD ── */}
+      <div style={{ marginTop:24, background:'var(--panel)', borderRadius:14, border:'1px solid var(--border)', overflow:'hidden' }}>
+        <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+          <div>
+            <div style={{ fontSize:14, fontWeight:800, color:'var(--text)' }}>📲 Share Card</div>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>Branded 1080×1080 — WhatsApp status, Instagram, or download</div>
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={shareInvCard}
+              style={{ padding:'8px 16px', borderRadius:9, border:'1px solid var(--border)', background:'var(--panel)', color:'var(--text)', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff, display:'flex', alignItems:'center', gap:6 }}>
+              📤 Share
+            </button>
+            <button onClick={downloadInvCard}
+              style={{ padding:'8px 16px', borderRadius:9, border:'none', background:'#CC2200', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff, display:'flex', alignItems:'center', gap:6 }}>
+              ⬇ Download JPG
+            </button>
+          </div>
+        </div>
+        <div style={{ padding:16, display:'flex', justifyContent:'center', background:'#080F1A' }}>
+          <div style={{ boxShadow:'0 8px 40px rgba(0,0,0,.5)', borderRadius:12, overflow:'hidden', width:'100%', maxWidth:480 }}>
+            <canvas ref={invCanvasRef} style={{ display:'block', width:'100%', height:'auto' }} />
+          </div>
+        </div>
+        <div style={{ padding:'8px 16px', borderTop:'1px solid var(--border)', fontSize:11, color:'var(--muted)', textAlign:'center' }}>
+          Live preview updates as you type · 1080×1080 JPEG · Target Team branded
         </div>
       </div>
     </div>
