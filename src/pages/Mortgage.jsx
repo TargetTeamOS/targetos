@@ -500,8 +500,10 @@ function InvestmentCalc() {
   const [closingPct,  setClosingPct]  = useState('3')
 
   // Income
-  const [units,       setUnits]       = useState('2')
-  const [rents,       setRents]       = useState(['3000','2800'])
+  const [units,         setUnits]         = useState('2')
+  const [rents,         setRents]         = useState(['3000','2800'])  // potential rents
+  const [currentRents,  setCurrentRents]  = useState(['2500','2300'])  // current/actual rents
+  const [showPotential, setShowPotential] = useState(false)
 
   // Operating expenses
   const [propTax,     setPropTax]     = useState('1200')
@@ -521,17 +523,13 @@ function InvestmentCalc() {
   // Share modal
   const [showShare,   setShowShare]   = useState(false)
 
-  function setRent(i, v) {
-    setRents(prev => { const n=[...prev]; n[i]=v; return n })
-  }
+  function setRent(i, v) { setRents(prev => { const n=[...prev]; n[i]=v; return n }) }
+  function setCurrentRent(i, v) { setCurrentRents(prev => { const n=[...prev]; n[i]=v; return n }) }
   function syncUnits(v) {
     const n = Math.max(1, parseInt(v)||1)
     setUnits(String(n))
-    setRents(prev => {
-      const next = [...prev]
-      while (next.length < n) next.push('0')
-      return next.slice(0, n)
-    })
+    setRents(prev => { const next=[...prev]; while(next.length<n) next.push('0'); return next.slice(0,n) })
+    setCurrentRents(prev => { const next=[...prev]; while(next.length<n) next.push('0'); return next.slice(0,n) })
   }
 
   const calc = React.useMemo(() => {
@@ -547,11 +545,20 @@ function InvestmentCalc() {
     const n = num(term)*12
     const mortgage = r > 0 ? loan*(r*Math.pow(1+r,n))/(Math.pow(1+r,n)-1) : loan/n
 
-    // Gross income
-    const grossMonthly = rents.slice(0, parseInt(units)||1).reduce((s,v)=>s+num(v),0)
+    // Gross income — potential vs current
+    const nUnits = parseInt(units)||1
+    const grossMonthly = rents.slice(0, nUnits).reduce((s,v)=>s+num(v),0)
     const grossAnnual  = grossMonthly * 12
     const vacancyLoss  = grossAnnual * (num(vacancy)/100)
     const effectiveIncome = grossAnnual - vacancyLoss
+
+    // Current (as-is) income
+    const currentMonthly = currentRents.slice(0, nUnits).reduce((s,v)=>s+num(v),0)
+    const currentAnnual  = currentMonthly * 12
+    const currentVacancy = currentAnnual * (num(vacancy)/100)
+    const currentEffective = currentAnnual - currentVacancy
+    const rentUpsideMonthly = grossMonthly - currentMonthly
+    const rentUpsideAnnual  = rentUpsideMonthly * 12
 
     // Operating expenses (monthly → annual)
     const mgmtFee  = effectiveIncome * (num(mgmtPct)/100)
@@ -603,13 +610,24 @@ function InvestmentCalc() {
       projections.push({ yr, rent: rentGrowth, value: appreciation, equity, cashFlow: cf, equity_built: startBal - bal })
     }
 
+    // Current NOI (as-is)
+    const currentMgmt = currentEffective * (num(mgmtPct)/100)
+    const currentOpEx = totalOpEx - mgmtFee + currentMgmt
+    const currentNOI  = currentEffective - currentOpEx
+    const currentCF   = currentNOI - annualDebt
+    const currentCocReturn = totalInvested > 0 ? (currentCF / totalInvested * 100) : 0
+    const currentCapRate   = p > 0 ? (currentNOI / p * 100) : 0
+
     return {
       p, dp, loan, closing, totalInvested, mortgage,
       grossMonthly, grossAnnual, vacancyLoss, effectiveIncome,
       opExpenses, totalOpEx, noi, annualDebt, cashFlow, monthlyCF,
       capRate, cocReturn, grm, dscr, breakEven, pricePerUnit, projections,
+      currentMonthly, currentAnnual, currentEffective,
+      rentUpsideMonthly, rentUpsideAnnual,
+      currentNOI, currentCF, currentCocReturn, currentCapRate,
     }
-  }, [price, down, rate, term, closingPct, rents, units, propTax, insurance, waterSewer, electric, gas, hoa, mgmtPct, maintenance, vacancy, capex, trash, other])
+  }, [price, down, rate, term, closingPct, rents, currentRents, units, propTax, insurance, waterSewer, electric, gas, hoa, mgmtPct, maintenance, vacancy, capex, trash, other])
 
   const c = calc
 
@@ -670,23 +688,55 @@ function InvestmentCalc() {
         '<td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:12px;font-weight:700;color:#059669;text-align:right">' + fmt$(Math.round(p2.equity)) + '</td></tr>'
     }).join('')
 
-    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Investment Analysis — ' + (propName || num(price) ? fmt$(num(price)) : '') + '</title>' +
-      '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;background:#F8FAFC;padding:30px;color:#1F2937}@page{size:A4;margin:20mm}@media print{body{background:#fff;padding:0}button{display:none}}</style>' +
+    const upsideRow = (showPotential && c.rentUpsideMonthly > 0) ? (
+      '<tr style="background:#FFF5F5"><td colspan="2" style="padding:6px 10px;font-size:11px;font-weight:800;color:#CC2200;text-transform:uppercase;letter-spacing:.06em;border-top:2px solid #CC2200">Rent Upside</td></tr>' +
+      '<tr><td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:13px;color:#374151">Current Monthly Rent</td><td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:13px;font-weight:600;color:#F59E0B;text-align:right">' + fmt$(c.currentMonthly) + '/mo</td></tr>' +
+      '<tr><td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:13px;color:#374151">Potential Monthly Rent</td><td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:13px;font-weight:600;color:#059669;text-align:right">' + fmt$(c.grossMonthly) + '/mo</td></tr>' +
+      '<tr style="background:#FFF5F5"><td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:13px;font-weight:800;color:#CC2200">Monthly Upside</td><td style="padding:7px 10px;border-bottom:1px solid #E8EDF2;font-size:14px;font-weight:900;color:#CC2200;text-align:right">+' + fmt$(c.rentUpsideMonthly) + '/mo</td></tr>' +
+      '<tr style="background:#FFF5F5"><td style="padding:7px 10px;border-bottom:2px solid #CC2200;font-size:13px;font-weight:800;color:#CC2200">Annual Upside</td><td style="padding:7px 10px;border-bottom:2px solid #CC2200;font-size:14px;font-weight:900;color:#CC2200;text-align:right">+' + fmt$(c.rentUpsideAnnual) + '/yr</td></tr>'
+    ) : ''
+
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Investment Analysis — ' + (propName || fmt$(num(price))) + '</title>' +
+      '<style>' +
+        '*{margin:0;padding:0;box-sizing:border-box}' +
+        'body{font-family:Arial,Helvetica,sans-serif;background:#F1F5F9;color:#1F2937}' +
+        '@page{size:A4;margin:15mm}' +
+        '@media print{body{background:#fff}button{display:none}.no-print{display:none}}' +
+      '</style>' +
     '</head><body>' +
-      '<div style="background:linear-gradient(135deg,#0F1A2E,#1B2B4B);padding:28px 32px;border-radius:10px 10px 0 0;margin-bottom:0">' +
-        '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Investment Property Analysis</div>' +
-        '<div style="font-size:24px;font-weight:900;color:#fff;margin-bottom:3px">' + (propName || 'Property Analysis') + '</div>' +
-        '<div style="font-size:13px;color:rgba(255,255,255,.5)">' + new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) + '</div>' +
-        '<div style="display:flex;gap:32px;margin-top:18px">' +
-          '<div><div style="font-size:22px;font-weight:900;color:' + metricColor(c.cocReturn,8,5) + '">' + c.cocReturn.toFixed(2) + '%</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Cash on Cash</div></div>' +
-          '<div><div style="font-size:22px;font-weight:900;color:' + metricColor(c.capRate,6,4) + '">' + c.capRate.toFixed(2) + '%</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Cap Rate</div></div>' +
-          '<div><div style="font-size:22px;font-weight:900;color:' + (c.monthlyCF>=0?'#4ADE80':'#F87171') + '">' + fmt$(Math.round(c.monthlyCF)) + '</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Monthly Cash Flow</div></div>' +
-          '<div><div style="font-size:22px;font-weight:900;color:' + metricColor(c.dscr,1.25,1.0) + '">' + c.dscr.toFixed(2) + 'x</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">DSCR</div></div>' +
+
+    /* ── BRANDED HEADER ── */
+    '<div style="background:#1B2B4B;position:relative;overflow:hidden">' +
+      /* Red diagonal banner — Target Team signature */
+      '<div style="position:absolute;top:0;left:0;width:220px;height:100px;background:#CC2200;clip-path:polygon(0 0,180px 0,220px 100%,0 100%);display:flex;flex-direction:column;justify-content:center;padding:16px 20px">' +
+        '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Investment</div>' +
+        '<div style="font-size:15px;font-weight:900;color:#fff;line-height:1.2">PROPERTY<br/>ANALYSIS</div>' +
+      '</div>' +
+      /* Logo area */
+      '<div style="display:flex;justify-content:flex-end;align-items:flex-start;padding:18px 28px 0">' +
+        '<div style="text-align:right">' +
+          '<div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-.5px;line-height:1">T<span style="color:#CC2200">A</span>RG<span style="color:#CC2200">E</span>T</div>' +
+          '<div style="font-size:14px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.7);margin-top:-2px">TEAM</div>' +
+          '<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:3px">Of Keller Williams Valley Realty</div>' +
         '</div>' +
       '</div>' +
+      /* Property + date */
+      '<div style="padding:12px 28px 22px 200px">' +
+        '<div style="font-size:20px;font-weight:900;color:#fff;margin-bottom:3px">' + (propName || fmt$(num(price))) + '</div>' +
+        '<div style="font-size:12px;color:rgba(255,255,255,.45)">' + new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) + '</div>' +
+      '</div>' +
+      /* Metrics strip */
+      '<div style="background:rgba(0,0,0,.25);padding:14px 28px;display:flex;gap:36px">' +
+        '<div><div style="font-size:22px;font-weight:900;color:' + metricColor(c.cocReturn,8,5) + '">' + c.cocReturn.toFixed(2) + '%</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Cash on Cash</div></div>' +
+        '<div><div style="font-size:22px;font-weight:900;color:' + metricColor(c.capRate,6,4) + '">' + c.capRate.toFixed(2) + '%</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Cap Rate</div></div>' +
+        '<div><div style="font-size:22px;font-weight:900;color:' + (c.monthlyCF>=0?'#4ADE80':'#F87171') + '">' + fmt$(Math.round(c.monthlyCF)) + '</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Monthly CF</div></div>' +
+        '<div><div style="font-size:22px;font-weight:900;color:' + metricColor(c.dscr,1.25,1.0) + '">' + c.dscr.toFixed(2) + 'x</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">DSCR</div></div>' +
+        (c.rentUpsideMonthly>0 ? '<div><div style="font-size:22px;font-weight:900;color:#F87171">+' + fmt$(c.rentUpsideMonthly) + '</div><div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Rent Upside/mo</div></div>' : '') +
+      '</div>' +
+    '</div>' +
       '<div style="background:#fff;border-radius:0 0 10px 10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08)">' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">' +
-          '<table style="width:100%;border-collapse:collapse">' + tableRows + '</table>' +
+          '<table style="width:100%;border-collapse:collapse">' + tableRows + upsideRow + '</table>' +
           '<div style="padding:20px;background:#F8FAFC;border-left:1px solid #E2E8F0">' +
             '<div style="font-size:11px;font-weight:800;color:#1B2B4B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;border-bottom:2px solid #1B2B4B;padding-bottom:5px">5-Year Projection</div>' +
             '<table style="width:100%;border-collapse:collapse">' +
@@ -697,8 +747,17 @@ function InvestmentCalc() {
           '</div>' +
         '</div>' +
       '</div>' +
-      '<div style="margin-top:20px;text-align:center;font-size:11px;color:#9CA3AF">Target Team · KW Valley Realty · 845.424.1014 · @thetargetteam</div>' +
-      '<button onclick="window.print()" style="margin-top:16px;padding:10px 24px;background:#1B2B4B;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial">🖨 Print / Save as PDF</button>' +
+      '<div style="background:#1B2B4B;padding:16px 28px;margin-top:20px;display:flex;justify-content:space-between;align-items:center">' +
+        '<div>' +
+          '<div style="font-size:14px;font-weight:900;color:#fff">T<span style="color:#CC2200">A</span>RG<span style="color:#CC2200">E</span>T TEAM</div>' +
+          '<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px">Of Keller Williams Valley Realty</div>' +
+        '</div>' +
+        '<div style="text-align:center;font-size:11px;color:rgba(255,255,255,.5)">' +
+          '845.424.1014 · @thetargetteam · targetreteam.com' +
+        '</div>' +
+        '<button onclick="window.print()" class="no-print" style="padding:9px 20px;background:#CC2200;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🖨 Print / PDF</button>' +
+      '</div>' +
+      '<script>setTimeout(function(){window.print()},600)</script>' +
     '</body></html>'
   }
 
@@ -806,13 +865,56 @@ function InvestmentCalc() {
                 ))}
               </div>
             </Field>
-            {Array.from({length:Math.min(parseInt(units)||1,6)},(_,i)=>(
+
+            {/* Toggle current vs potential */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <span style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>Track current vs potential</span>
+              <div onClick={()=>setShowPotential(p=>!p)}
+                style={{ width:40, height:22, borderRadius:11, background:showPotential?'#CC2200':'var(--dim)', border:'1px solid '+(showPotential?'#CC2200':'var(--border)'), position:'relative', cursor:'pointer', transition:'all .2s', flexShrink:0 }}>
+                <div style={{ position:'absolute', top:2, left:showPotential?20:2, width:16, height:16, borderRadius:'50%', background:'#fff', transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,.2)' }} />
+              </div>
+            </div>
+
+            {!showPotential && Array.from({length:Math.min(parseInt(units)||1,6)},(_,i)=>(
               <Field key={i} label={'Unit ' + (i+1) + ' Monthly Rent'}>
                 <NumInput prefix="$" value={rents[i]||''} onChange={v=>setRent(i,v)} placeholder="2,500" />
               </Field>
             ))}
-            <div style={{ padding:'8px 10px', background:'var(--dim)', borderRadius:8, fontSize:12, fontWeight:700, color:'var(--text)', display:'flex', justifyContent:'space-between' }}>
-              <span>Total Gross Monthly</span>
+
+            {showPotential && (
+              <div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:6 }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', textAlign:'center' }}>Unit</div>
+                  <div style={{ fontSize:10, fontWeight:700, color:'#F5A623', textTransform:'uppercase', letterSpacing:'.05em', textAlign:'center' }}>Current</div>
+                  <div style={{ fontSize:10, fontWeight:700, color:'#10B981', textTransform:'uppercase', letterSpacing:'.05em', textAlign:'center' }}>Potential</div>
+                </div>
+                {Array.from({length:Math.min(parseInt(units)||1,6)},(_,i)=>(
+                  <div key={i} style={{ display:'grid', gridTemplateColumns:'36px 1fr 1fr', gap:6, alignItems:'center', marginBottom:6 }}>
+                    <div style={{ width:32, height:32, borderRadius:8, background:'#1B2B4B', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800 }}>{i+1}</div>
+                    <NumInput prefix="$" value={currentRents[i]||''} onChange={v=>setCurrentRent(i,v)} placeholder="current" />
+                    <NumInput prefix="$" value={rents[i]||''} onChange={v=>setRent(i,v)} placeholder="potential" />
+                  </div>
+                ))}
+                {/* Upside summary */}
+                <div style={{ marginTop:8, padding:'10px 12px', borderRadius:10, background:'rgba(204,34,0,.06)', border:'2px solid rgba(204,34,0,.2)' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                    <span style={{ fontSize:12, color:'var(--muted)' }}>Current total</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:'#F5A623' }}>{fmt$(c.currentMonthly)}/mo</span>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                    <span style={{ fontSize:12, color:'var(--muted)' }}>Potential total</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:'#10B981' }}>{fmt$(c.grossMonthly)}/mo</span>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', paddingTop:6, borderTop:'1px solid rgba(204,34,0,.15)' }}>
+                    <span style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>Rent upside</span>
+                    <span style={{ fontSize:13, fontWeight:900, color:'#CC2200' }}>+{fmt$(c.rentUpsideMonthly)}/mo · +{fmt$(c.rentUpsideAnnual)}/yr</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop:8, padding:'8px 10px', background:'var(--dim)', borderRadius:8, fontSize:12, fontWeight:700, color:'var(--text)', display:'flex', justifyContent:'space-between' }}>
+              <span>{showPotential?'Potential':'Gross'} Monthly</span>
               <span style={{ color:'#10B981' }}>{fmt$(c.grossMonthly)}</span>
             </div>
           </Section>
@@ -840,6 +942,37 @@ function InvestmentCalc() {
               <Field label="Other"><NumInput prefix="$" value={other} onChange={setOther} placeholder="0" /></Field>
             </div>
           </Section>
+
+          {/* Current vs Potential comparison — only show when toggle is on */}
+          {showPotential && c.rentUpsideMonthly > 0 && (
+            <Section title="Current vs Potential Comparison" accent="#CC2200">
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:0 }}>
+                {/* Header */}
+                <div style={{ padding:'7px 10px', background:'var(--dim)', fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase' }}></div>
+                <div style={{ padding:'7px 10px', background:'rgba(245,166,35,.1)', fontSize:10, fontWeight:700, color:'#F5A623', textTransform:'uppercase', textAlign:'center' }}>Current (As-Is)</div>
+                <div style={{ padding:'7px 10px', background:'rgba(16,185,129,.1)', fontSize:10, fontWeight:700, color:'#10B981', textTransform:'uppercase', textAlign:'center' }}>Potential</div>
+                {/* Rows */}
+                {[
+                  ['Monthly Rent',    fmt$(c.currentMonthly),              fmt$(c.grossMonthly)],
+                  ['Annual Income',   fmt$(Math.round(c.currentAnnual)),   fmt$(Math.round(c.grossAnnual))],
+                  ['NOI',            fmt$(Math.round(c.currentNOI)),       fmt$(Math.round(c.noi))],
+                  ['Monthly CF',     fmt$(Math.round(c.currentCF/12)),     fmt$(Math.round(c.monthlyCF))],
+                  ['Cap Rate',       c.currentCapRate.toFixed(2)+'%',      c.capRate.toFixed(2)+'%'],
+                  ['Cash on Cash',   c.currentCocReturn.toFixed(2)+'%',   c.cocReturn.toFixed(2)+'%'],
+                ].map(([label, curr, pot], i) => (
+                  <React.Fragment key={i}>
+                    <div style={{ padding:'8px 10px', borderTop:'1px solid var(--border)', fontSize:12, fontWeight:600, color:'var(--text)' }}>{label}</div>
+                    <div style={{ padding:'8px 10px', borderTop:'1px solid var(--border)', fontSize:12, fontWeight:700, color:'#F5A623', textAlign:'center' }}>{curr}</div>
+                    <div style={{ padding:'8px 10px', borderTop:'1px solid var(--border)', fontSize:12, fontWeight:700, color:'#10B981', textAlign:'center' }}>{pot}</div>
+                  </React.Fragment>
+                ))}
+                {/* Upside row */}
+                <div style={{ padding:'8px 10px', borderTop:'2px solid var(--border)', fontSize:12, fontWeight:800, color:'var(--text)', background:'rgba(204,34,0,.04)' }}>Monthly Upside</div>
+                <div style={{ padding:'8px 10px', borderTop:'2px solid var(--border)', fontSize:12, background:'rgba(204,34,0,.04)' }} />
+                <div style={{ padding:'8px 10px', borderTop:'2px solid var(--border)', fontSize:13, fontWeight:900, color:'#CC2200', textAlign:'center', background:'rgba(204,34,0,.04)' }}>+{fmt$(c.rentUpsideMonthly)}/mo</div>
+              </div>
+            </Section>
+          )}
 
           <Section title="Annual Income Statement" accent="#10B981">
             <Row label="Gross Rental Income"       value={fmt$(Math.round(c.grossAnnual))} bold />
