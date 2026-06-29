@@ -207,3 +207,5 @@ body { margin: 0; background: var(--bg); color: var(--text) }
 ::-webkit-scrollbar-track { background: transparent }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px }
 input[type=date], input[type=time], input[type=number] { color-scheme: light }
+
+@keyframes ping{0%{transform:scale(1);opacity:.4}70%{transform:scale(2.2);opacity:0}100%{transform:scale(2.2);opacity:0}}

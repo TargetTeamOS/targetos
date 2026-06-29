@@ -1,3 +1,4 @@
+import { ActiveCallBar } from './ClickToCall'
 // ═══════════════════════════════════════════════════════════════
 // TargetOS V2 — Desktop Sidebar Layout
 // ═══════════════════════════════════════════════════════════════
@@ -58,6 +59,7 @@ export function Layout({ children }) {
   const W = collapsed ? 60 : 220
 
   return (
+    <>
     <div style={{ display: 'flex', height: '100vh', fontFamily: ff }}>
       {/* SIDEBAR */}
       <aside style={{ width: W, minWidth: W, background: 'var(--sidebar)', display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0, transition: 'width .2s', overflow: 'hidden', flexShrink: 0 }}>
@@ -137,5 +139,7 @@ export function Layout({ children }) {
         </div>
       </main>
     </div>
+    <ActiveCallBar />
+    </>
   )
 }

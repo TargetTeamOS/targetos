@@ -1,55 +1,92 @@
-// /api/twilio-outbound — Initiates outbound calls via Twilio REST API
-const querystring = require('querystring')
+// TargetOS V2 — Twilio Outbound Call
+// POST: initiate outbound call (Twilio calls agent first, then bridges to contact)
+// DELETE: end/cancel an active call
+'use strict'
 
 module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-
-  const { to, contactName, callLogId, agentId } = req.body || {}
-
-  if (!to) return res.status(400).json({ error: 'Phone number required' })
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  if (req.method === 'OPTIONS') return res.status(200).end()
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID
   const authToken  = process.env.TWILIO_AUTH_TOKEN
-  const from       = process.env.TWILIO_PHONE_NUMBER || '+18453271778'
-  const baseUrl    = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://app.targetreteam.com'
+  const fromNumber = process.env.TWILIO_PHONE_NUMBER || '+18453271778'
+  const baseUrl    = 'https://app.targetreteam.com'
 
   if (!accountSid || !authToken) {
-    // Twilio not configured — return 404 so frontend falls back to tel: link
-    return res.status(404).json({ error: 'Twilio not configured' })
+    return res.status(503).json({ error: 'Twilio credentials not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to Vercel environment variables.' })
   }
 
+  const auth = 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64')
+
+  // ── END CALL ──────────────────────────────────────────────────
+  if (req.method === 'DELETE') {
+    const { callSid } = req.body || {}
+    if (!callSid) return res.status(400).json({ error: 'callSid required' })
+    try {
+      const r = await fetch(
+        'https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Calls/' + callSid + '.json',
+        {
+          method:  'POST',
+          headers: { 'Authorization': auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body:    'Status=completed',
+        }
+      )
+      const d = await r.json()
+      return res.status(200).json({ ok: true, status: d.status })
+    } catch(e) {
+      return res.status(500).json({ error: e.message })
+    }
+  }
+
+  // ── INITIATE CALL ─────────────────────────────────────────────
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  const { to, contactName, callLogId, agentId } = req.body || {}
+  if (!to) return res.status(400).json({ error: 'Phone number (to) required' })
+
+  // Normalize number
+  let toNum = to.replace(/[^+0-9]/g, '')
+  if (!toNum.startsWith('+')) toNum = '+1' + toNum
+
+  // TwiML URL: when agent picks up their phone, Twilio reads this TwiML
+  // which then dials the contact
+  const twimlUrl = baseUrl + '/api/twilio-outbound-twiml' +
+    '?to=' + encodeURIComponent(toNum) +
+    '&name=' + encodeURIComponent(contactName || toNum) +
+    '&callLogId=' + encodeURIComponent(callLogId || '')
+
   try {
-    const body = querystring.stringify({
-      To:            to,
-      From:          from,
-      Url:           `${baseUrl}/api/twilio-outbound-twiml?name=${encodeURIComponent(contactName || to)}&callLogId=${callLogId || ''}`,
-      StatusCallback:`${baseUrl}/api/twilio-status`,
-      StatusCallbackMethod: 'POST',
-      Record:        'true',
-      RecordingStatusCallback: `${baseUrl}/api/twilio-status`,
+    const params = new URLSearchParams({
+      To:    toNum,           // Call the CONTACT directly (browser click-to-call)
+      From:  fromNumber,
+      Url:   twimlUrl,        // TwiML that announces and records
+      StatusCallback:             baseUrl + '/api/twilio-status',
+      StatusCallbackMethod:       'POST',
+      StatusCallbackEvent:        'initiated ringing answered completed',
+      Record:                     'true',
+      RecordingStatusCallback:    baseUrl + '/api/twilio-status',
+      RecordingStatusCallbackMethod: 'POST',
     })
 
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`,
+    const r = await fetch(
+      'https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Calls.json',
       {
-        method: 'POST',
-        headers: {
-          'Content-Type':  'application/x-www-form-urlencoded',
-          'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
-        },
-        body,
+        method:  'POST',
+        headers: { 'Authorization': auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    params.toString(),
       }
     )
 
-    const data = await response.json()
-    if (!response.ok) {
+    const data = await r.json()
+
+    if (!r.ok) {
       console.error('Twilio outbound error:', data)
-      return res.status(response.status).json({ error: data.message })
+      return res.status(r.status).json({ error: data.message || 'Twilio error', code: data.code })
     }
 
     return res.status(200).json({ callSid: data.sid, status: data.status })
-  } catch(err) {
-    console.error('twilio-outbound error:', err.message)
-    return res.status(500).json({ error: err.message })
+  } catch(e) {
+    console.error('twilio-outbound:', e.message)
+    return res.status(500).json({ error: e.message })
   }
 }
