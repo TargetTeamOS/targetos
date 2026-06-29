@@ -68,34 +68,6 @@ const COMMISSION_OPTIONS   = ['Working on it', 'Done', 'Stuck']
 const AGENT_COMM_OPTIONS   = ['Working on it', 'Done', 'Not Yet']
 
 // Board groups match Monday.com exactly
-// All available columns — user can show/hide/reorder any of these
-const ALL_COLUMNS = [
-  { key:'addr',               label:'Address',          width:200, sticky:true,  type:'text',   editable:false },
-  { key:'client_legal_name',  label:'Client',           width:160, type:'text',   editable:true  },
-  { key:'_agent',             label:'Agent',            width:110, type:'agent',  editable:false },
-  { key:'side',               label:'Side',             width:80,  type:'select', editable:true, options:['Buyer','Seller','Dual','Referral'] },
-  { key:'stage',              label:'Stage',            width:140, type:'stage',  editable:true  },
-  { key:'production',         label:'Production $',     width:120, type:'number', editable:true  },
-  { key:'gci',                label:'GCI $',            width:100, type:'number', editable:true  },
-  { key:'ao_date',            label:'A/O Date',         width:100, type:'date',   editable:true  },
-  { key:'contract_date',      label:'Contract',         width:100, type:'date',   editable:true  },
-  { key:'expected_close_date',label:'Exp. Close',       width:100, type:'date',   editable:true  },
-  { key:'close_date',         label:'Close Date',       width:100, type:'date',   editable:true  },
-  { key:'sale_type',          label:'Sale Type',        width:110, type:'select', editable:true, options:['On Market','Off Market','New Development','Short Sale','REO','Auction'] },
-  { key:'property_type',      label:'Prop Type',        width:100, type:'text',   editable:true  },
-  { key:'command',            label:'Command',          width:120, type:'command',editable:true  },
-  { key:'ctc',                label:'CTC',              width:120, type:'ctc',    editable:true  },
-  { key:'deal_status',        label:'Deal Status',      width:110, type:'select', editable:true, options:['UC','AO','Financing','Clear to Close','Closed'] },
-  { key:'commission_received',label:'Commission Rcvd',  width:120, type:'select', editable:true, options:['Working on it','Done','Stuck'] },
-  { key:'agent_commission_sent',label:'Agent Comm',     width:110, type:'select', editable:true, options:['Working on it','Done','Not Yet'] },
-  { key:'sales_source',       label:'Source',           width:100, type:'text',   editable:true  },
-  { key:'client_phone',       label:'Client Phone',     width:130, type:'text',   editable:true  },
-  { key:'client_email',       label:'Client Email',     width:150, type:'text',   editable:true  },
-  { key:'atty_name',          label:'Attorney',         width:130, type:'text',   editable:true  },
-  { key:'referral_agent',     label:'Referral',         width:120, type:'text',   editable:true  },
-  { key:'notes',              label:'Notes',            width:200, type:'text',   editable:true  },
-]
-
 const BOARD_GROUPS = [
   { id: 'active',       label: 'Accepted Offers',      stages: ['Negotiations','Offer Accapted'],        color: '#037f4c', emoji: '🤝' },
   { id: 'under_shtar',  label: 'Under Shtar',           stages: ['Under Shtar'],                         color: '#bb3354', emoji: '📝' },
@@ -222,192 +194,158 @@ function InlinePicker({ value, options, onSave, color, renderValue }) {
 }
 
 // ── BOARD ROW ──────────────────────────────────────────────────────
-// ── INLINE CELL EDITOR ───────────────────────────────────────────
-function InlineCell({ col, deal, onQuickUpdate, agents }) {
-  const [editing, setEditing] = React.useState(false)
-  const [val, setVal] = React.useState('')
-  const ref = React.useRef(null)
-
-  function startEdit(e) {
-    if (!col.editable) return
-    e.stopPropagation()
-    setVal(deal[col.key] || '')
-    setEditing(true)
-    setTimeout(() => ref.current?.focus(), 30)
-  }
-
-  function commit() {
-    setEditing(false)
-    if (val !== (deal[col.key] || '')) onQuickUpdate(deal, col.key, val)
-  }
-
-  function cancel() { setEditing(false) }
-
-  const td = { padding:'0', maxWidth: col.width || 120, position:'relative' }
-  const inner = { padding:'8px 10px', fontSize:'12px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }
-
-  // Render by type
-  if (col.key === '_agent') {
-    const agent = agents.find(a => a.id === deal.agent_id)
-    return (
-      <td style={td}>
-        <div style={{ ...inner, display:'flex', alignItems:'center', gap:5 }}>
-          {agent ? (
-            <>
-              <div style={{ width:20, height:20, borderRadius:'50%', background:agent.color||'#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:800, color:'#fff', flexShrink:0 }}>
-                {agent.name.split(' ').map(n=>n[0]).join('').slice(0,2)}
-              </div>
-              <span style={{ fontSize:11, color:'var(--text)', fontWeight:600 }}>{agent.name.split(' ')[0]}</span>
-            </>
-          ) : <span style={{ color:'var(--muted)', fontSize:11 }}>—</span>}
-        </div>
-      </td>
-    )
-  }
-
-  if (col.key === 'stage') {
-    return (
-      <td style={td} onClick={e=>e.stopPropagation()}>
-        <div style={inner}>
-          <InlinePicker value={deal.stage} options={DEAL_STAGES} color={DEAL_STAGES.find(s=>s.value===deal.stage)?.hex} onSave={v=>onQuickUpdate(deal,'stage',v)} />
-        </div>
-      </td>
-    )
-  }
-
-  if (col.key === 'command') {
-    return (
-      <td style={td} onClick={e=>e.stopPropagation()}>
-        <div style={inner}>
-          <InlinePicker value={deal.command} options={COMMAND_STATUSES.filter(c=>c.value)} color={COMMAND_STATUSES.find(s=>s.value===deal.command)?.hex} onSave={v=>onQuickUpdate(deal,'command',v)} />
-        </div>
-      </td>
-    )
-  }
-
-  if (col.key === 'ctc') {
-    return (
-      <td style={td} onClick={e=>e.stopPropagation()}>
-        <div style={inner}>
-          <InlinePicker value={deal.ctc} options={CTC_STAGES} color={CTC_STAGES.find(s=>s.value===deal.ctc)?.hex} onSave={v=>onQuickUpdate(deal,'ctc',v)} />
-        </div>
-      </td>
-    )
-  }
-
-  if (col.type === 'select' && col.editable) {
-    return (
-      <td style={td} onClick={e=>e.stopPropagation()}>
-        <div style={inner}>
-          <InlinePicker value={deal[col.key]} options={(col.options||[]).map(o=>({value:o,label:o}))} onSave={v=>onQuickUpdate(deal,col.key,v)} />
-        </div>
-      </td>
-    )
-  }
-
-  if (col.type === 'number') {
-    const raw = deal[col.key]
-    const display = raw ? fmt$(parseNum(raw)) : '—'
-    if (editing) return (
-      <td style={td} onClick={e=>e.stopPropagation()}>
-        <input ref={ref} type="number" value={val} onChange={e=>setVal(e.target.value)}
-          onBlur={commit} onKeyDown={e=>{if(e.key==='Enter')commit();if(e.key==='Escape')cancel()}}
-          style={{ width:'100%', padding:'7px 10px', border:'2px solid #CC2200', borderRadius:4, fontSize:12, fontFamily:'inherit', background:'var(--inp)', color:'var(--text)', outline:'none' }} />
-      </td>
-    )
-    return (
-      <td style={{ ...td, cursor: col.editable?'text':'default' }} onClick={startEdit}>
-        <span style={{ ...inner, color: col.key==='gci'?'#10B981':'var(--text)', fontWeight: col.key==='gci'?700:600, display:'block', textAlign:'right' }}>{display}</span>
-      </td>
-    )
-  }
-
-  if (col.type === 'date') {
-    const display = deal[col.key] ? fmtDateShort(deal[col.key]) : '—'
-    const days = col.key==='expected_close_date' && deal[col.key] ? getDaysUntil(deal[col.key]) : null
-    if (editing) return (
-      <td style={td} onClick={e=>e.stopPropagation()}>
-        <input ref={ref} type="date" value={val} onChange={e=>setVal(e.target.value)}
-          onBlur={commit} onKeyDown={e=>{if(e.key==='Enter')commit();if(e.key==='Escape')cancel()}}
-          style={{ width:'100%', padding:'6px 8px', border:'2px solid #CC2200', borderRadius:4, fontSize:12, fontFamily:'inherit', background:'var(--inp)', color:'var(--text)', outline:'none' }} />
-      </td>
-    )
-    return (
-      <td style={{ ...td, cursor: col.editable?'text':'default' }} onClick={startEdit}>
-        <span style={{ ...inner, display:'block', color: days!==null&&days<=7&&days>=0?'#DC2626':'var(--muted)', fontWeight: days!==null&&days<=7?700:400 }}>
-          {display}
-          {days!==null&&days>=0&&days<=30&&<span style={{ marginLeft:4, fontSize:9, opacity:.7 }}>({days}d)</span>}
-        </span>
-      </td>
-    )
-  }
-
-  // Default: text cell with inline edit
-  const display = deal[col.key] || '—'
-  if (editing) return (
-    <td style={td} onClick={e=>e.stopPropagation()}>
-      <input ref={ref} value={val} onChange={e=>setVal(e.target.value)}
-        onBlur={commit} onKeyDown={e=>{if(e.key==='Enter')commit();if(e.key==='Escape')cancel()}}
-        style={{ width:'100%', padding:'7px 10px', border:'2px solid #CC2200', borderRadius:4, fontSize:12, fontFamily:'inherit', background:'var(--inp)', color:'var(--text)', outline:'none' }} />
-    </td>
-  )
-  return (
-    <td style={{ ...td, cursor: col.editable?'text':'default' }} onClick={col.editable ? startEdit : undefined}>
-      <span style={{ ...inner, display:'block', color:'var(--text)' }}
-        title={col.editable ? 'Click to edit' : ''}>
-        {display === '—' ? <span style={{ color:'var(--border)' }}>—</span> : display}
-      </span>
-    </td>
-  )
-}
-
-// ── DEAL ROW (dynamic columns) ────────────────────────────────────
-function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect, hiddenCols = [] }) {
-  const visibleCols = ALL_COLUMNS.filter(c => !hiddenCols.includes(c.key))
+function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect }) {
+  const agent = agents.find(a => a.id === deal.agent_id)
+  const ctcDef = CTC_STAGES.find(s => s.value === deal.ctc)
+  const cmdDef = COMMAND_STATUSES.find(s => s.value === deal.command)
+  const daysToClose = deal.expected_close_date ? getDaysUntil(deal.expected_close_date) : null
 
   return (
     <tr
-      style={{ cursor:'pointer', borderBottom:'1px solid var(--border)', transition:'background .1s', background: isSelected ? 'rgba(204,34,0,.04)' : '' }}
-      onMouseEnter={e=>{ if(!isSelected) e.currentTarget.style.background='var(--hov)' }}
-      onMouseLeave={e=>{ if(!isSelected) e.currentTarget.style.background='' }}>
+      onClick={() => onOpen(deal)}
+      style={{ cursor: 'pointer', borderBottom: "1px solid var(--border)", transition: 'background .1s', background: isSelected ? 'rgba(204,34,0,.04)' : '' }}
+      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--hov)' }}
+      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '' }}
+    >
       {/* Checkbox */}
-      <td style={{ padding:'9px 8px', width:32 }} onClick={e=>{e.stopPropagation();onToggleSelect(deal.id)}}>
-        <div style={{ width:16, height:16, borderRadius:4, border:'2px solid '+(isSelected?'#CC2200':'var(--border)'), background:isSelected?'#CC2200':'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all .12s', margin:'0 auto' }}>
-          {isSelected && <span style={{ color:'#fff', fontSize:9, fontWeight:900 }}>✓</span>}
+      <td style={{ padding: '9px 8px', width: '32px' }} onClick={e => { e.stopPropagation(); onToggleSelect(deal.id) }}>
+        <div style={{ width: 16, height: 16, borderRadius: '4px', border: "2px solid " + (isSelected ? '#CC2200' : 'var(--border)'), background: isSelected ? '#CC2200' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all .12s', margin: '0 auto' }}>
+          {isSelected && <span style={{ color: '#fff', fontSize: '9px', fontWeight: 900, lineHeight: 1 }}>✓</span>}
         </div>
       </td>
-
-      {/* Address column — always first, always clickable to open */}
-      <td style={{ padding:'9px 12px', maxWidth:200 }} onClick={()=>onOpen(deal)}>
-        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+      {/* Address */}
+      <td style={{ padding: '9px 12px', maxWidth: '200px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {deal.addr}
-          {deal.unit && <span style={{ color:'var(--muted)', fontWeight:400 }}> #{deal.unit}</span>}
+          {deal.unit && <span style={{ color: 'var(--muted)', fontWeight: 400 }}> #{deal.unit}</span>}
         </div>
-        {deal.client_name && <div style={{ fontSize:11, color:'var(--muted)', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{deal.client_name}</div>}
+        {deal.client_name && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.client_name}</div>}
       </td>
 
-      {/* All other visible columns — dynamic */}
-      {visibleCols.filter(c=>c.key!=='addr').map(col => (
-        <InlineCell key={col.key} col={col} deal={deal} onQuickUpdate={onQuickUpdate} agents={agents} />
-      ))}
+      {/* Agent */}
+      <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
+        {agent ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ width:20, height:20, borderRadius:'50%', background: agent.color || '#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'9px', fontWeight:800, color:'#fff', flexShrink:0 }}>
+              {agent.name.split(' ').map(n => n[0]).join('').slice(0,2)}
+            </div>
+            <span style={{ fontSize: '11px', color: 'var(--text)', whiteSpace: 'nowrap', fontWeight:600 }}>{agent.name.split(' ')[0]}</span>
+          </div>
+        ) : (
+          <span style={{ color: 'var(--muted)', fontSize: '11px', fontStyle:'italic' }}>Unassigned</span>
+        )}
+      </td>
 
-      {/* Open button */}
-      <td style={{ padding:'9px 8px', width:40 }} onClick={e=>{e.stopPropagation();onOpen(deal)}}>
-        <div style={{ width:24, height:24, borderRadius:6, border:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'var(--muted)', fontSize:12 }}
-          onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
-          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-          ↗
-        </div>
+      {/* Linked Contacts — show count badge */}
+      <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
+        {deal._contact_count > 0 ? (
+          <span
+            onClick={() => onOpen({ ...deal, _openTab: 'linked' })}
+            style={{ display:'inline-flex', alignItems:'center', gap:'3px', padding:'2px 7px', borderRadius:'12px', background:'#EFF6FF', color:'#1D4ED8', fontSize:'10px', fontWeight:700, cursor:'pointer', border:'1px solid #BFDBFE' }}>
+            👥 {deal._contact_count}
+          </span>
+        ) : (
+          <span style={{ color:'var(--border)', fontSize:'11px' }}>—</span>
+        )}
+      </td>
+
+      {/* Production */}
+      <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, fontSize: '12px', color: 'var(--text)', whiteSpace: 'nowrap' }}>
+        {deal.production ? fmt$(deal.production) : '—'}
+      </td>
+
+      {/* GCI */}
+      <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, fontSize: '13px', color: '#10B981', whiteSpace: 'nowrap' }}>
+        {deal.gci ? fmt$(deal.gci) : '—'}
+      </td>
+
+      {/* Stage — inline */}
+      <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
+        <InlinePicker
+          value={deal.stage}
+          options={DEAL_STAGES}
+          color={DEAL_STAGES.find(s => s.value === deal.stage)?.hex}
+          onSave={v => onQuickUpdate(deal, 'stage', v)}
+        />
+      </td>
+
+      {/* Side */}
+      <td style={{ padding: '9px 12px' }}>
+        <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>{deal.side || '—'}</span>
+      </td>
+
+      {/* Command — inline */}
+      <td style={{ padding: '9px 12px', maxWidth: '130px' }} onClick={e => e.stopPropagation()}>
+        <InlinePicker
+          value={deal.command}
+          options={COMMAND_STATUSES.filter(c => c.value)}
+          color={cmdDef?.hex}
+          onSave={v => onQuickUpdate(deal, 'command', v)}
+        />
+      </td>
+
+      {/* CTC — inline */}
+      <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
+        <InlinePicker
+          value={deal.ctc}
+          options={CTC_STAGES}
+          color={ctcDef?.hex}
+          onSave={v => onQuickUpdate(deal, 'ctc', v)}
+        />
+      </td>
+
+      {/* A/O Date */}
+      <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+        {fmtDateShort(deal.ao_date) || '—'}
+      </td>
+
+      {/* Contract Date */}
+      <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+        {fmtDateShort(deal.contract_date) || '—'}
+      </td>
+
+      {/* Expected Close */}
+      <td style={{ padding: '9px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}>
+        {deal.expected_close_date ? (
+          <span style={{ color: daysToClose !== null && daysToClose <= 7 && daysToClose >= 0 ? '#DC2626' : 'var(--muted)', fontWeight: daysToClose !== null && daysToClose <= 7 ? 700 : 400 }}>
+            {fmtDateShort(deal.expected_close_date)}
+            {daysToClose !== null && daysToClose >= 0 && daysToClose <= 30 && (
+              <span style={{ marginLeft: '4px', fontSize: '10px' }}>({daysToClose}d)</span>
+            )}
+          </span>
+        ) : '—'}
+      </td>
+
+      {/* Close Date */}
+      <td style={{ padding: '9px 12px', fontSize: '11px', color: '#10B981', fontWeight: deal.close_date ? 600 : 400, whiteSpace: 'nowrap' }}>
+        {fmtDateShort(deal.close_date) || '—'}
+      </td>
+
+      {/* Sale Type */}
+      <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)' }}>{deal.sale_type || '—'}</td>
+
+      {/* Property Type */}
+      <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{deal.property_type || '—'}</td>
+
+      {/* Sales Source */}
+      <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{deal.sales_source || '—'}</td>
+
+      {/* Commission Received — inline */}
+      <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
+        <InlinePicker
+          value={deal.commission_received}
+          options={COMMISSION_OPTIONS}
+          color={deal.commission_received === 'Done' ? '#10B981' : deal.commission_received === 'Stuck' ? '#DC2626' : '#F5A623'}
+          onSave={v => onQuickUpdate(deal, 'commission_received', v)}
+        />
       </td>
     </tr>
   )
 }
 
-
-function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, hiddenCols = [], allCols = ALL_COLUMNS, onRename, onDelete, onAddDeal }) {
+// ── BOARD GROUP ────────────────────────────────────────────────────
+function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll }) {
   const [collapsed, setCollapsed] = useState(false)
-  const [renaming,  setRenaming]  = useState(false)
-  const [renameVal, setRenameVal] = useState(group.label)
   const totalGCI  = deals.reduce((s, d) => s + parseNum(d.gci), 0)
   const totalProd = deals.reduce((s, d) => s + parseNum(d.production), 0)
 
@@ -428,19 +366,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
         }}
       >
         <span style={{ fontSize: '14px' }}>{group.emoji}</span>
-        {renaming ? (
-          <input autoFocus value={renameVal} onChange={e=>setRenameVal(e.target.value)}
-            onBlur={()=>{setRenaming(false);if(renameVal.trim()&&onRename)onRename(renameVal.trim())}}
-            onKeyDown={e=>{if(e.key==='Enter'){setRenaming(false);if(renameVal.trim()&&onRename)onRename(renameVal.trim())}if(e.key==='Escape')setRenaming(false)}}
-            onClick={e=>e.stopPropagation()}
-            style={{ fontSize:13, fontWeight:800, color:group.color, background:'transparent', border:'none', borderBottom:'2px solid '+group.color, outline:'none', width:180, fontFamily:'inherit' }}
-          />
-        ) : (
-          <span style={{ fontSize: '13px', fontWeight: 800, color: group.color }}
-            onDoubleClick={e=>{e.stopPropagation();setRenaming(true);setRenameVal(group.label)}}>
-            {group.label}
-          </span>
-        )}
+        <span style={{ fontSize: '13px', fontWeight: 800, color: group.color }}>{group.label}</span>
         <span style={{ fontSize: '11px', fontWeight: 600, color: group.color, background: group.color + '22', padding: '1px 7px', borderRadius: '20px' }}>
           {deals.length}
         </span>
@@ -465,49 +391,35 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid var(--border)', background: 'var(--dim)' }}>
-                <th style={{ width:32, padding:'6px 4px' }} />
-                {(hiddenCols ? ALL_COLUMNS.filter(c => !hiddenCols.includes(c.key)) : ALL_COLUMNS).map(col => (
-                  <th key={col.key} style={{ padding:'6px 10px', textAlign: col.type==='number'?'right':'left', fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap', minWidth: col.width || 100 }}>
-                    {col.label}
+              <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                {['','Address / Client','Agent','Contacts','Production','GCI','Stage','Side','Command','CTC','A/O Date','Contract','Exp. Close','Close Date','Sale Type','Prop Type','Source','Commission'].map(h => (
+                  <th key={h} style={{ padding: '6px 12px', textAlign: h === 'Production' || h === 'GCI' ? 'right' : 'left', fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>
+                    {h}
                   </th>
                 ))}
-                <th style={{ width:40 }} />
               </tr>
             </thead>
             <tbody>
               {deals.map(d => (
                 <DealRow key={d.id} deal={d} agents={agents} onOpen={onOpen} onQuickUpdate={onQuickUpdate} isAdmin={isAdmin}
-                  isSelected={selectedIds.includes(d.id)} onToggleSelect={onToggleSelect} hiddenCols={hiddenCols} />
+                  isSelected={selectedIds.includes(d.id)} onToggleSelect={onToggleSelect} />
               ))}
             </tbody>
             <tfoot>
               <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--dim)' }}>
-                <td style={{ padding:'6px 12px', fontSize:11, fontWeight:700, color:'var(--muted)' }}/>
-                <td style={{ padding:'6px 12px', fontSize:11, fontWeight:700, color:'var(--muted)' }}>
-                  {deals.length} deal{deals.length!==1?'s':''}
+                <td colSpan={2} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 700, color: 'var(--muted)' }}>
+                  {deals.length} deal{deals.length !== 1 ? 's' : ''}
                 </td>
-                {ALL_COLUMNS.filter(c=>!hiddenCols.includes(c.key)&&c.key!=='addr').map(col => (
-                  <td key={col.key} style={{ padding:'6px 10px', fontSize:11, fontWeight:700, textAlign: col.type==='number'?'right':'left',
-                    color: col.key==='gci'?'#10B981':'var(--muted)' }}>
-                    {col.key==='production' ? fmt$(totalProd) : col.key==='gci' ? fmt$(totalGCI) : ''}
-                  </td>
-                ))}
-                <td />
+                <td style={{ padding: '6px 12px', textAlign: 'right', fontSize: '11px', fontWeight: 700, color: 'var(--text)' }}>{fmt$(totalProd)}</td>
+                <td style={{ padding: '6px 12px', textAlign: 'right', fontSize: '12px', fontWeight: 800, color: '#10B981' }}>{fmt$(totalGCI)}</td>
+                <td colSpan={9} />
               </tr>
             </tfoot>
           </table>
         </div>
       )}
-      {/* Add deal button */}
-      {!collapsed && (
-        <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', cursor:'pointer', borderRadius:6, marginTop:2 }}
-          onClick={e=>{e.stopPropagation();onAddDeal&&onAddDeal(group)}}
-          onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
-          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-          <span style={{ fontSize:14, color:'var(--muted)', fontWeight:700 }}>+</span>
-          <span style={{ fontSize:12, color:'var(--muted)' }}>Add deal</span>
-        </div>
+      {!collapsed && deals.length === 0 && (
+        <div style={{ padding: '16px', textAlign: 'center', color: 'var(--muted)', fontSize: '12px', fontStyle: 'italic' }}>No deals in this group</div>
       )}
     </div>
   )
@@ -1083,46 +995,11 @@ export function Production() {
   const [viewMode,    setViewMode]    = useState('board') // 'board' | 'table'
   const [selectedIds,  setSelectedIds]  = useState([])
   const [bulkDeleting, setBulkDeleting] = useState(false)
-  const [showColPicker, setShowColPicker] = useState(false)
-  const [hiddenCols,  setHiddenCols]  = useState([])        // column keys to hide
-  const [showGroupMgr,setShowGroupMgr]= useState(false)
-  const [customGroups,setCustomGroups]= useState(null)       // null = use BOARD_GROUPS default
-  const [editGroupId, setEditGroupId] = useState(null)       // group being renamed
 
   const years = []
   for (let y = new Date().getFullYear(); y >= 2015; y--) years.push(y.toString())
 
   useEffect(() => { load() }, [])
-
-  // ── GROUP MANAGEMENT ─────────────────────────────────────────
-  const activeGroups = customGroups || BOARD_GROUPS
-
-  function renameGroup(groupId, newLabel) {
-    setCustomGroups(prev => (prev||BOARD_GROUPS).map(g => g.id===groupId ? {...g,label:newLabel} : g))
-  }
-
-  function addGroup() {
-    const colors = ['#037f4c','#bb3354','#225091','#E2445C','#0086C0','#784BD1','#FF6B35','#A25DDC']
-    const newGroup = {
-      id:    'custom_' + Date.now(),
-      label: 'New Group',
-      stages:[],
-      color: colors[Math.floor(Math.random()*colors.length)],
-      emoji: '📁',
-      custom: true,
-    }
-    setCustomGroups(prev => [...(prev||BOARD_GROUPS), newGroup])
-  }
-
-  function deleteGroup(groupId) {
-    setCustomGroups(prev => (prev||BOARD_GROUPS).filter(g => g.id !== groupId))
-  }
-
-  function openNewWithGroup(group) {
-    // Pre-set the stage to the first stage in the group
-    const firstStage = group.stages?.[0] || 'Negotiations'
-    setSelected({ stage: firstStage })
-  }
 
   async function load() {
     setLoading(true)
@@ -1274,7 +1151,7 @@ export function Production() {
   })
 
   // Board groups
-  const groupedDeals = activeGroups.map(group => ({
+  const groupedDeals = BOARD_GROUPS.map(group => ({
     ...group,
     deals: filtered.filter(d => {
       const stageMatch = group.stages.includes(d.stage)
@@ -1312,33 +1189,7 @@ export function Production() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           {/* View mode */}
           <div style={{ display: 'flex', background: 'var(--dim)', borderRadius: '8px', padding: '3px', gap: '2px' }}>
-            {/* Column picker */}
-          <div style={{ position:'relative' }}>
-            <button onClick={() => setShowColPicker(p=>!p)}
-              style={{ padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background: showColPicker?'var(--panel)':'var(--inp)', color:'var(--muted)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', display:'flex', alignItems:'center', gap:5 }}>
-              ⚙ Columns {hiddenCols.length > 0 ? '('+hiddenCols.length+' hidden)' : ''}
-            </button>
-            {showColPicker && (
-              <div style={{ position:'absolute', top:'100%', right:0, marginTop:4, background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:12, zIndex:200, width:220, boxShadow:'0 8px 24px rgba(0,0,0,.15)' }}>
-                <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Show / Hide Columns</div>
-                {ALL_COLUMNS.filter(c=>!c.sticky).map(col => (
-                  <label key={col.key} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px', cursor:'pointer', borderRadius:6 }}
-                    onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
-                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <input type="checkbox" checked={!hiddenCols.includes(col.key)}
-                      onChange={e => setHiddenCols(p => e.target.checked ? p.filter(k=>k!==col.key) : [...p,col.key])} />
-                    <span style={{ fontSize:12, color:'var(--text)' }}>{col.label}</span>
-                  </label>
-                ))}
-                <div style={{ borderTop:'1px solid var(--border)', marginTop:8, paddingTop:8, display:'flex', gap:6 }}>
-                  <button onClick={()=>setHiddenCols([])} style={{ flex:1, padding:'5px', borderRadius:7, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', fontSize:11, cursor:'pointer' }}>Show all</button>
-                  <button onClick={()=>setShowColPicker(false)} style={{ flex:1, padding:'5px', borderRadius:7, border:'none', background:'#CC2200', color:'#fff', fontSize:11, cursor:'pointer' }}>Done</button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {[['board','📋 Board'],['table','📊 Table']].map(([m,l]) => (
+            {[['board','📋 Board'],['table','📊 Table']].map(([m,l]) => (
               <button key={m} onClick={() => setViewMode(m)}
                 style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: viewMode === m ? 'var(--panel)' : 'transparent', color: viewMode === m ? 'var(--text)' : 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff, boxShadow: viewMode === m ? '0 1px 3px rgba(0,0,0,.12)' : 'none' }}>
                 {l}
@@ -1352,10 +1203,6 @@ export function Production() {
             label="Deals"
             onImport={load}
           />
-          <button onClick={addGroup}
-            style={{ padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--muted)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff, whiteSpace:'nowrap' }}>
-            + Add Group
-          </button>
           <Btn onClick={openNew}>+ Add Deal</Btn>
         </div>
       </div>

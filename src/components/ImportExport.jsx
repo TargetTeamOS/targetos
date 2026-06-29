@@ -49,29 +49,42 @@ function parseLine(line) {
 }
 
 function parseCSV(text) {
-  // Strip UTF-8 BOM that Excel adds (\uFEFF) and normalise line endings
+  // Strip UTF-8 BOM and normalise line endings
   const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
-  const lines  = clean.split('\n').filter(l => l.trim() !== '')
+  const lines  = clean.split('\n')
   if (lines.length < 2) return { headers: [], rows: [] }
 
-  // Parse headers — strip outer quotes and whitespace
-  const headers = parseLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim())
+  // Find the header row — it's the first row with 3+ non-empty cells
+  let headerIdx = 0
+  for (let i = 0; i < Math.min(5, lines.length); i++) {
+    const cells = parseLine(lines[i]).map(h => h.replace(/^"|"$/g, '').trim())
+    if (cells.filter(c => c.length > 0).length >= 3) { headerIdx = i; break }
+  }
 
+  const headers = parseLine(lines[headerIdx]).map(h => h.replace(/^"|"$/g, '').trim())
   if (!headers.length || headers.every(h => !h)) return { headers: [], rows: [] }
 
-  const rows = lines.slice(1).map(line => {
+  const rows = []
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line.trim()) continue  // skip blank lines
+
     const vals = parseLine(line)
     const obj  = {}
-    headers.forEach((h, i) => {
-      // Strip outer quotes and trim whitespace from every value
-      let v = (vals[i] || '').replace(/^"|"$/g, '').trim()
-      obj[h] = v
+    headers.forEach((h, idx) => {
+      obj[h] = (vals[idx] || '').replace(/^"|"$/g, '').trim()
     })
-    return obj
-  }).filter(row => {
-    // Skip completely empty rows (all values blank)
-    return Object.values(row).some(v => v !== '')
-  })
+
+    // Count how many cells have values
+    const filledCount = Object.values(obj).filter(v => v !== '').length
+    if (filledCount === 0) continue  // completely blank row
+    if (filledCount === 1) {
+      // Single-value row = Monday.com group header — mark it but skip
+      continue
+    }
+
+    rows.push(obj)
+  }
 
   return { headers, rows }
 }
