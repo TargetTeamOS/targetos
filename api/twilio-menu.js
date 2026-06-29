@@ -19,7 +19,7 @@ function getRawBody(req) {
 }
 
 const wrap  = (xml) => '<?xml version="1.0" encoding="UTF-8"?><Response>' + xml + '</Response>'
-const say   = (t)   => '<Say voice="Polly.Joanna">' + t + '</Say>'
+const say   = (t, voice) => '<Say voice="' + (voice || 'Polly.Joanna') + '">' + (t||'') + '</Say>'
 const vmXml = (greeting) =>
   say(greeting || 'Please leave your message after the tone.') +
   '<Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />'
@@ -157,10 +157,21 @@ module.exports = async function handler(req, res) {
 
   // ── FLOW GRAPH MODE ────────────────────────────────────────
   // If the inbound handler passed flow context in the query string, use it
-  var ctxParam = (req.url || '').split('ctx=')[1]
+  // Parse ctx from query string properly
+  var rawUrl = req.url || ''
+  var qIdx = rawUrl.indexOf('?')
+  var ctxParam = null
+  if (qIdx >= 0) {
+    var qs = rawUrl.slice(qIdx + 1)
+    var qParsed = querystring.parse(qs)
+    ctxParam = qParsed.ctx || null
+  }
+  // Also check if ctx was posted in body (some Twilio flows pass it differently)
+  if (!ctxParam && body.ctx) ctxParam = body.ctx
+
   if (ctxParam) {
     try {
-      var ctx = JSON.parse(decodeURIComponent(ctxParam.split('&')[0]))
+      var ctx = JSON.parse(decodeURIComponent(ctxParam))
       var nodes     = ctx.nodes     || []
       var edges     = ctx.edges     || []
       var menuNodeId = ctx.menuNodeId

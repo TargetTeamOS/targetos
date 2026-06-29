@@ -146,26 +146,40 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
   }
 
   if (node.type === 'dial') {
-    if (cfg.agent_id && supabase) {
+    let dialTarget = null
+
+    if (cfg.dial_type === 'number' && cfg.direct_number) {
+      // Direct number dial
+      let n = cfg.direct_number.replace(/[^+0-9]/g,'')
+      if (!n.startsWith('+')) n = '+1' + n
+      dialTarget = '<Number statusCallback="/api/twilio-status" statusCallbackMethod="POST">' + n + '</Number>'
+    } else if (cfg.dial_type === 'sip' && cfg.sip_address) {
+      // SIP dial
+      const sip = cfg.sip_address.includes('@') ? cfg.sip_address : cfg.sip_address
+      dialTarget = '<Sip statusCallback="/api/twilio-status" statusCallbackMethod="POST">' + sip + '</Sip>'
+    } else if (cfg.agent_id && supabase) {
+      // Agent dial — try phone_extensions first, then agents.phone
       const extRes = await supabase.from('phone_extensions').select('*').eq('agent_id', cfg.agent_id).eq('active', true).maybeSingle()
-      const ext = extRes.data
-      // Also try agents.phone directly
-      const agRes = await supabase.from('agents').select('phone').eq('id', cfg.agent_id).maybeSingle()
-      const agPhone = ext?.forward_to || (agRes.data?.phone ? agRes.data.phone.replace(/[^+0-9]/g,'') : null)
-      if (agPhone) {
-        const phone = agPhone.startsWith('+') ? agPhone : '+1' + agPhone
-        twiml += '<Dial callerId="' + callData.to + '" timeout="' + (cfg.timeout||30) + '" record="record-from-answer" recordingStatusCallback="/api/twilio-status">'
-        twiml += '<Number statusCallback="/api/twilio-status" statusCallbackMethod="POST">' + phone + '</Number>'
-        twiml += '</Dial>'
-        const noAns = edges.find(e => e.from===nodeId && e.port==='noanswer')
-        if (noAns) twiml += await walkFlow(nodes, edges, noAns.to, callData, supabase, depth+1)
-        else twiml += vmXml()
-        return twiml
+      const agRes  = await supabase.from('agents').select('phone').eq('id', cfg.agent_id).maybeSingle()
+      const rawPhone = extRes.data?.forward_to || agRes.data?.phone
+      if (rawPhone) {
+        let p = rawPhone.replace(/[^+0-9]/g,'')
+        if (!p.startsWith('+')) p = '+1' + p
+        dialTarget = '<Number statusCallback="/api/twilio-status" statusCallbackMethod="POST">' + p + '</Number>'
       }
     }
+
+    if (dialTarget) {
+      twiml += '<Dial callerId="' + callData.to + '" timeout="' + (cfg.timeout||30) + '" record="record-from-answer" recordingStatusCallback="/api/twilio-status">'
+      twiml += dialTarget
+      twiml += '</Dial>'
+    }
+
     const noAns = edges.find(e => e.from===nodeId && e.port==='noanswer')
-    if (noAns) return await walkFlow(nodes, edges, noAns.to, callData, supabase, depth+1)
-    return vmXml()
+    if (noAns) twiml += await walkFlow(nodes, edges, noAns.to, callData, supabase, depth+1)
+    else if (!dialTarget) twiml += vmXml('No agent available. Please leave a message.')
+    else twiml += vmXml()
+    return twiml
   }
 
   if (node.type === 'roundrobin' || node.type === 'ringall') {

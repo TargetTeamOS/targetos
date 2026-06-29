@@ -11,8 +11,8 @@ import { useAgents } from '../lib/hooks'
 const ff  = 'Inter, system-ui, sans-serif'
 const NW  = 220   // node width
 const NH  = 76    // node height
-const PR  = 9     // port circle radius
-const PHZ = 26    // port hit zone — enlarged for reliable clicking
+const PR  = 10    // port circle radius
+const PHZ = 34    // port hit zone — large for touch/mobile
 const INR = 14    // input port hit zone radius (left side)
 
 // ── NODE DEFINITIONS ─────────────────────────────────────────────
@@ -187,11 +187,11 @@ function FlowNode({ node, selected, agents, connectedPorts, dragPort, onMouseDow
       {/* Input port — LEFT — enlarged hit zone so drops land reliably */}
       {node.type !== 'incoming' && (
         <g>
-          {/* Invisible large hit target for drops */}
-          <rect x={-INR} y={NH/2 - INR} width={INR*2} height={INR*2} fill="transparent"
+          {/* Large drop zone — entire left half of node accepts drops */}
+          <rect x={-20} y={0} width={NW/2} height={NH} fill="transparent"
             onMouseUp={function(e){ e.stopPropagation(); onPortDrop(node.id) }}
           />
-          <circle cx={0} cy={NH/2} r={PR} fill="var(--panel)" stroke={def.color} strokeWidth={2} style={{pointerEvents:'none'}} />
+          <circle cx={0} cy={NH/2} r={PR} fill="var(--panel)" stroke={def.color} strokeWidth={2.5} style={{pointerEvents:'none'}} />
         </g>
       )}
 
@@ -530,14 +530,39 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
         {/* ── DIAL AGENT ── */}
         {node.type === 'dial' && (<>
           <div style={R}>
-            <label style={L}>Ring this agent</label>
-            <select value={cfg.agent_id||''} onChange={e=>set('agent_id',e.target.value)} style={S}>
-              <option value="">— Select agent —</option>
-              {sa.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+            <label style={L}>Dial type</label>
+            <select value={cfg.dial_type||'agent'} onChange={e=>set('dial_type',e.target.value)} style={S}>
+              <option value="agent">Agent (from CRM)</option>
+              <option value="number">Direct phone number</option>
+              <option value="sip">SIP / Office phone</option>
             </select>
           </div>
+          {(!cfg.dial_type||cfg.dial_type==='agent') && (
+            <div style={R}>
+              <label style={L}>Ring this agent</label>
+              <select value={cfg.agent_id||''} onChange={e=>set('agent_id',e.target.value)} style={S}>
+                <option value="">— Select agent —</option>
+                {sa.map(a=><option key={a.id} value={a.id}>{a.name} {a.phone?'· '+a.phone:''}</option>)}
+              </select>
+              <div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>Uses the agent's phone number from their profile in Settings.</div>
+            </div>
+          )}
+          {cfg.dial_type==='number' && (
+            <div style={R}>
+              <label style={L}>Phone number</label>
+              <input value={cfg.direct_number||''} onChange={e=>set('direct_number',e.target.value)} placeholder="+18455550100" style={I} />
+              <div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>Include country code. e.g. +18455550100</div>
+            </div>
+          )}
+          {cfg.dial_type==='sip' && (
+            <div style={R}>
+              <label style={L}>SIP address / office phone extension</label>
+              <input value={cfg.sip_address||''} onChange={e=>set('sip_address',e.target.value)} placeholder="sip:101@your-pbx.com or 101@domain" style={I} />
+              <div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>Enter your office PBX SIP URI or extension. Twilio will dial this directly.</div>
+            </div>
+          )}
           <div style={R}><label style={L}>Ring timeout (seconds)</label><input type="number" value={cfg.timeout||30} onChange={e=>set('timeout',parseInt(e.target.value)||30)} style={I} /></div>
-          <div style={INFO}><strong style={{color:'#10B981'}}>Answered</strong> — call picked up. <strong style={{color:'#DC2626'}}>No Answer</strong> — connect to voicemail or another step.</div>
+          <div style={INFO}><strong style={{color:'#10B981'}}>Answered</strong> — call connected. <strong style={{color:'#DC2626'}}>No Answer</strong> — routes to voicemail or next step. You can leave "No Answer" unconnected to use default voicemail.</div>
         </>)}
 
         {/* ── ROUND ROBIN / RING ALL ── */}
@@ -876,8 +901,8 @@ export function CallFlow() {
       // Hit-test against node bodies (enlarged by 20px on all sides for easier drops)
       const hit = nodes.find(n =>
         n.id !== dragWire.current.fromId &&
-        x >= n.x - 20 && x <= n.x + NW + 20 &&
-        y >= n.y - 20 && y <= n.y + NH + 20
+        x >= n.x - 40 && x <= n.x + NW + 40 &&
+        y >= n.y - 40 && y <= n.y + NH + 40
       )
       if (hit) finishWire(hit.id)
       else {
