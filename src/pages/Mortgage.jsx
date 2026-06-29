@@ -75,6 +75,8 @@ function MortgageCalc() {
   const [tax,      setTax]      = useState('1000')
   const [ins,      setIns]      = useState('150')
   const [hoa,      setHoa]      = useState('0')
+  const [address,  setAddress]  = useState('')
+  const canvasRef = React.useRef(null)
 
   const calc = useMemo(() => {
     const p      = num(price)
@@ -101,7 +103,181 @@ function MortgageCalc() {
 
   const rates = [6.5, 6.75, 7.0, 7.25, 7.5, 7.75, 8.0]
 
+  // ── Draw WhatsApp/share card on canvas ─────────────────────────
+  function drawCard() {
+    const cv = canvasRef.current
+    if (!cv) return
+    const ctx = cv.getContext('2d')
+    const W = 1080, H = 1080
+    cv.width = W; cv.height = H
+
+    // Background
+    ctx.fillStyle = '#0F1A2E'
+    ctx.fillRect(0, 0, W, H)
+
+    // Subtle grid pattern
+    ctx.strokeStyle = 'rgba(255,255,255,.04)'
+    ctx.lineWidth = 1
+    for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke() }
+    for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke() }
+
+    // Red accent bar top
+    ctx.fillStyle = '#CC2200'
+    ctx.fillRect(0, 0, W, 8)
+
+    // TARGET TEAM logo area (top right)
+    ctx.font = '900 52px Arial'
+    ctx.fillStyle = '#ffffff'
+    ctx.textAlign = 'right'
+    ctx.textBaseline = 'top'
+    ctx.fillText('TARGET TEAM', W - 48, 36)
+    ctx.font = '500 22px Arial'
+    ctx.fillStyle = 'rgba(255,255,255,.4)'
+    ctx.fillText('Of Keller Williams Valley Realty', W - 48, 98)
+
+    // Monthly payment — BIG CENTER
+    const monthly = fmt$(Math.round(calc.monthly))
+    ctx.font = '900 140px Arial'
+    ctx.fillStyle = '#CC2200'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(monthly, W/2, 340)
+
+    ctx.font = '700 32px Arial'
+    ctx.fillStyle = 'rgba(255,255,255,.5)'
+    ctx.fillText('ESTIMATED MONTHLY PAYMENT', W/2, 460)
+
+    // Divider line
+    ctx.strokeStyle = 'rgba(204,34,0,.4)'
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(80, 520); ctx.lineTo(W-80, 520); ctx.stroke()
+
+    // Key numbers — 3 columns
+    const cols = [
+      { label: 'Purchase Price',   value: fmt$(calc.p) },
+      { label: 'Down Payment',     value: fmt$(Math.round(calc.dp)) + ' (' + num(down) + '%)' },
+      { label: 'Loan Amount',      value: fmt$(Math.round(calc.loan)) },
+    ]
+    cols.forEach(function(col, i) {
+      const x = 180 + i * 360
+      ctx.font = '900 44px Arial'
+      ctx.fillStyle = '#ffffff'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(col.value, x, 560)
+      ctx.font = '600 20px Arial'
+      ctx.fillStyle = 'rgba(255,255,255,.4)'
+      ctx.fillText(col.label.toUpperCase(), x, 616)
+    })
+
+    // Second row
+    const row2 = [
+      { label: 'Interest Rate',    value: rate + '%' },
+      { label: 'Loan Term',        value: term + ' Years' },
+      { label: 'P & I Only',       value: fmt$(Math.round(calc.pi)) },
+    ]
+    row2.forEach(function(col, i) {
+      const x = 180 + i * 360
+      ctx.font = '900 44px Arial'
+      ctx.fillStyle = '#10B981'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(col.value, x, 700)
+      ctx.font = '600 20px Arial'
+      ctx.fillStyle = 'rgba(255,255,255,.4)'
+      ctx.fillText(col.label.toUpperCase(), x, 756)
+    })
+
+    // Monthly breakdown bar
+    ctx.fillStyle = 'rgba(255,255,255,.06)'
+    roundRect(ctx, 60, 820, W-120, 120, 16)
+    ctx.fill()
+
+    const items = [
+      { l: 'P & I',    v: fmt$(Math.round(calc.pi)),      c: '#ffffff' },
+      { l: 'Tax',      v: fmt$(num(tax)),                  c: 'rgba(255,255,255,.7)' },
+      { l: 'Insurance',v: fmt$(num(ins)),                  c: 'rgba(255,255,255,.7)' },
+    ]
+    if (calc.pmi > 0) items.push({ l: 'PMI', v: fmt$(Math.round(calc.pmi)), c: '#F5A623' })
+    if (num(hoa) > 0) items.push({ l: 'HOA', v: fmt$(num(hoa)), c: 'rgba(255,255,255,.7)' })
+    const colW = (W - 120) / items.length
+    items.forEach(function(item, i) {
+      const x = 60 + colW * i + colW/2
+      ctx.font = '800 34px Arial'
+      ctx.fillStyle = item.c
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(item.v, x, 840)
+      ctx.font = '500 18px Arial'
+      ctx.fillStyle = 'rgba(255,255,255,.35)'
+      ctx.fillText(item.l, x, 886)
+    })
+
+    // Address if set
+    if (address) {
+      ctx.font = '700 26px Arial'
+      ctx.fillStyle = 'rgba(255,255,255,.55)'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'bottom'
+      ctx.fillText(address, W/2, 970)
+    }
+
+    // Footer
+    ctx.font = '600 22px Arial'
+    ctx.fillStyle = 'rgba(255,255,255,.25)'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText('845.424.1014  ·  @thetargetteam  ·  targetreteam.com', W/2, 1058)
+
+    // Red bottom bar
+    ctx.fillStyle = '#CC2200'
+    ctx.fillRect(0, H-8, W, 8)
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath()
+    ctx.moveTo(x+r, y)
+    ctx.lineTo(x+w-r, y)
+    ctx.arcTo(x+w, y, x+w, y+r, r)
+    ctx.lineTo(x+w, y+h-r)
+    ctx.arcTo(x+w, y+h, x+w-r, y+h, r)
+    ctx.lineTo(x+r, y+h)
+    ctx.arcTo(x, y+h, x, y+h-r, r)
+    ctx.lineTo(x, y+r)
+    ctx.arcTo(x, y, x+r, y, r)
+    ctx.closePath()
+  }
+
+  function downloadCard() {
+    drawCard()
+    setTimeout(function() {
+      const url = canvasRef.current.toDataURL('image/jpeg', 0.95)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'Mortgage_' + (address || fmt$(num(price))).replace(/[^a-zA-Z0-9]/g,'_').slice(0,30) + '.jpg'
+      a.click()
+    }, 60)
+  }
+
+  function shareCard() {
+    drawCard()
+    setTimeout(function() {
+      canvasRef.current.toBlob(function(blob) {
+        if (navigator.share && blob) {
+          const file = new File([blob], 'mortgage.jpg', { type:'image/jpeg' })
+          navigator.share({ files:[file], title:'Mortgage Estimate', text:'Mortgage estimate from Target Team' }).catch(function(){})
+        } else {
+          // Fallback: download
+          downloadCard()
+        }
+      }, 'image/jpeg', 0.95)
+    }, 60)
+  }
+
+  React.useEffect(function() { drawCard() }, [price, down, rate, term, tax, ins, hoa, address])
+
   return (
+    <>
     <div style={{ display:'grid', gridTemplateColumns:'340px 1fr', gap:20, flexWrap:'wrap' }}>
       <div>
         <Section title="Loan Details">
@@ -130,6 +306,12 @@ function MortgageCalc() {
                 </button>
               ))}
             </div>
+          </Field>
+        </Section>
+        <Section title="Property (optional)">
+          <Field label="Address / Label">
+            <input value={address} onChange={e=>setAddress(e.target.value)} placeholder="e.g. 15 Oak Lane, Monsey NY"
+              style={{ ...inp(), marginBottom:0 }} />
           </Field>
         </Section>
         <Section title="Monthly Extras">
@@ -185,6 +367,37 @@ function MortgageCalc() {
         </Section>
       </div>
     </div>
+
+    {/* ── SHARE CARD ── */}
+    <div style={{ marginTop:20 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, flexWrap:'wrap', gap:8 }}>
+        <div>
+          <div style={{ fontSize:14, fontWeight:800, color:'var(--text)' }}>📲 Share Card</div>
+          <div style={{ fontSize:12, color:'var(--muted)' }}>One-page visual — ready for WhatsApp status, text, or download</div>
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={shareCard}
+            style={{ padding:'9px 18px', borderRadius:9, border:'1px solid var(--border)', background:'var(--panel)', color:'var(--text)', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff, display:'flex', alignItems:'center', gap:6 }}>
+            📤 Share
+          </button>
+          <button onClick={downloadCard}
+            style={{ padding:'9px 18px', borderRadius:9, border:'none', background:'#CC2200', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff, display:'flex', alignItems:'center', gap:6 }}>
+            ⬇ Download JPG
+          </button>
+        </div>
+      </div>
+
+      {/* Canvas preview */}
+      <div style={{ display:'flex', justifyContent:'center' }}>
+        <div style={{ boxShadow:'0 8px 32px rgba(0,0,0,.25)', borderRadius:12, overflow:'hidden', maxWidth:400 }}>
+          <canvas ref={canvasRef} style={{ display:'block', width:'100%', height:'auto' }} />
+        </div>
+      </div>
+      <div style={{ textAlign:'center', marginTop:8, fontSize:11, color:'var(--muted)' }}>
+        👆 Live preview · updates as you type · perfect for WhatsApp status (1080×1080)
+      </div>
+    </div>
+    </>
   )
 }
 
