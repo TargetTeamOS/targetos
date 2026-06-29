@@ -229,6 +229,88 @@ function FlowNode({ node, selected, agents, connectedPorts, dragPort, onMouseDow
   )
 }
 
+
+// ── AUDIO FILE UPLOADER ───────────────────────────────────────────
+// Uploads .mp3/.wav to Supabase Storage "phone-audio" bucket
+// Returns a public URL that Twilio can fetch directly
+function AudioUploader({ value, onChange, label }) {
+  const [uploading, setUploading] = React.useState(false)
+  const [progress,  setProgress]  = React.useState('')
+  const ref = React.useRef(null)
+
+  async function handleFile(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    const ok = ['audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/wave','audio/ogg','audio/aac','audio/mp4'].includes(file.type) || file.name.match(/\.(mp3|wav|ogg|aac|m4a)$/i)
+    if (!ok) { alert('Please upload an MP3, WAV, OGG, or AAC audio file.'); return }
+    if (file.size > 50 * 1024 * 1024) { alert('File must be under 50MB'); return }
+    setUploading(true)
+    setProgress('Uploading...')
+    try {
+      const ext  = file.name.split('.').pop().toLowerCase()
+      const name = file.name.replace(/[^a-zA-Z0-9._-]/g,'_')
+      const path = 'phone-audio/' + Date.now() + '_' + name
+      const { error } = await supabase.storage.from('phone-audio').upload(path, file, { upsert: true, contentType: file.type })
+      if (error) throw error
+      const { data } = supabase.storage.from('phone-audio').getPublicUrl(path)
+      onChange(data.publicUrl)
+      setProgress('✅ Uploaded')
+    } catch(e) {
+      if (e.message && e.message.includes('bucket')) {
+        alert('Storage bucket not found.\n\nCreate a bucket named "phone-audio" in Supabase Storage (set to Public) then try again.')
+      } else {
+        alert('Upload failed: ' + e.message)
+      }
+      setProgress('')
+    } finally { setUploading(false) }
+  }
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {label && <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>{label}</div>}
+
+      {/* Upload zone */}
+      <label style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderRadius:9,
+        border: value ? '1.5px solid #10B981' : '2px dashed var(--border)',
+        background: value ? 'rgba(16,185,129,.06)' : 'var(--dim)',
+        cursor: uploading ? 'default' : 'pointer', transition:'all .15s' }}>
+        <input ref={ref} type="file" accept="audio/*,.mp3,.wav,.ogg,.aac,.m4a" onChange={handleFile} style={{ display:'none' }} disabled={uploading} />
+        <span style={{ fontSize:22, flexShrink:0 }}>{uploading ? '⏳' : value ? '🎵' : '📁'}</span>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:12, fontWeight:700, color: value ? '#10B981' : 'var(--text)' }}>
+            {uploading ? progress : value ? 'Audio file uploaded ✓' : 'Click to upload audio file'}
+          </div>
+          <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>
+            {value ? value.split('/').pop().slice(0,40) : 'MP3, WAV, OGG, AAC up to 50MB'}
+          </div>
+        </div>
+        {value && !uploading && (
+          <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); onChange('') }}
+            style={{ background:'rgba(220,38,38,.1)', border:'none', cursor:'pointer', color:'#DC2626', fontSize:14, borderRadius:6, padding:'3px 8px', fontWeight:700 }}>✕</button>
+        )}
+      </label>
+
+      {/* Preview player if URL is set */}
+      {value && !uploading && (
+        <div style={{ marginTop:8, padding:'8px 10px', background:'var(--dim)', borderRadius:8, border:'1px solid var(--border)' }}>
+          <audio controls preload="metadata" style={{ width:'100%', height:32, display:'block' }}>
+            <source src={value} />
+            Your browser does not support audio.
+          </audio>
+        </div>
+      )}
+
+      {/* Manual URL input as fallback */}
+      <div style={{ marginTop:6, display:'flex', alignItems:'center', gap:6 }}>
+        <div style={{ fontSize:10, color:'var(--muted)', flexShrink:0 }}>or paste URL:</div>
+        <input type="text" value={value||''} onChange={e=>onChange(e.target.value)}
+          placeholder="https://..."
+          style={{ flex:1, padding:'5px 8px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff }} />
+      </div>
+    </div>
+  )
+}
+
 // ── CONFIG PANEL ─────────────────────────────────────────────────
 function ConfigPanel({ node, agents, onSave, onClose }) {
   const def = nd(node.type)
@@ -294,9 +376,11 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
           </div>
           {cfg.music === 'custom' && (
             <div style={R}>
-              <label style={L}>Custom music URL (.mp3 or .wav)</label>
-              <input value={cfg.custom_url||''} onChange={e=>set('custom_url',e.target.value)} placeholder="https://your-domain.com/hold.mp3" style={I} />
-              <div style={{fontSize:10,color:'var(--muted)',marginTop:4}}>Host your audio file publicly. Twilio fetches it when the call holds.</div>
+              <AudioUploader
+                label="Custom hold music file"
+                value={cfg.custom_url||''}
+                onChange={url=>set('custom_url',url)}
+              />
             </div>
           )}
           <div style={R}>
@@ -313,9 +397,11 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
           </div>
           <VoicePicker k="voice" />
           <div style={R}>
-            <label style={L}>Audio file URL (.mp3 or .wav)</label>
-            <input value={cfg.url||''} onChange={e=>set('url',e.target.value)} placeholder="https://your-domain.com/message.mp3" style={I} />
-            <div style={{fontSize:10,color:'var(--muted)',marginTop:4}}>Host your audio file publicly. Use for pre-recorded messages in any language.</div>
+            <AudioUploader
+              label="Audio file (greeting, message, announcement)"
+              value={cfg.url||''}
+              onChange={url=>set('url',url)}
+            />
           </div>
           <div style={R}>
             <label style={L}>Loop count (1 = play once)</label>
