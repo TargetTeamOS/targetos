@@ -31,8 +31,14 @@ export function Settings() {
 
   const [name,       setName]       = useState(agent?.name || '')
   const [phone,      setPhone]      = useState(agent?.phone || '')
+  const [email,      setEmail]      = useState(agent?.email || '')
+  const [license,    setLicense]    = useState(agent?.license || '')
+  const [languages,  setLanguages]  = useState(agent?.languages || '')
   const [color,      setColor]      = useState(agent?.color || '#CC2200')
+  const [photoUrl,   setPhotoUrl]   = useState(agent?.photo_url || '')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [savingP,    setSavingP]    = useState(false)
+  const photoRef = React.useRef(null)
 
   const [oldPwd,     setOldPwd]     = useState('')
   const [newPwd,     setNewPwd]     = useState('')
@@ -42,10 +48,28 @@ export function Settings() {
   const [resetEmail, setResetEmail] = useState(agent?.email || '')
   const [sendingReset, setSendingReset] = useState(false)
 
+  async function uploadPhoto(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) { toast('Photo must be under 5MB', '#F5A623'); return }
+    setUploadingPhoto(true)
+    try {
+      const ext  = file.name.split('.').pop()
+      const path = 'headshots/' + agent.id + '.' + ext
+      const { error } = await supabase.storage.from('agent-photos').upload(path, file, { upsert: true })
+      if (error) throw error
+      const { data } = supabase.storage.from('agent-photos').getPublicUrl(path)
+      setPhotoUrl(data.publicUrl + '?t=' + Date.now())
+      toast('✅ Photo uploaded — click Save Profile to apply')
+    } catch(e) {
+      toast('Upload failed: ' + e.message + ' — Create "agent-photos" bucket in Supabase Storage', '#DC2626')
+    } finally { setUploadingPhoto(false) }
+  }
+
   async function saveProfile() {
     setSavingP(true)
     try {
-      await db.agents.update(agent.id, { name, phone, color }, agent.id)
+      await db.agents.update(agent.id, { name, phone, color, license, languages, photo_url: photoUrl || null }, agent.id)
       await refreshAgent()
       toast('✅ Profile saved')
     } catch(e) {
@@ -90,12 +114,20 @@ export function Settings() {
       <div style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: '24px', marginBottom: '16px' }}>
         <SectionTitle>Profile</SectionTitle>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-          <Avatar agent={{ name, color }} size={52} />
-          <div style={{ fontSize: '13px', color: 'var(--muted)' }}>
-            <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: '15px' }}>{agent?.name}</div>
-            <div>{agent?.email}</div>
-            <div style={{ textTransform: 'capitalize' }}>{agent?.role}</div>
+        {/* Photo upload */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <Avatar agent={{ name, color, photo_url: photoUrl }} size={72} showHover={false} />
+            <label style={{ position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: '50%', background: '#CC2200', border: '2px solid var(--panel)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 12 }}>
+              <input ref={photoRef} type="file" accept="image/*" onChange={uploadPhoto} style={{ display: 'none' }} />
+              {uploadingPhoto ? '⏳' : '📷'}
+            </label>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 15, marginBottom: 2 }}>{agent?.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{agent?.email}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'capitalize' }}>{agent?.role}</div>
+            {!photoUrl && <div style={{ fontSize: 11, color: '#F5A623', marginTop: 4 }}>📷 Click the camera icon to add your headshot</div>}
           </div>
         </div>
 
@@ -104,6 +136,12 @@ export function Settings() {
         </Field>
         <Field label="Phone">
           <Input value={phone} onChange={setPhone} placeholder="(845) 555-1234" type="tel" />
+        </Field>
+        <Field label="License Number">
+          <Input value={license} onChange={setLicense} placeholder="e.g. 10401234567" />
+        </Field>
+        <Field label="Languages Spoken">
+          <Input value={languages} onChange={setLanguages} placeholder="e.g. English, Spanish, Yiddish" />
         </Field>
 
         <Field label="Avatar Color">

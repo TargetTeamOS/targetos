@@ -5,6 +5,14 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react'
+
+// Inject global animation for avatar hover card (once)
+if (typeof document !== 'undefined' && !document.getElementById('__tt_avatar_css__')) {
+  const s = document.createElement('style')
+  s.id = '__tt_avatar_css__'
+  s.textContent = '@keyframes fadeInUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}'
+  document.head.appendChild(s)
+}
 import { initials } from '../lib/utils'
 
 const s = (styles) => styles
@@ -40,14 +48,108 @@ export function Empty({ icon = '📭', title = 'Nothing here yet', sub = null, a
 }
 
 // ── AVATAR ───────────────────────────────────────────────────────
-export function Avatar({ agent, size = 32, style: extraStyle = {} }) {
-  const name  = agent?.name || agent?.first_name || '?'
-  const color = agent?.color || '#CC2200'
-  const ini   = initials(name)
+export function Avatar({ agent, size = 32, style: extraStyle = {}, showHover = true }) {
+  const [hovered, setHovered] = useState(false)
+  const [pos,     setPos]     = useState({ x: 0, y: 0 })
+  const ref = useRef(null)
+
+  if (!agent) return null
+
+  const name   = agent.name || agent.first_name || '?'
+  const color  = agent.color || '#CC2200'
+  const ini    = initials(name)
+  const photo  = agent.photo_url || null
+  const fs     = size * 0.36
+
+  function onMouseEnter(e) {
+    if (!showHover) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    // Position hover card below + right of avatar, keep on screen
+    const x = Math.min(rect.left + size / 2, window.innerWidth - 220)
+    const y = rect.bottom + 8
+    setPos({ x, y })
+    setHovered(true)
+  }
+
   return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.35, fontWeight: 700, fontFamily: ff, flexShrink: 0, ...extraStyle }}>
-      {ini}
-    </div>
+    <>
+      <div
+        ref={ref}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: size, height: size, borderRadius: '50%',
+          background: photo ? 'transparent' : color,
+          color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: fs, fontWeight: 700, fontFamily: ff, flexShrink: 0,
+          overflow: 'hidden', cursor: showHover ? 'default' : 'inherit',
+          border: photo ? '2px solid ' + color : 'none',
+          position: 'relative', ...extraStyle,
+        }}>
+        {photo
+          ? <img src={photo} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} onError={e => { e.target.style.display = 'none' }} />
+          : ini
+        }
+      </div>
+
+      {/* Hover card — rendered in a portal via fixed position */}
+      {showHover && hovered && (
+        <div
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            position: 'fixed', left: pos.x, top: pos.y, zIndex: 9999,
+            background: 'var(--panel)', border: '1px solid var(--border)',
+            borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,.22)',
+            padding: 0, minWidth: 210, maxWidth: 240,
+            fontFamily: ff, pointerEvents: 'auto',
+            animation: 'fadeInUp .12s ease',
+          }}>
+          {/* Top color strip */}
+          <div style={{ height: 6, borderRadius: '14px 14px 0 0', background: color }} />
+          <div style={{ padding: '12px 14px' }}>
+            {/* Photo + name row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ width: 44, height: 44, borderRadius: '50%', background: photo ? 'transparent' : color, border: '2px solid ' + color, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {photo
+                  ? <img src={photo} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{ini}</span>
+                }
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>{name}</div>
+                {agent.role && <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'capitalize' }}>{agent.role}</div>}
+              </div>
+            </div>
+            {/* Contact info */}
+            {agent.email && (
+              <a href={'mailto:' + agent.email} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 0', borderTop: '1px solid var(--border)', textDecoration: 'none' }}>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>✉️</span>
+                <span style={{ fontSize: 11, color: '#3B82F6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.email}</span>
+              </a>
+            )}
+            {agent.phone && (
+              <a href={'tel:' + (agent.phone||'').replace(/\D/g,'')} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 0', borderTop: '1px solid var(--border)', textDecoration: 'none' }}>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>📞</span>
+                <span style={{ fontSize: 11, color: 'var(--text)' }}>{agent.phone}</span>
+              </a>
+            )}
+            {agent.license && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 0', borderTop: '1px solid var(--border)' }}>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>🪪</span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>License: {agent.license}</span>
+              </div>
+            )}
+            {agent.languages && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 0', borderTop: '1px solid var(--border)' }}>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>🌐</span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>{agent.languages}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
