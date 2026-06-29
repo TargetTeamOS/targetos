@@ -539,6 +539,9 @@ export function CallFlow() {
   const [flowName,  setFlowName]  = useState('Main Call Flow')
   const [savedId,   setSavedId]   = useState(null)
   const [saving,    setSaving]    = useState(false)
+  const [testPhone, setTestPhone] = useState('')
+  const [testing,   setTesting]   = useState(false)
+  const [showTest,  setShowTest]  = useState(false)
   const [showHelp,  setShowHelp]  = useState(false)
   const [isDragging,setIsDragging]= useState(false) // for cursor style
 
@@ -562,24 +565,66 @@ export function CallFlow() {
   },[])
 
   // ── SAVE ─────────────────────────────────────────────────────
-  function saveFlow() {
+  async function saveFlow() {
     setSaving(true)
-    const mn = nodes.find(n=>n.type==='menu')
-    const gn = nodes.find(n=>n.type==='greeting')
-    const payload = {
-      name: flowName,
-      flow_nodes: nodes,
-      flow_edges: edges,
-      greeting_text: (gn?.config?.text)||(mn?.config?.text)||'',
-      menu_options: (mn?.config?.options||[]).map(o=>({key:o.key,label:o.label,say:o.say,action:'extension',value:''})),
-      updated_at: new Date().toISOString(),
+    try {
+      const mn = nodes.find(n=>n.type==='menu')
+      const gn = nodes.find(n=>n.type==='greeting')
+      const payload = {
+        name:            flowName,
+        flow_nodes:      nodes,
+        flow_edges:      edges,
+        greeting_text:   (gn?.config?.text)||(mn?.config?.text)||'',
+        menu_options:    (mn?.config?.options||[]).map(o=>({key:o.key,label:o.label,say:o.say,action:'extension',value:''})),
+        is_active:       true,
+        updated_at:      new Date().toISOString(),
+      }
+      if (savedId) {
+        const { error } = await supabase.from('phone_ivr').update(payload).eq('id', savedId)
+        if (error) throw error
+      } else {
+        // Check if any row exists first
+        const { data: existing } = await supabase.from('phone_ivr').select('id').limit(1).maybeSingle()
+        if (existing?.id) {
+          const { error } = await supabase.from('phone_ivr').update(payload).eq('id', existing.id)
+          if (error) throw error
+          setSavedId(existing.id)
+        } else {
+          const { data: inserted, error } = await supabase.from('phone_ivr')
+            .insert({ ...payload, voicemail_extension:'9', created_at: new Date().toISOString() })
+            .select().single()
+          if (error) throw error
+          if (inserted) setSavedId(inserted.id)
+        }
+      }
+      toast('✅ Flow saved — ' + flowName)
+    } catch(e) {
+      console.error('saveFlow:', e)
+      toast('Save failed: ' + e.message, '#DC2626')
+    } finally {
+      setSaving(false)
     }
-    const p = savedId
-      ? supabase.from('phone_ivr').update(payload).eq('id',savedId)
-      : supabase.from('phone_ivr').insert({...payload,is_active:false,voicemail_extension:'9',created_at:new Date().toISOString()}).select().single()
-    p.then(r=>{ if(!savedId&&r.data) setSavedId(r.data.id); toast('✅ Flow saved') })
-     .catch(e=>toast('Save failed: '+e.message,'#DC2626'))
-     .finally(()=>setSaving(false))
+  }
+
+  async function testCall() {
+    if (!testPhone.trim()) { toast('Enter a phone number to call', '#F5A623'); return }
+    if (!savedId) { toast('Save the flow first, then test it', '#F5A623'); return }
+    setTesting(true)
+    try {
+      const res = await fetch('/api/twilio-test-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: testPhone.replace(/[^+0-9]/g,''), flowId: savedId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Call failed')
+      toast('📞 Calling ' + testPhone + ' — answer to hear your flow!')
+      setShowTest(false)
+    } catch(e) {
+      toast('Call failed: ' + e.message, '#DC2626')
+    } finally {
+      setTesting(false)
+    }
   }
 
   function addNode(type) {
@@ -735,6 +780,7 @@ export function CallFlow() {
   }
 
   return (
+    <>
     <div style={{fontFamily:ff,height:'calc(100vh - 56px)',display:'flex',flexDirection:'column',overflow:'hidden',background:'var(--bg)'}}>
 
       {/* TOOLBAR */}
@@ -756,6 +802,10 @@ export function CallFlow() {
         <button onClick={()=>{if(window.confirm('Clear canvas?')){setNodes([{id:'start',type:'incoming',x:80,y:200,config:{}}]);setEdges([]);setSelected(null)}}}
           style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:'transparent',color:'var(--muted)',fontSize:12,cursor:'pointer',fontFamily:ff}}>
           Clear
+        </button>
+        <button onClick={() => setShowTest(true)}
+          style={{ padding:'8px 14px', borderRadius:8, border:'1px solid #10B981', background:'rgba(16,185,129,.1)', color:'#10B981', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+          📞 Test Call
         </button>
         <Btn onClick={saveFlow} loading={saving}>💾 Save Flow</Btn>
       </div>
@@ -906,5 +956,54 @@ export function CallFlow() {
         )}
       </div>
     </div>
+
+      {/* ── TEST CALL MODAL ── */}
+      {showTest && (
+        <div onClick={e=>e.target===e.currentTarget&&setShowTest(false)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:16, fontFamily:ff }}>
+          <div style={{ background:'var(--panel)', borderRadius:14, width:'100%', maxWidth:440, padding:24, boxShadow:'0 20px 50px rgba(0,0,0,.3)' }}>
+            <div style={{ fontSize:16, fontWeight:800, color:'var(--text)', marginBottom:4 }}>📞 Test Your Call Flow</div>
+            <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20, lineHeight:1.6 }}>
+              Twilio will call the number below. Pick up and you'll hear exactly what your callers hear when they call <strong style={{ color:'var(--text)' }}>845-327-1778</strong>.
+            </div>
+
+            {!savedId && (
+              <div style={{ padding:'10px 14px', background:'#FEF3C7', border:'1px solid #FDE68A', borderRadius:9, marginBottom:14, fontSize:12, color:'#92400E' }}>
+                ⚠️ Save the flow first before testing — the test call uses the saved version.
+              </div>
+            )}
+
+            <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>
+              Phone number to call
+            </div>
+            <input
+              value={testPhone}
+              onChange={e => setTestPhone(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && testCall()}
+              placeholder="+1 (845) 555-0100"
+              style={{ width:'100%', padding:'10px 12px', borderRadius:9, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:15, fontFamily:ff, boxSizing:'border-box', marginBottom:16 }}
+            />
+
+            <div style={{ padding:'10px 14px', background:'var(--dim)', borderRadius:9, border:'1px solid var(--border)', fontSize:11, color:'var(--muted)', lineHeight:1.7, marginBottom:16 }}>
+              <strong style={{ color:'var(--text)' }}>Webhook must be configured:</strong><br/>
+              In your <a href="https://console.twilio.com" target="_blank" rel="noopener noreferrer" style={{ color:'#3B82F6' }}>Twilio Console</a> → Phone Numbers → 845-327-1778 → Voice webhook:<br/>
+              <code style={{ fontFamily:'monospace', color:'#CC2200', fontSize:11 }}>https://app.targetreteam.com/api/twilio-inbound</code><br/>
+              Method: <strong>HTTP POST</strong>
+            </div>
+
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button onClick={() => setShowTest(false)}
+                style={{ padding:'9px 16px', borderRadius:8, border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', cursor:'pointer', fontFamily:ff }}>
+                Cancel
+              </button>
+              <button onClick={testCall} disabled={testing || !savedId}
+                style={{ padding:'9px 20px', borderRadius:8, border:'none', background: savedId ? '#10B981' : 'var(--dim)', color: savedId ? '#fff' : 'var(--muted)', fontSize:13, fontWeight:700, cursor: savedId&&!testing ? 'pointer' : 'default', fontFamily:ff }}>
+                {testing ? '⏳ Calling...' : '📞 Call Now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
