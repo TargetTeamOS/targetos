@@ -29,6 +29,7 @@ const NAV = [
   { id: 'signs',        label: 'Signs',         icon: '🪧', roles: ['admin','secretary'] },
   { id: 'social-cards', label: 'Social Cards',  icon: '📱', roles: ['admin','secretary','agent'] },
   { id: 'listingprep',  label: 'Listing Prep',  icon: '🔧', roles: ['admin','secretary','agent'] },
+  { id: 'mortgage',     label: 'Calculator',    icon: '🏦', roles: ['admin','secretary','agent'] },
   { DIVIDER: true },
   { id: 'announcements',label: 'Announcements', icon: '📣', roles: ['admin','secretary','agent'] },
   { id: 'briefing',     label: 'Daily Briefing',icon: '☀️',  roles: ['admin','secretary','agent'] },
