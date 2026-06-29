@@ -32,6 +32,7 @@ const NODE_DEFS = [
   { type:'savelead',   label:'Save as Lead',   color:'#14B8A6', icon:'💾', cat:'action'  },
   { type:'sms',        label:'Send SMS',       color:'#84CC16', icon:'💬', cat:'action'  },
   { type:'hangup',     label:'Hang Up',        color:'#94A3B8', icon:'🔴', cat:'action'  },
+  { type:'listings',   label:'Listing Search', color:'#8B5CF6', icon:'🏡', cat:'action'  },
 ]
 
 const CATS = [
@@ -97,6 +98,7 @@ function defCfg(type) {
   if (type === 'voicemail') return { text:'Please leave your name and number after the tone.', voice:'Polly.Joanna', transcribe:true, notify_agent:true, max_length:120, pin_enabled:false, pin:'1234', pin_attempts:3 }
   if (type === 'savelead')  return { source:'Inbound Call', assign:'round_robin' }
   if (type === 'sms')       return { text:'Thanks for calling Target Team! An agent will reach out shortly.', send_to:'caller' }
+  if (type === 'listings')  return { intro:'Welcome to our available listings search.', voice:'Polly.Joanna', max_results:5 }
   if (type === 'hold')      return { music:'twilio', custom_url:'', duration:30, say_first:'', voice:'Polly.Joanna' }
   if (type === 'audio')     return { url:'', voice:'Polly.Joanna', say_first:'', loop:1 }
   if (type === 'language')  return { prompt:'For English press 1. Para Español oprima 2.', options:[{key:'1',language:'en-US',voice:'Polly.Joanna',label:'English'},{key:'2',language:'es-US',voice:'Polly.Lupe',label:'Spanish'}], timeout:10 }
@@ -156,6 +158,7 @@ function FlowNode({ node, selected, agents, connectedPorts, dragPort, onMouseDow
   else if (node.type === 'hold')    sub = HOLD_MUSIC.find(m=>m.id===cfg.music)?.label?.slice(0,28) || 'Twilio default'
   else if (node.type === 'audio')   sub = cfg.url ? 'Custom file' : 'no file set'
   else if (node.type === 'sms')     sub = (cfg.text||'').slice(0,28)
+  else if (node.type === 'listings') sub = 'keypad price search'
   else sub = def.label.toLowerCase()
 
   const fill   = selected ? def.color : 'var(--panel)'
@@ -632,6 +635,27 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
           <div style={INFO}>Creates or updates a Contact from the caller's phone number.</div>
         </>)}
 
+        {/* ── LISTINGS SEARCH ── */}
+        {node.type === 'listings' && (<>
+          <div style={R}>
+            <label style={L}>Opening message</label>
+            <textarea value={cfg.intro||''} onChange={e=>set('intro',e.target.value)} rows={2} style={TA}
+              placeholder="Welcome to our available listings search. Use your keypad to enter a price range." />
+          </div>
+          <VoicePicker k="voice" />
+          <div style={R}>
+            <label style={L}>Max listings to read (1–10)</label>
+            <input type="number" min={1} max={10} value={cfg.max_results||5} onChange={e=>set('max_results',parseInt(e.target.value)||5)} style={I} />
+          </div>
+          <div style={{...INFO}}>
+            <strong style={{color:'var(--text)'}}>How it works:</strong><br/>
+            Caller presses 1 for price range, then uses keypad to enter price (e.g. press 5 0 0 = $500k).<br/>
+            System reads matching listings that have <strong>📞 IVR enabled</strong> on the Listings board.<br/>
+            After each listing, caller presses 1 to hear next or 2 to connect with an agent.<br/><br/>
+            <strong style={{color:'#8B5CF6'}}>Mark listings for phone:</strong> Go to Listings → click the 📞 icon on any listing card.
+          </div>
+        </>)}
+
         {/* ── SMS ── */}
         {node.type === 'sms' && (<>
           <div style={R}><label style={L}>SMS text</label><textarea value={cfg.text||''} onChange={e=>set('text',e.target.value)} rows={3} style={TA} /></div>
@@ -709,6 +733,10 @@ export function CallFlow() {
   const [showTest,  setShowTest]  = useState(false)
   const [showHelp,  setShowHelp]  = useState(false)
   const [isDragging,setIsDragging]= useState(false) // for cursor style
+  const [zoom,      setZoom]      = useState(1)      // canvas zoom level
+  const [pan,       setPan]       = useState({x:0,y:0}) // canvas pan offset
+  const panStart    = useRef(null) // {mx,my,ox,oy} — for space+drag panning
+  const [isPanning, setIsPanning] = useState(false)
 
   const dragNode = useRef(null) // {id, ox, oy}
   const dragWire = useRef(null) // {fromId, portId}
@@ -840,6 +868,15 @@ export function CallFlow() {
   // ── MOUSE HELPERS ─────────────────────────────────────────────
   function getXY(e) {
     const r = svgRef.current.getBoundingClientRect()
+    // Account for zoom and pan transform
+    const rawX = e.clientX - r.left
+    const rawY = e.clientY - r.top
+    return { x: (rawX - pan.x) / zoom, y: (rawY - pan.y) / zoom }
+  }
+
+  // Wire pos for live wire preview — in screen coords (before transform)
+  function getScreenXY(e) {
+    const r = svgRef.current.getBoundingClientRect()
     return { x: e.clientX - r.left, y: e.clientY - r.top }
   }
 
@@ -873,12 +910,13 @@ export function CallFlow() {
   }
 
   function onSvgMouseMove(e) {
-    const {x,y} = getXY(e)
+    const {x,y}   = getXY(e)        // transformed coords (for node positions)
+    const {x:sx, y:sy} = getScreenXY ? getScreenXY(e) : getXY(e) // screen coords (for wire preview)
     if (dragNode.current) {
       const {id,ox,oy} = dragNode.current
       setNodes(p=>p.map(n=>n.id===id?{...n,x:Math.max(0,x-ox),y:Math.max(0,y-oy)}:n))
     }
-    if (dragWire.current) setWirePos({x,y})
+    if (dragWire.current) setWirePos({x,y})  // wire preview also in transformed coords
   }
 
   function finishWire(toId) {
@@ -1074,13 +1112,34 @@ export function CallFlow() {
             <rect width="100%" height="100%" fill="url(#cfgrid)" />
           </svg>
 
+          {/* Zoom controls */}
+          <div style={{position:'absolute',bottom:14,right:14,zIndex:20,display:'flex',flexDirection:'column',gap:4}}>
+            {[['＋',0.15],['－',-0.15],['⊡',null]].map(([label,delta]) => (
+              <button key={label} onClick={() => delta ? setZoom(z=>Math.max(0.3,Math.min(2,z+delta))) : (setZoom(1),setPan({x:0,y:0}))}
+                style={{width:30,height:30,borderRadius:7,border:'1px solid var(--border)',background:'var(--panel)',color:'var(--text)',fontSize:16,cursor:'pointer',fontFamily:ff,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,.12)'}}>
+                {label}
+              </button>
+            ))}
+            <div style={{textAlign:'center',fontSize:9,color:'var(--muted)',marginTop:2}}>{Math.round(zoom*100)}%</div>
+          </div>
+
+          {/* Zoom hint */}
+          <div style={{position:'absolute',bottom:14,left:174,zIndex:10,fontSize:10,color:'var(--muted)',background:'var(--panel)',padding:'3px 8px',borderRadius:6,border:'1px solid var(--border)',pointerEvents:'none'}}>
+            Scroll to zoom · Middle-drag to pan · +/- buttons
+          </div>
+
           {/* Main SVG */}
           <svg ref={svgRef}
             style={{position:'absolute',inset:0,width:'100%',height:'100%',overflow:'visible',zIndex:1,userSelect:'none'}}
             onMouseMove={onSvgMouseMove}
             onMouseUp={onSvgMouseUp}
             onMouseLeave={onSvgMouseUp}
-            onClick={onSvgClick}>
+            onClick={onSvgClick}
+            onWheel={e => {
+              e.preventDefault()
+              const delta = e.deltaY > 0 ? -0.08 : 0.08
+              setZoom(z => Math.max(0.3, Math.min(2, z + delta)))
+            }}>
 
             <defs>
               {MARKERS.map(m=>(
@@ -1089,6 +1148,9 @@ export function CallFlow() {
                 </marker>
               ))}
             </defs>
+
+            {/* All nodes/edges are inside a transform group for zoom+pan */}
+            <g transform={'translate(' + pan.x + ',' + pan.y + ') scale(' + zoom + ')'}>
 
             {/* Edges */}
             {edges.map(edge => {
@@ -1139,6 +1201,7 @@ export function CallFlow() {
                 />
               </g>
             ))}
+            </g>
           </svg>
 
           {/* Drop hint */}
