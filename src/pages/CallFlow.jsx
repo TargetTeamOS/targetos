@@ -32,7 +32,8 @@ const NODE_DEFS = [
   { type:'savelead',   label:'Save as Lead',   color:'#14B8A6', icon:'💾', cat:'action'  },
   { type:'sms',        label:'Send SMS',       color:'#84CC16', icon:'💬', cat:'action'  },
   { type:'hangup',     label:'Hang Up',        color:'#94A3B8', icon:'🔴', cat:'action'  },
-  { type:'listings',   label:'Listing Search', color:'#8B5CF6', icon:'🏡', cat:'action'  },
+  { type:'listings',   label:'CRM Listings',   color:'#8B5CF6', icon:'🏡', cat:'action'  },
+  { type:'mlssearch',  label:'MLS Search',     color:'#0EA5E9', icon:'🔍', cat:'action'  },
 ]
 
 const CATS = [
@@ -99,6 +100,7 @@ function defCfg(type) {
   if (type === 'savelead')  return { source:'Inbound Call', assign:'round_robin' }
   if (type === 'sms')       return { text:'Thanks for calling Target Team! An agent will reach out shortly.', send_to:'caller' }
   if (type === 'listings')  return { intro:'Welcome to our available listings search.', voice:'Polly.Joanna', max_results:5 }
+  if (type === 'mlssearch') return { intro:'Welcome to our live MLS search. Use your keypad to enter a price range.', voice:'Polly.Joanna', max_results:5, area:'' }
   if (type === 'hold')      return { music:'twilio', custom_url:'', duration:30, say_first:'', voice:'Polly.Joanna' }
   if (type === 'audio')     return { url:'', voice:'Polly.Joanna', say_first:'', loop:1 }
   if (type === 'language')  return { prompt:'For English press 1. Para Español oprima 2.', options:[{key:'1',language:'en-US',voice:'Polly.Joanna',label:'English'},{key:'2',language:'es-US',voice:'Polly.Lupe',label:'Spanish'}], timeout:10 }
@@ -158,7 +160,8 @@ function FlowNode({ node, selected, agents, connectedPorts, dragPort, onMouseDow
   else if (node.type === 'hold')    sub = HOLD_MUSIC.find(m=>m.id===cfg.music)?.label?.slice(0,28) || 'Twilio default'
   else if (node.type === 'audio')   sub = cfg.url ? 'Custom file' : 'no file set'
   else if (node.type === 'sms')     sub = (cfg.text||'').slice(0,28)
-  else if (node.type === 'listings') sub = 'keypad price search'
+  else if (node.type === 'listings') sub = 'keypad price search (CRM)'
+  else if (node.type === 'mlssearch') sub = 'live MLS lookup' + (cfg.area ? ' · ' + cfg.area : '')
   else sub = def.label.toLowerCase()
 
   const fill   = selected ? def.color : 'var(--panel)'
@@ -174,7 +177,6 @@ function FlowNode({ node, selected, agents, connectedPorts, dragPort, onMouseDow
       <rect x={0} y={0} width={NW} height={NH} rx={12} fill={fill} stroke={stroke} strokeWidth={selected?2.5:1.5}
         style={{cursor:'grab'}}
         onMouseDown={function(e){ onMouseDownNode(e, node.id) }}
-        onClick={function(e){ e.stopPropagation(); onClickNode(node.id) }}
       />
       {/* Color sidebar */}
       <rect x={0} y={0} width={8} height={NH} rx={6} fill={def.color} />
@@ -656,6 +658,33 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
           </div>
         </>)}
 
+        {/* ── MLS SEARCH (live OneKey MLS) ── */}
+        {node.type === 'mlssearch' && (<>
+          <div style={R}>
+            <label style={L}>Opening message</label>
+            <textarea value={cfg.intro||''} onChange={e=>set('intro',e.target.value)} rows={2} style={TA}
+              placeholder="Welcome to our live MLS search. Use your keypad to enter a price range." />
+          </div>
+          <VoicePicker k="voice" />
+          <div style={R}>
+            <label style={L}>Area / City filter (optional)</label>
+            <input value={cfg.area||''} onChange={e=>set('area',e.target.value)} style={I}
+              placeholder="e.g. Spring Valley, Monsey — leave blank for all areas" />
+          </div>
+          <div style={R}>
+            <label style={L}>Max listings to read (1–10)</label>
+            <input type="number" min={1} max={10} value={cfg.max_results||5} onChange={e=>set('max_results',parseInt(e.target.value)||5)} style={I} />
+          </div>
+          <div style={{...INFO}}>
+            <strong style={{color:'var(--text)'}}>How it works:</strong><br/>
+            Searches the <strong>live OneKey MLS feed</strong> in real time — not just your own listings.<br/>
+            Caller presses 1 for price range, then uses keypad to enter a price (e.g. press 5 0 0 = $500k).<br/>
+            System reads matching active MLS listings aloud, newest first.<br/>
+            After each listing, caller presses 1 to hear next or 2 to connect with an agent.<br/><br/>
+            <strong style={{color:'#0EA5E9'}}>Requires:</strong> OneKey MLS API credentials configured in Settings → MLS Integration.
+          </div>
+        </>)}
+
         {/* ── SMS ── */}
         {node.type === 'sms' && (<>
           <div style={R}><label style={L}>SMS text</label><textarea value={cfg.text||''} onChange={e=>set('text',e.target.value)} rows={3} style={TA} /></div>
@@ -912,9 +941,12 @@ export function CallFlow() {
     dragNode.current = {id, ox:x-node.x, oy:y-node.y}
     setSelected(id)
     setIsDragging(true)
-    // Bring clicked node to front (end of array = renders on top) so overlapping
-    // nodes from older flows don't stay stuck underneath others
-    setNodes(p => { const n = p.find(x=>x.id===id); return n ? [...p.filter(x=>x.id!==id), n] : p })
+    // Bring clicked node to front (end of array = renders on top) only if it isn't already there
+    setNodes(p => {
+      if (p.length === 0 || p[p.length - 1].id === id) return p // already on top — no-op
+      const n = p.find(x => x.id === id)
+      return n ? [...p.filter(x => x.id !== id), n] : p
+    })
   }
 
   function onMouseDownPort(e, fromId, portId) {

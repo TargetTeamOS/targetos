@@ -223,12 +223,23 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
   }
 
   if (node.type === 'listings') {
-    // Route to the listing search phone handler
+    // Route to the CRM-only listing search phone handler
     const voice    = cfg.voice || 'Polly.Joanna'
     const maxRes   = cfg.max_results || 5
     const introEnc = encodeURIComponent(cfg.intro || 'Welcome to our available listings search.')
     const listUrl  = 'https://app.targetreteam.com/api/twilio-listings?step=intro&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&intro=' + introEnc
     twiml += '<Redirect method="GET">' + listUrl + '</Redirect>'
+    return twiml
+  }
+
+  if (node.type === 'mlssearch') {
+    // Route to the live OneKey MLS search phone handler
+    const voice    = cfg.voice || 'Polly.Joanna'
+    const maxRes   = cfg.max_results || 5
+    const area     = encodeURIComponent(cfg.area || '')
+    const introEnc = encodeURIComponent(cfg.intro || 'Welcome to our live MLS search.')
+    const mlsUrl   = 'https://app.targetreteam.com/api/twilio-mls-search?step=intro&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&area=' + area + '&intro=' + introEnc
+    twiml += '<Redirect method="GET">' + mlsUrl + '</Redirect>'
     return twiml
   }
 
