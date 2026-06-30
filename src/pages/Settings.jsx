@@ -25,6 +25,92 @@ const AGENT_COLORS = [
   '#EC4899','#14B8A6','#E8650A','#6366F1','#84CC16'
 ]
 
+
+// ── PHONE SETUP WIZARD ───────────────────────────────────────────
+function PhoneSetup() {
+  const [status,   setStatus]   = React.useState(null)
+  const [loading,  setLoading]  = React.useState(false)
+  const [checked,  setChecked]  = React.useState(false)
+
+  async function checkSetup() {
+    setLoading(true)
+    try {
+      const res  = await fetch('/api/twilio-setup')
+      const data = await res.json()
+      setStatus(data)
+      setChecked(true)
+    } catch(e) {
+      setStatus({ ok:false, message:'Could not reach setup endpoint: ' + e.message })
+    } finally { setLoading(false) }
+  }
+
+  const ff = 'Inter, system-ui, sans-serif'
+  const card = { padding:'12px 14px', borderRadius:10, marginBottom:10, fontSize:13, lineHeight:1.7, fontFamily:ff }
+
+  return (
+    <div style={{ fontFamily:ff }}>
+      <div style={{ fontSize:13, color:'var(--muted)', marginBottom:12, lineHeight:1.6 }}>
+        The browser phone lets agents call contacts directly from the CRM — no phone app needed.
+        Uses Twilio WebRTC. Click the button below to automatically configure it.
+      </div>
+
+      <button onClick={checkSetup} disabled={loading}
+        style={{ padding:'9px 20px', borderRadius:9, border:'none', background:'#CC2200', color:'#fff', fontSize:13, fontWeight:700, cursor:loading?'default':'pointer', fontFamily:ff, marginBottom:14 }}>
+        {loading ? '⏳ Checking...' : checked ? '🔄 Recheck Setup' : '🔧 Configure Browser Phone'}
+      </button>
+
+      {status && (
+        <div style={{ ...card, background: status.ok ? 'rgba(16,185,129,.08)' : 'rgba(245,166,35,.08)', border: '1px solid ' + (status.ok?'rgba(16,185,129,.3)':'rgba(245,166,35,.3)') }}>
+          <div style={{ fontSize:15, fontWeight:800, color: status.ok?'#10B981':'#D97706', marginBottom:6 }}>
+            {status.ok ? '✅ ' : '⚠️ '}{status.message}
+          </div>
+
+          {status.twimlAppSid && (
+            <div style={{ padding:'8px 12px', background:'rgba(0,0,0,.04)', borderRadius:7, fontFamily:'monospace', fontSize:12, marginBottom:8 }}>
+              TwiML App SID: <strong>{status.twimlAppSid}</strong>
+            </div>
+          )}
+
+          {status.nextStep && (
+            <div style={{ fontSize:12, color:'var(--text)', marginBottom:8 }}>
+              <strong>Next step:</strong> {status.nextStep}
+            </div>
+          )}
+
+          {status.instructions && (
+            <ol style={{ margin:'8px 0 0 16px', padding:0, fontSize:12, color:'var(--muted)' }}>
+              {status.instructions.map((s,i) => <li key={i} style={{ marginBottom:4 }}>{s}</li>)}
+            </ol>
+          )}
+
+          {status.step === 'created' && (
+            <div style={{ marginTop:10, padding:'10px 12px', background:'#1B2B4B', borderRadius:8, color:'#fff', fontSize:12 }}>
+              <div style={{ fontWeight:700, marginBottom:4 }}>Add to Vercel env vars:</div>
+              <code style={{ fontFamily:'monospace', display:'block', marginBottom:2 }}>
+                TWILIO_TWIML_APP_SID = {status.twimlAppSid}
+              </code>
+              <a href="https://vercel.com/dashboard" target="_blank" rel="noopener noreferrer"
+                style={{ color:'#60A5FA', fontSize:11 }}>Open Vercel Dashboard →</a>
+            </div>
+          )}
+
+          {status.step === 'already_configured' && (
+            <div style={{ marginTop:8, fontSize:12, color:'var(--muted)' }}>
+              Browser calling is ready. Click 📞 on any contact to call directly from your browser.
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ fontSize:11, color:'var(--muted)', lineHeight:1.6, marginTop:8 }}>
+        <strong style={{ color:'var(--text)' }}>How it works:</strong> Twilio routes browser audio through WebRTC.
+        Your microphone and speakers handle the call — no phone app needed.
+        All calls are recorded and saved to the contact timeline automatically.
+      </div>
+    </div>
+  )
+}
+
 export function Settings() {
   const { agent, refreshAgent } = useAuth()
   const { state, setTheme, toast } = useApp()
@@ -191,6 +277,16 @@ export function Settings() {
           <Input value={resetEmail} onChange={setResetEmail} type="email" placeholder="agent@targetreteam.com" />
         </Field>
         <Btn variant="secondary" onClick={sendPasswordReset} loading={sendingReset}>Send Reset Link</Btn>
+      </div>
+
+      {/* ── PHONE SETUP ── */}
+      <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', overflow:'hidden', marginBottom:20 }}>
+        <div style={{ padding:'10px 16px', background:'#1B2B4B', borderBottom:'1px solid var(--border)' }}>
+          <div style={{ fontSize:13, fontWeight:800, color:'#fff' }}>📞 Browser Phone Setup</div>
+        </div>
+        <div style={{ padding:16 }}>
+          <PhoneSetup />
+        </div>
       </div>
     </div>
   )
