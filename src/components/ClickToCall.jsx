@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useAuth }  from '../context/AuthContext'
 import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import { Device }   from '@twilio/voice-sdk'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -27,21 +28,9 @@ function useG() {
   return G
 }
 
-// Load Twilio Voice SDK v2
-function loadVoiceSDK() {
-  return new Promise((resolve, reject) => {
-    if (window.Twilio?.Device) return resolve()
-    const s = document.createElement('script')
-    s.src = 'https://sdk.twilio.com/js/voice/releases/2.11.1/twilio.min.js'
-    s.onload  = () => window.Twilio?.Device ? resolve() : reject(new Error('SDK loaded but Device class missing'))
-    s.onerror = () => reject(new Error('Could not load Twilio Voice SDK from CDN'))
-    document.head.appendChild(s)
-  })
-}
-
+// Initialize device using the npm-bundled SDK (no external CDN dependency)
 async function ensureDevice(agent) {
   if (G.device && G.deviceReady) return G.device
-  await loadVoiceSDK()
 
   const name = (agent?.name || 'agent').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30) || 'agent'
   const res  = await fetch('/api/twilio-token?agentName=' + name)
@@ -50,7 +39,7 @@ async function ensureDevice(agent) {
     throw new Error(data.error + (data.hint ? ' — ' + data.hint : ''))
   }
 
-  const device = new window.Twilio.Device(data.token, {
+  const device = new Device(data.token, {
     logLevel: 'error',
     codecPreferences: ['opus', 'pcmu'],
   })

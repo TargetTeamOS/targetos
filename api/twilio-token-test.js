@@ -23,11 +23,16 @@ module.exports = async function handler(req, res) {
   const sig = crypto.createHmac('sha256', authToken||'').update(unsigned).digest('base64url')
   const token = unsigned + '.' + sig
 
+  // Find any env var that looks like it might be the TwiML SID (in case of typo/case issue)
+  const allEnvKeys = Object.keys(process.env).filter(k => k.toUpperCase().includes('TWIML') || k.toUpperCase().includes('TWILIO'))
+
   res.send(`<!DOCTYPE html><html><body style="font-family:monospace;padding:20px;font-size:12px">
     <h3>Token Debug</h3>
     <p>ACCOUNT_SID: ${accountSid ? '✅ ' + accountSid.slice(0,10)+'...' : '❌ MISSING'}</p>
     <p>AUTH_TOKEN: ${authToken ? '✅ Set (length ' + authToken.length + ')' : '❌ MISSING'}</p>
     <p>TWIML_APP_SID: ${twimlAppSid ? '✅ ' + twimlAppSid : '❌ MISSING'}</p>
+    <p style="color:#666">All TWILIO/TWIML-related env var names found: ${JSON.stringify(allEnvKeys)}</p>
+    <p style="color:#666">VERCEL_ENV: ${process.env.VERCEL_ENV || 'not set'} | VERCEL_GIT_COMMIT_SHA: ${(process.env.VERCEL_GIT_COMMIT_SHA||'').slice(0,8)}</p>
     <p>Generated token (first 60 chars): ${token.slice(0,60)}...</p>
     <p>Token length: ${token.length}</p>
     <hr/>
