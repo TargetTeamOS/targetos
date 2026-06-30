@@ -1,7 +1,20 @@
-// TargetOS V2 — Twilio Outbound Call
-// POST: initiate outbound call (Twilio calls agent first, then bridges to contact)
-// DELETE: end/cancel an active call
+// TargetOS V2 — Twilio Outbound Bridge Call
+// How it works:
+//   1. Twilio calls the AGENT'S phone (from their profile)
+//   2. Agent picks up → hears "Connecting to [contact name]..."
+//   3. Twilio then dials the CONTACT
+//   4. Both parties are bridged — full two-way call
+//   5. Call is recorded automatically
 'use strict'
+
+const querystring = require('querystring')
+
+function getSupabase() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
+  if (!url || !key) return null
+  return require('@supabase/supabase-js').createClient(url, key)
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -11,82 +24,122 @@ module.exports = async function handler(req, res) {
   const authToken  = process.env.TWILIO_AUTH_TOKEN
   const fromNumber = process.env.TWILIO_PHONE_NUMBER || '+18453271778'
   const baseUrl    = 'https://app.targetreteam.com'
+  const auth       = 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64')
 
   if (!accountSid || !authToken) {
-    return res.status(503).json({ error: 'Twilio credentials not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to Vercel environment variables.' })
+    return res.status(503).json({ error: 'Twilio credentials not configured in Vercel env vars' })
   }
 
-  const auth = 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64')
-
-  // ── END CALL ──────────────────────────────────────────────────
+  // ── END CALL ─────────────────────────────────────────────────
   if (req.method === 'DELETE') {
     const { callSid } = req.body || {}
     if (!callSid) return res.status(400).json({ error: 'callSid required' })
     try {
-      const r = await fetch(
-        'https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Calls/' + callSid + '.json',
-        {
-          method:  'POST',
-          headers: { 'Authorization': auth, 'Content-Type': 'application/x-www-form-urlencoded' },
-          body:    'Status=completed',
-        }
-      )
-      const d = await r.json()
-      return res.status(200).json({ ok: true, status: d.status })
-    } catch(e) {
-      return res.status(500).json({ error: e.message })
-    }
+      await fetch('https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Calls/' + callSid + '.json', {
+        method: 'POST',
+        headers: { 'Authorization': auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'Status=completed',
+      })
+      return res.status(200).json({ ok: true })
+    } catch(e) { return res.status(500).json({ error: e.message }) }
   }
 
-  // ── INITIATE CALL ─────────────────────────────────────────────
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const { to, contactName, callLogId, agentId } = req.body || {}
-  if (!to) return res.status(400).json({ error: 'Phone number (to) required' })
+  if (!to) return res.status(400).json({ error: 'Phone number required' })
 
-  // Normalize number
+  // Normalize contact number
   let toNum = to.replace(/[^+0-9]/g, '')
   if (!toNum.startsWith('+')) toNum = '+1' + toNum
 
-  // TwiML URL: when agent picks up their phone, Twilio reads this TwiML
-  // which then dials the contact
-  const twimlUrl = baseUrl + '/api/twilio-outbound-twiml' +
-    '?to=' + encodeURIComponent(toNum) +
-    '&name=' + encodeURIComponent(contactName || toNum) +
-    '&callLogId=' + encodeURIComponent(callLogId || '')
+  // Look up agent's phone number from DB
+  let agentPhone = null
+  if (agentId) {
+    try {
+      const sb = getSupabase()
+      if (sb) {
+        const { data: ag } = await sb.from('agents').select('phone, name').eq('id', agentId).maybeSingle()
+        if (ag?.phone) {
+          agentPhone = ag.phone.replace(/[^+0-9]/g, '')
+          if (!agentPhone.startsWith('+')) agentPhone = '+1' + agentPhone
+        }
+      }
+    } catch(e) { console.warn('agent lookup:', e.message) }
+  }
 
   try {
-    const params = new URLSearchParams({
-      To:    toNum,           // Call the CONTACT directly (browser click-to-call)
-      From:  fromNumber,
-      Url:   twimlUrl,        // TwiML that announces and records
-      StatusCallback:             baseUrl + '/api/twilio-status',
-      StatusCallbackMethod:       'POST',
-      StatusCallbackEvent:        'initiated ringing answered completed',
-      Record:                     'true',
-      RecordingStatusCallback:    baseUrl + '/api/twilio-status',
-      RecordingStatusCallbackMethod: 'POST',
-    })
+    let callSid, callStatus
 
-    const r = await fetch(
-      'https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Calls.json',
-      {
-        method:  'POST',
+    if (agentPhone) {
+      // ── BRIDGE CALL: Twilio calls agent first, then connects to contact ──
+      // TwiML that plays when agent picks up, then dials the contact
+      const twimlUrl = baseUrl + '/api/twilio-bridge-twiml' +
+        '?to=' + encodeURIComponent(toNum) +
+        '&name=' + encodeURIComponent(contactName || toNum) +
+        '&logId=' + encodeURIComponent(callLogId || '')
+
+      const params = new URLSearchParams({
+        To:   agentPhone,      // Call the AGENT first
+        From: fromNumber,      // From our Twilio number
+        Url:  twimlUrl,        // When agent answers, run this TwiML
+        StatusCallback: baseUrl + '/api/twilio-status',
+        StatusCallbackMethod: 'POST',
+        StatusCallbackEvent: 'initiated ringing answered completed',
+      })
+
+      const r = await fetch('https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Calls.json', {
+        method: 'POST',
         headers: { 'Authorization': auth, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    params.toString(),
-      }
-    )
+        body: params.toString(),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.message || 'Twilio error code ' + d.code)
+      callSid = d.sid; callStatus = d.status
 
-    const data = await r.json()
+      return res.status(200).json({
+        callSid,
+        status: callStatus,
+        mode: 'bridge',
+        agentPhone,
+        message: 'Your phone (' + agentPhone + ') will ring now. Pick up to be connected to ' + (contactName || toNum) + '.',
+      })
 
-    if (!r.ok) {
-      console.error('Twilio outbound error:', data)
-      return res.status(r.status).json({ error: data.message || 'Twilio error', code: data.code })
+    } else {
+      // ── DIRECT CALL: No agent phone saved — call contact directly ──
+      // This records but agent can't hear it from browser without WebRTC
+      const twimlUrl = baseUrl + '/api/twilio-outbound-twiml' +
+        '?to=' + encodeURIComponent(toNum) +
+        '&name=' + encodeURIComponent(contactName || toNum)
+
+      const params = new URLSearchParams({
+        To:   toNum,
+        From: fromNumber,
+        Url:  twimlUrl,
+        StatusCallback: baseUrl + '/api/twilio-status',
+        StatusCallbackMethod: 'POST',
+        Record: 'true',
+        RecordingStatusCallback: baseUrl + '/api/twilio-status',
+      })
+
+      const r = await fetch('https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Calls.json', {
+        method: 'POST',
+        headers: { 'Authorization': auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.message || 'Twilio error code ' + d.code)
+      callSid = d.sid; callStatus = d.status
+
+      return res.status(200).json({
+        callSid, status: callStatus,
+        mode: 'direct',
+        warning: 'No phone number saved in your agent profile. Add your phone in Settings → Profile to enable bridge calling.',
+      })
     }
 
-    return res.status(200).json({ callSid: data.sid, status: data.status })
   } catch(e) {
-    console.error('twilio-outbound:', e.message)
+    console.error('twilio-outbound:', e)
     return res.status(500).json({ error: e.message })
   }
 }

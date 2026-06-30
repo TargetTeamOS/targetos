@@ -15,7 +15,7 @@ const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const G = {
   active: false, status: 'idle',
   name: '', phone: '', contactId: null, callLogId: null,
-  callSid: null, startTime: null, muted: false,
+  callSid: null, startTime: null, muted: false, mode: 'pending',
   listeners: new Set(),
   set(p) { Object.assign(G, p); G.listeners.forEach(f => f()) }
 }
@@ -69,8 +69,14 @@ export function ClickToCall({ phone, contactName, contactId, size='sm', showLabe
 
       if (!res.ok) throw new Error(data.error || 'Call API returned ' + res.status)
 
-      G.set({ callSid: data.callSid, status: 'ringing', startTime: Date.now() })
-      toast('📞 Calling ' + (contactName||e164) + '...')
+      G.set({ callSid: data.callSid, status: 'ringing', startTime: Date.now(), mode: data.mode || 'direct' })
+      if (data.mode==='bridge') {
+        toast('📱 Your phone will ring now — pick up to connect to ' + (contactName||e164))
+      } else if (data.warning) {
+        toast('⚠️ ' + data.warning, '#F5A623')
+      } else {
+        toast('📞 Calling ' + (contactName||e164) + '...')
+      }
 
     } catch(err) {
       G.set({ status: 'error', active: false })
@@ -194,8 +200,13 @@ export function ActiveCallBar() {
 
       {/* Status info */}
       {(g.status==='calling'||g.status==='ringing') && (
-        <div style={{ padding:'0 18px 12px',fontSize:11,color:'rgba(255,255,255,.35)',lineHeight:1.6 }}>
-          Twilio is connecting your call to {g.name}. The call will be recorded automatically.
+        <div style={{ padding:'0 18px 12px',fontSize:11,lineHeight:1.7 }}>
+          {g.mode==='bridge'
+            ? <span style={{color:'#4ADE80'}}>📱 Your phone is ringing — pick up to be connected to {g.name}</span>
+            : g.mode==='no_phone'
+              ? <span style={{color:'#FCD34D'}}>⚠️ Add your phone number in <strong>Settings → Profile</strong> to enable bridge calling</span>
+              : <span style={{color:'rgba(255,255,255,.4)'}}>Connecting to {g.name}...</span>
+          }
         </div>
       )}
 
