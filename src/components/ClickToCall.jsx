@@ -30,24 +30,42 @@ function useG() {
 
 // Initialize device using the npm-bundled SDK (no external CDN dependency)
 async function ensureDevice(agent) {
-  if (G.device && G.deviceReady) return G.device
+  if (G.device && G.deviceReady) {
+    console.log('[ClickToCall] Reusing existing device')
+    return G.device
+  }
 
+  console.log('[ClickToCall] Fetching token...')
   const name = (agent?.name || 'agent').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30) || 'agent'
   const res  = await fetch('/api/twilio-token?agentName=' + name)
   const data = await res.json()
+  console.log('[ClickToCall] Token response:', { ok: res.ok, hasToken: !!data.token, error: data.error })
+
   if (!res.ok || !data.token) {
     throw new Error(data.error + (data.hint ? ' — ' + data.hint : ''))
   }
 
+  console.log('[ClickToCall] Creating Device instance (npm SDK)...')
   const device = new Device(data.token, {
-    logLevel: 'error',
+    logLevel: 'debug',
     codecPreferences: ['opus', 'pcmu'],
   })
+  console.log('[ClickToCall] Device created:', device)
 
   await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Device registration timed out')), 10000)
-    device.on('registered', () => { clearTimeout(timeout); G.deviceReady = true; resolve() })
-    device.on('error', err => { clearTimeout(timeout); reject(new Error(err.message)) })
+    const timeout = setTimeout(() => {
+      console.error('[ClickToCall] Registration TIMED OUT after 10s')
+      reject(new Error('Device registration timed out'))
+    }, 10000)
+    device.on('registered', () => {
+      console.log('[ClickToCall] ✅ Device REGISTERED successfully')
+      clearTimeout(timeout); G.deviceReady = true; resolve()
+    })
+    device.on('error', err => {
+      console.error('[ClickToCall] ❌ Device error:', err)
+      clearTimeout(timeout); reject(new Error(err.message))
+    })
+    console.log('[ClickToCall] Calling device.register()...')
     device.register()
   })
 
