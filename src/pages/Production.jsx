@@ -1202,11 +1202,28 @@ export function Production() {
     if (!window.confirm('Delete ' + selectedIds.length + ' deal' + (selectedIds.length !== 1 ? 's' : '') + '? This cannot be undone.')) return
     setBulkDeleting(true)
     try {
-      const { error } = await supabase.from('deals').delete().in('id', selectedIds)
-      if (error) throw error
-      setDeals(prev => prev.filter(d => !selectedIds.includes(d.id)))
-      toast('✅ Deleted ' + selectedIds.length + ' deal' + (selectedIds.length !== 1 ? 's' : ''))
-      setSelectedIds([])
+      // Batch in chunks of 100 to avoid URL length limits on large selections
+      const BATCH = 100
+      let deletedCount = 0
+      const failedIds = []
+      for (let i = 0; i < selectedIds.length; i += BATCH) {
+        const chunk = selectedIds.slice(i, i + BATCH)
+        const { error } = await supabase.from('deals').delete().in('id', chunk)
+        if (error) {
+          console.error('Batch delete failed:', error)
+          failedIds.push(...chunk)
+        } else {
+          deletedCount += chunk.length
+        }
+      }
+      setDeals(prev => prev.filter(d => !selectedIds.includes(d.id) || failedIds.includes(d.id)))
+      if (failedIds.length === 0) {
+        toast('✅ Deleted ' + deletedCount + ' deal' + (deletedCount !== 1 ? 's' : ''))
+        setSelectedIds([])
+      } else {
+        toast('Deleted ' + deletedCount + ', failed on ' + failedIds.length, '#F5A623')
+        setSelectedIds(failedIds)
+      }
     } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
     finally { setBulkDeleting(false) }
   }
