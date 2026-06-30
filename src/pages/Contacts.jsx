@@ -259,12 +259,11 @@ export function Contacts() {
     if (!form.phone?.trim() && !selected)  { toast('Phone number is required', '#DC2626'); return }
     if (!form.source && !selected)         { toast('Source is required', '#DC2626'); return }
     if (!form.agent_id && (isAdmin || canManage) && !selected) { toast('Please assign an agent', '#DC2626'); return }
-    // Pass current agent to ensure audit log gets agentId
-    if (!form.agent_id && selected) { form = { ...form, agent_id: selected.agent_id || agent?.id } }
     setSaving(true)
     try {
       if (selected) {
-        const updated = await update(selected.id, form)
+        const payload = { ...form, agent_id: form.agent_id || selected.agent_id || agent?.id }
+        const updated = await update(selected.id, payload)
         setSelected(updated)
         toast('✅ Contact saved')
       } else {
