@@ -14,6 +14,42 @@ import * as XLSX from 'xlsx'
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 // ── CSV HELPERS ───────────────────────────────────────────────────
+
+// Converts common date formats (M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD, etc.)
+// into a clean YYYY-MM-DD string for Postgres. Returns null if unparseable.
+function parseDateToISO(raw) {
+  if (!raw) return null
+  const s = String(raw).trim()
+  if (!s) return null
+
+  // Already ISO format: YYYY-MM-DD (or with time suffix)
+  const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch
+    return y + '-' + m.padStart(2, '0') + '-' + d.padStart(2, '0')
+  }
+
+  // US format: M/D/YYYY or MM/DD/YYYY (most common from Excel)
+  const usMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/)
+  if (usMatch) {
+    let [, m, d, y] = usMatch
+    if (y.length === 2) y = (parseInt(y) > 50 ? '19' : '20') + y
+    const mm = m.padStart(2, '0'), dd = d.padStart(2, '0')
+    // Sanity check: month 1-12, day 1-31
+    if (parseInt(mm) >= 1 && parseInt(mm) <= 12 && parseInt(dd) >= 1 && parseInt(dd) <= 31) {
+      return y + '-' + mm + '-' + dd
+    }
+  }
+
+  // Fallback: let JS Date try to parse it (handles "Jan 15 2026", "2026-01-15T00:00:00Z", etc.)
+  const parsed = new Date(s)
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10)
+  }
+
+  return null // unparseable — leave blank rather than insert garbage
+}
+
 function toCSV(rows, columns) {
   const header = columns.map(c => "\"" + (c.label) + "\"").join(',')
   const lines  = rows.map(row =>
@@ -309,23 +345,35 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         if (strVal === '' || strVal === 'null' || strVal === 'None' || strVal === 'undefined') {
           record[dbKey] = null
         } else if (col && col.type === 'number') {
-          record[dbKey] = parseFloat(strVal) || null
+          // Strip $ , and whitespace before parsing
+          const cleaned = strVal.replace(/[$,\s]/g, '')
+          record[dbKey] = cleaned === '' ? null : (parseFloat(cleaned) || null)
         } else if (col && col.type === 'date') {
-          record[dbKey] = strVal.slice(0, 10) || null
+          record[dbKey] = parseDateToISO(strVal)
         } else {
           record[dbKey] = strVal
         }
       }
 
-      // Resolve agent name → agent_id
+      // Resolve agent name → agent_id (exact match only — avoids false positives)
       if (agentName) {
-        const nameLower = agentName.toLowerCase()
+        const nameLower = agentName.toLowerCase().trim()
+        const nameParts = nameLower.split(/\s+/)
         const found = agentCache.find(function(a) {
-          const al = a.name.toLowerCase()
-          const af = al.split(' ')[0]
-          return al === nameLower || af === nameLower || nameLower.includes(af)
+          const al = a.name.toLowerCase().trim()
+          const alParts = al.split(/\s+/)
+          // Exact full name match
+          if (al === nameLower) return true
+          // Exact first+last name match (handles middle names/extra whitespace)
+          if (nameParts.length >= 2 && alParts.length >= 2) {
+            return alParts[0] === nameParts[0] && alParts[alParts.length-1] === nameParts[nameParts.length-1]
+          }
+          // Single name in import matches agent's first name exactly
+          if (nameParts.length === 1) return alParts[0] === nameParts[0]
+          return false
         })
         if (found) record.agent_id = found.id
+        else record._unmatched_agent = agentName // track for review, not silently dropped
       }
 
       // Find identifier field - try all possible primary key fields
@@ -369,6 +417,13 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
           continue  // skip group headers
         }
       }
+
+      // Surface unmatched agent names so the user knows which rows need manual assignment
+      if (record._unmatched_agent) {
+        errors.push('Row ' + (ri+1) + ' (' + (record[idField]||'').slice(0,40) + '): agent "' + record._unmatched_agent + '" not found in system — imported without agent assigned')
+        delete record._unmatched_agent
+      }
+
       records.push({ record: record, idField: idField })
     }
 
