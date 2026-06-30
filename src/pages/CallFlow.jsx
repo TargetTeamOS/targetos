@@ -1251,7 +1251,7 @@ export function CallFlow() {
 
         {/* CONFIG PANEL */}
         {selectedNode && (
-          <ConfigPanel node={selectedNode} agents={agents||[]} onSave={updateCfg} onClose={()=>setSelected(null)} />
+          <ConfigPanel key={selectedNode.id} node={selectedNode} agents={agents||[]} onSave={updateCfg} onClose={()=>setSelected(null)} />
         )}
       </div>
     </div>
