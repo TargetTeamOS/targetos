@@ -117,15 +117,45 @@ function cellColor(col, val) {
 }
 
 const BOARD_GROUPS = [
-  { id: 'active',       label: 'Accepted Offers',      stages: ['Negotiations','Offer Accapted'],        color: '#037f4c', emoji: '🤝' },
-  { id: 'under_shtar',  label: 'Under Shtar',           stages: ['Under Shtar'],                         color: '#bb3354', emoji: '📝' },
-  { id: 'under_contract',label: 'Under Contract',       stages: ['Under Contract'],                      color: '#757575', emoji: '📋' },
-  { id: 'closed_2026',  label: 'Sold — 2026',           stages: ['Closed'],       yearMatch: '2026',      color: '#225091', emoji: '🎉' },
-  { id: 'fell_2026',    label: 'Deal Fell Through — 2026',stages: ['Deal Fell Through'],yearMatch:'2026', color: '#ff007f', emoji: '💔' },
-  { id: 'closed_2025',  label: 'Sold — 2025',           stages: ['Closed'],       yearMatch: '2025',      color: '#225091', emoji: '🎉' },
-  { id: 'fell_2025',    label: 'Deal Fell Through — 2025',stages: ['Deal Fell Through'],yearMatch:'2025', color: '#ff007f', emoji: '💔' },
-  { id: 'closed_2024',  label: 'Sold — 2024',           stages: ['Closed'],       yearMatch: '2024',      color: '#225091', emoji: '🎉' },
+  { id: 'active',        label: 'Accepted Offers', stages: ['Negotiations','Offer Accapted'], color: '#037f4c', emoji: '🤝' },
+  { id: 'under_shtar',   label: 'Under Shtar',      stages: ['Under Shtar'],                   color: '#bb3354', emoji: '📝' },
+  { id: 'under_contract',label: 'Under Contract',   stages: ['Under Contract'],                color: '#757575', emoji: '📋' },
+  // Closed/Fell-Through groups are generated dynamically per-year at runtime (see buildYearGroups below)
+  // so any year present in the data gets its own group automatically — no hardcoded year list needed.
 ]
+
+// Builds "Sold — YYYY" and "Deal Fell Through — YYYY" groups for every year actually
+// present in the dataset, sorted newest-first. Also returns a catch-all for deals
+// with a Closed/Deal Fell Through stage but no parseable date.
+function buildYearGroups(deals) {
+  const closedYears = new Set()
+  const fellYears   = new Set()
+  let closedNoDate = 0, fellNoDate = 0
+
+  deals.forEach(d => {
+    const year = d.close_date?.slice(0,4) || d.ao_date?.slice(0,4) || d.created_at?.slice(0,4) || null
+    if (d.stage === 'Closed') {
+      if (year) closedYears.add(year); else closedNoDate++
+    } else if (d.stage === 'Deal Fell Through') {
+      if (year) fellYears.add(year); else fellNoDate++
+    }
+  })
+
+  const years = [...new Set([...closedYears, ...fellYears])].sort().reverse()
+  const groups = []
+
+  years.forEach(year => {
+    if (closedYears.has(year)) groups.push({ id:'closed_'+year, label:'Sold — '+year, stages:['Closed'], yearMatch:year, color:'#225091', emoji:'🎉' })
+    if (fellYears.has(year))   groups.push({ id:'fell_'+year,   label:'Deal Fell Through — '+year, stages:['Deal Fell Through'], yearMatch:year, color:'#ff007f', emoji:'💔' })
+  })
+
+  // Catch-all for rows with a closed/fell-through stage but no usable date —
+  // ensures nothing silently disappears from the board
+  if (closedNoDate > 0) groups.push({ id:'closed_nodate', label:'Sold — No Date', stages:['Closed'], yearMatch:'__NODATE__', color:'#94A3B8', emoji:'⚪' })
+  if (fellNoDate > 0)   groups.push({ id:'fell_nodate',   label:'Deal Fell Through — No Date', stages:['Deal Fell Through'], yearMatch:'__NODATE__', color:'#94A3B8', emoji:'⚪' })
+
+  return groups
+}
 
 const BLANK = {
   addr: '', unit: '', agent_id: '', side: 'Buyer', stage: 'Negotiations',
@@ -1095,7 +1125,7 @@ export function Production() {
   const [showColPicker, setShowColPicker] = useState(false)
   const [customGroups,  setCustomGroups]  = useState(null)
 
-  const activeGroups  = customGroups || BOARD_GROUPS
+  const activeGroups  = customGroups || [...BOARD_GROUPS, ...buildYearGroups(deals)]
   const visibleCols   = ALL_COLUMNS.filter(c => !hiddenCols.includes(c.key))
 
   const years = []
@@ -1104,11 +1134,11 @@ export function Production() {
   useEffect(() => { load() }, [])
 
   function renameGroup(id, label) {
-    setCustomGroups(prev => (prev || BOARD_GROUPS).map(g => g.id === id ? {...g, label} : g))
+    setCustomGroups(prev => (prev || [...BOARD_GROUPS, ...buildYearGroups(deals)]).map(g => g.id === id ? {...g, label} : g))
   }
   function addGroup() {
     const colors = ['#037f4c','#0086c0','#bb3354','#784bd1','#fdab3d','#e2445c','#00b884','#ff6b35']
-    setCustomGroups(prev => [...(prev || BOARD_GROUPS), {
+    setCustomGroups(prev => [...(prev || [...BOARD_GROUPS, ...buildYearGroups(deals)]), {
       id: 'grp_' + Date.now(), label: 'New Group', stages: [],
       color: colors[Math.floor(Math.random() * colors.length)], emoji: '📁', custom: true
     }])
@@ -1298,6 +1328,7 @@ export function Production() {
       if (!stageMatch) return false
       if (group.yearMatch) {
         const year = d.close_date?.slice(0, 4) || d.ao_date?.slice(0, 4) || d.created_at?.slice(0, 4)
+        if (group.yearMatch === '__NODATE__') return !year
         return year === group.yearMatch
       }
       return true
