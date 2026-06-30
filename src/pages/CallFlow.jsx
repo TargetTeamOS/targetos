@@ -116,15 +116,13 @@ function getPorts(node) {
     { id:'no',  label: cfg.noLabel  || 'NO',  color:'#DC2626', y: NH * 0.67 },
   ]
   if (node.type === 'assigned') return [
-    { id:'found',    label:'Agent Found',  color:'#10B981', y: NH * 0.33 },
-    { id:'notfound', label:'No Agent',     color:'#DC2626', y: NH * 0.67 },
+    { id:'notfound', label:'No Agent / Unavailable', color:'#DC2626', y: NH * 0.5 },
   ]
   if (node.type === 'menu' || node.type === 'language') return opts.map(function(o, i) {
     return { id:'key_' + o.key, label: node.type === 'language' ? (o.label || o.key) : 'Press ' + o.key, color: PORT_COLORS[i % PORT_COLORS.length], y: (NH / (opts.length + 1)) * (i + 1) }
   })
   if (node.type === 'dial' || node.type === 'roundrobin' || node.type === 'ringall') return [
-    { id:'answered', label:'Answered', color:'#10B981', y: NH * 0.33 },
-    { id:'noanswer', label:'No Answer', color:'#DC2626', y: NH * 0.67 },
+    { id:'noanswer', label:'No Answer / Busy / Ended', color:'#DC2626', y: NH * 0.5 },
   ]
   if (node.type === 'hangup') return []
   // All others: single 'out' port
@@ -518,17 +516,9 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
             <label style={L}>Ring timeout (seconds)</label>
             <input type="number" value={cfg.timeout||30} onChange={e=>set('timeout',parseInt(e.target.value)||30)} style={I} />
           </div>
-          <div style={R}>
-            <label style={L}>If no agent assigned or agent doesn't answer</label>
-            <select value={cfg.fallback||'roundrobin'} onChange={e=>set('fallback',e.target.value)} style={S}>
-              <option value="roundrobin">Ring all available agents (round robin)</option>
-              <option value="voicemail">Go to voicemail</option>
-              <option value="next">Continue to next node</option>
-            </select>
-          </div>
           <div style={{...INFO, marginTop:8}}>
-            <strong style={{color:'var(--text)'}}>Port: Agent Found</strong> — fires when the assigned agent answers.<br/>
-            <strong style={{color:'var(--text)'}}>Port: No Agent</strong> — fires when caller has no assigned agent, or agent doesn't answer.
+            When the assigned agent answers, the caller is connected directly — no further flow steps run.<br/><br/>
+            <strong style={{color:'var(--text)'}}>Port: No Agent / Unavailable</strong> — fires when the caller has no assigned agent, or the agent doesn't pick up. Connect this to voicemail, round robin, or another step. Leave unconnected to fall back to default voicemail.
           </div>
         </>)}
 
@@ -567,7 +557,7 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
             </div>
           )}
           <div style={R}><label style={L}>Ring timeout (seconds)</label><input type="number" value={cfg.timeout||30} onChange={e=>set('timeout',parseInt(e.target.value)||30)} style={I} /></div>
-          <div style={INFO}><strong style={{color:'#10B981'}}>Answered</strong> — call connected. <strong style={{color:'#DC2626'}}>No Answer</strong> — routes to voicemail or next step. You can leave "No Answer" unconnected to use default voicemail.</div>
+          <div style={INFO}>When answered, the caller is connected directly — the call simply continues, no further flow steps run. <strong style={{color:'#DC2626'}}>No Answer / Busy / Ended</strong> fires only if nobody picks up, the line is busy, or the dial fails — connect that port to voicemail or another step. Leave it unconnected to fall back to default voicemail.</div>
         </>)}
 
         {/* ── ROUND ROBIN / RING ALL ── */}
@@ -584,6 +574,7 @@ function ConfigPanel({ node, agents, onSave, onClose }) {
             </div>
           </div>
           <div style={R}><label style={L}>Timeout (seconds)</label><input type="number" value={cfg.timeout||30} onChange={e=>set('timeout',parseInt(e.target.value)||30)} style={I} /></div>
+          <div style={INFO}>When any agent answers, the caller is connected directly — no further flow steps run. <strong style={{color:'#DC2626'}}>No Answer / Busy / Ended</strong> fires only if nobody picks up — connect that to voicemail or another step.</div>
         </>)}
 
         {/* ── VOICEMAIL ── */}
