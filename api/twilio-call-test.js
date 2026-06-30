@@ -8,12 +8,15 @@ module.exports = async function handler(req, res) {
   const authToken  = process.env.TWILIO_AUTH_TOKEN
   const fromNumber = process.env.TWILIO_PHONE_NUMBER || '+18453271778'
 
+  const twimlSid = process.env.TWILIO_TWIML_APP_SID
   const checks = {
-    TWILIO_ACCOUNT_SID:  accountSid  ? '✅ Set' : '❌ MISSING',
+    TWILIO_ACCOUNT_SID:  accountSid  ? '✅ Set (' + accountSid.slice(0,8) + '...)' : '❌ MISSING',
     TWILIO_AUTH_TOKEN:   authToken   ? '✅ Set' : '❌ MISSING',
     TWILIO_PHONE_NUMBER: fromNumber  ? '✅ ' + fromNumber : '❌ MISSING',
-    TWILIO_TWIML_APP_SID: process.env.TWILIO_TWIML_APP_SID ? '✅ ' + process.env.TWILIO_TWIML_APP_SID : '❌ MISSING',
-    SUPABASE_URL: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ MISSING',
+    TWILIO_TWIML_APP_SID: twimlSid  ? '✅ ' + twimlSid : '❌ MISSING — add to Vercel env vars and REDEPLOY',
+    SUPABASE_URL: (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) ? '✅ Set' : '❌ MISSING',
+    NODE_ENV: process.env.NODE_ENV || 'not set',
+    VERCEL_ENV: process.env.VERCEL_ENV || 'not set',
   }
 
   // Test Twilio credentials
@@ -47,7 +50,12 @@ module.exports = async function handler(req, res) {
         body: params.toString()
       })
       const d = await r.json()
-      callResult = r.ok ? { ok: true, sid: d.sid, status: d.status } : { ok: false, error: d.message, code: d.code }
+      callResult = r.ok
+        ? { ok: true, sid: d.sid, status: d.status }
+        : { ok: false, error: d.message, code: d.code,
+            hint: d.code === 21211 ? 'Invalid phone number format' :
+                  d.code === 21608 ? 'TRIAL ACCOUNT: You must verify this number first at console.twilio.com → Phone Numbers → Verified Caller IDs. Or upgrade Twilio account.' :
+                  d.code === 21219 ? 'Number not verified for trial account' : '' }
     } catch(e) { callResult = { ok: false, error: e.message } }
   }
 
