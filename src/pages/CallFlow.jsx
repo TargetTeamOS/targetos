@@ -839,7 +839,30 @@ export function CallFlow() {
 
   function addNode(type) {
     const id = 'n'+(++nextId.current)
-    setNodes(p=>p.concat([{id,type,x:300+Math.random()*240,y:60+Math.random()*320,config:defCfg(type)}]))
+    const NW_ = 220, NH_ = 76, GAP = 24
+
+    // Find a position that doesn't overlap any existing node.
+    // Try a grid of candidate spots, expanding outward, until a clear one is found.
+    function overlaps(x, y) {
+      return nodes.some(n =>
+        x < n.x + NW_ + GAP && x + NW_ + GAP > n.x &&
+        y < n.y + NH_ + GAP && y + NH_ + GAP > n.y
+      )
+    }
+
+    let x = 300, y = 60
+    const colStep = NW_ + GAP, rowStep = NH_ + GAP
+    let placed = false
+    for (let row = 0; row < 12 && !placed; row++) {
+      for (let col = 0; col < 6 && !placed; col++) {
+        const tx = 300 + col * colStep
+        const ty = 60 + row * rowStep
+        if (!overlaps(tx, ty)) { x = tx; y = ty; placed = true }
+      }
+    }
+
+    setNodes(p => p.concat([{ id, type, x, y, config: defCfg(type) }]))
+    setSelected(id) // auto-select the newly added node so its config panel opens immediately
     setDirty(true)
   }
   function deleteNode(id) {
@@ -889,6 +912,9 @@ export function CallFlow() {
     dragNode.current = {id, ox:x-node.x, oy:y-node.y}
     setSelected(id)
     setIsDragging(true)
+    // Bring clicked node to front (end of array = renders on top) so overlapping
+    // nodes from older flows don't stay stuck underneath others
+    setNodes(p => { const n = p.find(x=>x.id===id); return n ? [...p.filter(x=>x.id!==id), n] : p })
   }
 
   function onMouseDownPort(e, fromId, portId) {
