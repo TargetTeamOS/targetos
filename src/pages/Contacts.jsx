@@ -8,6 +8,7 @@ import { FileAttachments } from '../components/FileAttachments'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
+import { ClickToCall } from '../components/ClickToCall'
 import { useContacts, useAgents } from '../lib/hooks'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
@@ -75,7 +76,7 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
 
   function renderField(fieldId) {
     switch(fieldId) {
-      case 'phone':     return c.phone     ? <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')} onClick={e => e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none', fontSize:'13px' }}>{c.phone}</a> : null
+      case 'phone':     return c.phone     ? <span onClick={e=>e.stopPropagation()}><ClickToCall phone={c.phone} contactName={(c.first_name||'')+' '+(c.last_name||'')} contactId={c.id} showLabel size="sm" /></span> : null
       case 'email':     return c.email     ? <a href={'mailto:' + c.email} onClick={e => e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none', fontSize:'13px' }}>{c.email}</a> : null
       case 'status':    return c.status    ? <span style={{ fontSize:'12px', padding:'2px 8px', borderRadius:'12px', background:sc+'22', color:sc, fontWeight:700 }}>{c.status}</span> : null
       case 'source':    return c.source    ? <span style={{ fontSize:'12px', color:'var(--muted)' }}>{c.source}</span> : null
@@ -171,10 +172,9 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
         {/* Actions */}
         <div style={{ padding:'10px 16px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px' }}>
           {c.phone && (
-            <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')} onClick={e => e.stopPropagation()}
-              style={{ flex:1, padding:'8px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:'12px', fontWeight:700, textDecoration:'none', textAlign:'center', fontFamily:ff2 }}>
-              📞 Call
-            </a>
+            <div onClick={e => e.stopPropagation()} style={{ flex:1 }}>
+              <ClickToCall phone={c.phone} contactName={c.first_name + ' ' + (c.last_name||'')} contactId={c.id} size="sm" showLabel />
+            </div>
           )}
           {c.phone && (
             <a href={'https://wa.me/' + c.phone.replace(/[^0-9]/g,'')} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
@@ -450,10 +450,9 @@ export function Contacts() {
                   </div>
                   <Pill label={c.status} color={statusColor(c.status)} />
                   {c.phone && (
-                    <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')} onClick={e => e.stopPropagation()} title={'Call ' + c.first_name}
-                      style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:28, height:28, borderRadius:'50%', background:'#10B98118', color:'#10B981', border:'1px solid #10B98144', textDecoration:'none', fontSize:13, flexShrink:0, marginLeft:4 }}>
-                      &#128222;
-                    </a>
+                    <span onClick={e => e.stopPropagation()} style={{ marginLeft:4 }}>
+                      <ClickToCall phone={c.phone} contactName={c.first_name + ' ' + (c.last_name||'')} contactId={c.id} size="sm" />
+                    </span>
                   )}
                 </div>
                 {c.address && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📍 {c.address}</div>}
@@ -510,7 +509,7 @@ export function Contacts() {
                 {/* Phone */}
                 <div style={{ padding:'0 6px', fontSize:'12px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                   {c.phone ? (
-                    <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')} onClick={e=>e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none' }}>{fmtPhone(c.phone)}</a>
+                    <span onClick={e=>e.stopPropagation()}><ClickToCall phone={c.phone} contactName={c.first_name+' '+(c.last_name||'')} contactId={c.id} showLabel size="sm" /></span>
                   ) : '—'}
                 </div>
                 {/* Email */}
@@ -537,10 +536,7 @@ export function Contacts() {
                 {/* Actions */}
                 <div style={{ padding:'0 6px', display:'flex', gap:'5px', justifyContent:'flex-end' }}>
                   {c.phone && (
-                    <a href={'tel:' + c.phone.replace(/[^0-9]/g,'')} onClick={e=>e.stopPropagation()}
-                      style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:26, height:26, borderRadius:'50%', background:'#10B98118', color:'#10B981', border:'1px solid #10B98144', textDecoration:'none', fontSize:12 }}>
-                      &#128222;
-                    </a>
+<span onClick={e=>e.stopPropagation()}><ClickToCall phone={c.phone} contactName={c.first_name+' '+(c.last_name||'')} contactId={c.id} size="sm" /></span>
                   )}
                   <button onClick={e => { e.stopPropagation(); openContact(c) }}
                     style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:26, height:26, borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', cursor:'pointer', fontSize:12, fontFamily:ff }}>
@@ -627,13 +623,7 @@ export function Contacts() {
             <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>
           )}
           {selected?.phone && (
-            <a href={'tel:' + (selected.phone||'').replace(/[^0-9]/g,'')}
-              style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
-                borderRadius:8, background:'#10B98118', color:'#10B981',
-                border:'1px solid #10B98144', fontSize:13, fontWeight:700,
-                textDecoration:'none', fontFamily:'Inter,system-ui,sans-serif' }}>
-              &#128222; Call
-            </a>
+            <ClickToCall phone={selected.phone} contactName={(selected.first_name||'') + ' ' + (selected.last_name||'')} contactId={selected.id} size="lg" showLabel />
           )}
           {selected && (
             <Btn variant="secondary" onClick={() => {

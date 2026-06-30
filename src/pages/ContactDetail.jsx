@@ -1,3 +1,4 @@
+import { ClickToCall } from '../components/ClickToCall'
 // ═══════════════════════════════════════════════════════════════
 // TargetOS V2 — Contact Detail Page (Full Rebuild)
 //
@@ -865,7 +866,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
           {[
             { label: '📧 Send Email',     onClick: () => window.open('mailto:' + (f.email || '')) },
-            { label: '📞 Call',           onClick: () => window.open('tel:' + (f.phone || '')) },
+            { label: '📞 Call',           onClick: () => {} },
             { label: '💬 WhatsApp',       onClick: () => window.open('https://wa.me/' + (f.phone||'').replace(/\D/g,'')) },
             { label: '📊 Add to Deal',   onClick: () => navigate('/production/new') },
             { label: '🏡 New Listing',   onClick: () => navigate('/listings/new') },

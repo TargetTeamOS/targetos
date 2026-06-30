@@ -1,3 +1,4 @@
+import { ClickToCall } from '../components/ClickToCall'
 import React, { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
@@ -161,9 +162,7 @@ export function MobileDashboard({ setPage }) {
               <div style={{fontSize:'10px',color:'var(--muted)'}}>{c.source||'No source'} · {c.status||'New'}</div>
             </div>
             <div style={{display:'flex',gap:'6px'}}>
-              {c.phone && <a href={'tel:'+c.phone.replace(/\D/g,'')} style={{textDecoration:'none'}} onClick={e=>e.stopPropagation()}>
-                <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(16,185,129,.1)',border:'1px solid rgba(16,185,129,.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px'}}>📞</div>
-              </a>}
+<span onClick={e=>e.stopPropagation()}><ClickToCall phone={c.phone} contactName={c.first_name||''} contactId={c.id} size='sm' /></span>}
               {c.phone && <a href={'sms:'+c.phone.replace(/\D/g,'')} style={{textDecoration:'none'}} onClick={e=>e.stopPropagation()}>
                 <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(14,165,233,.1)',border:'1px solid rgba(14,165,233,.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px'}}>💬</div>
               </a>}
