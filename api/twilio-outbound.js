@@ -32,16 +32,34 @@ module.exports = async function handler(req, res) {
 
   // ── END CALL ─────────────────────────────────────────────────
   if (req.method === 'DELETE') {
-    const { callSid } = req.body || {}
-    if (!callSid) return res.status(400).json({ error: 'callSid required' })
+    // Vercel doesn't always auto-parse body for DELETE — read it manually if needed
+    let body = req.body
+    if (!body || typeof body === 'string') {
+      try { body = JSON.parse(body || '{}') } catch(e) { body = {} }
+    }
+    const { callSid } = body || {}
+    if (!callSid) return res.status(400).json({ error: 'callSid required', received: body })
+
     try {
-      await fetch('https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Calls/' + callSid + '.json', {
+      const r = await fetch('https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Calls/' + callSid + '.json', {
         method: 'POST',
         headers: { 'Authorization': auth, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'Status=completed',
       })
-      return res.status(200).json({ ok: true })
-    } catch(e) { return res.status(500).json({ error: e.message }) }
+      const d = await r.json()
+
+      if (!r.ok) {
+        // Call may have already ended naturally — that's fine
+        if (d.code === 20404 || (d.message||'').includes('not found')) {
+          return res.status(200).json({ ok: true, note: 'Call already ended' })
+        }
+        return res.status(200).json({ ok: false, error: d.message, code: d.code })
+      }
+
+      return res.status(200).json({ ok: true, status: d.status })
+    } catch(e) {
+      return res.status(500).json({ ok: false, error: e.message })
+    }
   }
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
