@@ -14,12 +14,27 @@ module.exports = async function handler(req, res) {
   let body = {}
   try { body = querystring.parse(await getRawBody(req)) } catch(e) { body = req.body || {} }
   const { CallSid, CallStatus, CallDuration, RecordingUrl, RecordingSid } = body
+  // callLogId can be passed via query string (most reliable) — set by twilio-browser-twiml / twilio-outbound
+  const callLogId = (req.query && req.query.callLogId) || null
+
   try {
     const supabase = getSupabase()
-    if (supabase && CallSid) {
-      const upd = { status: CallStatus, duration_sec: parseInt(CallDuration)||0, outcome: OUTCOME[CallStatus]||null }
-      if (RecordingUrl) { upd.recording_url = RecordingUrl+'.mp3'; upd.recording_sid = RecordingSid }
-      await supabase.from('calls').update(upd).eq('twilio_call_sid', CallSid)
+    if (supabase) {
+      const upd = {}
+      if (CallStatus)    upd.status = CallStatus
+      if (CallDuration)  upd.duration_sec = parseInt(CallDuration) || 0
+      if (CallStatus)    upd.outcome = OUTCOME[CallStatus] || null
+      if (RecordingUrl) { upd.recording_url = RecordingUrl + '.mp3'; upd.recording_sid = RecordingSid }
+
+      if (Object.keys(upd).length > 0) {
+        if (callLogId) {
+          // Most reliable — match by our own internal record ID
+          await supabase.from('calls').update(upd).eq('id', callLogId)
+        } else if (CallSid) {
+          // Fallback — match by Twilio's call SID
+          await supabase.from('calls').update(upd).eq('twilio_call_sid', CallSid)
+        }
+      }
     }
   } catch(err) { console.error('status error:', err.message) }
   return res.status(200).json({ ok: true })

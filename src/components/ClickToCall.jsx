@@ -164,7 +164,15 @@ export function ActiveCallBar() {
 
       G.set({ deviceCall: call, active: true, status: 'ringing', startTime: Date.now(), mode: 'browser' })
 
-      call.on('accept',     () => G.set({ status: 'connected', startTime: Date.now() }))
+      call.on('accept', async () => {
+        G.set({ status: 'connected', startTime: Date.now() })
+        // Capture the real Twilio CallSid now that the call is live
+        const sid = call.parameters?.CallSid || call.callSid
+        if (sid && log?.id) {
+          G.set({ callSid: sid })
+          await supabase.from('calls').update({ twilio_call_sid: sid }).eq('id', log.id).catch(() => {})
+        }
+      })
       call.on('disconnect', () => { G.deviceCall = null; closePanel() })
       call.on('cancel',     () => { G.deviceCall = null; closePanel() })
       call.on('error',      err => { G.set({ status:'error_msg', errorText: err.message }) })
@@ -331,6 +339,12 @@ export function ActiveCallBar() {
           {statusText}
         </div>
         <div style={{ fontSize:17, fontWeight:800, color:'#fff' }}>{g.name}</div>
+        {g.status === 'connected' && (
+          <div style={{ display:'inline-flex', alignItems:'center', gap:4, marginTop:4, padding:'2px 8px', borderRadius:10, background:'rgba(220,38,38,.15)', border:'1px solid rgba(220,38,38,.3)' }}>
+            <span style={{ width:6, height:6, borderRadius:'50%', background:'#EF4444', display:'inline-block' }} />
+            <span style={{ fontSize:10, color:'#FCA5A5', fontWeight:700 }}>Recording</span>
+          </div>
+        )}
         {elapsed > 0 && <div style={{ fontFamily:'monospace', fontSize:22, color:'#10B981', marginTop:6 }}>{fmt(elapsed)}</div>}
       </div>
 

@@ -101,7 +101,7 @@ module.exports = async function handler(req, res) {
         To:   agentPhone,      // Call the AGENT first
         From: fromNumber,      // From our Twilio number
         Url:  twimlUrl,        // When agent answers, run this TwiML
-        StatusCallback: baseUrl + '/api/twilio-status',
+        StatusCallback: baseUrl + '/api/twilio-status?callLogId=' + encodeURIComponent(callLogId || ''),
         StatusCallbackMethod: 'POST',
         StatusCallbackEvent: 'initiated ringing answered completed',
       })
