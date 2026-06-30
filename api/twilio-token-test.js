@@ -33,7 +33,8 @@ module.exports = async function handler(req, res) {
     <hr/>
     <h3>Live SDK Test</h3>
     <div id="status">Loading SDK...</div>
-    <script src="https://sdk.twilio.com/js/voice/releases/2.11.1/twilio.min.js"></script>
+    <script src="https://sdk.twilio.com/js/voice/releases/2.11.1/twilio.min.js"
+      onerror="document.getElementById('status').innerHTML='❌ Failed to load SDK from sdk.twilio.com - possibly blocked by network/firewall/adblocker'"></script>
     <script>
       const statusEl = document.getElementById('status')
       function log(msg) { statusEl.innerHTML += '<br/>' + msg }
