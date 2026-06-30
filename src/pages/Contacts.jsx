@@ -445,7 +445,7 @@ export function Contacts() {
                       style={{ fontWeight: 700, fontSize: '14px', color: 'var(--brand)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
                       {c.first_name} {c.last_name}
                     </span>
-                    {c.phone && <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>{fmtPhone(c.phone)}</div>}
+                    {c.phone && <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px', userSelect:'none' }} data-nolink='1'>{fmtPhone(c.phone)}</div>}
                     {c.email && <div style={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>}
                   </div>
                   <Pill label={c.status} color={statusColor(c.status)} />
