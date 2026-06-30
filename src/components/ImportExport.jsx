@@ -9,6 +9,7 @@
 import React, { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import * as XLSX from 'xlsx'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -156,47 +157,58 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
 
     const isExcel = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')
     if (isExcel) {
-      // Parse Excel using SheetJS loaded from CDN
-      const script = document.createElement('script')
-      script.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'
-      script.onload = () => {
-        const XLSX = window.XLSX
-        const reader2 = new FileReader()
-        reader2.onload = ev2 => {
-          try {
-            const wb   = XLSX.read(ev2.target.result, { type: 'array', cellDates: true })
-            const ws   = wb.Sheets[wb.SheetNames[0]]
-            const data = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false, dateNF: 'YYYY-MM-DD' })
-            if (!data.length) { toast('Excel file appears empty', '#DC2626'); return }
-            const excelHeaders = Object.keys(data[0])
-            const autoMap2 = {}
-            const EXCEL_ALIASES = {
-              'property': 'addr', 'name': 'addr', 'item name': 'addr', 'address': 'addr',
-              'agent name': '_agent_name', 'agent': '_agent_name',
-              'production $': 'production', 'gci $': 'gci',
-              'a/o date': 'ao_date', 'contract date': 'contract_date',
-              'expected close date': 'expected_close_date', 'close date': 'close_date',
-              'client name': 'client_name', 'client legal name': 'client_legal_name',
-              'client phone': 'client_phone', 'client email': 'client_email',
-              'attorney name': 'atty_name', 'attorney email': 'atty_email',
-              'sale type': 'sale_type', 'property type': 'property_type',
-              'sales source': 'sales_source', 'referral agent': 'referral_agent',
-              'contract to close': 'ctc', 'stage': 'stage', 'side': 'side', 'notes': 'notes', 'command': 'command', 'unit': 'unit',
-            }
-            excelHeaders.forEach(h => {
-              const lower = h.toLowerCase().trim()
-              const col = columns.find(c => c.label.toLowerCase() === lower || c.key.toLowerCase() === lower)
-              if (col) { autoMap2[h] = col.key; return }
-              if (EXCEL_ALIASES[lower]) autoMap2[h] = EXCEL_ALIASES[lower]
-            })
-            setMapping(autoMap2)
-            setPreview({ headers: excelHeaders, rows: data.slice(0,5), allRows: data, rawCount: data.length, skippedCount: 0 })
-            setImportDone(null)
-          } catch(err) { toast('Excel parse error: ' + err.message, '#DC2626') }
+      console.log('[Import] Excel file detected:', file.name, file.size, 'bytes')
+      const reader2 = new FileReader()
+      reader2.onload = ev2 => {
+        try {
+          console.log('[Import] File read, parsing with bundled xlsx package...')
+          const wb   = XLSX.read(ev2.target.result, { type: 'array', cellDates: true })
+          console.log('[Import] Workbook parsed, sheets:', wb.SheetNames)
+          const ws   = wb.Sheets[wb.SheetNames[0]]
+          const data = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false, dateNF: 'YYYY-MM-DD' })
+          console.log('[Import] Rows extracted:', data.length)
+
+          if (!data.length) { toast('Excel file appears empty', '#DC2626'); return }
+
+          const excelHeaders = Object.keys(data[0])
+          console.log('[Import] Headers found:', excelHeaders)
+
+          const autoMap2 = {}
+          const EXCEL_ALIASES = {
+            'property': 'addr', 'name': 'addr', 'item name': 'addr', 'address': 'addr',
+            'agent name': '_agent_name', 'agent': '_agent_name',
+            'production $': 'production', 'gci $': 'gci',
+            'a/o date': 'ao_date', 'contract date': 'contract_date',
+            'expected close date': 'expected_close_date', 'close date': 'close_date',
+            'client name': 'client_name', 'client legal name': 'client_legal_name',
+            'client phone': 'client_phone', 'client email': 'client_email',
+            'attorney name': 'atty_name', 'attorney email': 'atty_email',
+            'sale type': 'sale_type', 'property type': 'property_type',
+            'sales source': 'sales_source', 'referral agent': 'referral_agent',
+            'contract to close': 'ctc', 'stage': 'stage', 'side': 'side', 'notes': 'notes', 'command': 'command', 'unit': 'unit',
+          }
+          excelHeaders.forEach(h => {
+            const lower = h.toLowerCase().trim()
+            const col = columns.find(c => c.label.toLowerCase() === lower || c.key.toLowerCase() === lower)
+            if (col) { autoMap2[h] = col.key; return }
+            if (EXCEL_ALIASES[lower]) autoMap2[h] = EXCEL_ALIASES[lower]
+          })
+          console.log('[Import] Auto-mapped fields:', autoMap2)
+
+          setMapping(autoMap2)
+          setPreview({ headers: excelHeaders, rows: data.slice(0,5), allRows: data, rawCount: data.length, skippedCount: 0 })
+          setImportDone(null)
+          console.log('[Import] ✅ Preview set successfully —', data.length, 'rows ready')
+        } catch(err) {
+          console.error('[Import] ❌ Excel parse error:', err)
+          toast('Excel parse error: ' + err.message, '#DC2626')
         }
-        reader2.readAsArrayBuffer(file)
       }
-      if (!window.XLSX) { document.head.appendChild(script) } else { script.onload() }
+      reader2.onerror = err => {
+        console.error('[Import] ❌ FileReader error:', err)
+        toast('Could not read the file', '#DC2626')
+      }
+      reader2.readAsArrayBuffer(file)
       e.target.value = ''
       return
     }
