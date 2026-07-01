@@ -10,6 +10,7 @@ import { AppProvider, useApp }    from './context/AppContext'
 import { Login }                  from './pages/Login'
 import { Layout }                 from './components/Layout'
 import { VoiceCapture }           from './components/VoiceCapture'
+import { CommandPalette, useCommandPalette } from './components/CommandPalette'
 
 // Page imports
 import { Dashboard }     from './pages/Dashboard'
@@ -171,9 +172,16 @@ function AppShell() {
         </ErrorBoundary>
       </Layout>
       <Toast />
+      <CommandPaletteWrapper />
       <LocationAwareTools />
     </>
   )
+}
+
+// ── COMMAND PALETTE ──────────────────────────────────────────────
+function CommandPaletteWrapper() {
+  const [open, setOpen] = useCommandPalette()
+  return <CommandPalette open={open} onClose={() => setOpen(false)} />
 }
 
 // Mic only on Dashboard, AI assistant on all other pages

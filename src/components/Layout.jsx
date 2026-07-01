@@ -111,6 +111,15 @@ export function Layout({ children }) {
         {/* Agent Info */}
         <div style={{ padding: collapsed ? '12px 0' : '12px 14px', borderTop: '1px solid rgba(255,255,255,.08)', flexShrink: 0 }}>
           {!collapsed && <div style={{ marginBottom: '8px' }}><NotificationBell /></div>}
+          {!collapsed && (
+            <button
+              onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key:'k', metaKey:true, bubbles:true }))}
+              style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'7px 10px', borderRadius:7, background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)', color:'rgba(255,255,255,.5)', fontSize:11, fontFamily:ff, cursor:'pointer', marginBottom:8, textAlign:'left' }}>
+              <span style={{ fontSize:13 }}>🔍</span>
+              <span style={{ flex:1 }}>Search...</span>
+              <kbd style={{ background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.15)', borderRadius:4, padding:'1px 5px', fontSize:9, fontFamily:'monospace', flexShrink:0 }}>⌘K</kbd>
+            </button>
+          )}
           {!collapsed && agent && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
               <Avatar agent={agent} size={32} />

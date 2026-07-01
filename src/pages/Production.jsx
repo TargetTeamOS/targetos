@@ -823,10 +823,31 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
                 <select value={q.value || ''} onChange={e => set(q.key, e.target.value)}
                   style={{ padding: '3px 6px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '11px', fontFamily: ff }}>
                   <option value="">—</option>
-                  {q.options.map(o => <option key={typeof o === 'string' ? o : o.value} value={typeof o === 'string' ? o : o.value}>{typeof o === 'string' ? o : o.label}</option>)}
+                  {q.options.map(o => <option key={o.value||o} value={o.value||o}>{o.label||o}</option>)}
                 </select>
               </div>
             ))}
+            {/* Won/Lost reason — shown when stage is Closed or Deal Fell Through */}
+            {form.stage === 'Closed' && (
+              <div style={{ display:'flex', alignItems:'center', gap:4, width:'100%', marginTop:4 }}>
+                <span style={{ fontSize:10, color:'var(--muted)', fontWeight:700, flexShrink:0 }}>Won reason:</span>
+                <select value={form.won_reason||''} onChange={e=>set('won_reason',e.target.value)}
+                  style={{ flex:1, padding:'3px 6px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff }}>
+                  <option value="">Select reason</option>
+                  {['Best price','Relationship','Quick close','Agent expertise','Property fit','Referral','Other'].map(r=><option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            )}
+            {form.stage === 'Deal Fell Through' && (
+              <div style={{ display:'flex', alignItems:'center', gap:4, width:'100%', marginTop:4 }}>
+                <span style={{ fontSize:10, color:'var(--muted)', fontWeight:700, flexShrink:0 }}>Lost reason:</span>
+                <select value={form.lost_reason||''} onChange={e=>set('lost_reason',e.target.value)}
+                  style={{ flex:1, padding:'3px 6px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff }}>
+                  <option value="">Select reason</option>
+                  {['Price too high','Chose another agent','Chose another buyer','Financing fell through','Inspection issues','Title issues','Buyer backed out','Seller backed out','Timeline mismatch','Other'].map(r=><option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            )}
           </div>
         </div>
 

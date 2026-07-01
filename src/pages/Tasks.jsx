@@ -29,7 +29,8 @@ const TASK_EXPORT_COLS = [
 
 const BLANK = {
   title: '', priority: 'normal', status: 'pending', due_date: '',
-  notes: '', agent_id: '', deal_id: '', contact_id: ''
+  notes: '', agent_id: '', deal_id: '', contact_id: '',
+  recur_interval: '', recur_unit: 'week',  // recurring task fields
 }
 
 export function Tasks() {
@@ -157,8 +158,9 @@ export function Tasks() {
         </button>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: task.status === 'done' ? 'var(--muted)' : 'var(--text)', textDecoration: task.status === 'done' ? 'line-through' : 'none', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {task.title}
+          <div style={{ fontSize: '13px', fontWeight: 600, color: task.status === 'done' ? 'var(--muted)' : 'var(--text)', textDecoration: task.status === 'done' ? 'line-through' : 'none', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display:'flex', alignItems:'center', gap:6 }}>
+            <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{task.title}</span>
+            {task.recur_interval && <span style={{ fontSize:9, color:'#3B82F6', fontWeight:800, background:'rgba(59,130,246,.1)', padding:'1px 5px', borderRadius:99, border:'1px solid rgba(59,130,246,.2)', flexShrink:0 }}>🔄 {task.recur_interval}{(task.recur_unit||'w').charAt(0)}</span>}
           </div>
           {task.due_date && (
             <div style={{ fontSize: '11px', color: overdue ? '#DC2626' : dueToday ? '#F97316' : 'var(--muted)', fontWeight: overdue || dueToday ? 600 : 400 }}>
@@ -304,6 +306,29 @@ export function Tasks() {
         <Field label="Notes">
           <Textarea value={form.notes} onChange={v => set('notes', v)} placeholder="Task details..." rows={3} />
         </Field>
+
+        {/* Recurring task option */}
+        <div style={{ marginBottom:16 }}>
+          <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', marginBottom:8, fontSize:13, color:'var(--text)', fontWeight:600 }}>
+            <input type="checkbox" checked={!!form.recur_interval} onChange={e => set('recur_interval', e.target.checked ? '1' : '')} style={{ width:16, height:16, accentColor:'var(--brand)' }} />
+            🔄 Recurring task
+          </label>
+          {form.recur_interval && (
+            <div style={{ display:'flex', gap:8, alignItems:'center', paddingLeft:24 }}>
+              <span style={{ fontSize:12, color:'var(--muted)' }}>Repeat every</span>
+              <input type="number" min={1} max={99} value={form.recur_interval||1} onChange={e => set('recur_interval', e.target.value)}
+                style={{ width:56, padding:'5px 8px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13 }} />
+              <select value={form.recur_unit||'week'} onChange={e => set('recur_unit', e.target.value)}
+                style={{ padding:'5px 8px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13 }}>
+                <option value="day">day(s)</option>
+                <option value="week">week(s)</option>
+                <option value="month">month(s)</option>
+                <option value="year">year(s)</option>
+              </select>
+              <span style={{ fontSize:11, color:'var(--muted)' }}>— auto-creates next task on completion</span>
+            </div>
+          )}
+        </div>
 
         <ModalActions>
           {selected && (

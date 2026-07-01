@@ -382,6 +382,31 @@ tasks: {
     await log(agentId, 'tasks', id, 'updated', {
       metadata: { field: 'status', field_label: 'Status', old_value: 'pending', new_value: 'done', description: result.title + ' completed' }
     })
+
+    // Auto-create the next task if this was a recurring task
+    if (result.recur_interval && result.recur_unit) {
+      try {
+        const base = new Date(result.due_date || new Date())
+        const next = new Date(base)
+        const n = parseInt(result.recur_interval) || 1
+        if (result.recur_unit === 'day')   next.setDate(base.getDate() + n)
+        if (result.recur_unit === 'week')  next.setDate(base.getDate() + n * 7)
+        if (result.recur_unit === 'month') next.setMonth(base.getMonth() + n)
+        if (result.recur_unit === 'year')  next.setFullYear(base.getFullYear() + n)
+
+        const { recur_interval:ri, recur_unit:ru, id:_id, status:_s, completed_at:_c, created_at:_ca, updated_at:_ua, ...rest } = result
+        await supabase.from('tasks').insert({
+          ...rest,
+          status:      'pending',
+          due_date:    next.toISOString().slice(0, 10),
+          recur_interval: ri,
+          recur_unit:     ru,
+          created_at:  new Date().toISOString(),
+          updated_at:  new Date().toISOString(),
+        })
+      } catch(e) { console.warn('recurring task creation:', e.message) }
+    }
+
     fireTrigger('taskUpdated', result, { status: 'done' })
     return result
   },
