@@ -162,7 +162,7 @@ Keep responses concise and practical. Use bullet points for lists. Be direct and
         title="AI Assistant"
         style={{
           position: 'fixed',
-          bottom: 24,
+          bottom: 88,
           right: 24,
           width: 52,
           height: 52,
@@ -188,7 +188,7 @@ Keep responses concise and practical. Use bullet points for lists. Be direct and
       {open && (
         <div style={{
           position: 'fixed',
-          bottom: 82,
+          bottom: 150,
           right: 20,
           width: 380,
           maxWidth: 'calc(100vw - 40px)',

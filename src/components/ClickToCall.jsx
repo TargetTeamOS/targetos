@@ -414,7 +414,7 @@ export function GlobalDialButton() {
       <button
         onClick={() => setOpen(o => !o)}
         title="Open dialpad (call any number)"
-        style={{ position:'fixed', bottom:152, right:24, zIndex:9998,
+        style={{ position:'fixed', bottom:24, right:24, zIndex:9998,
           width:52, height:52, borderRadius:'50%', border:'none',
           background:'#10B981', color:'#fff', fontSize:22, cursor:'pointer',
           boxShadow:'0 4px 20px rgba(16,185,129,.4)', display:'flex', alignItems:'center', justifyContent:'center',

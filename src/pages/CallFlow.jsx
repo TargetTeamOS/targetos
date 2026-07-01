@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase'
 const ff  = 'Inter, system-ui, -apple-system, sans-serif'
 const NW  = 220   // node width
 const NH  = 72    // node height
-const PR  = 9     // port radius
+const PR  = 11    // port radius
 const GAP = 32    // gap between nodes
 
 const NODE_DEFS = [
@@ -345,9 +345,13 @@ function FlowNode({node,selected,agents,connectedPorts,activePort,onMouseDownNod
         const act =activePort&&activePort.fromId===node.id&&activePort.portId===p.id
         return (
           <g key={p.id}>
-            <rect x={NW-12} y={p.y-22} width={40} height={44} fill="transparent" style={{cursor:'crosshair'}} onMouseDown={e=>{e.stopPropagation();e.preventDefault();onMouseDownPort(e,node.id,p.id)}} />
-            <circle cx={NW} cy={p.y} r={PR} fill={conn||act?p.color:'var(--panel)'} stroke={p.color} strokeWidth={2} style={{pointerEvents:'none'}} />
-            {p.label&&<text x={NW+PR+4} y={p.y} fontSize={9} fontWeight={700} fill={p.color} fontFamily={ff} dominantBaseline="middle">{p.label}</text>}
+            {/* Large invisible hit area — easier to grab the port */}
+            <rect x={NW-8} y={p.y-18} width={56} height={36} fill="transparent" style={{cursor:'crosshair'}} onMouseDown={e=>{e.stopPropagation();e.preventDefault();onMouseDownPort(e,node.id,p.id)}} />
+            {/* Hover ring behind the port dot */}
+            <circle cx={NW} cy={p.y} r={PR+5} fill={act?p.color+'33':'transparent'} style={{pointerEvents:'none'}} />
+            <circle cx={NW} cy={p.y} r={PR} fill={conn||act?p.color:'var(--panel)'} stroke={p.color} strokeWidth={2.5} style={{pointerEvents:'none'}} />
+            {conn&&<circle cx={NW} cy={p.y} r={PR-3} fill={p.color} style={{pointerEvents:'none'}} />}
+            {p.label&&<text x={NW+PR+6} y={p.y} fontSize={10} fontWeight={700} fill={p.color} fontFamily={ff} dominantBaseline="middle">{p.label}</text>}
           </g>
         )
       })}
@@ -623,9 +627,12 @@ export function CallFlow() {
                 const mx=fn&&tn?(fn.x+NW+tn.x)/2:0, my=fn&&tn?(fn.y+tn.y)/2+NH/2:0
                 return (
                   <g key={edge.id}>
-                    <path d={path} fill="none" stroke="transparent" strokeWidth={20} style={{cursor:'pointer'}} onClick={e=>{e.stopPropagation();deleteEdge(edge.id)}} />
+                    <path d={path} fill="none" stroke="transparent" strokeWidth={28} style={{cursor:'pointer'}} onClick={e=>{e.stopPropagation();deleteEdge(edge.id)}} title="Click to delete this connection" />
                     <path d={path} fill="none" stroke={color} strokeWidth={2.5} opacity={0.88} markerEnd={'url(#arr_'+color.slice(1)+')'} />
-                    {label&&<g><rect x={mx-36} y={my-9} width={72} height={18} rx={9} fill={color} opacity={.9} /><text x={mx} y={my+4} textAnchor="middle" fontSize={9} fontWeight={700} fill="#fff" fontFamily={ff}>{label}</text></g>}
+                    {label&&<g style={{cursor:'pointer'}} onClick={e=>{e.stopPropagation();deleteEdge(edge.id)}}>
+                      <rect x={mx-36} y={my-9} width={72} height={18} rx={9} fill={color} opacity={.9} />
+                      <text x={mx} y={my+4} textAnchor="middle" fontSize={9} fontWeight={700} fill="#fff" fontFamily={ff}>{label}</text>
+                    </g>}
                   </g>
                 )
               })}
