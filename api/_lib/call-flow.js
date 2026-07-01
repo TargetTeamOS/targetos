@@ -55,12 +55,27 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
   }
 
   if (node.type === 'menu') {
-    const ctxId = await storeMenuContext(supabase, { nodes, edges, menuNodeId: nodeId })
+    // Deduplicate options by key — if two options share the same key number,
+    // keep the last one (most recently added wins). This prevents the "presses 2,
+    // gets option 3" bug caused by UI key-assignment after deletions.
+    const dedupedOptions = []
+    const seenKeys = new Set()
+    for (let i = (cfg.options||[]).length - 1; i >= 0; i--) {
+      const o = cfg.options[i]
+      if (!seenKeys.has(String(o.key))) { dedupedOptions.unshift(o); seenKeys.add(String(o.key)) }
+    }
+    if (dedupedOptions.length !== (cfg.options||[]).length) {
+      console.warn('[call-flow] Menu node "'+nodeId+'" had duplicate option keys — deduplicated. Fix in Call Flow editor.')
+    }
+    const dedupedNode = { ...node, config: { ...cfg, options: dedupedOptions } }
+    // Use deduped node from here on
+    const dedupedCfg = dedupedNode.config
+    const ctxId = await storeMenuContext(supabase, { nodes: nodes.map(n=>n.id===nodeId?dedupedNode:n), edges, menuNodeId: nodeId })
     // Use DB-backed short ID if available (preferred — short URL, no length limits)
     // Fall back to embedding ctx in the action URL only if DB storage failed AND the
     // encoded context is under Twilio's 2048 char URL limit; otherwise POST it as a
     // hidden form field in a <Redirect> POST — POST body has no length limit.
-    const ctxJson = JSON.stringify({ nodes, edges, menuNodeId: nodeId })
+    const ctxJson = JSON.stringify({ nodes: nodes.map(n=>n.id===nodeId?dedupedNode:n), edges, menuNodeId: nodeId })
     const ctxEnc  = encodeURIComponent(ctxJson)
     let actionUrl, extraFields = ''
     if (ctxId) {
@@ -73,17 +88,17 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
       actionUrl = 'https://app.targetreteam.com/api/twilio-menu'
       extraFields = '<Parameter name="ctx" value="' + ctxJson.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '" />'
     }
-    twiml += '<Gather numDigits="1" action="' + actionUrl + '" method="POST" timeout="' + (cfg.timeout||10) + '">'
+    twiml += '<Gather numDigits="1" action="' + actionUrl + '" method="POST" timeout="' + (dedupedCfg.timeout||10) + '">'
     if (extraFields) twiml += extraFields
-    twiml += say(cfg.text || 'Please make a selection.', cfg.voice)
+    twiml += say(dedupedCfg.text || 'Please make a selection.', dedupedCfg.voice)
     twiml += '</Gather>'
-    twiml += say('We did not receive your selection. Goodbye.', cfg.voice)
+    twiml += say('We did not receive your selection. Goodbye.', dedupedCfg.voice)
     return twiml
   }
 
   if (node.type === 'language') {
     const ctxId = await storeMenuContext(supabase, { nodes, edges, menuNodeId: nodeId })
-    const ctxJson = JSON.stringify({ nodes, edges, menuNodeId: nodeId })
+    const ctxJson = JSON.stringify({ nodes: nodes.map(n=>n.id===nodeId?dedupedNode:n), edges, menuNodeId: nodeId })
     const ctxEnc  = encodeURIComponent(ctxJson)
     let actionUrl, extraFields = ''
     if (ctxId) {

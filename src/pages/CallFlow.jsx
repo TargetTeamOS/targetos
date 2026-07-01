@@ -134,16 +134,33 @@ function ConfigPanel({node,agents,onSave,onClose}) {
           <VP k="voice"/>
           <div style={R}><label style={L}>Timeout (seconds)</label><input type="number" value={cfg.timeout||10} onChange={e=>set('timeout',parseInt(e.target.value)||10)} style={S} /></div>
           <div style={R}>
-            <label style={L}>Options — each becomes a connector port on the right</label>
+            <label style={L}>Options — each becomes a port on the right</label>
+            <div style={{display:'flex',gap:6,marginBottom:4,paddingRight:28}}>
+              <div style={{flex:2,fontSize:9,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Label shown in flow</div>
+              <div style={{flex:2,fontSize:9,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.05em'}}>Say when pressed</div>
+              <div style={{width:44,fontSize:9,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.05em',textAlign:'center'}}>Key #</div>
+            </div>
             {(cfg.options||[]).map((o,i)=>(
               <div key={i} style={{display:'flex',gap:6,marginBottom:6,alignItems:'center'}}>
                 <div style={{width:28,height:28,borderRadius:'50%',background:PORT_COLORS[i%PORT_COLORS.length],display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800,fontSize:12,flexShrink:0}}>{o.key}</div>
-                <input value={o.label||''} onChange={e=>{const opts=[...(cfg.options||[])];opts[i]={...opts[i],label:e.target.value};set('options',opts)}} style={{...S,flex:1}} placeholder="Label" />
-                <input value={o.say||''} onChange={e=>{const opts=[...(cfg.options||[])];opts[i]={...opts[i],say:e.target.value};set('options',opts)}} style={{...S,flex:1}} placeholder="Say when pressed" />
+                <input value={o.label||''} onChange={e=>{const opts=[...(cfg.options||[])];opts[i]={...opts[i],label:e.target.value};set('options',opts)}} style={{...S,flex:2}} placeholder="Label (e.g. Sales)" />
+                <input value={o.say||''} onChange={e=>{const opts=[...(cfg.options||[])];opts[i]={...opts[i],say:e.target.value};set('options',opts)}} style={{...S,flex:2}} placeholder="Say when pressed (optional)" />
+                <input type="number" min={1} max={9} value={o.key||''} onChange={e=>{
+                  const opts=[...(cfg.options||[])];
+                  const newKey=e.target.value;
+                  const dupe=opts.some((x,j)=>j!==i&&String(x.key)===String(newKey));
+                  if (!dupe) opts[i]={...opts[i],key:newKey};
+                  set('options',opts)
+                }} style={{...S,width:44,flexShrink:0,textAlign:'center',padding:'7px 4px'}} title="Keypad digit (1-9)" />
                 <button onClick={()=>{const opts=[...(cfg.options||[])];opts.splice(i,1);set('options',opts)}} style={{background:'none',border:'none',cursor:'pointer',color:'#DC2626',fontSize:16,flexShrink:0}}>×</button>
               </div>
             ))}
-            <button onClick={()=>{const opts=[...(cfg.options||[])];opts.push({key:String(opts.length+1),label:'',say:''});set('options',opts)}} style={{marginTop:4,padding:'5px 12px',borderRadius:8,border:'1px dashed var(--border)',background:'transparent',color:'var(--muted)',fontSize:12,cursor:'pointer',fontFamily:ff}}>+ Add option</button>
+            <button onClick={()=>{
+  const opts=[...(cfg.options||[])]
+  const maxKey = opts.reduce((m,o) => Math.max(m, parseInt(o.key)||0), 0)
+  opts.push({key:String(maxKey+1),label:'',say:''})
+  set('options',opts)
+}} style={{marginTop:4,padding:'5px 12px',borderRadius:8,border:'1px dashed var(--border)',background:'transparent',color:'var(--muted)',fontSize:12,cursor:'pointer',fontFamily:ff}}>+ Add option</button>
           </div>
         </>}
 
@@ -462,20 +479,43 @@ export function CallFlow() {
   const MARKER_COLORS=['#CC2200','#10B981','#DC2626','#3B82F6','#F5A623','#8B5CF6','#0EA5E9','#EC4899','#84CC16','#F97316','#6366F1','#14B8A6']
 
   const [paletteOpen, setPaletteOpen] = React.useState(true)
-  const [fullscreen, setFullscreen] = React.useState(false)
+  const [fullscreen,  setFullscreen]  = React.useState(false)
+  const containerRef = React.useRef(null)
+
+  React.useEffect(() => {
+    function onFsChange() { setFullscreen(!!document.fullscreenElement) }
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch(e => {
+        // Fallback for browsers that don't support fullscreen (e.g. some iOS)
+        console.warn('Fullscreen not supported:', e.message)
+      })
+    } else {
+      document.exitFullscreen().catch(() => {})
+    }
+  }
 
   React.useEffect(() => {
     function onKey(e) {
-      if (e.key === 'Escape') { if (selectedNode) setSelected(null); if (fullscreen) setFullscreen(false) }
-      if (e.key === 'f' && (e.ctrlKey||e.metaKey)) { e.preventDefault(); setFullscreen(f=>!f) }
-      if (e.key === 'Delete' && selected && selected !== 'start') deleteNode(selected)
+      if (e.key === 'Escape' && !document.fullscreenElement) {
+        if (selectedNode) setSelected(null)
+      }
+      if (e.key === 'F11') { e.preventDefault(); toggleFullscreen() }
+      if (e.key === 'f' && (e.ctrlKey||e.metaKey)) { e.preventDefault(); toggleFullscreen() }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selected && selected !== 'start' && !e.target.closest('input,textarea,select')) {
+        e.preventDefault(); deleteNode(selected)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selected, fullscreen])
+  }, [selected])
 
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'100%',background:'var(--bg)',fontFamily:ff,overflow:'hidden',position:fullscreen?'fixed':'relative',inset:fullscreen?0:'auto',zIndex:fullscreen?9999:'auto'}}>
+    <div ref={containerRef} style={{display:'flex',flexDirection:'column',height:'100%',background:'var(--bg)',fontFamily:ff,overflow:'hidden'}}>
 
       {/* TOOLBAR */}
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 14px',borderBottom:'1px solid var(--border)',flexShrink:0,background:'var(--panel)',flexWrap:'wrap'}}>
@@ -485,7 +525,7 @@ export function CallFlow() {
         {dbStatus==='no_columns'&&<div style={{fontSize:11,color:'#D97706',background:'rgba(245,166,35,.1)',padding:'4px 10px',borderRadius:8,border:'1px solid rgba(245,166,35,.3)'}}>⚠️ Run SQL to add flow_nodes / flow_edges columns — see Settings</div>}
         <div style={{flex:1}} />
         <button onClick={()=>{if(window.confirm('Clear canvas?')){setNodes([{id:'start',type:'incoming',x:80,y:200,config:{}}]);setEdges([]);setSelected(null);setDirty(true)}}} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--muted)',fontSize:11,cursor:'pointer',fontFamily:ff}}>🗑 Clear</button>
-        <button onClick={()=>setFullscreen(f=>!f)} title={fullscreen?'Exit fullscreen (Ctrl+F)':'Fullscreen (Ctrl+F)'} style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:14,cursor:'pointer',fontFamily:ff}}>{fullscreen?'⊡':'⛶'}</button>
+        <button onClick={toggleFullscreen} title={fullscreen?'Exit fullscreen (F11 or Ctrl+F)':'Fullscreen — see entire flow (F11 or Ctrl+F)'} style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:fullscreen?'var(--brand)':'var(--inp)',color:fullscreen?'#fff':'var(--text)',fontSize:14,cursor:'pointer',fontFamily:ff}}>{fullscreen?'⊡':'⛶'}</button>
         <button onClick={saveFlow} disabled={saving} style={{padding:'6px 16px',borderRadius:8,border:'none',background:dirty?'#CC2200':'#1B2B4B',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:ff,opacity:saving?.7:1}}>
           {saving?'⏳ Saving...':'💾 Save Flow'}
         </button>

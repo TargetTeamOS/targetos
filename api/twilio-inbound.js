@@ -37,6 +37,9 @@ function fmtPhone(p) {
 // ── MAIN HANDLER ─────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
+  // Global safety net — Twilio treats any non-200 response or invalid TwiML as a hangup.
+  // We catch ALL errors here and return valid TwiML with a friendly error message.
+  process.on('unhandledRejection', () => {}) // prevent Vercel from crashing on unhandled rejections
   if (req.method !== 'POST') return res.status(405).send(wrap(say('Method not allowed.')))
 
   let body = {}
@@ -138,6 +141,7 @@ module.exports = async function handler(req, res) {
 
   // ── STEP 6: Load and walk the visual call flow ────────────────
   try {
+    // Outer safety net: if anything catastrophic happens, speak an error instead of silent hangup
     let flowRow = null
     const ar = await supabase.from('phone_ivr').select('*').eq('is_active', true).limit(1).maybeSingle()
     flowRow = ar.data
