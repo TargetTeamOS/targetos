@@ -558,18 +558,25 @@ export function CallFlow() {
         <div style={{flex:1}} />
         <button onClick={()=>{if(window.confirm('Clear canvas?')){setNodes([{id:'start',type:'incoming',x:80,y:200,config:{}}]);setEdges([]);setSelected(null);setDirty(true)}}} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--muted)',fontSize:11,cursor:'pointer',fontFamily:ff}}>🗑 Clear</button>
         <button onClick={async ()=>{
-          if (!window.confirm('Load the pre-built Target Team call flow?\n\nThis will replace your current canvas.')) return
+          if (!window.confirm('Load and SAVE the pre-built Target Team call flow?\n\nThis will replace your current canvas and immediately go live.')) return
           try {
-            const r = await fetch('/api/twilio-flow-template')
+            // POST saves directly to DB with real agent IDs injected
+            const r = await fetch('/api/twilio-flow-template', { method:'POST' })
             const d = await r.json()
-            setNodes(d.flow_nodes)
-            setEdges(d.flow_edges)
-            setFlowName(d.name)
+            if (!r.ok) throw new Error(d.error||'Failed')
+            // Also update the canvas
+            const r2 = await fetch('/api/twilio-flow-template')
+            const d2 = await r2.json()
+            setNodes(d2.flow_nodes)
+            setEdges(d2.flow_edges)
+            setFlowName(d2.name)
             setSelected(null)
-            setDirty(true)
-            toast('✅ Template loaded — review agents in Ring All, then Save Flow')
-          } catch(e) { toast('Failed to load template: ' + e.message, '#DC2626') }
-        }} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--brand)',background:'rgba(204,34,0,.07)',color:'var(--brand)',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:ff}}>📋 Load Template</button>
+            setDirty(false)
+            setDbStatus('ok')
+            const agentNote = d.agents > 0 ? ' with '+d.agents+' agent'+(d.agents>1?'s':'')+' in Ring All' : ' — add agents to Ring All node'
+            toast('✅ Flow saved and live' + agentNote)
+          } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+        }} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--brand)',background:'rgba(204,34,0,.07)',color:'var(--brand)',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:ff}}>📋 Load &amp; Save Template</button>
         <button onClick={toggleFullscreen} title={fullscreen?'Exit fullscreen (F11 or Ctrl+F)':'Fullscreen — see entire flow (F11 or Ctrl+F)'} style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:fullscreen?'var(--brand)':'var(--inp)',color:fullscreen?'#fff':'var(--text)',fontSize:14,cursor:'pointer',fontFamily:ff}}>{fullscreen?'⊡':'⛶'}</button>
         <button onClick={saveFlow} disabled={saving} style={{padding:'6px 16px',borderRadius:8,border:'none',background:dirty?'#CC2200':'#1B2B4B',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:ff,opacity:saving?.7:1}}>
           {saving?'⏳ Saving...':'💾 Save Flow'}
