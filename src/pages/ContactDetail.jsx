@@ -22,7 +22,7 @@ import {
 import { CONTACT_STATUSES, CONTACT_SOURCES, PROPERTY_TYPES, LOCAL_CITIES } from '../lib/constants'
 import { FileAttachments } from '../components/FileAttachments'
 import { uploadFile, listFiles, deleteFile, fmtFileSize, fileIcon } from '../lib/storage'
-import { Avatar, Pill, Btn, Loading, Confirm, Field, Input, Select, Textarea, Toggle, Modal, ModalActions, Tabs, Spinner } from '../components/UI'
+import { Avatar, Pill, Btn, Loading, Confirm, Field, Spinner } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 

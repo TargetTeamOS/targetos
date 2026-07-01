@@ -11,7 +11,7 @@
 //   • Activity log per deal
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
@@ -1125,7 +1125,7 @@ export function Production() {
   const [showColPicker, setShowColPicker] = useState(false)
   const [customGroups,  setCustomGroups]  = useState(null)
 
-  const activeGroups  = customGroups || [...BOARD_GROUPS, ...buildYearGroups(deals)]
+  const activeGroups  = useMemo(() => customGroups || [...BOARD_GROUPS, ...buildYearGroups(deals)], [customGroups, deals])
   const visibleCols   = ALL_COLUMNS.filter(c => !hiddenCols.includes(c.key))
 
   const years = []
@@ -1299,7 +1299,7 @@ export function Production() {
   }
 
   // ── FILTERING ──────────────────────────────────────────────────
-  const filtered = deals.filter(d => {
+  const filtered = useMemo(() => deals.filter(d => {
     if (stageF    && d.stage         !== stageF)    return false
     if (agentF    && d.agent_id      !== agentF)    return false
     if (sideF     && d.side          !== sideF)     return false
@@ -1311,13 +1311,13 @@ export function Production() {
       if (year !== yearF) return false
     }
     return true
-  })
+  }), [deals, stageF, agentF, sideF, saleTypeF, propTypeF, search, yearF])
 
   // Board groups
   // All stage values that are claimed by a group
   const allClaimedStages = new Set(activeGroups.flatMap(g => g.stages || []))
 
-  const groupedDeals = activeGroups.map(group => ({
+  const groupedDeals = useMemo(() => activeGroups.map(group => ({
     ...group,
     deals: filtered.filter(d => {
       // Custom group with no stages: catch all deals whose stage isn't in any group
@@ -1333,7 +1333,8 @@ export function Production() {
       }
       return true
     }),
-  })).filter(g => g.custom ? true : g.yearMatch ? true : g.deals.length > 0 || ['active','under_shtar','under_contract'].includes(g.id))
+  })), [activeGroups, filtered])
+  const visibleGroups = groupedDeals.filter(g => g.custom ? true : g.yearMatch ? true : g.deals.length > 0 || ['active','under_shtar','under_contract'].includes(g.id))
 
   // Stats
   const totalGCIAll   = filtered.reduce((s, d) => s + parseNum(d.gci), 0)
@@ -1550,7 +1551,7 @@ export function Production() {
           </div>
 
           {/* Groups */}
-          {groupedDeals.map(group => (
+          {visibleGroups.map(group => (
             <BoardGroup
               key={group.id}
               group={group}

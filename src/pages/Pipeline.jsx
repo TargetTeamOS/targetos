@@ -10,7 +10,7 @@ import { useApp } from '../context/AppContext'
 import { useDeals } from '../lib/hooks'
 import { fmt$, parseNum } from '../lib/utils'
 import { DEAL_STAGES } from '../lib/constants'
-import { PageHeader, Loading, Empty, Avatar, Pill, Btn } from '../components/UI'
+import { PageHeader, Loading, Empty, Avatar, Btn } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
