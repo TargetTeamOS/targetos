@@ -50,8 +50,13 @@ export function VoiceCapture() {
   }
 
   function toggleOpen() {
-    if (open) { setOpen(false); setStep('idle'); setParsed(null) }
-    else setOpen(true)
+    if (open) { setOpen(false); setStep('idle'); setParsed(null); return }
+    // Check browser support before opening
+    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+      toast('Voice capture requires Chrome or Edge browser with microphone permission.', '#F5A623')
+      return
+    }
+    setOpen(true)
   }
 
   // ── RECORD ────────────────────────────────────────────────────
@@ -143,7 +148,7 @@ export function VoiceCapture() {
   const btnStyle = {
     position:  'fixed',
     right:     btnX !== undefined ? undefined : '24px',
-    bottom:    btnY !== undefined ? undefined : '24px',
+    bottom:    btnY !== undefined ? undefined : '88px',
     left:      btnX !== undefined ? (btnX) + "px" : undefined,
     top:       btnY !== undefined ? (btnY) + "px" : undefined,
     width:     52, height: 52,

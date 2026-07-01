@@ -162,8 +162,8 @@ Keep responses concise and practical. Use bullet points for lists. Be direct and
         title="AI Assistant"
         style={{
           position: 'fixed',
-          bottom: 20,
-          right: 20,
+          bottom: 24,
+          right: 24,
           width: 52,
           height: 52,
           borderRadius: '50%',

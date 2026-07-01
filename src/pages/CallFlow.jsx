@@ -69,9 +69,18 @@ function getPorts(node) {
     {id:'no', label:cfg.noLabel ||'NO', color:'#DC2626',y:NH*.67},
   ]
   if (node.type==='assigned') return [{id:'notfound',label:'No Agent / Unavailable',color:'#DC2626',y:NH*.5}]
-  if (node.type==='menu'||node.type==='language') return opts.map((o,i)=>({
-    id:'key_'+o.key, label:node.type==='language'?(o.label||o.key):'Press '+o.key, color:PORT_COLORS[i%PORT_COLORS.length], y:(NH/(opts.length+1))*(i+1)
-  }))
+  if (node.type==='menu'||node.type==='language') {
+    // Use minimum 28px spacing between ports so wires are easy to grab
+    const portSpacing = Math.max(28, NH / (opts.length + 1))
+    const totalHeight = portSpacing * (opts.length + 1)
+    const yOffset = totalHeight > NH ? -(totalHeight - NH) / 2 : 0  // center if overflows
+    return opts.map((o,i)=>({
+      id:'key_'+o.key,
+      label:node.type==='language'?(o.label||o.key):'Press '+o.key,
+      color:PORT_COLORS[i%PORT_COLORS.length],
+      y: Math.max(8, portSpacing*(i+1) + yOffset)
+    }))
+  }
   if (['dial','roundrobin','ringall'].includes(node.type)) return [{id:'noanswer',label:'No Answer / Busy',color:'#DC2626',y:NH*.5}]
   if (node.type==='hangup') return []
   return [{id:'out',label:'',color:nd(node.type).color,y:NH*.5}]
@@ -299,6 +308,10 @@ function FlowNode({node,selected,agents,connectedPorts,activePort,onMouseDownNod
   else if (node.type==='sms')                            sub=(cfg.text||'').slice(0,30)
   else sub=def.label.toLowerCase()
 
+  // Menu/language nodes grow taller with more options so ports never overlap
+  const nodeH = (node.type==='menu'||node.type==='language') 
+    ? Math.max(NH, (cfg.options||[]).length * 28 + 16)
+    : NH
   const fill  =selected?def.color:'var(--panel)'
   const stroke=selected?def.color:'var(--border)'
   const tFill =selected?'#fff':'var(--text)'
@@ -306,17 +319,17 @@ function FlowNode({node,selected,agents,connectedPorts,activePort,onMouseDownNod
 
   return (
     <g transform={'translate('+node.x+','+node.y+')'}>
-      <rect x={2} y={3} width={NW} height={NH} rx={11} fill="rgba(0,0,0,.08)" />
-      <rect x={0} y={0} width={NW} height={NH} rx={11} fill={fill} stroke={stroke} strokeWidth={selected?2.5:1.5} style={{cursor:'grab'}} onMouseDown={e=>onMouseDownNode(e,node.id)} />
-      <rect x={0} y={0} width={7} height={NH} rx={5} fill={def.color} />
-      <text x={22} y={NH/2} fontSize={18} dominantBaseline="middle">{def.icon}</text>
-      <text x={48} y={NH/2-7} fontSize={13} fontWeight={700} fill={tFill} fontFamily={ff} dominantBaseline="middle">{def.label}</text>
-      <text x={48} y={NH/2+9} fontSize={10} fill={sFill} fontFamily={ff} dominantBaseline="middle">{sub.length>32?sub.slice(0,30)+'…':sub}</text>
+      <rect x={2} y={3} width={NW} height={nodeH} rx={11} fill="rgba(0,0,0,.08)" />
+      <rect x={0} y={0} width={NW} height={nodeH} rx={11} fill={fill} stroke={stroke} strokeWidth={selected?2.5:1.5} style={{cursor:'grab'}} onMouseDown={e=>onMouseDownNode(e,node.id)} />
+      <rect x={0} y={0} width={7} height={nodeH} rx={5} fill={def.color} />
+      <text x={22} y={NH/2} fontSize={18} y={nodeH/2} dominantBaseline="middle">{def.icon}</text>
+      <text x={48} y={nodeH/2-7} fontSize={13} fontWeight={700} fill={tFill} fontFamily={ff} dominantBaseline="middle">{def.label}</text>
+      <text x={48} y={nodeH/2+9} fontSize={10} fill={sFill} fontFamily={ff} dominantBaseline="middle">{sub.length>32?sub.slice(0,30)+'…':sub}</text>
 
       {node.type!=='incoming'&&(
         <g>
-          <rect x={-22} y={0} width={NW/2} height={NH} fill="transparent" onMouseUp={e=>{e.stopPropagation();onPortDrop(node.id)}} />
-          <circle cx={0} cy={NH/2} r={PR} fill="var(--panel)" stroke={def.color} strokeWidth={2.5} style={{pointerEvents:'none'}} />
+          <rect x={-22} y={0} width={NW/2} height={NH} height={nodeH} fill="transparent" onMouseUp={e=>{e.stopPropagation();onPortDrop(node.id)}} />
+          <circle cx={0} cy={nodeH/2} r={PR} fill="var(--panel)" stroke={def.color} strokeWidth={2.5} style={{pointerEvents:'none'}} />
         </g>
       )}
 
