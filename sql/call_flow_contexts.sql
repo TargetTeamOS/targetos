@@ -21,3 +21,23 @@ create index if not exists idx_call_flow_contexts_created_at
 -- old rows — anything older than 1 hour is guaranteed to be a finished
 -- or abandoned call and is safe to delete.
 -- delete from call_flow_contexts where created_at < now() - interval '1 hour';
+
+-- ─────────────────────────────────────────────────────────────────
+-- Additional migrations for new features (run these in Supabase)
+-- ─────────────────────────────────────────────────────────────────
+
+-- System settings table (used by Permissions system)
+create table if not exists system_settings (
+  id         uuid primary key default gen_random_uuid(),
+  key        text unique not null,
+  value      jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+
+-- User preferences column on briefing_prefs
+alter table briefing_prefs add column if not exists user_prefs jsonb;
+alter table briefing_prefs add column if not exists saved_views jsonb;
+
+-- Index for fast permission lookups
+create index if not exists idx_system_settings_key on system_settings (key);

@@ -209,6 +209,9 @@ export function Contacts() {
   const [agentF,      setAgentF]      = useState('')
   const [sourceF,     setSourceF]     = useState('')
   const [typeF,       setTypeF]       = useState('')
+  const [dateRange,   setDateRange]   = useState({})
+  const [sortKey,     setSortKey]     = useState('created_at')
+  const [sortDir,     setSortDir]     = useState('desc')
   const [selected,    setSelected]    = useState(null)
   const [showAdd,     setShowAdd]     = useState(false)
   const [form,        setForm]        = useState(BLANK)
@@ -328,14 +331,26 @@ export function Contacts() {
   }
 
   // ── FILTER ────────────────────────────────────────────────────
-  const filtered = contacts.filter(c => {
-    if (statusF && c.status    !== statusF) return false
-    if (agentF  && c.agent_id  !== agentF)  return false
-    if (sourceF && c.source    !== sourceF) return false
-    if (typeF   && c.type      !== typeF)   return false
-    if (search  && !matchSearch(c, search, ['first_name','last_name','phone','email','address','notes'])) return false
-    return true
-  })
+  const filtered = React.useMemo(() => {
+    let result = contacts.filter(c => {
+      if (statusF && c.status    !== statusF) return false
+      if (agentF  && c.agent_id  !== agentF)  return false
+      if (sourceF && c.source    !== sourceF) return false
+      if (typeF   && c.type      !== typeF)   return false
+      if (dateRange?.from && c.created_at && c.created_at.slice(0,10) < dateRange.from) return false
+      if (dateRange?.to   && c.created_at && c.created_at.slice(0,10) > dateRange.to)   return false
+      if (search  && !matchSearch(c, search, ['first_name','last_name','phone','email','address','notes'])) return false
+      return true
+    })
+    // Sort
+    result = [...result].sort((a,b) => {
+      const av = a[sortKey]||'', bv = b[sortKey]||''
+      if (av < bv) return sortDir === 'asc' ? -1 : 1
+      if (av > bv) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+    return result
+  }, [contacts, statusF, agentF, sourceF, typeF, dateRange, search, sortKey, sortDir])
 
   const statusColor = (s) => CONTACT_STATUSES.find(x => x.value === s)?.color || '#94A3B8'
 
@@ -379,23 +394,33 @@ export function Contacts() {
         }
       />
 
-      {/* Filters */}
+      {/* Filters — new FilterBar */}
       <FilterBar
-        search={search} onSearch={setSearch} searchPlaceholder="🔍 Name, phone, email..."
-        values={{ statusF, agentF, sourceF, typeF }}
-        onChange={(k,v) => {
-          if (k==='statusF') setStatusF(v)
-          if (k==='agentF')  setAgentF(v)
-          if (k==='sourceF') setSourceF(v)
-          if (k==='typeF')   setTypeF(v)
+        page="contacts"
+        searchKey="search"
+        placeholder="Name, phone, email..."
+        filters={{ search, statusF, agentF, sourceF, typeF, dateRange }}
+        onChange={f => {
+          if ('search'    in f) setSearch(f.search)
+          if ('statusF'   in f) setStatusF(f.statusF)
+          if ('agentF'    in f) setAgentF(f.agentF)
+          if ('sourceF'   in f) setSourceF(f.sourceF)
+          if ('typeF'     in f) setTypeF(f.typeF)
+          if ('dateRange' in f) setDateRange(f.dateRange)
         }}
-        total={contacts.length} filtered={filtered.length}
-        filters={[
-          { key:'statusF', label:'Status', type:'select', options:(CONTACT_STATUSES||[]).map(s=>({value:s.value||s,label:s.label||s})), placeholder:'Status' },
-          ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', type:'select', options:agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent' }]:[]),
-          { key:'sourceF', label:'Source', type:'select', options:(CONTACT_SOURCES||['SOI','Zillow','Referral','Farm - Open House','System Call','Past Client Repeat','Open House']).map(s=>({value:s,label:s})), placeholder:'Source', secondary:true },
-          { key:'typeF',   label:'Type',   type:'select', options:['Buyer','Seller','Investor','Renter','Other'].map(s=>({value:s,label:s})), placeholder:'Type', secondary:true },
+        definitions={[
+          { key:'statusF', label:'Status', multiSelect:false, options:(CONTACT_STATUSES||[]).map(s=>({value:s.value||s,label:s.label||s,color:s.color})) },
+          ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', options:agents.map(a=>({value:a.id,label:a.name})) }]:[]),
+          { key:'sourceF', label:'Source', options:(CONTACT_SOURCES||['SOI','Zillow','Referral','Open House','Referral','Past Client']).map(s=>({value:s,label:s})) },
+          { key:'typeF',   label:'Type',   options:['Buyer','Seller','Investor','Renter','Other'].map(s=>({value:s,label:s})) },
+          { key:'dateRange', label:'Date Added', type:'date' },
         ]}
+        sortDefs={[
+          {key:'created_at',label:'Date Added'},{key:'first_name',label:'Name'},{key:'status',label:'Status'},{key:'last_activity',label:'Last Activity'}
+        ]}
+        sortKey={sortKey} sortDir={sortDir}
+        onSortChange={(k,d) => { setSortKey(k); setSortDir(d) }}
+        totalCount={contacts.length} filteredCount={filtered.length}
       />
 
       {/* Selection bar */}

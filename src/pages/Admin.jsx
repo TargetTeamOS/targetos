@@ -36,6 +36,31 @@ export function Admin() {
   const [resetting,  setResetting]  = useState(false)
   const [showInactive, setShowInactive] = useState(false)
   const custom = state?.custom || {}
+  const [permOverrides, setPermOverrides] = React.useState({})
+  const [permLoaded, setPermLoaded] = React.useState(false)
+  const [savingPerms, setSavingPerms] = React.useState(false)
+
+  React.useEffect(() => {
+    if (tab === 'permissions' && !permLoaded) {
+      loadPermissionOverrides().then(ov => { setPermOverrides(ov || {}); setPermLoaded(true) })
+    }
+  }, [tab, permLoaded])
+
+  async function handleSavePerms() {
+    setSavingPerms(true)
+    try {
+      await savePermissionOverrides(permOverrides)
+      toast('✅ Permissions saved')
+    } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
+    finally { setSavingPerms(false) }
+  }
+
+  function setPerm(key, role, value) {
+    setPermOverrides(prev => ({
+      ...prev,
+      [key]: { ...(prev[key] || DEFAULT_PERMISSIONS[key] || {}), [role]: value }
+    }))
+  }
 
   if (!isAdmin) return (
     <div style={{fontFamily:ff}}>
@@ -194,6 +219,7 @@ export function Admin() {
 
       <Tabs tabs={[
         { id:'team',        label:'Team' },
+        { id:'permissions', label:'Permissions' },
         { id:'customize',   label:'Customize' },
         { id:'rules',       label:'Data Rules' },
         { id:'system',      label:'System' },
@@ -468,6 +494,69 @@ export function Admin() {
       )}
 
       {/* ── DATA RULES TAB ── */}
+      {tab==='permissions' && (
+        <div>
+          <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:20,marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:8}}>Permission Matrix</div>
+            <div style={{fontSize:12,color:'var(--muted)',marginBottom:16,lineHeight:1.6}}>
+              Control exactly what each role can do. Changes take effect immediately after saving.
+              Admin permissions cannot be reduced.
+            </div>
+            {/* Header */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 80px 100px 80px',gap:8,padding:'8px 12px',background:'var(--dim)',borderRadius:8,marginBottom:8,fontSize:10,fontWeight:800,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em'}}>
+              <div>Permission</div>
+              <div style={{textAlign:'center'}}>Admin</div>
+              <div style={{textAlign:'center'}}>Secretary</div>
+              <div style={{textAlign:'center'}}>Agent</div>
+            </div>
+            {PERMISSION_GROUPS.map(group => (
+              <div key={group.id} style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:800,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',padding:'8px 0 4px',borderBottom:'1px solid var(--border)',marginBottom:4,display:'flex',alignItems:'center',gap:6}}>
+                  <span>{group.icon}</span>{group.label}
+                </div>
+                {group.keys.map(key => {
+                  const def = DEFAULT_PERMISSIONS[key] || {}
+                  const ov  = permOverrides[key] || {}
+                  const cur = { admin: ov.admin??def.admin, secretary: ov.secretary??def.secretary, agent: ov.agent??def.agent }
+                  return (
+                    <div key={key} style={{display:'grid',gridTemplateColumns:'1fr 80px 100px 80px',gap:8,padding:'7px 12px',borderBottom:'1px solid var(--border)',alignItems:'center'}}>
+                      <div style={{fontSize:12,color:'var(--text)'}}>{PERMISSION_LABELS[key]||key}</div>
+                      {['admin','secretary','agent'].map(role => {
+                        const locked = role === 'admin' // admin always has all perms
+                        const val = cur[role]
+                        return (
+                          <div key={role} style={{textAlign:'center'}}>
+                            <label style={{cursor:locked?'not-allowed':'pointer',opacity:locked?.5:1}}>
+                              <input type="checkbox" checked={locked?true:!!val} disabled={locked}
+                                onChange={e => !locked && setPerm(key, role, e.target.checked)}
+                                style={{width:16,height:16,accentColor:'var(--brand)',cursor:locked?'not-allowed':'pointer'}} />
+                            </label>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+            <div style={{marginTop:16,display:'flex',gap:10,alignItems:'center'}}>
+              <Btn onClick={handleSavePerms} loading={savingPerms}>Save Permissions</Btn>
+              <button onClick={() => { setPermOverrides({}); toast('Reset to defaults') }}
+                style={{padding:'8px 16px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',color:'var(--muted)',fontSize:12,cursor:'pointer',fontFamily:'Inter,system-ui,sans-serif'}}>
+                Reset to Defaults
+              </button>
+            </div>
+          </div>
+          {/* SQL note */}
+          <div style={{padding:'10px 14px',background:'rgba(245,166,35,.08)',border:'1px solid rgba(245,166,35,.3)',borderRadius:8,fontSize:11,color:'#D97706'}}>
+            💡 <strong>SQL required:</strong> Run in Supabase SQL Editor to enable permission saving:
+            <code style={{display:'block',marginTop:6,fontFamily:'monospace',background:'rgba(0,0,0,.06)',padding:'4px 8px',borderRadius:4}}>
+              create table if not exists system_settings (id uuid primary key default gen_random_uuid(), key text unique not null, value jsonb, updated_at timestamptz default now());
+            </code>
+          </div>
+        </div>
+      )}
+
       {tab==='rules' && (
         <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:24}}>
           <SectionTitle>Data Rules</SectionTitle>
