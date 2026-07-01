@@ -111,12 +111,21 @@ module.exports = async function handler(req, res) {
           if (chosen.action === 'voicemail') return res.send(wrap(leadSay + vmXml(null)))
         }
 
-        // No match — replay the menu
+        // No match — replay the menu using safe context storage
         const replayCtxId = await storeMenuContext(supabase, ctx)
-        const replayUrl = replayCtxId
-          ? '/api/twilio-menu?ctxId=' + replayCtxId
-          : '/api/twilio-menu?ctx=' + encodeURIComponent(JSON.stringify(ctx))
+        const ctxJson = JSON.stringify(ctx)
+        const ctxEnc  = encodeURIComponent(ctxJson)
+        let replayUrl, extraFields = ''
+        if (replayCtxId) {
+          replayUrl = 'https://app.targetreteam.com/api/twilio-menu?ctxId=' + replayCtxId
+        } else if (ctxEnc.length <= 1800) {
+          replayUrl = 'https://app.targetreteam.com/api/twilio-menu?ctx=' + ctxEnc
+        } else {
+          replayUrl = 'https://app.targetreteam.com/api/twilio-menu'
+          extraFields = '<Parameter name="ctx" value="' + ctxJson.replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '" />'
+        }
         let replayTwiml = '<Gather numDigits="1" action="' + replayUrl + '" method="POST" timeout="' + (menuNode.config.timeout || 10) + '">'
+        if (extraFields) replayTwiml += extraFields
         replayTwiml += say('Invalid selection. ' + (menuNode.config.text || 'Please try again.'))
         replayTwiml += '</Gather>'
         replayTwiml += say('We did not receive your selection. Goodbye.')

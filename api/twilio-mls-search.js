@@ -1,7 +1,5 @@
-// TargetOS V2 — Twilio Live MLS Search
-// Called when a caller selects the "MLS Search" node in the call flow.
-// Same keypad price-range flow as twilio-listings.js, but queries the
-// live OneKey MLS feed (via SimplyRETS) instead of the CRM's own listings.
+// TargetOS V2 — Live MLS Search via Phone (OneKey / SimplyRETS)
+// Multi-step keypad search: price → beds → baths → type → live MLS results
 'use strict'
 
 const querystring = require('querystring')
@@ -10,161 +8,155 @@ const MLS_USER = process.env.SIMPLYRETS_USER || process.env.VITE_SIMPLYRETS_USER
 const MLS_PASS = process.env.SIMPLYRETS_PASS || process.env.VITE_SIMPLYRETS_PASS || 'simplyrets'
 const MLS_BASE = 'https://api.simplyrets.com'
 
-function getRawBody(req) {
-  return new Promise((resolve, reject) => {
-    let d = ''; req.on('data', c => d += c); req.on('end', () => resolve(d)); req.on('error', reject)
-  })
-}
-
+const say  = (t, v) => '<Say voice="' + (v||'Polly.Joanna') + '">' + String(t||'') + '</Say>'
 const wrap = xml => '<?xml version="1.0" encoding="UTF-8"?><Response>' + xml + '</Response>'
-const say  = (t, voice) => '<Say voice="' + (voice||'Polly.Joanna') + '">' + (t||'') + '</Say>'
 
-// Read a live MLS listing aloud (SimplyRETS shape, not our internal CRM shape)
-function readListing(l, voice) {
+const PRICE_RANGES = {
+  '1': { min:0,       max:499999,   label:'under 500 thousand' },
+  '2': { min:500000,  max:749999,   label:'500 to 750 thousand' },
+  '3': { min:750000,  max:999999,   label:'750 thousand to 1 million' },
+  '4': { min:1000000, max:1499999,  label:'1 to 1.5 million' },
+  '5': { min:1500000, max:1999999,  label:'1.5 to 2 million' },
+  '6': { min:2000000, max:99999999, label:'over 2 million' },
+  '0': { min:0,       max:99999999, label:'any price' },
+}
+const BED_MAP  = { '1':'1', '2':'2', '3':'3', '4':'4', '5':'5+', '0':'any' }
+const BATH_MAP = { '1':'1', '2':'2', '3':'3+', '0':'any' }
+const TYPE_MAP = { '1':'SingleFamily', '2':'Condominium', '3':'Townhouse', '4':'MultiFamily', '0':'any' }
+const TYPE_LABELS = { '1':'Single Family', '2':'Condo', '3':'Townhouse', '4':'Multi Family', '0':'any type' }
+
+function readListing(l, i, voice) {
   const price = l.listPrice ? '$' + Number(l.listPrice).toLocaleString() : 'price not listed'
-  const addr  = l.address ? [l.address.streetNumber, l.address.streetName].filter(Boolean).join(' ') : 'address on file'
-  const city  = l.address && l.address.city ? ' in ' + l.address.city : ''
-  const beds  = l.property && l.property.bedrooms ? l.property.bedrooms + ' bedroom, ' : ''
-  const baths = l.property && l.property.bathsFull ? l.property.bathsFull + ' bathroom ' : ''
-  return say(addr + city + '. ' + beds + baths + 'home. Listed at ' + price + '.', voice)
+  const addr  = l.address ? [l.address.streetNumber, l.address.streetName, l.address.city].filter(Boolean).join(' ') : 'address on file'
+  const beds  = l.property && l.property.bedrooms ? l.property.bedrooms + ' bed' : ''
+  const baths = l.property && l.property.bathsFull ? l.property.bathsFull + ' bath' : ''
+  const desc  = [beds, baths].filter(Boolean).join(', ')
+  return say('Listing ' + (i+1) + '. ' + addr + '. ' + (desc ? desc + '. ' : '') + 'Listed at ' + price + '.', voice)
 }
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
-  if (req.method !== 'POST') return res.status(405).send(wrap(say('Method not allowed.')))
 
   let body = {}
-  try { body = querystring.parse(await getRawBody(req)) } catch(e) { body = req.body || {} }
-
-  const digits = body.Digits || ''
+  if (req.method === 'POST') {
+    try {
+      const raw = await new Promise((ok,err) => { let d=''; req.on('data',c=>d+=c); req.on('end',()=>ok(d)); req.on('error',err) })
+      body = querystring.parse(raw)
+    } catch(e) { body = req.body || {} }
+  }
 
   const rawUrl = req.url || ''
   const qStr   = rawUrl.includes('?') ? rawUrl.split('?')[1] : ''
   const qp     = querystring.parse(qStr)
-  const step   = qp.step   || 'intro'
-  const voice  = qp.voice  || 'Polly.Joanna'
-  const maxRes = parseInt(qp.max || '5') || 5
-  const area   = qp.area ? decodeURIComponent(qp.area) : ''
-  const introText = qp.intro ? decodeURIComponent(qp.intro) : 'Welcome to our live MLS search. Use your keypad to search.'
 
-  // ── STEP: intro — present price range menu ────────────────
+  const digits   = body.Digits || ''
+  const step     = qp.step     || 'intro'
+  const voice    = qp.voice    || 'Polly.Joanna'
+  const maxRes   = parseInt(qp.max||'5') || 5
+  const area     = qp.area ? decodeURIComponent(qp.area) : ''
+  const introTxt = qp.intro ? decodeURIComponent(qp.intro) : 'Welcome to our live M L S search.'
+  const priceKey = qp.price || ''
+  const bedsKey  = qp.beds  || ''
+
+  const base = 'https://app.targetreteam.com/api/twilio-mls-search'
+
   if (step === 'intro') {
-    const base = '/api/twilio-mls-search?step=price&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&area=' + encodeURIComponent(area)
-    const twiml =
-      '<Gather numDigits="1" action="' + base + '" method="POST" timeout="12">' +
-        say(introText + ' Press 1 for under 500 thousand. Press 2 for 500 thousand to 1 million. Press 3 for 1 million to 2 million. Press 4 for over 2 million. Press 5 to hear all available listings.', voice) +
+    const nextUrl = base + '?step=price&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + (area ? '&area=' + encodeURIComponent(area) : '')
+    return res.send(wrap(
+      '<Gather numDigits="1" action="' + nextUrl + '" method="POST" timeout="12">' +
+        say(introTxt + ' Press 1 for under 500 thousand. 2 for 500 to 750 thousand. 3 for 750 thousand to 1 million. 4 for 1 to 1.5 million. 5 for 1.5 to 2 million. 6 for over 2 million. Press 0 for any price.', voice) +
       '</Gather>' +
-      say('We did not receive your selection. Goodbye.', voice)
-    return res.send(wrap(twiml))
+      say('We did not receive your input. Goodbye.', voice)
+    ))
   }
 
-  // ── STEP: price — filter by selected range, then ask beds ─
   if (step === 'price') {
-    const RANGES = {
-      '1': { min: 0,       max: 499999,   label: 'under 500 thousand' },
-      '2': { min: 500000,  max: 999999,   label: '500 thousand to 1 million' },
-      '3': { min: 1000000, max: 1999999,  label: '1 million to 2 million' },
-      '4': { min: 2000000, max: 99999999, label: 'over 2 million' },
-      '5': { min: 0,       max: 99999999, label: 'all price ranges' },
-    }
-    const range = RANGES[digits]
+    const range = PRICE_RANGES[digits]
     if (!range) {
-      const base = '/api/twilio-mls-search?step=price&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&area=' + encodeURIComponent(area)
-      return res.send(wrap(
-        '<Gather numDigits="1" action="' + base + '" method="POST" timeout="10">' +
-          say('Invalid selection. Press 1 for under 500 thousand. 2 for 500k to 1 million. 3 for 1 to 2 million. 4 for over 2 million. 5 for all.', voice) +
-        '</Gather>' +
-        say('Goodbye.', voice)
-      ))
+      const retry = base + '?step=price&voice=' + encodeURIComponent(voice) + '&max=' + maxRes
+      return res.send(wrap('<Gather numDigits="1" action="' + retry + '" method="POST" timeout="10">' + say('Press 1 through 6 for a price range, or 0 for any.', voice) + '</Gather>' + say('Goodbye.', voice)))
     }
-
-    const base = '/api/twilio-mls-search?step=beds&voice=' + encodeURIComponent(voice) + '&max=' + maxRes +
-      '&minp=' + range.min + '&maxp=' + range.max + '&range=' + encodeURIComponent(range.label) + '&area=' + encodeURIComponent(area)
-
-    const twiml =
-      '<Gather numDigits="1" action="' + base + '" method="POST" timeout="12">' +
-        say('You selected ' + range.label + '. Now press a number for bedrooms. Press 1 for 1 bedroom. 2 for 2 bedrooms. 3 for 3 bedrooms. 4 for 4 or more bedrooms. Press 5 to skip and hear all.', voice) +
-      '</Gather>' +
-      say('Goodbye.', voice)
-    return res.send(wrap(twiml))
+    const nextUrl = base + '?step=beds&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&price=' + digits + (area ? '&area=' + encodeURIComponent(area) : '')
+    return res.send(wrap('<Gather numDigits="1" action="' + nextUrl + '" method="POST" timeout="12">' + say('You selected ' + range.label + '. Press 1 for 1 bedroom, 2 for 2, 3 for 3, 4 for 4, 5 for 5 or more, 0 for any.', voice) + '</Gather>' + say('Goodbye.', voice)))
   }
 
-  // ── STEP: beds — query live MLS and read results ─────────
   if (step === 'beds') {
-    const minPrice = parseInt(qp.minp || '0')
-    const maxPrice = parseInt(qp.maxp || '99999999')
-    const rangeLabel = qp.range ? decodeURIComponent(qp.range) : ''
-    const BED_MAP = { '1':1, '2':2, '3':3, '4':4, '5':null }
-    const minBeds = BED_MAP[digits] !== undefined ? BED_MAP[digits] : null
+    if (!BED_MAP[digits]) {
+      const retry = base + '?step=beds&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&price=' + priceKey
+      return res.send(wrap('<Gather numDigits="1" action="' + retry + '" method="POST" timeout="10">' + say('Press 1 through 5 for bedrooms, or 0 for any.', voice) + '</Gather>' + say('Goodbye.', voice)))
+    }
+    const nextUrl = base + '?step=baths&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&price=' + priceKey + '&beds=' + digits + (area ? '&area=' + encodeURIComponent(area) : '')
+    return res.send(wrap('<Gather numDigits="1" action="' + nextUrl + '" method="POST" timeout="12">' + say('Press 1 for 1 bathroom, 2 for 2, 3 for 3 or more, 0 to skip.', voice) + '</Gather>' + say('Goodbye.', voice)))
+  }
+
+  if (step === 'baths') {
+    if (!BATH_MAP[digits]) {
+      const retry = base + '?step=baths&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&price=' + priceKey + '&beds=' + bedsKey
+      return res.send(wrap('<Gather numDigits="1" action="' + retry + '" method="POST" timeout="10">' + say('Press 1, 2, 3, or 0 to skip.', voice) + '</Gather>' + say('Goodbye.', voice)))
+    }
+    const nextUrl = base + '?step=type&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&price=' + priceKey + '&beds=' + bedsKey + '&baths=' + digits + (area ? '&area=' + encodeURIComponent(area) : '')
+    return res.send(wrap('<Gather numDigits="1" action="' + nextUrl + '" method="POST" timeout="12">' + say('Press 1 for Single Family, 2 for Condo, 3 for Townhouse, 4 for Multi Family, or 0 for all types.', voice) + '</Gather>' + say('Goodbye.', voice)))
+  }
+
+  if (step === 'type') {
+    const typeKey = digits
+    if (!TYPE_MAP[typeKey]) {
+      const retry = base + '?step=type&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&price=' + priceKey + '&beds=' + bedsKey + '&baths=' + qp.baths
+      return res.send(wrap('<Gather numDigits="1" action="' + retry + '" method="POST" timeout="10">' + say('Press 1 Single Family, 2 Condo, 3 Townhouse, 4 Multi Family, or 0 for all.', voice) + '</Gather>' + say('Goodbye.', voice)))
+    }
 
     try {
       const params = new URLSearchParams({ limit: maxRes, status: 'Active' })
-      params.set('minprice', String(minPrice))
-      params.set('maxprice', String(maxPrice))
-      if (minBeds)  params.set('minbeds', String(minBeds))
-      if (area)     params.set('cities', area)
+      const range = PRICE_RANGES[priceKey]
+      if (range && priceKey !== '0') { params.set('minprice', String(range.min)); params.set('maxprice', String(range.max)) }
+      const beds = BED_MAP[bedsKey]
+      if (beds && bedsKey !== '0') params.set('minbeds', beds === '5+' ? '5' : beds)
+      const baths = BATH_MAP[qp.baths]
+      if (baths && qp.baths !== '0') params.set('minbaths', baths === '3+' ? '3' : baths)
+      const type = TYPE_MAP[typeKey]
+      if (type && typeKey !== '0') params.set('type', type)
+      if (area) params.set('cities', area)
 
       const auth = Buffer.from(MLS_USER + ':' + MLS_PASS).toString('base64')
       const mlsRes = await fetch(MLS_BASE + '/properties?' + params.toString(), {
         headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json' }
       })
-
-      if (!mlsRes.ok) throw new Error('MLS API returned ' + mlsRes.status)
+      if (!mlsRes.ok) throw new Error('MLS API ' + mlsRes.status)
       const results = await mlsRes.json()
 
-      if (!results.length) {
-        const retry = '/api/twilio-mls-search?step=intro&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + '&area=' + encodeURIComponent(area)
+      if (!results || results.length === 0) {
+        const restart = base + '?step=intro&voice=' + encodeURIComponent(voice) + '&max=' + maxRes + (area ? '&area=' + encodeURIComponent(area) : '')
         return res.send(wrap(
-          say('We found no active MLS listings matching your search' + (rangeLabel ? ' in the ' + rangeLabel + ' range' : '') + (area ? ' in ' + area : '') + '.', voice) +
-          '<Gather numDigits="1" action="' + retry + '" method="POST" timeout="10">' +
-            say('Press 1 to search again with different criteria, or press 2 to speak with an agent.', voice) +
-          '</Gather>' +
-          say('Thank you for calling Target Team. Goodbye.', voice)
+          say('No live M L S listings found matching your search.', voice) +
+          '<Gather numDigits="1" action="' + restart + '" method="GET" timeout="10">' +
+            say('Press 1 to search again. Press 2 to speak with an agent.', voice) +
+          '</Gather>' + say('Goodbye.', voice)
         ))
       }
 
-      let twiml = say('We found ' + results.length + ' listing' + (results.length > 1 ? 's' : '') + ' on the M L S' + (rangeLabel ? ' in the ' + rangeLabel + ' range' : '') + (area ? ' in ' + area : '') + '. Here they are.', voice)
+      const range2 = PRICE_RANGES[priceKey]
+      let twiml = say('Found ' + results.length + ' M L S listing' + (results.length>1?'s':'') + (range2&&priceKey!=='0'?' in the ' + range2.label + ' range':'') + '.', voice)
+      results.forEach((l,i) => { twiml += readListing(l, i, voice) })
 
-      results.forEach((l, i) => {
-        twiml += say('Listing ' + (i+1) + '.', voice)
-        twiml += readListing(l, voice)
-      })
-
-      const followup = '/api/twilio-mls-search?step=followup&voice=' + encodeURIComponent(voice)
-      twiml +=
-        '<Gather numDigits="1" action="' + followup + '" method="POST" timeout="12">' +
-          say('Press 1 to search again. Press 2 to speak with an agent. Press 9 to leave a voicemail. Or press star to end the call.', voice) +
-        '</Gather>' +
-        say('Thank you for calling Target Team. Goodbye.', voice)
-
+      const followUrl = base + '?step=followup&voice=' + encodeURIComponent(voice)
+      twiml += '<Gather numDigits="1" action="' + followUrl + '" method="GET" timeout="12">' +
+        say('Press 1 to search again. Press 2 for an agent. Press 9 for voicemail. Star to end.', voice) +
+      '</Gather>'
+      twiml += say('Thank you for calling. Goodbye.', voice)
       return res.send(wrap(twiml))
+
     } catch(e) {
-      console.error('MLS search error:', e.message)
-      return res.send(wrap(
-        say('We are having trouble reaching the M L S right now. Please try again later or speak with an agent.', voice) +
-        '<Redirect method="POST">https://app.targetreteam.com/api/twilio-inbound</Redirect>'
-      ))
+      console.error('MLS error:', e.message)
+      return res.send(wrap(say('We could not reach the M L S right now. Please try again later.', voice)))
     }
   }
 
-  // ── STEP: followup — after listings were read ─────────────
   if (step === 'followup') {
-    if (digits === '1') {
-      const restart = '/api/twilio-mls-search?step=intro&voice=' + encodeURIComponent(voice)
-      return res.send(wrap('<Redirect method="GET">' + restart + '</Redirect>'))
-    }
-    if (digits === '9') {
-      return res.send(wrap(
-        say('Please leave your name and number after the tone.', voice) +
-        '<Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />'
-      ))
-    }
-    if (digits === '*') return res.send(wrap(say('Thank you for calling Target Team. Goodbye.', voice) + '<Hangup />'))
-    return res.send(wrap(
-      say('Connecting you to a Target Team agent.', voice) +
-      '<Redirect method="POST">https://app.targetreteam.com/api/twilio-inbound</Redirect>'
-    ))
+    if (digits === '1') return res.send(wrap('<Redirect method="GET">' + base + '?step=intro&voice=' + encodeURIComponent(voice) + '</Redirect>'))
+    if (digits === '9') return res.send(wrap(say('Please leave a message after the tone.', voice) + '<Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />'))
+    if (digits === '*') return res.send(wrap(say('Goodbye.', voice) + '<Hangup />'))
+    return res.send(wrap(say('Connecting you to an agent.', voice) + '<Redirect method="POST">https://app.targetreteam.com/api/twilio-inbound</Redirect>'))
   }
 
-  return res.send(wrap(say('Thank you for calling Target Team. Goodbye.', voice)))
+  return res.send(wrap(say('Thank you for calling. Goodbye.', voice) + '<Hangup />'))
 }

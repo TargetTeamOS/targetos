@@ -56,10 +56,25 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 
   if (node.type === 'menu') {
     const ctxId = await storeMenuContext(supabase, { nodes, edges, menuNodeId: nodeId })
-    const actionUrl = ctxId
-      ? '/api/twilio-menu?ctxId=' + ctxId
-      : '/api/twilio-menu?ctx=' + encodeURIComponent(JSON.stringify({ nodes, edges, menuNodeId: nodeId })) // fallback if DB unavailable
+    // Use DB-backed short ID if available (preferred — short URL, no length limits)
+    // Fall back to embedding ctx in the action URL only if DB storage failed AND the
+    // encoded context is under Twilio's 2048 char URL limit; otherwise POST it as a
+    // hidden form field in a <Redirect> POST — POST body has no length limit.
+    const ctxJson = JSON.stringify({ nodes, edges, menuNodeId: nodeId })
+    const ctxEnc  = encodeURIComponent(ctxJson)
+    let actionUrl, extraFields = ''
+    if (ctxId) {
+      actionUrl = 'https://app.targetreteam.com/api/twilio-menu?ctxId=' + ctxId
+    } else if (ctxEnc.length <= 1800) {
+      actionUrl = 'https://app.targetreteam.com/api/twilio-menu?ctx=' + ctxEnc
+    } else {
+      // Large flow: store ctx as a hidden field in the POST body using Gather's parameter
+      // Twilio passes all <Parameter> elements as POST body fields to the action URL
+      actionUrl = 'https://app.targetreteam.com/api/twilio-menu'
+      extraFields = '<Parameter name="ctx" value="' + ctxJson.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '" />'
+    }
     twiml += '<Gather numDigits="1" action="' + actionUrl + '" method="POST" timeout="' + (cfg.timeout||10) + '">'
+    if (extraFields) twiml += extraFields
     twiml += say(cfg.text || 'Please make a selection.', cfg.voice)
     twiml += '</Gather>'
     twiml += say('We did not receive your selection. Goodbye.', cfg.voice)
@@ -68,10 +83,19 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 
   if (node.type === 'language') {
     const ctxId = await storeMenuContext(supabase, { nodes, edges, menuNodeId: nodeId })
-    const actionUrl = ctxId
-      ? '/api/twilio-menu?ctxId=' + ctxId
-      : '/api/twilio-menu?ctx=' + encodeURIComponent(JSON.stringify({ nodes, edges, menuNodeId: nodeId }))
+    const ctxJson = JSON.stringify({ nodes, edges, menuNodeId: nodeId })
+    const ctxEnc  = encodeURIComponent(ctxJson)
+    let actionUrl, extraFields = ''
+    if (ctxId) {
+      actionUrl = 'https://app.targetreteam.com/api/twilio-menu?ctxId=' + ctxId
+    } else if (ctxEnc.length <= 1800) {
+      actionUrl = 'https://app.targetreteam.com/api/twilio-menu?ctx=' + ctxEnc
+    } else {
+      actionUrl = 'https://app.targetreteam.com/api/twilio-menu'
+      extraFields = '<Parameter name="ctx" value="' + ctxJson.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '" />'
+    }
     twiml += '<Gather numDigits="1" action="' + actionUrl + '" method="POST" timeout="' + (cfg.timeout||10) + '">'
+    if (extraFields) twiml += extraFields
     twiml += say(cfg.prompt || 'For English press 1.', cfg.voice)
     twiml += '</Gather>'
     twiml += say('We did not receive your selection. Goodbye.', cfg.voice)

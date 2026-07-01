@@ -240,8 +240,15 @@ function ConfigPanel({node,agents,onSave,onClose}) {
         {node.type==='listings'&&<>
           <div style={R}><label style={L}>Opening message</label><textarea value={cfg.intro||''} onChange={e=>set('intro',e.target.value)} rows={2} style={{...S,resize:'vertical'}} /></div>
           <VP k="voice"/>
-          <div style={R}><label style={L}>Max listings (1–10)</label><input type="number" min={1} max={10} value={cfg.max_results||5} onChange={e=>set('max_results',parseInt(e.target.value)||5)} style={S} /></div>
-          <div style={INFO}>Caller uses keypad to pick a price range. Searches Active listings in your CRM with the 📞 IVR toggle enabled.</div>
+          <div style={R}><label style={L}>Max results to read (1–10)</label><input type="number" min={1} max={10} value={cfg.max_results||5} onChange={e=>set('max_results',parseInt(e.target.value)||5)} style={S} /></div>
+          <div style={{...INFO, background:'rgba(139,92,246,.08)', borderColor:'rgba(139,92,246,.25)'}}>
+            <strong style={{color:'var(--text)'}}>Filter flow callers can use:</strong><br/>
+            1. 🏷 Price range (6 brackets from under $500k to $2M+, or any price)<br/>
+            2. 🛏 Bedrooms (1–5+, or any)<br/>
+            3. 🛁 Bathrooms (1, 2, 3+, or any)<br/>
+            4. 🏠 Property type (Single Family, Condo, Townhouse, Multi Family, or all)<br/><br/>
+            Searches Active listings in your CRM that have the 📞 IVR toggle enabled on the Listings board.
+          </div>
         </>}
 
         {node.type==='mlssearch'&&<>
@@ -454,8 +461,21 @@ export function CallFlow() {
   const connPorts=new Set(edges.map(e=>e.from+':'+e.port))
   const MARKER_COLORS=['#CC2200','#10B981','#DC2626','#3B82F6','#F5A623','#8B5CF6','#0EA5E9','#EC4899','#84CC16','#F97316','#6366F1','#14B8A6']
 
+  const [paletteOpen, setPaletteOpen] = React.useState(true)
+  const [fullscreen, setFullscreen] = React.useState(false)
+
+  React.useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') { if (selectedNode) setSelected(null); if (fullscreen) setFullscreen(false) }
+      if (e.key === 'f' && (e.ctrlKey||e.metaKey)) { e.preventDefault(); setFullscreen(f=>!f) }
+      if (e.key === 'Delete' && selected && selected !== 'start') deleteNode(selected)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selected, fullscreen])
+
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'100%',background:'var(--bg)',fontFamily:ff,overflow:'hidden'}}>
+    <div style={{display:'flex',flexDirection:'column',height:'100%',background:'var(--bg)',fontFamily:ff,overflow:'hidden',position:fullscreen?'fixed':'relative',inset:fullscreen?0:'auto',zIndex:fullscreen?9999:'auto'}}>
 
       {/* TOOLBAR */}
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 14px',borderBottom:'1px solid var(--border)',flexShrink:0,background:'var(--panel)',flexWrap:'wrap'}}>
@@ -465,6 +485,7 @@ export function CallFlow() {
         {dbStatus==='no_columns'&&<div style={{fontSize:11,color:'#D97706',background:'rgba(245,166,35,.1)',padding:'4px 10px',borderRadius:8,border:'1px solid rgba(245,166,35,.3)'}}>⚠️ Run SQL to add flow_nodes / flow_edges columns — see Settings</div>}
         <div style={{flex:1}} />
         <button onClick={()=>{if(window.confirm('Clear canvas?')){setNodes([{id:'start',type:'incoming',x:80,y:200,config:{}}]);setEdges([]);setSelected(null);setDirty(true)}}} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--muted)',fontSize:11,cursor:'pointer',fontFamily:ff}}>🗑 Clear</button>
+        <button onClick={()=>setFullscreen(f=>!f)} title={fullscreen?'Exit fullscreen (Ctrl+F)':'Fullscreen (Ctrl+F)'} style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:14,cursor:'pointer',fontFamily:ff}}>{fullscreen?'⊡':'⛶'}</button>
         <button onClick={saveFlow} disabled={saving} style={{padding:'6px 16px',borderRadius:8,border:'none',background:dirty?'#CC2200':'#1B2B4B',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:ff,opacity:saving?.7:1}}>
           {saving?'⏳ Saving...':'💾 Save Flow'}
         </button>
@@ -473,8 +494,12 @@ export function CallFlow() {
       {/* BODY */}
       <div style={{flex:1,display:'flex',overflow:'hidden'}}>
 
-        {/* PALETTE */}
-        <div style={{width:160,borderRight:'1px solid var(--border)',background:'var(--panel)',overflowY:'auto',flexShrink:0}}>
+        {/* PALETTE — collapsible */}
+        <div style={{display:'flex',flexDirection:'column',borderRight:'1px solid var(--border)',background:'var(--panel)',flexShrink:0,transition:'width .2s',width:paletteOpen?150:36,overflow:'hidden'}}>
+          <button onClick={()=>setPaletteOpen(p=>!p)} title={paletteOpen?'Collapse palette':'Expand palette'} style={{padding:'8px',border:'none',background:'transparent',color:'var(--muted)',cursor:'pointer',fontSize:16,flexShrink:0,borderBottom:'1px solid var(--border)',textAlign:'center'}}>
+            {paletteOpen?'◀':'▶'}
+          </button>
+          <div style={{width:150,overflowY:'auto',flex:1,opacity:paletteOpen?1:0,pointerEvents:paletteOpen?'auto':'none'}}>
           {CATS.map(cat=>{
             const cNodes=NODE_DEFS.filter(n=>n.cat===cat.id&&n.type!=='incoming')
             if (!cNodes.length) return null
@@ -490,6 +515,7 @@ export function CallFlow() {
               ))}
             </div>)
           })}
+          </div>
         </div>
 
         {/* CANVAS */}
@@ -564,9 +590,11 @@ export function CallFlow() {
           </svg>
         </div>
 
-        {/* CONFIG PANEL */}
+        {/* CONFIG PANEL — floating overlay so canvas stays full width */}
         {selectedNode&&(
-          <ConfigPanel key={selectedNode.id} node={selectedNode} agents={agents} onSave={updateCfg} onClose={()=>setSelected(null)} />
+          <div style={{position:'absolute',top:0,right:0,bottom:0,width:300,zIndex:50,boxShadow:'-4px 0 24px rgba(0,0,0,.25)'}}>
+            <ConfigPanel key={selectedNode.id} node={selectedNode} agents={agents} onSave={updateCfg} onClose={()=>setSelected(null)} />
+          </div>
         )}
       </div>
     </div>
