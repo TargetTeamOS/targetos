@@ -11,6 +11,7 @@ import { Login }                  from './pages/Login'
 import { Layout }                 from './components/Layout'
 import { VoiceCapture }           from './components/VoiceCapture'
 import { CommandPalette, useCommandPalette } from './components/CommandPalette'
+import { ActiveCallBar, GlobalDialButton } from './components/ClickToCall'
 
 // Page imports
 import { Dashboard }     from './pages/Dashboard'
@@ -176,6 +177,8 @@ function AppShell() {
         </ErrorBoundary>
       </Layout>
       <Toast />
+      <ActiveCallBar />
+      <GlobalDialButton />
       <CommandPaletteWrapper />
       <LocationAwareTools />
     </>

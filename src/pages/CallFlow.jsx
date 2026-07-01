@@ -100,7 +100,7 @@ function ConfigPanel({node,agents,onSave,onClose}) {
   const VP=({k})=>(<div style={R}><label style={L}>Voice</label><select value={cfg[k]||'Polly.Joanna'} onChange={e=>set(k,e.target.value)} style={S}>{TTS_VOICES.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}</select></div>)
 
   return (
-    <div style={{width:320,borderLeft:'1px solid var(--border)',background:'var(--panel)',display:'flex',flexDirection:'column',flexShrink:0,fontFamily:ff,overflow:'hidden'}}>
+    <div style={{flex:1,background:'var(--panel)',display:'flex',flexDirection:'column',fontFamily:ff,overflow:'hidden',height:'100%'}}>
       <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:10,background:def.color,flexShrink:0}}>
         <span style={{fontSize:20}}>{def.icon}</span>
         <div style={{flex:1,fontSize:14,fontWeight:800,color:'#fff'}}>{def.label}</div>
@@ -590,13 +590,14 @@ export function CallFlow() {
           </svg>
         </div>
 
-        {/* CONFIG PANEL — floating overlay so canvas stays full width */}
-        {selectedNode&&(
-          <div style={{position:'absolute',top:0,right:0,bottom:0,width:300,zIndex:50,boxShadow:'-4px 0 24px rgba(0,0,0,.25)'}}>
-            <ConfigPanel key={selectedNode.id} node={selectedNode} agents={agents} onSave={updateCfg} onClose={()=>setSelected(null)} />
-          </div>
-        )}
       </div>
+
+      {/* CONFIG PANEL — side panel outside canvas so overflow:hidden doesn't clip it */}
+      {selectedNode&&(
+        <div style={{width:320,flexShrink:0,borderLeft:'1px solid var(--border)',boxShadow:'-4px 0 20px rgba(0,0,0,.12)',zIndex:10,position:'relative'}}>
+          <ConfigPanel key={selectedNode.id} node={selectedNode} agents={agents} onSave={updateCfg} onClose={()=>setSelected(null)} />
+        </div>
+      )}
     </div>
   )
 }

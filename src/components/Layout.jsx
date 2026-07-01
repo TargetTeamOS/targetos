@@ -1,4 +1,3 @@
-import { ActiveCallBar } from './ClickToCall'
 // ═══════════════════════════════════════════════════════════════
 // TargetOS V2 — Desktop Sidebar Layout
 // ═══════════════════════════════════════════════════════════════
@@ -150,7 +149,6 @@ export function Layout({ children }) {
         </div>
       </main>
     </div>
-    <ActiveCallBar />
     </>
   )
 }
