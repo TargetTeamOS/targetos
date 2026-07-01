@@ -45,6 +45,8 @@ import { Mortgage }      from './pages/Mortgage'
 import { WebsiteBuilder } from './pages/WebsiteBuilder'
 import { PublicHome, PublicListings, PublicListingDetail, PublicAbout, PublicContact } from './pages/PublicSite'
 import { Route as RoutePage } from './pages/Route'
+import { Segments }       from './pages/Segments'
+import { Reports }        from './pages/Reports'
 
 // ── ERROR BOUNDARY ───────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -166,6 +168,8 @@ function AppShell() {
           <Route path="/mortgage"            element={<Mortgage />} />
           <Route path="/website"             element={<WebsiteBuilder />} />
           <Route path="/route"               element={<RoutePage />} />
+          <Route path="/segments"           element={<Segments />} />
+          <Route path="/reports"            element={<Reports />} />
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />
         </Routes>

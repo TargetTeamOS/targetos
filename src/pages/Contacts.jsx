@@ -13,7 +13,10 @@ import { useContacts, useAgents } from '../lib/hooks'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { ImportExport } from '../components/ImportExport'
-import { FilterBar } from '../components/FilterBar'
+import { FilterBar }        from '../components/FilterBar'
+import { BulkEditBar }      from '../components/BulkEditBar'
+import { DuplicateDetector } from '../components/DuplicateDetector'
+import { ScoreBadge }       from '../lib/leadScoring.jsx'
 import { RecordActivityFeed as RecordActivity } from '../components/RecordActivityFeed'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { fmt$, fmtDate, fmtPhone, initials, matchSearch } from '../lib/utils'
@@ -440,6 +443,21 @@ export function Contacts() {
       )}
 
       {loading && <Loading />}
+
+      {/* Bulk edit bar — appears when contacts are selected */}
+      <BulkEditBar
+        selectedIds={selectedIds}
+        table="contacts"
+        agents={agents}
+        fields={[
+          { key:'status', label:'Status', type:'select', options:(CONTACT_STATUSES||[]).map(s=>({value:s.value||s,label:s.label||s})) },
+          { key:'agent_id', label:'Assigned Agent', type:'agent' },
+          { key:'source',   label:'Source', type:'select', options:(CONTACT_SOURCES||[]).map(s=>({value:s,label:s})) },
+          { key:'stage',    label:'Stage',  type:'select', options:['SOI','Nurture','Active','Offer Accapted','Under Contract'].map(v=>({value:v,label:v})) },
+        ]}
+        onDone={() => { setSelectedIds([]); refetch() }}
+        onClear={() => setSelectedIds([])}
+      />
 
       {!loading && filtered.length === 0 && (
         <Empty icon="👥" title="No contacts yet" sub="Add your first lead using the button above or voice capture." action={<Btn onClick={openAdd}>+ Add Contact</Btn>} />
