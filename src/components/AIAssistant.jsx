@@ -127,13 +127,12 @@ Current user: ${agent?.name || 'Unknown'} (${agent?.role || 'agent'})
 
 Keep responses concise and practical. Use bullet points for lists. Be direct and helpful.`
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('/api/ai-assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1000,
           system: systemPrompt,
+          max_tokens: 1000,
           messages: newMsgs.map(m => ({ role:m.role, content:m.content })),
         })
       })
@@ -162,8 +161,8 @@ Keep responses concise and practical. Use bullet points for lists. Be direct and
         title="AI Assistant"
         style={{
           position: 'fixed',
-          bottom: 88,
-          right: 24,
+          bottom: 24,
+          left: 24,
           width: 52,
           height: 52,
           borderRadius: '50%',
@@ -188,8 +187,8 @@ Keep responses concise and practical. Use bullet points for lists. Be direct and
       {open && (
         <div style={{
           position: 'fixed',
-          bottom: 150,
-          right: 20,
+          bottom: 86,
+          left: 24,
           width: 380,
           maxWidth: 'calc(100vw - 40px)',
           height: 520,

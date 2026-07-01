@@ -147,8 +147,8 @@ export function VoiceCapture() {
   const btnY = pos.y !== null ? pos.y : undefined
   const btnStyle = {
     position:  'fixed',
-    right:     btnX !== undefined ? undefined : '24px',
-    bottom:    btnY !== undefined ? undefined : '88px',
+    left:      btnX !== undefined ? undefined : '24px',
+    bottom:    btnY !== undefined ? undefined : '24px',
     left:      btnX !== undefined ? (btnX) + "px" : undefined,
     top:       btnY !== undefined ? (btnY) + "px" : undefined,
     width:     52, height: 52,
@@ -176,7 +176,7 @@ export function VoiceCapture() {
 
       {/* Panel */}
       {open && (
-        <div style={{ position: 'fixed', right: 24, bottom: 88, width: 340, background: 'var(--panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 899, fontFamily: ff, overflow: 'hidden' }}>
+        <div style={{ position: 'fixed', left: 24, bottom: 86, width: 340, background: 'var(--panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 899, fontFamily: ff, overflow: 'hidden' }}>
 
           {/* Header */}
           <div style={{ background: '#CC2200', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -593,7 +593,7 @@ export function CallFlow() {
               <div style={{textAlign:'center',opacity:.35}}>
                 <div style={{fontSize:40,marginBottom:12}}>🔀</div>
                 <div style={{fontSize:15,fontWeight:800,color:'var(--text)',marginBottom:6}}>Build your call flow</div>
-                <div style={{fontSize:13,color:'var(--muted)'}}>Click a node type on the left to add it,<br/>drag the coloured dots to connect nodes.</div>
+                <div style={{fontSize:13,color:'var(--muted)'}}>Click a node type on the left to add it,<br/>drag the coloured circles on the right edge to connect.<br/><span style={{fontSize:11,opacity:.7}}>Double-click a connection line to delete it.</span></div>
               </div>
             </div>
           )}
