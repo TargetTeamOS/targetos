@@ -198,7 +198,7 @@ export function ActiveCallBar() {
         const sid = call.parameters?.CallSid||call.callSid
         if (sid && log?.id) {
           G.set({ callSid:sid })
-          await supabase.from('calls').update({ twilio_call_sid:sid }).eq('id',log.id).catch(()=>{})
+          await supabase.from('calls').update({ twilio_call_sid:sid }).eq('id',log.id).then(()=>{}).catch(()=>{})
         }
       })
       call.on('disconnect', () => { G.deviceCall=null; closePanel() })
@@ -246,7 +246,7 @@ export function ActiveCallBar() {
     if (sidToEnd) { fetch('/api/twilio-outbound', { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({callSid:sidToEnd}) }).catch(()=>{}) }
 
     if (logId) {
-      await supabase.from('calls').update({ status:'completed', duration_sec:finalSecs, updated_at:new Date().toISOString() }).eq('id',logId).catch(()=>{})
+      await supabase.from('calls').update({ status:'completed', duration_sec:finalSecs, updated_at:new Date().toISOString() }).eq('id',logId).then(()=>{}).catch(()=>{})
       if (cId && finalSecs > 0) {
         await supabase.from('activity_log').insert({
           table_name:'contacts', record_id:cId, action:'call_outbound', agent_id:agent?.id||null,

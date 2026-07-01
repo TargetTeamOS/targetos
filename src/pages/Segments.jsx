@@ -126,7 +126,7 @@ export function Segments() {
 
   async function deleteSegment(id) {
     if (!window.confirm('Delete this segment?')) return
-    await supabase.from('contact_segments').delete().eq('id', id).catch(()=>{})
+    await supabase.from('contact_segments').delete().eq('id', id).then(()=>{}).catch(()=>{})
     setSegments(p=>p.filter(s=>s.id!==id))
     toast('Segment deleted')
   }
