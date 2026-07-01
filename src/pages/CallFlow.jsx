@@ -29,6 +29,7 @@ const NODE_DEFS = [
   { type:'hangup',     label:'Hang Up',         color:'#94A3B8', icon:'🔴', cat:'action'  },
   { type:'listings',   label:'CRM Listings',    color:'#8B5CF6', icon:'🏡', cat:'action'  },
   { type:'mlssearch',  label:'MLS Search',      color:'#0EA5E9', icon:'🔍', cat:'action'  },
+  { type:'directory',  label:'Agent Directory',  color:'#10B981', icon:'📒', cat:'action'  },
 ]
 const CATS = ['trigger','voice','routing','action'].map(id => ({ id, label: id.charAt(0).toUpperCase()+id.slice(1) }))
 const PORT_COLORS = ['#3B82F6','#10B981','#F97316','#EC4899','#8B5CF6','#F5A623','#0EA5E9']
@@ -59,6 +60,7 @@ function defCfg(type) {
   if (type==='sms')        return {text:'Thanks for calling Target Team!',send_to:'caller'}
   if (type==='listings')   return {intro:'Welcome to our listings search.',voice:'Polly.Joanna',max_results:5}
   if (type==='mlssearch')  return {intro:'Welcome to our live MLS search.',voice:'Polly.Joanna',max_results:5,area:''}
+  if (type==='directory') return { voice:'Polly.Joanna' }
   return {}
 }
 
@@ -205,7 +207,10 @@ function ConfigPanel({node,agents,onSave,onClose}) {
         </>}
 
         {node.type==='assigned'&&<>
-          <div style={INFO}>🎯 Looks up the caller in your CRM, dials their assigned agent directly. The <strong style={{color:'var(--text)'}}>No Agent / Unavailable</strong> port fires if nobody answers or the caller has no assigned agent.</div>
+          <div style={INFO}>🎯 Looks up the caller in your CRM and dials their assigned agent directly. The <strong style={{color:'var(--text)'}}>No Agent / Unavailable</strong> port fires if nobody answers or the caller has no assigned agent.</div>
+          <div style={{...INFO, background:'rgba(59,130,246,.07)', borderColor:'rgba(59,130,246,.25)', marginBottom:10}}>
+            💡 <strong style={{color:'var(--text)'}}>For a full extension directory</strong> (press 101 for Agent A, 102 for Agent B...), use the <strong style={{color:'var(--text)'}}>Ring All</strong> node instead, or connect this to a Greeting node that tells callers to press extensions. The agent directory endpoint is at <code style={{fontSize:10}}>/api/twilio-directory</code>.
+          </div>
           <div style={R}><label style={L}>Ring timeout (seconds)</label><input type="number" value={cfg.timeout||30} onChange={e=>set('timeout',parseInt(e.target.value)||30)} style={S} /></div>
         </>}
 
@@ -283,6 +288,16 @@ function ConfigPanel({node,agents,onSave,onClose}) {
           <div style={R}><label style={L}>Area filter (optional)</label><input value={cfg.area||''} onChange={e=>set('area',e.target.value)} style={S} placeholder="e.g. Spring Valley" /></div>
           <div style={R}><label style={L}>Max listings (1–10)</label><input type="number" min={1} max={10} value={cfg.max_results||5} onChange={e=>set('max_results',parseInt(e.target.value)||5)} style={S} /></div>
           <div style={INFO}>Searches the live OneKey MLS feed. Requires SimplyRETS credentials in Vercel env vars.</div>
+        </>}
+
+        {node.type==='directory'&&<>
+          <VP k="voice"/>
+          <div style={{...INFO, background:'rgba(16,185,129,.07)', borderColor:'rgba(16,185,129,.25)'}}>
+            <strong style={{color:'var(--text)'}}>📒 Agent Directory</strong><br/>
+            Reads out all active agents with their extension numbers (101, 102, 103...) and lets the caller press an extension to connect directly.<br/><br/>
+            Extensions are assigned automatically in order of agent creation — the first active agent gets 101, the next gets 102, etc.<br/><br/>
+            Caller presses <strong style={{color:'var(--text)'}}>0</strong> to return to the main menu.
+          </div>
         </>}
 
       </div>
@@ -542,6 +557,19 @@ export function CallFlow() {
         {dbStatus==='no_columns'&&<div style={{fontSize:11,color:'#D97706',background:'rgba(245,166,35,.1)',padding:'4px 10px',borderRadius:8,border:'1px solid rgba(245,166,35,.3)'}}>⚠️ Run SQL to add flow_nodes / flow_edges columns — see Settings</div>}
         <div style={{flex:1}} />
         <button onClick={()=>{if(window.confirm('Clear canvas?')){setNodes([{id:'start',type:'incoming',x:80,y:200,config:{}}]);setEdges([]);setSelected(null);setDirty(true)}}} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--muted)',fontSize:11,cursor:'pointer',fontFamily:ff}}>🗑 Clear</button>
+        <button onClick={async ()=>{
+          if (!window.confirm('Load the pre-built Target Team call flow?\n\nThis will replace your current canvas.')) return
+          try {
+            const r = await fetch('/api/twilio-flow-template')
+            const d = await r.json()
+            setNodes(d.flow_nodes)
+            setEdges(d.flow_edges)
+            setFlowName(d.name)
+            setSelected(null)
+            setDirty(true)
+            toast('✅ Template loaded — review agents in Ring All, then Save Flow')
+          } catch(e) { toast('Failed to load template: ' + e.message, '#DC2626') }
+        }} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--brand)',background:'rgba(204,34,0,.07)',color:'var(--brand)',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:ff}}>📋 Load Template</button>
         <button onClick={toggleFullscreen} title={fullscreen?'Exit fullscreen (F11 or Ctrl+F)':'Fullscreen — see entire flow (F11 or Ctrl+F)'} style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:fullscreen?'var(--brand)':'var(--inp)',color:fullscreen?'#fff':'var(--text)',fontSize:14,cursor:'pointer',fontFamily:ff}}>{fullscreen?'⊡':'⛶'}</button>
         <button onClick={saveFlow} disabled={saving} style={{padding:'6px 16px',borderRadius:8,border:'none',background:dirty?'#CC2200':'#1B2B4B',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:ff,opacity:saving?.7:1}}>
           {saving?'⏳ Saving...':'💾 Save Flow'}

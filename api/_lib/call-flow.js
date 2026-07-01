@@ -243,6 +243,13 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
     return twiml
   }
 
+  if (node.type === 'directory') {
+    const voice    = cfg.voice || 'Polly.Joanna'
+    const dirUrl   = 'https://app.targetreteam.com/api/twilio-directory?step=announce&voice=' + encodeURIComponent(voice) + '&to=' + encodeURIComponent(callData.to || '')
+    twiml += '<Redirect method="GET">' + dirUrl + '</Redirect>'
+    return twiml
+  }
+
   if (node.type === 'mlssearch') {
     const voice    = cfg.voice || 'Polly.Joanna'
     const maxRes   = cfg.max_results || 5
