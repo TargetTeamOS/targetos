@@ -41,7 +41,7 @@ function ImageUploader({ value, onChange, label }) {
       const { data } = supabase.storage.from('website-assets').getPublicUrl(path)
       onChange(data.publicUrl)
     } catch(e) {
-      alert('Upload failed: ' + e.message + '\n\nCreate "website-assets" bucket in Supabase Storage (Public).')
+      toast('Upload failed: ' + e.message + ' — Create "website-assets" bucket in Supabase Storage (Public).', '#DC2626')
     } finally { setUploading(false) }
   }
 

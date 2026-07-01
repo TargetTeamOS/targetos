@@ -1,3 +1,4 @@
+'use strict'
 const querystring = require('querystring')
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL

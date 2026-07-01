@@ -170,7 +170,7 @@ export function ActiveCallBar() {
         const sid = call.parameters?.CallSid || call.callSid
         if (sid && log?.id) {
           G.set({ callSid: sid })
-          await supabase.from('calls').update({ twilio_call_sid: sid }).eq('id', log.id).catch(() => {})
+          await supabase.from('calls').update({ twilio_call_sid: sid }).eq('id', log.id).catch(err => console.warn('[ClickToCall]', err.message))
         }
       })
       call.on('disconnect', () => { G.deviceCall = null; closePanel() })

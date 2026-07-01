@@ -47,7 +47,7 @@ module.exports = async function handler(req, res) {
   const callSid = body.CallSid || ''
   const clean10 = from.replace(/\D/g,'').slice(-10)
 
-  console.log('Inbound call from:', from, 'to:', to, 'sid:', callSid)
+  console.info('[twilio-inbound] Call from:', from.slice(-4), 'to:', to, 'sid:', callSid.slice(0,10))
 
   const supabase = getSupabase()
 
@@ -70,7 +70,7 @@ module.exports = async function handler(req, res) {
       .limit(1)
       .maybeSingle()
     contact = cRes.data || null
-    console.log('Contact lookup:', contact ? contact.first_name + ' ' + contact.last_name : 'not found')
+    console.info('[twilio-inbound] Contact:', contact ? contact.first_name + ' ' + contact.last_name : 'unknown')
   } catch(e) { console.warn('contact lookup:', e.message) }
 
   // ── STEP 2: Create contact if new number ────────────────────
@@ -87,7 +87,7 @@ module.exports = async function handler(req, res) {
         updated_at:  new Date().toISOString(),
       }).select().single()
       contact = newContact
-      console.log('New contact created:', newContact?.id)
+      console.info('[twilio-inbound] New contact created:', newContact?.id)
     } catch(e) { console.warn('create contact:', e.message) }
   }
 
@@ -105,7 +105,7 @@ module.exports = async function handler(req, res) {
       called_at:       new Date().toISOString(),
     }).select().single()
     callId = callRow?.id || null
-    console.log('Call logged, id:', callId)
+    console.info('[twilio-inbound] Call logged:', callId)
   } catch(e) { console.warn('log call:', e.message) }
 
   // ── STEP 4: Add activity to contact timeline ─────────────────
@@ -149,28 +149,23 @@ module.exports = async function handler(req, res) {
     if (flowRow) {
       const flowNodes = parseJ(flowRow.flow_nodes) || []
       const flowEdges = parseJ(flowRow.flow_edges) || []
-      console.log('Flow:', flowRow.name, '| nodes:', flowNodes.length, '| edges:', flowEdges.length)
-
+    
       if (flowNodes.length >= 1) {
         const startNode = flowNodes.find(n => n.type === 'incoming')
         if (startNode) {
           const twiml = await walkFlow(flowNodes, flowEdges, startNode.id, callData, supabase, 0)
-          console.log('Flow TwiML length:', twiml.length)
-          return res.send(wrap(twiml))
+                  return res.send(wrap(twiml))
         }
-        console.log('No "incoming" node found — node types:', flowNodes.map(n=>n.type))
-      } else {
+            } else {
         console.log('flow_nodes is empty or null — columns may not exist. Run SQL to add them.')
       }
     } else {
-      console.log('No flow saved in phone_ivr table')
-    }
+        }
   } catch(e) {
     console.error('Flow error:', e.message, e.stack)
   }
 
   // ── FALLBACK: No flow configured ─────────────────────────────
-  console.log('Using fallback response')
   const greeting = contact
     ? say('Thank you for calling Target Team. Please leave your name and message after the tone.')
     : say('Thank you for calling Target Team. Please leave your name, phone number, and a brief message after the tone.')

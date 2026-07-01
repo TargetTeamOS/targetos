@@ -79,7 +79,7 @@ function useWebContent() {
           merged[row.section] = { ...DEFAULT_CONTENT[row.section], ...row.content }
         })
         setContent(merged)
-      }).catch(() => {})
+      }).catch(err => console.warn('[PublicSite]', err.message))
   }, [])
   return content
 }
@@ -608,7 +608,7 @@ export function PublicListingDetail() {
       status:     'New',
       notes:      'Inquiry about ' + street + ': ' + form.message,
       created_at: new Date().toISOString(),
-    }).catch(() => {})
+    }).catch(err => console.warn('[PublicSite]', err.message))
   }
 
   return (
@@ -866,7 +866,7 @@ export function PublicContact() {
       status:     'New',
       notes:      'Looking to: ' + form.type + '\n\n' + form.message,
       created_at: new Date().toISOString(),
-    }).catch(() => {})
+    }).catch(err => console.warn('[PublicSite]', err.message))
     setSent(true)
   }
 

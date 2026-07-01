@@ -31,7 +31,7 @@ function FileUploader({ label, fileUrl, onUploaded, accept, folder }) {
   async function handleFile(e) {
     const file = e.target.files[0]
     if (!file) return
-    if (file.size > 20 * 1024 * 1024) { alert('File must be under 20MB'); return }
+    if (file.size > 20 * 1024 * 1024) { toast('File must be under 20MB', '#DC2626'); return }
     setUploading(true)
     try {
       const ext  = file.name.split('.').pop()
@@ -42,7 +42,7 @@ function FileUploader({ label, fileUrl, onUploaded, accept, folder }) {
       onUploaded(data.publicUrl)
     } catch(e) {
       // Bucket may not exist — show message
-      alert('Upload failed: ' + e.message + '\n\nRun this in Supabase Storage: create a bucket named "offer-docs" and set it to public.')
+      toast('Upload failed: ' + e.message + ' — Create "offer-docs" bucket in Supabase Storage and set it to Public.', '#DC2626')
     } finally { setUploading(false) }
   }
 

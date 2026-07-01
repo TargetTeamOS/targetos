@@ -1,3 +1,4 @@
+'use strict'
 // /api/admin-users — Create/update/delete Supabase auth users (requires service key)
 const { createClient } = require('@supabase/supabase-js')
 

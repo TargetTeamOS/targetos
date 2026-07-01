@@ -34,16 +34,21 @@ export function ListingDetail({ listingId, onBack }) {
 
   async function loadListing() {
     setLoading(true)
-    const { data, error } = await supabase.from('listings').select('*').eq('id', listingId).single()
-    if(data) {
-      // Parse JSON fields
-      data.showings = data.showings || []
-      data.spend = data.spend || []
-      data.interests = data.interests || []
-      data.notes_log = data.notes_log || []
-      setListing(data)
+    try {
+      const { data, error } = await supabase.from('listings').select('*').eq('id', listingId).single()
+      if (error) throw error
+      if (data) {
+        data.showings  = data.showings  || []
+        data.spend     = data.spend     || []
+        data.interests = data.interests || []
+        data.notes_log = data.notes_log || []
+        setListing(data)
+      }
+    } catch(e) {
+      toast('Failed to load listing: ' + e.message, '#DC2626')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function saveField(field, value) {

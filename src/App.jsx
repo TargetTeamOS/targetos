@@ -116,6 +116,7 @@ function AppShell() {
   return (
     <>
       <Layout>
+        <ErrorBoundary>
         <Routes>
           {/* Core pages with :id routing */}
           <Route path="/"                    element={<Dashboard />} />
@@ -167,6 +168,7 @@ function AppShell() {
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />
         </Routes>
+        </ErrorBoundary>
       </Layout>
       <Toast />
       <LocationAwareTools />
