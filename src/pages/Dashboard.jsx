@@ -184,6 +184,11 @@ const DATE_RANGES = [
   { id:'month',     label:'This month' },
   { id:'quarter',   label:'This quarter' },
   { id:'year',      label:'This year' },
+  { id:'2026',       label:'2026' },
+  { id:'2025',       label:'2025' },
+  { id:'2024',       label:'2024' },
+  { id:'2023',       label:'2023' },
+  { id:'2022',       label:'2022' },
 ]
 
 function getDateRange(rangeId) {
@@ -194,6 +199,8 @@ function getDateRange(rangeId) {
   if (rangeId === 'month')   { const d = new Date(now); d.setMonth(d.getMonth() - 1); return { from: d.toISOString().slice(0,10), to: today } }
   if (rangeId === 'quarter') { const d = new Date(now); d.setMonth(d.getMonth() - 3); return { from: d.toISOString().slice(0,10), to: today } }
   if (rangeId === 'year')    return { from: now.getFullYear() + '-01-01', to: today }
+  // Specific year (e.g. '2025', '2024')
+  if (/^\d{4}$/.test(rangeId)) return { from: rangeId + '-01-01', to: rangeId + '-12-31' }
   return null
 }
 
