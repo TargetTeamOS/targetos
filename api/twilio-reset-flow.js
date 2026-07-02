@@ -13,7 +13,7 @@ function getSupabase() {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
+  // Accept GET too so it can be triggered directly from browser address bar
 
   const supabase = getSupabase()
   if (!supabase) return res.status(500).json({ error: 'Supabase not configured' })
