@@ -558,25 +558,29 @@ export function CallFlow() {
         <div style={{flex:1}} />
         <button onClick={()=>{if(window.confirm('Clear canvas?')){setNodes([{id:'start',type:'incoming',x:80,y:200,config:{}}]);setEdges([]);setSelected(null);setDirty(true)}}} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--muted)',fontSize:11,cursor:'pointer',fontFamily:ff}}>🗑 Clear</button>
         <button onClick={async ()=>{
-          if (!window.confirm('Load and SAVE the pre-built Target Team call flow?\n\nThis will replace your current canvas and immediately go live.')) return
+          if (!window.confirm('Reset to the standard Target Team call flow?\n\nThis will:\n• Play your greeting\n• Menu: 1=Ring All Agents, 2=Directory, 3=Voicemail, 4=Listings, 5=MLS\n• Save immediately to the database\n\nContinue?')) return
           try {
-            // POST saves directly to DB with real agent IDs injected
-            const r = await fetch('/api/twilio-flow-template', { method:'POST' })
+            toast('⏳ Saving flow...')
+            const r = await fetch('/api/twilio-reset-flow')
             const d = await r.json()
-            if (!r.ok) throw new Error(d.error||'Failed')
-            // Also update the canvas
-            const r2 = await fetch('/api/twilio-flow-template')
-            const d2 = await r2.json()
-            setNodes(d2.flow_nodes)
-            setEdges(d2.flow_edges)
-            setFlowName(d2.name)
-            setSelected(null)
-            setDirty(false)
-            setDbStatus('ok')
-            const agentNote = d.agents > 0 ? ' with '+d.agents+' agent'+(d.agents>1?'s':'')+' in Ring All' : ' — add agents to Ring All node'
-            toast('✅ Flow saved and live' + agentNote)
-          } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
-        }} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--brand)',background:'rgba(204,34,0,.07)',color:'var(--brand)',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:ff}}>📋 Load &amp; Save Template</button>
+            if (!r.ok || !d.ok) throw new Error(d.error || 'Save failed — check Vercel logs')
+            // Load the saved flow onto canvas
+            const fn = d.flow_nodes || []
+            const fe = d.flow_edges || []
+            if (fn.length) {
+              setNodes(fn)
+              setEdges(fe)
+              setFlowName(d.name || 'Target Team — Main Call Flow')
+              setSelected(null)
+              setDirty(false)
+              setDbStatus('ok')
+            }
+            const agentMsg = d.agents_in_ringall > 0
+              ? d.agents_in_ringall + ' agent' + (d.agents_in_ringall > 1 ? 's' : '') + ' in Ring All'
+              : '⚠️ No agents have a phone number — add phone numbers in Settings → Profile'
+            toast('✅ Flow live! ' + agentMsg)
+          } catch(e) { toast('❌ ' + e.message, '#DC2626') }
+        }} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--brand)',background:'rgba(204,34,0,.07)',color:'var(--brand)',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:ff}}>📋 Reset to Template</button>
         <button onClick={toggleFullscreen} title={fullscreen?'Exit fullscreen (F11 or Ctrl+F)':'Fullscreen — see entire flow (F11 or Ctrl+F)'} style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:fullscreen?'var(--brand)':'var(--inp)',color:fullscreen?'#fff':'var(--text)',fontSize:14,cursor:'pointer',fontFamily:ff}}>{fullscreen?'⊡':'⛶'}</button>
         <button onClick={saveFlow} disabled={saving} style={{padding:'6px 16px',borderRadius:8,border:'none',background:dirty?'#CC2200':'#1B2B4B',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:ff,opacity:saving?.7:1}}>
           {saving?'⏳ Saving...':'💾 Save Flow'}

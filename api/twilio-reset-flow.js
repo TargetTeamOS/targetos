@@ -88,6 +88,9 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       ok:           true,
       saved_id:     savedId,
+      name:         'Target Team — Main Call Flow',
+      flow_nodes:   nodes,
+      flow_edges:   edges,
       nodes:        nodes.length,
       edges:        edges.length,
       agents_in_ringall: agentsWithPhone.length,
