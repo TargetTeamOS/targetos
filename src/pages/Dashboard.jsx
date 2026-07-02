@@ -177,19 +177,58 @@ const DISPLAY_MODES = [
   { id:'donut', label:'Status donut', icon:'🍩', desc:'Pie chart by status' },
 ]
 
-const DATE_RANGES = [
-  { id:'all',       label:'All time' },
-  { id:'today',     label:'Today' },
-  { id:'week',      label:'This week' },
-  { id:'month',     label:'This month' },
-  { id:'quarter',   label:'This quarter' },
-  { id:'year',      label:'This year' },
-  { id:'2026',       label:'2026' },
-  { id:'2025',       label:'2025' },
-  { id:'2024',       label:'2024' },
-  { id:'2023',       label:'2023' },
-  { id:'2022',       label:'2022' },
+const DATE_RANGES_BASE = [
+  { id:'all',     label:'All time' },
+  { id:'today',   label:'Today' },
+  { id:'week',    label:'This week' },
+  { id:'month',   label:'This month' },
+  { id:'quarter', label:'This quarter' },
+  { id:'year',    label:'This year' },
 ]
+
+// Dynamically built — populated at app load from actual DB data
+let DATE_RANGES = [...DATE_RANGES_BASE]
+
+// Call once on app init — detects all years present in deals + contacts
+async function loadAvailableYears(supabaseClient) {
+  try {
+    // Pull earliest and latest deal year
+    const { data: dealYears } = await supabaseClient
+      .from('deals')
+      .select('ao_date, close_date, created_at')
+      .not('ao_date', 'is', null)
+      .order('ao_date', { ascending: true })
+      .limit(1)
+    const { data: dealYearsMax } = await supabaseClient
+      .from('deals')
+      .select('ao_date, close_date, created_at')
+      .not('ao_date', 'is', null)
+      .order('ao_date', { ascending: false })
+      .limit(1)
+
+    const minYear = dealYears?.[0]?.ao_date
+      ? parseInt(dealYears[0].ao_date.slice(0,4))
+      : new Date().getFullYear()
+    const maxYear = dealYearsMax?.[0]?.ao_date
+      ? parseInt(dealYearsMax[0].ao_date.slice(0,4))
+      : new Date().getFullYear()
+    const currentYear = new Date().getFullYear()
+    const finalMax = Math.max(maxYear, currentYear)
+
+    const years = []
+    for (let y = finalMax; y >= Math.min(minYear, finalMax - 1); y--) {
+      years.push({ id: String(y), label: String(y) })
+    }
+    DATE_RANGES = [...DATE_RANGES_BASE, ...years]
+    return years
+  } catch(e) {
+    console.warn('loadAvailableYears:', e.message)
+    // Fallback: last 5 years
+    const cur = new Date().getFullYear()
+    DATE_RANGES = [...DATE_RANGES_BASE, ...Array.from({length:5},(_,i)=>({ id:String(cur-i), label:String(cur-i) }))]
+    return []
+  }
+}
 
 function getDateRange(rangeId) {
   const now = new Date()
@@ -199,7 +238,6 @@ function getDateRange(rangeId) {
   if (rangeId === 'month')   { const d = new Date(now); d.setMonth(d.getMonth() - 1); return { from: d.toISOString().slice(0,10), to: today } }
   if (rangeId === 'quarter') { const d = new Date(now); d.setMonth(d.getMonth() - 3); return { from: d.toISOString().slice(0,10), to: today } }
   if (rangeId === 'year')    return { from: now.getFullYear() + '-01-01', to: today }
-  // Specific year (e.g. '2025', '2024')
   if (/^\d{4}$/.test(rangeId)) return { from: rangeId + '-01-01', to: rangeId + '-12-31' }
   return null
 }
@@ -207,6 +245,14 @@ function getDateRange(rangeId) {
 // ── CUSTOM WIDGET BUILDER ────────────────────────────────────────
 function CustomWidgetBuilder({ onSave, onClose, agents }) {
   const [step,       setStep]      = useState(1)
+  const [availYears, setAvailYears] = useState(DATE_RANGES)
+
+  // Load years fresh when widget builder opens
+  React.useEffect(() => {
+    loadAvailableYears(supabase).then(() => {
+      setAvailYears([...DATE_RANGES])
+    }).catch(() => setAvailYears([...DATE_RANGES]))
+  }, [])
   const [board,      setBoard]     = useState(null)
   const [statuses,   setStatuses]  = useState([])
   const [extraVals,  setExtraVals] = useState({})  // {field: [values]}
@@ -362,7 +408,7 @@ function CustomWidgetBuilder({ onSave, onClose, agents }) {
               <div>
                 <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Date Range</div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                  {DATE_RANGES.map(function(dr) {
+                  {availYears.map(function(dr) {
                     const on = dateRange === dr.id
                     return (
                       <div key={dr.id} onClick={function(){setDateRange(dr.id)}}
@@ -1293,6 +1339,11 @@ export function Dashboard() {
   const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
   const year = new Date().getFullYear().toString()
+
+  // Load available years from DB on mount — auto-detects 2015, 2016... whatever exists
+  React.useEffect(() => {
+    loadAvailableYears(supabase).catch(() => {})
+  }, [])
 
   // State
   const [data,         setData]         = useState({})
