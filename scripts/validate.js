@@ -117,6 +117,8 @@ if (failures.length) {
   console.log('\n  Fix all failures before pushing.\n')
   process.exit(1)
 } else {
+
+
   console.log('\n  ✅ ALL CHECKS PASSED — safe to deploy\n')
   console.log('  Deploy commands:')
   console.log('    npm run build')
