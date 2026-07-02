@@ -159,27 +159,59 @@ module.exports = async function handler(req, res) {
     agents_loaded: agentList.map(a => ({ id: a.id, name: a.name, phone: a.phone })),
   }
 
-  // ── POST: also SAVE directly to phone_ivr ─────────────────────
+  // ── POST: SAVE directly to phone_ivr ────────────────────────────
   if (req.method === 'POST' && supabase) {
     try {
       const payload = {
         name:       template.name,
-        flow_nodes: nodes,
-        flow_edges: edges,
+        flow_nodes: JSON.stringify(nodes),
+        flow_edges: JSON.stringify(edges),
         is_active:  true,
         updated_at: new Date().toISOString(),
       }
-      const { data: existing } = await supabase.from('phone_ivr').select('id').limit(1).maybeSingle()
-      if (existing?.id) {
-        await supabase.from('phone_ivr').update(payload).eq('id', existing.id)
-        return res.status(200).json({ ok: true, saved: true, id: existing.id, agents: agentList.length, message: 'Flow saved to database' })
-      } else {
-        const { data: ins, error } = await supabase.from('phone_ivr').insert({ ...payload, voicemail_extension: '9', created_at: new Date().toISOString() }).select().single()
-        if (error) throw error
-        return res.status(200).json({ ok: true, saved: true, id: ins?.id, agents: agentList.length, message: 'Flow created in database' })
+
+      // Try to find existing row
+      const { data: existing, error: selErr } = await supabase
+        .from('phone_ivr').select('id,flow_nodes').limit(1).maybeSingle()
+
+      if (selErr && selErr.message && selErr.message.includes('flow_nodes')) {
+        // Column doesn't exist yet
+        return res.status(500).json({
+          error: 'Missing DB columns',
+          fix: 'Run this SQL in Supabase SQL Editor, then try again:',
+          sql: [
+            'alter table phone_ivr add column if not exists flow_nodes jsonb;',
+            'alter table phone_ivr add column if not exists flow_edges jsonb;',
+            'alter table phone_ivr add column if not exists is_active boolean default true;',
+          ]
+        })
       }
+
+      let savedId = null
+      if (existing?.id) {
+        const { error: upErr } = await supabase.from('phone_ivr').update(payload).eq('id', existing.id)
+        if (upErr) throw upErr
+        savedId = existing.id
+      } else {
+        const { data: ins, error: insErr } = await supabase.from('phone_ivr')
+          .insert({ ...payload, voicemail_extension: '9', created_at: new Date().toISOString() })
+          .select().single()
+        if (insErr) throw insErr
+        savedId = ins?.id
+      }
+
+      return res.status(200).json({
+        ok: true,
+        saved: true,
+        id: savedId,
+        agents: agentList.length,
+        agent_names: agentList.map(a => a.name),
+        nodes: nodes.length,
+        edges: edges.length,
+        message: 'Flow saved — ' + nodes.length + ' nodes, ' + agentList.length + ' agent' + (agentList.length !== 1 ? 's' : '') + ' in Ring All',
+      })
     } catch(e) {
-      return res.status(500).json({ error: e.message })
+      return res.status(500).json({ error: e.message, detail: 'Check that phone_ivr table has flow_nodes, flow_edges, and is_active columns' })
     }
   }
 
