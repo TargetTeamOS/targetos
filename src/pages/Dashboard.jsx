@@ -246,13 +246,6 @@ function getDateRange(rangeId) {
 function CustomWidgetBuilder({ onSave, onClose, agents }) {
   const [step,       setStep]      = useState(1)
   const [availYears, setAvailYears] = useState(DATE_RANGES)
-
-  // Load years fresh when widget builder opens
-  React.useEffect(() => {
-    loadAvailableYears(supabase).then(() => {
-      setAvailYears([...DATE_RANGES])
-    }).catch(() => setAvailYears([...DATE_RANGES]))
-  }, [])
   const [board,      setBoard]     = useState(null)
   const [statuses,   setStatuses]  = useState([])
   const [extraVals,  setExtraVals] = useState({})  // {field: [values]}
@@ -266,6 +259,13 @@ function CustomWidgetBuilder({ onSave, onClose, agents }) {
   const [limitRows,  setLimitRows] = useState(10)
   const [liveCount,  setLiveCount] = useState(null)
   const [loadingCnt, setLoadingCnt]= useState(false)
+
+  // Load years fresh when widget builder opens — AFTER all useState declarations
+  React.useEffect(() => {
+    loadAvailableYears(supabase).then(() => {
+      setAvailYears([...DATE_RANGES])
+    }).catch(() => setAvailYears([...DATE_RANGES]))
+  }, [])
 
   const boardDef = BOARD_OPTIONS.find(b => b.id === board)
 
