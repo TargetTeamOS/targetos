@@ -1,100 +1,67 @@
-// TargetOS V2 — Twilio Inbound Call Handler
-// - Every call gets recorded (Twilio <Record> or <Dial record="...">)
-// - New number → create Contact + activity log
-// - Known number → update Contact timeline
-// - If a visual flow is saved → walks it node by node (shared logic in _lib/call-flow.js)
-// - If no flow → sensible fallback greeting + voicemail
+// TargetOS V2 — Inbound Call Handler
+// Every inbound call hits this endpoint first.
+// 1. Identify caller from CRM contacts
+// 2. Create contact if new number  
+// 3. Log the call to the calls table
+// 4. Walk the visual call flow from phone_ivr
+// 5. Fall back to simple voicemail if no flow configured
 'use strict'
 
-const querystring = require('querystring')
-const { walkFlow, wrap, say } = require('./_lib/call-flow')
+const {
+  wrap, say, voicemailTwiml, getSupabase,
+  parseBody, normalizePhone, formatPhone, loadFlow, lookupContact,
+} = require('./_lib/phone')
+const { walkFlow } = require('./_lib/call-flow')
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
-  if (!url || !key) return null
-  return require('@supabase/supabase-js').createClient(url, key)
-}
-
-function getRawBody(req) {
-  return new Promise((resolve, reject) => {
-    let d = ''; req.on('data', c => d += c); req.on('end', () => resolve(d)); req.on('error', reject)
-  })
-}
-
-// Parse jsonb that may come back as a string
-function parseJ(v) {
-  if (!v) return null
-  if (typeof v === 'string') { try { return JSON.parse(v) } catch(e) { return null } }
-  return v
-}
-
-function fmtPhone(p) {
-  const d = (p||'').replace(/\D/g,'').slice(-10)
-  return d.length===10 ? '('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6) : p
-}
-
-// ── MAIN HANDLER ─────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
-  // Global safety net — Twilio treats any non-200 response or invalid TwiML as a hangup.
-  // We catch ALL errors here and return valid TwiML with a friendly error message.
-  process.on('unhandledRejection', () => {}) // prevent Vercel from crashing on unhandled rejections
-  if (req.method !== 'POST') return res.status(405).send(wrap(say('Method not allowed.')))
 
-  let body = {}
-  try { body = querystring.parse(await getRawBody(req)) } catch(e) { body = req.body || {} }
+  // Twilio always uses POST for webhooks
+  if (req.method !== 'POST') {
+    return res.status(405).send(wrap(say('Method not allowed.')))
+  }
 
-  const from    = body.From    || ''
-  const to      = body.To      || ''
-  const callSid = body.CallSid || ''
-  const clean10 = from.replace(/\D/g,'').slice(-10)
+  const body     = await parseBody(req)
+  const from     = body.From     || ''
+  const to       = body.To       || ''
+  const callSid  = body.CallSid  || ''
+  const digits10 = from.replace(/\D/g, '').slice(-10)
 
-  console.info('[twilio-inbound] Call from:', from.slice(-4), 'to:', to, 'sid:', callSid.slice(0,10))
+  console.info('[inbound] from=' + from.slice(-4) + ' sid=' + callSid.slice(0, 10))
 
   const supabase = getSupabase()
 
+  // ── NO SUPABASE: bare-minimum voicemail ──────────────────────
   if (!supabase) {
-    console.error('Supabase not configured — check SUPABASE_URL and SUPABASE_SERVICE_KEY env vars')
+    console.error('[inbound] Supabase not configured')
     return res.send(wrap(
       say('Thank you for calling Target Team. Please leave a message after the tone.') +
-      '<Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />'
+      voicemailTwiml()
     ))
   }
 
-  // ── STEP 1: Identify the caller ─────────────────────────────
-  let contact = null
-  let callId  = null
+  // ── 1. IDENTIFY CALLER ───────────────────────────────────────
+  let contact = await lookupContact(supabase, from)
 
-  try {
-    const cRes = await supabase.from('contacts')
-      .select('id, first_name, last_name, phone, agent_id, status')
-      .or('phone.ilike.%' + clean10 + '%')
-      .limit(1)
-      .maybeSingle()
-    contact = cRes.data || null
-    console.info('[twilio-inbound] Contact:', contact ? contact.first_name + ' ' + contact.last_name : 'unknown')
-  } catch(e) { console.warn('contact lookup:', e.message) }
-
-  // ── STEP 2: Create contact if new number ────────────────────
-  if (!contact && clean10.length >= 10) {
+  // ── 2. CREATE CONTACT IF NEW ─────────────────────────────────
+  if (!contact && digits10.length === 10) {
     try {
-      const { data: newContact } = await supabase.from('contacts').insert({
-        first_name:  'Unknown',
-        last_name:   'Caller',
-        phone:       fmtPhone(from),
-        source:      'Inbound Call',
-        status:      'New',
-        notes:       'Auto-created from inbound call. Called on ' + new Date().toLocaleDateString('en-US') + '.',
-        created_at:  new Date().toISOString(),
-        updated_at:  new Date().toISOString(),
+      const { data: nc } = await supabase.from('contacts').insert({
+        first_name: 'Unknown',
+        last_name:  'Caller',
+        phone:      formatPhone(from),
+        source:     'Inbound Call',
+        status:     'New',
+        notes:      'Auto-created from inbound call on ' + new Date().toLocaleDateString('en-US') + '.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       }).select().single()
-      contact = newContact
-      console.info('[twilio-inbound] New contact created:', newContact?.id)
-    } catch(e) { console.warn('create contact:', e.message) }
+      contact = nc || null
+    } catch(e) { console.warn('[inbound] create contact:', e.message) }
   }
 
-  // ── STEP 3: Log the call (linked to contact) ─────────────────
+  // ── 3. LOG CALL ──────────────────────────────────────────────
+  let callId = null
   try {
     const { data: callRow } = await supabase.from('calls').insert({
       twilio_call_sid: callSid,
@@ -102,80 +69,60 @@ module.exports = async function handler(req, res) {
       to_number:       to,
       direction:       'Inbound',
       status:          'in-progress',
-      contact_id:      contact?.id || null,
-      contact_name:    contact ? (contact.first_name + ' ' + contact.last_name).trim() : fmtPhone(from),
+      contact_id:      contact?.id    || null,
+      contact_name:    contact
+        ? [contact.first_name, contact.last_name].filter(Boolean).join(' ')
+        : formatPhone(from),
       agent_id:        contact?.agent_id || null,
       called_at:       new Date().toISOString(),
-    }).select().single()
+    }).select('id').single()
     callId = callRow?.id || null
-    console.info('[twilio-inbound] Call logged:', callId)
-  } catch(e) { console.warn('log call:', e.message) }
+  } catch(e) { console.warn('[inbound] log call:', e.message) }
 
-  // ── STEP 4: Add activity to contact timeline ─────────────────
+  // ── 4. LOG TO CONTACT TIMELINE ───────────────────────────────
   if (contact?.id) {
-    try {
-      await supabase.from('activity_log').insert({
-        table_name:   'contacts',
-        record_id:    contact.id,
-        action:       'call_inbound',
-        agent_id:     contact.agent_id || null,
-        metadata:     JSON.stringify({
-          call_sid:    callSid,
-          from_number: from,
-          call_id:     callId,
-          direction:   'Inbound',
-        }),
-        created_at:   new Date().toISOString(),
-      })
-    } catch(e) { console.warn('activity log:', e.message) }
+    supabase.from('activity_log').insert({
+      table_name:  'contacts',
+      record_id:   contact.id,
+      action:      'call_inbound',
+      agent_id:    contact.agent_id || null,
+      metadata:    { call_sid: callSid, from_number: from, call_id: callId },
+      created_at:  new Date().toISOString(),
+    }).catch(e => console.warn('[inbound] activity log:', e.message))
   }
 
-  // ── STEP 5: Check if repeat caller ───────────────────────────
+  // ── 5. CHECK REPEAT CALLER ───────────────────────────────────
   let isRepeat = false
   try {
-    const rr = await supabase.from('calls').select('id').eq('from_number', from).limit(3)
-    isRepeat = (rr.data || []).length > 1
-  } catch(e) {}
+    const { data: prev } = await supabase
+      .from('calls').select('id', { count: 'exact', head: true })
+      .eq('from_number', from).eq('direction', 'Inbound')
+    isRepeat = (prev?.length || 0) > 1
+  } catch {}
 
   const callData = { from, to, callSid, callId, contact, isRepeat }
 
-  // ── STEP 6: Load and walk the visual call flow ────────────────
+  // ── 6. WALK CALL FLOW ────────────────────────────────────────
   try {
-    // Outer safety net: if anything catastrophic happens, speak an error instead of silent hangup
-    let flowRow = null
-    const ar = await supabase.from('phone_ivr').select('*').eq('is_active', true).limit(1).maybeSingle()
-    flowRow = ar.data
-    if (!flowRow) {
-      const br = await supabase.from('phone_ivr').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle()
-      flowRow = br.data
-    }
+    const { nodes, edges } = await loadFlow(supabase)
 
-    if (flowRow) {
-      const flowNodes = parseJ(flowRow.flow_nodes) || []
-      const flowEdges = parseJ(flowRow.flow_edges) || []
-    
-      if (flowNodes.length >= 1) {
-        const startNode = flowNodes.find(n => n.type === 'incoming')
-        if (startNode) {
-          const twiml = await walkFlow(flowNodes, flowEdges, startNode.id, callData, supabase, 0)
-                  return res.send(wrap(twiml))
-        }
-            } else {
-        console.log('flow_nodes is empty or null — columns may not exist. Run SQL to add them.')
+    if (nodes.length > 0) {
+      const startNode = nodes.find(n => n.type === 'incoming')
+      if (startNode) {
+        const twiml = await walkFlow(nodes, edges, startNode.id, callData, supabase, 0)
+        return res.send(wrap(twiml))
       }
+      console.warn('[inbound] Flow found but no incoming node')
     } else {
-        }
+      console.warn('[inbound] No flow in phone_ivr — using fallback voicemail')
+    }
   } catch(e) {
-    console.error('Flow error:', e.message, e.stack)
+    console.error('[inbound] walkFlow error:', e.message, e.stack)
   }
 
-  // ── FALLBACK: No flow configured ─────────────────────────────
-  const greeting = contact
-    ? say('Thank you for calling Target Team. Please leave your name and message after the tone.')
-    : say('Thank you for calling Target Team. Please leave your name, phone number, and a brief message after the tone.')
-
+  // ── 7. FALLBACK VOICEMAIL ─────────────────────────────────────
   return res.send(wrap(
-    greeting +
-    '<Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />'
+    say('Thank you for calling Target Team. Please leave your name, phone number, and a brief message after the tone and one of our agents will return your call.') +
+    voicemailTwiml()
   ))
 }

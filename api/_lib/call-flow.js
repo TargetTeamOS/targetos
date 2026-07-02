@@ -1,306 +1,343 @@
-// TargetOS V2 — Shared Call Flow Walker
-// Single source of truth for walking the visual call flow graph.
-// Used by both twilio-inbound.js and twilio-menu.js — never drift out of sync.
+// TargetOS V2 — Call Flow Walker
+// Walks the visual flow graph node by node, producing TwiML.
+// Used by twilio-inbound.js (start of call) and twilio-menu.js (after keypress).
 'use strict'
 
-const wrap  = xml => '<?xml version="1.0" encoding="UTF-8"?><Response>' + xml + '</Response>'
-const say   = (t, voice) => '<Say voice="' + (voice || 'Polly.Joanna') + '">' + (t||'') + '</Say>'
-const vmXml = (greeting, voice, maxLen) =>
-  say(greeting || 'Please leave your message after the tone.', voice) +
-  '<Record maxLength="' + (maxLen||120) + '" transcribe="true" transcribeCallback="/api/twilio-voicemail" />'
+const {
+  wrap, say, pause, play, record, voicemailTwiml, redirect, hangup,
+  sanitize, normalizePhone, isBusinessHours, HOLD_MUSIC,
+} = require('./phone')
 
 const BASE = 'https://app.targetreteam.com'
 
-// ── WALK FLOW ────────────────────────────────────────────────────
 async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
-  if (depth > 20) return say('An error occurred. Please call back.')
+  if (depth > 25) {
+    console.error('[walkFlow] Depth limit reached at node', nodeId)
+    return say('An error occurred in the call flow. Goodbye.')
+  }
+
   const node = nodes.find(n => n.id === nodeId)
-  if (!node) return say('Flow configuration error. Goodbye.')
+  if (!node) {
+    console.error('[walkFlow] Node not found:', nodeId)
+    return say('Flow configuration error. Goodbye.')
+  }
+
   const cfg = node.config || {}
-  let twiml = '', nextEdge = null
+  const voice = cfg.voice || 'Polly.Joanna'
 
-  // ── INCOMING ────────────────────────────────────────────────────
+  function next(port) {
+    const edge = edges.find(e => e.from === nodeId && e.port === (port || 'out'))
+    if (!edge) return null
+    return walkFlow(nodes, edges, edge.to, callData, supabase, depth + 1)
+  }
+
+  // ── INCOMING ──────────────────────────────────────────────────
   if (node.type === 'incoming') {
-    nextEdge = edges.find(e => e.from === nodeId)
-    if (nextEdge) return await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth+1)
-    return say('No flow steps configured.')
+    const edge = edges.find(e => e.from === nodeId)
+    if (edge) return walkFlow(nodes, edges, edge.to, callData, supabase, depth + 1)
+    return say('No flow steps connected. Please contact the office directly.')
   }
 
-  // ── HANGUP ──────────────────────────────────────────────────────
-  if (node.type === 'hangup') return '<Hangup />'
+  // ── HANGUP ────────────────────────────────────────────────────
+  if (node.type === 'hangup') {
+    return say('Thank you for calling Target Team. Goodbye.', voice) + hangup()
+  }
 
-  // ── GREETING ────────────────────────────────────────────────────
+  // ── GREETING ──────────────────────────────────────────────────
   if (node.type === 'greeting') {
-    twiml += say(cfg.text || 'Thank you for calling.', cfg.voice)
-    nextEdge = edges.find(e => e.from === nodeId && e.port === 'out')
-    if (nextEdge) twiml += await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth+1)
+    let twiml = say(cfg.text || 'Thank you for calling.', voice)
+    const rest = await next('out')
+    if (rest) twiml += rest
     return twiml
   }
 
-  // ── HOLD ────────────────────────────────────────────────────────
+  // ── HOLD MUSIC ────────────────────────────────────────────────
   if (node.type === 'hold') {
-    const HOLDURLS = {
-      classical: 'https://demo.twilio.com/docs/classic.mp3',
-      jazz:      'https://demo.twilio.com/docs/jazz.mp3',
-      pop:       'http://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP-Borghestral.mp3',
-      silence:   'https://demo.twilio.com/docs/silence.mp3',
-    }
-    if (cfg.say_first) twiml += say(cfg.say_first, cfg.voice || 'Polly.Joanna')
-    const musicUrl = cfg.music === 'custom' ? (cfg.custom_url||'') : (HOLDURLS[cfg.music||'classical']||'')
-    if (musicUrl) twiml += '<Play loop="' + Math.max(1, Math.ceil((cfg.duration||30)/30)) + '">' + musicUrl + '</Play>'
-    else twiml += '<Pause length="' + (cfg.duration||30) + '" />'
-    nextEdge = edges.find(e => e.from === nodeId && e.port === 'out')
-    if (nextEdge) twiml += await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth+1)
+    let twiml = ''
+    if (cfg.say_first) twiml += say(cfg.say_first, voice)
+    const musicUrl = cfg.music === 'custom'
+      ? (cfg.custom_url || '')
+      : (HOLD_MUSIC[cfg.music || 'classical'] || '')
+    const loops = Math.max(1, Math.ceil((cfg.duration || 30) / 30))
+    twiml += musicUrl ? play(musicUrl, loops) : pause(cfg.duration || 30)
+    const rest = await next('out')
+    if (rest) twiml += rest
     return twiml
   }
 
-  // ── AUDIO ────────────────────────────────────────────────────────
+  // ── AUDIO FILE ────────────────────────────────────────────────
   if (node.type === 'audio') {
-    if (cfg.say_first) twiml += say(cfg.say_first, cfg.voice || 'Polly.Joanna')
-    if (cfg.url) twiml += '<Play loop="' + (cfg.loop||1) + '">' + cfg.url + '</Play>'
-    nextEdge = edges.find(e => e.from === nodeId && e.port === 'out')
-    if (nextEdge) twiml += await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth+1)
+    let twiml = ''
+    if (cfg.say_first) twiml += say(cfg.say_first, voice)
+    if (cfg.url) twiml += play(cfg.url, cfg.loop || 1)
+    const rest = await next('out')
+    if (rest) twiml += rest
     return twiml
   }
 
-  // ── MENU ─────────────────────────────────────────────────────────
+  // ── MENU ──────────────────────────────────────────────────────
   if (node.type === 'menu') {
-    // Deduplicate option keys — if two options share a key, keep the last one
-    const seenKeys = new Set()
+    // Deduplicate option keys — last definition wins
+    const seen = new Set()
     const opts = []
-    for (let i = (cfg.options||[]).length - 1; i >= 0; i--) {
+    for (let i = (cfg.options || []).length - 1; i >= 0; i--) {
       const o = cfg.options[i]
-      if (!seenKeys.has(String(o.key))) { opts.unshift(o); seenKeys.add(String(o.key)) }
+      const k = String(o.key)
+      if (!seen.has(k)) { opts.unshift(o); seen.add(k) }
     }
-    if (opts.length !== (cfg.options||[]).length) {
-      console.warn('[call-flow] Menu "' + nodeId + '" had duplicate keys — deduplicated')
+    if (opts.length !== (cfg.options || []).length) {
+      console.warn('[walkFlow] Duplicate menu keys in node', nodeId, '— deduplicated')
     }
 
-    // ACTION URL: only pass the menuNodeId (short string).
-    // twilio-menu.js reloads the full flow from phone_ivr on every keypress.
-    // This avoids all URL-length issues — no context embedding needed at all.
+    // Pass only the node ID — menu handler reloads the flow from DB
     const actionUrl = BASE + '/api/twilio-menu?menuNodeId=' + encodeURIComponent(nodeId)
 
-    twiml += '<Gather numDigits="1" action="' + actionUrl + '" method="POST" timeout="' + (cfg.timeout||10) + '">'
-    twiml += say(cfg.text || 'Please make a selection.', cfg.voice)
-    twiml += '</Gather>'
-    twiml += say('We did not receive your selection. Goodbye.', cfg.voice)
-    return twiml
+    return (
+      '<Gather numDigits="1" action="' + actionUrl + '" method="POST" timeout="' + (cfg.timeout || 10) + '">' +
+        say(cfg.text || 'Please make a selection.', voice) +
+      '</Gather>' +
+      say('We did not receive your input. Goodbye.', voice) +
+      hangup()
+    )
   }
 
-  // ── LANGUAGE ─────────────────────────────────────────────────────
+  // ── LANGUAGE SELECT ───────────────────────────────────────────
   if (node.type === 'language') {
     const actionUrl = BASE + '/api/twilio-menu?menuNodeId=' + encodeURIComponent(nodeId)
-    twiml += '<Gather numDigits="1" action="' + actionUrl + '" method="POST" timeout="' + (cfg.timeout||10) + '">'
-    twiml += say(cfg.prompt || 'For English press 1.', cfg.voice)
-    twiml += '</Gather>'
-    twiml += say('We did not receive your selection. Goodbye.', cfg.voice)
-    return twiml
+    return (
+      '<Gather numDigits="1" action="' + actionUrl + '" method="POST" timeout="' + (cfg.timeout || 10) + '">' +
+        say(cfg.prompt || 'For English press 1.', voice) +
+      '</Gather>' +
+      say('We did not receive your input. Goodbye.', voice) +
+      hangup()
+    )
   }
 
-  // ── CONDITION ────────────────────────────────────────────────────
+  // ── CONDITION ─────────────────────────────────────────────────
   if (node.type === 'condition') {
     let result = false
-    if (cfg.condition === 'known_contact')  result = !!callData.contact
-    if (cfg.condition === 'has_agent')      result = !!(callData.contact && callData.contact.agent_id)
-    if (cfg.condition === 'repeat_caller')  result = !!callData.isRepeat
-    if (cfg.condition === 'business_hours') result = isBusinessHours()
-    if (cfg.condition === 'after_hours')    result = !isBusinessHours()
-    const port = result ? 'yes' : 'no'
-    nextEdge = edges.find(e => e.from === nodeId && e.port === port)
-    if (nextEdge) return await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth+1)
-    return say('Goodbye.')
+    switch (cfg.condition) {
+      case 'known_contact':  result = !!callData.contact; break
+      case 'has_agent':      result = !!(callData.contact?.agent_id); break
+      case 'repeat_caller':  result = !!callData.isRepeat; break
+      case 'business_hours': result = isBusinessHours(); break
+      case 'after_hours':    result = !isBusinessHours(); break
+      default:
+        console.warn('[walkFlow] Unknown condition:', cfg.condition)
+    }
+    const branch = result ? 'yes' : 'no'
+    const rest = await next(branch)
+    if (rest) return rest
+    return say('Goodbye.', voice) + hangup()
   }
 
-  // ── ASSIGNED AGENT ───────────────────────────────────────────────
+  // ── ASSIGNED AGENT ────────────────────────────────────────────
   if (node.type === 'assigned') {
-    let assignedAgent = null
-    if (callData.contact && callData.contact.agent_id && supabase) {
-      const ar = await supabase.from('agents').select('id,name,phone').eq('id', callData.contact.agent_id).maybeSingle()
-      if (ar.data && ar.data.phone) assignedAgent = ar.data
+    let twiml = ''
+    let agentAvailable = false
+
+    if (callData.contact?.agent_id && supabase) {
+      try {
+        const { data: ag } = await supabase
+          .from('agents').select('id, name, phone')
+          .eq('id', callData.contact.agent_id).maybeSingle()
+
+        if (ag?.phone) {
+          const phone = normalizePhone(ag.phone)
+          agentAvailable = true
+          twiml += '<Dial callerId="' + sanitize(callData.to) + '"' +
+            ' timeout="' + (cfg.timeout || 30) + '"' +
+            ' record="record-from-answer"' +
+            ' recordingStatusCallback="/api/twilio-status">' +
+            '<Number statusCallback="/api/twilio-status" statusCallbackMethod="POST">' +
+            phone + '</Number></Dial>'
+        }
+      } catch(e) { console.warn('[walkFlow] assigned agent lookup:', e.message) }
     }
-    if (assignedAgent) {
-      const phone = normalizePhone(assignedAgent.phone)
-      twiml += '<Dial callerId="' + callData.to + '" timeout="' + (cfg.timeout||30) + '" record="record-from-answer" recordingStatusCallback="/api/twilio-status">'
-      twiml += '<Number statusCallback="/api/twilio-status" statusCallbackMethod="POST">' + phone + '</Number>'
-      twiml += '</Dial>'
-    }
-    const nfEdge = edges.find(e => e.from === nodeId && e.port === 'notfound')
-    if (nfEdge) twiml += await walkFlow(nodes, edges, nfEdge.to, callData, supabase, depth+1)
-    else twiml += vmXml(assignedAgent ? 'Your agent is unavailable. Please leave a message.' : 'No agent is assigned. Please leave a message.')
+
+    // After Dial (agent didn't answer) or no agent found → notfound port
+    const nfRest = await next('notfound')
+    if (nfRest) twiml += nfRest
+    else twiml += voicemailTwiml(
+      agentAvailable
+        ? 'Your agent is currently unavailable. Please leave a message.'
+        : 'You do not have an assigned agent. Please leave a message after the tone.',
+      voice
+    )
     return twiml
   }
 
-  // ── DIAL ─────────────────────────────────────────────────────────
+  // ── DIRECT DIAL ───────────────────────────────────────────────
   if (node.type === 'dial') {
-    let dialTarget = null
+    let twiml = ''
+    let dialTarget = ''
+
     if (cfg.dial_type === 'number' && cfg.direct_number) {
       dialTarget = '<Number>' + normalizePhone(cfg.direct_number) + '</Number>'
     } else if (cfg.dial_type === 'sip' && cfg.sip_address) {
-      dialTarget = '<Sip>' + cfg.sip_address + '</Sip>'
+      dialTarget = '<Sip>' + sanitize(cfg.sip_address) + '</Sip>'
     } else if (cfg.agent_id && supabase) {
-      const agRes = await supabase.from('agents').select('phone').eq('id', cfg.agent_id).maybeSingle()
-      if (agRes.data?.phone) dialTarget = '<Number>' + normalizePhone(agRes.data.phone) + '</Number>'
+      try {
+        const { data: ag } = await supabase
+          .from('agents').select('phone').eq('id', cfg.agent_id).maybeSingle()
+        if (ag?.phone) dialTarget = '<Number>' + normalizePhone(ag.phone) + '</Number>'
+      } catch(e) { console.warn('[walkFlow] dial agent lookup:', e.message) }
     }
+
     if (dialTarget) {
-      twiml += '<Dial callerId="' + callData.to + '" timeout="' + (cfg.timeout||30) + '" record="record-from-answer" recordingStatusCallback="/api/twilio-status">'
-      twiml += dialTarget
-      twiml += '</Dial>'
+      twiml += '<Dial callerId="' + sanitize(callData.to) + '"' +
+        ' timeout="' + (cfg.timeout || 30) + '"' +
+        ' record="record-from-answer"' +
+        ' recordingStatusCallback="/api/twilio-status">' +
+        dialTarget + '</Dial>'
     }
-    const noAns = edges.find(e => e.from === nodeId && e.port === 'noanswer')
-    if (noAns) twiml += await walkFlow(nodes, edges, noAns.to, callData, supabase, depth+1)
-    else twiml += vmXml()
+
+    const noAnsRest = await next('noanswer')
+    if (noAnsRest) twiml += noAnsRest
+    else twiml += voicemailTwiml('That person is unavailable. Please leave a message after the tone.', voice)
     return twiml
   }
 
-  // ── ROUND ROBIN / RING ALL ───────────────────────────────────────
-  if (node.type === 'roundrobin' || node.type === 'ringall') {
+  // ── RING ALL / ROUND ROBIN ────────────────────────────────────
+  if (node.type === 'ringall' || node.type === 'roundrobin') {
     const agentIds = cfg.agent_ids || []
     const phones = []
+
     if (agentIds.length > 0 && supabase) {
-      for (const aid of agentIds) {
-        const agRes = await supabase.from('agents').select('phone').eq('id', aid).maybeSingle()
-        if (agRes.data?.phone) phones.push(normalizePhone(agRes.data.phone))
-      }
+      try {
+        // Single query for all agents
+        const { data: agList } = await supabase
+          .from('agents').select('id, phone').in('id', agentIds)
+        ;(agList || []).forEach(ag => {
+          if (ag.phone) phones.push(normalizePhone(ag.phone))
+        })
+      } catch(e) { console.warn('[walkFlow] ringall agent lookup:', e.message) }
     }
-    if (phones.length > 0) {
-      twiml += '<Dial callerId="' + callData.to + '" timeout="' + (cfg.timeout||30) + '" record="record-from-answer" recordingStatusCallback="/api/twilio-status">'
-      phones.forEach(p => { twiml += '<Number>' + p + '</Number>' })
-      twiml += '</Dial>'
-      const noAns = edges.find(e => e.from === nodeId && e.port === 'noanswer')
-      if (noAns) twiml += await walkFlow(nodes, edges, noAns.to, callData, supabase, depth+1)
-      else twiml += vmXml()
-    } else {
-      twiml += vmXml('All agents are currently unavailable. Please leave a message.')
+
+    if (phones.length === 0) {
+      console.warn('[walkFlow] ringall/roundrobin: no agent phones found for ids:', agentIds)
+      const noAnsRest = await next('noanswer')
+      if (noAnsRest) return noAnsRest
+      return voicemailTwiml(
+        'All agents are currently unavailable. Please leave your name and number after the tone and we will call you back.',
+        voice
+      )
     }
+
+    let twiml = '<Dial callerId="' + sanitize(callData.to) + '"' +
+      ' timeout="' + (cfg.timeout || 30) + '"' +
+      ' record="record-from-answer"' +
+      ' recordingStatusCallback="/api/twilio-status">'
+    phones.forEach(p => { twiml += '<Number>' + p + '</Number>' })
+    twiml += '</Dial>'
+
+    const noAnsRest = await next('noanswer')
+    if (noAnsRest) twiml += noAnsRest
+    else twiml += voicemailTwiml(
+      'All agents are currently unavailable. Please leave your name and number after the tone.',
+      voice
+    )
     return twiml
   }
 
-  // ── VOICEMAIL ────────────────────────────────────────────────────
+  // ── VOICEMAIL ─────────────────────────────────────────────────
   if (node.type === 'voicemail') {
     if (cfg.pin_enabled && cfg.pin) {
-      const vmCtx = encodeURIComponent(JSON.stringify({
-        greeting: cfg.text, voice: cfg.voice, pin: cfg.pin,
-        max_length: cfg.max_length||120, transcribe: cfg.transcribe!==false,
-        attempts: cfg.pin_attempts||3, attempt: 0,
+      const pinCtx = encodeURIComponent(JSON.stringify({
+        greeting:   cfg.text,
+        voice:      cfg.voice,
+        pin:        cfg.pin,
+        max_length: cfg.max_length || 120,
+        transcribe: cfg.transcribe !== false,
+        attempts:   cfg.pin_attempts || 3,
+        attempt:    0,
       }))
-      twiml += '<Gather numDigits="' + String(cfg.pin).length + '" action="/api/twilio-voicemail-access?ctx=' + vmCtx + '" method="POST" timeout="15">'
-      twiml += say('Please enter your ' + String(cfg.pin).length + '-digit voicemail PIN.', cfg.voice)
-      twiml += '</Gather>'
-      twiml += say('No PIN entered. Goodbye.', cfg.voice)
-    } else {
-      twiml += vmXml(cfg.text, cfg.voice, cfg.max_length)
+      const pinLen = String(cfg.pin).length
+      return (
+        '<Gather numDigits="' + pinLen + '"' +
+        ' action="/api/twilio-voicemail-access?ctx=' + pinCtx + '"' +
+        ' method="POST" timeout="15">' +
+          say('Please enter your ' + pinLen + '-digit voicemail PIN.', voice) +
+        '</Gather>' +
+        say('No PIN entered. Goodbye.', voice) + hangup()
+      )
     }
-    return twiml
+    return voicemailTwiml(cfg.text, voice, cfg.max_length || 120)
   }
 
-  // ── SAVE LEAD ────────────────────────────────────────────────────
+  // ── SAVE LEAD ─────────────────────────────────────────────────
   if (node.type === 'savelead') {
     if (supabase && callData.from && !callData.contact) {
       try {
         await supabase.from('contacts').insert({
-          first_name: 'Caller', last_name: '', phone: callData.from,
-          source: cfg.source || 'Inbound Call', status: 'New',
-          notes: 'Auto-created from inbound call.',
+          first_name: 'Unknown',
+          last_name:  'Caller',
+          phone:      callData.from,
+          source:     cfg.source || 'Inbound Call',
+          status:     'New',
+          notes:      'Auto-created from inbound call.',
           created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
-      } catch(e) { console.warn('savelead:', e.message) }
+      } catch(e) { console.warn('[walkFlow] savelead:', e.message) }
     }
-    nextEdge = edges.find(e => e.from === nodeId && e.port === 'out')
-    if (nextEdge) twiml += await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth+1)
-    return twiml
+    const rest = await next('out')
+    if (rest) return rest
+    return ''
   }
 
-  // ── SMS ──────────────────────────────────────────────────────────
+  // ── SEND SMS ──────────────────────────────────────────────────
   if (node.type === 'sms') {
-    if (supabase && callData.from) {
-      const SID = process.env.TWILIO_ACCOUNT_SID, TOK = process.env.TWILIO_AUTH_TOKEN, FROM = process.env.TWILIO_PHONE_NUMBER || callData.to
-      if (SID && TOK) {
-        const auth = Buffer.from(SID + ':' + TOK).toString('base64')
-        await fetch('https://api.twilio.com/2010-04-01/Accounts/' + SID + '/Messages.json', {
-          method: 'POST',
-          headers: { 'Authorization': 'Basic ' + auth, 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ To: callData.from, From: FROM, Body: cfg.text || 'Thank you for calling!' }).toString(),
-        }).catch(e => console.warn('sms:', e.message))
-      }
+    const SID  = process.env.TWILIO_ACCOUNT_SID
+    const TOK  = process.env.TWILIO_AUTH_TOKEN
+    const FROM = process.env.TWILIO_PHONE_NUMBER || callData.to
+    if (SID && TOK && callData.from) {
+      const auth = Buffer.from(SID + ':' + TOK).toString('base64')
+      fetch('https://api.twilio.com/2010-04-01/Accounts/' + SID + '/Messages.json', {
+        method:  'POST',
+        headers: { Authorization: 'Basic ' + auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    new URLSearchParams({ To: callData.from, From: FROM, Body: cfg.text || 'Thank you for calling!' }).toString(),
+      }).catch(e => console.warn('[walkFlow] sms send:', e.message))
     }
-    nextEdge = edges.find(e => e.from === nodeId && e.port === 'out')
-    if (nextEdge) twiml += await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth+1)
-    return twiml
+    const rest = await next('out')
+    if (rest) return rest
+    return ''
   }
 
-  // ── LISTINGS ─────────────────────────────────────────────────────
+  // ── CRM LISTINGS SEARCH ───────────────────────────────────────
   if (node.type === 'listings') {
-    const listUrl = BASE + '/api/twilio-listings?step=intro' +
-      '&voice=' + encodeURIComponent(cfg.voice || 'Polly.Joanna') +
-      '&max=' + (cfg.max_results||5) +
-      '&intro=' + encodeURIComponent(cfg.intro || 'Welcome to our exclusive listings search.')
-    twiml += '<Redirect method="GET">' + listUrl + '</Redirect>'
-    return twiml
+    const url = BASE + '/api/twilio-listings?step=intro' +
+      '&voice='  + encodeURIComponent(voice) +
+      '&max='    + (cfg.max_results || 5) +
+      '&intro='  + encodeURIComponent(cfg.intro || 'Welcome to our exclusive listings search.')
+    return redirect(url, 'GET')
   }
 
-  // ── MLS SEARCH ───────────────────────────────────────────────────
+  // ── LIVE MLS SEARCH ───────────────────────────────────────────
   if (node.type === 'mlssearch') {
-    const mlsUrl = BASE + '/api/twilio-mls-search?step=intro' +
-      '&voice=' + encodeURIComponent(cfg.voice || 'Polly.Joanna') +
-      '&max=' + (cfg.max_results||5) +
-      '&area=' + encodeURIComponent(cfg.area || '') +
-      '&intro=' + encodeURIComponent(cfg.intro || 'Welcome to our live MLS search.')
-    twiml += '<Redirect method="GET">' + mlsUrl + '</Redirect>'
-    return twiml
+    const url = BASE + '/api/twilio-mls-search?step=intro' +
+      '&voice='  + encodeURIComponent(voice) +
+      '&max='    + (cfg.max_results || 5) +
+      '&area='   + encodeURIComponent(cfg.area || '') +
+      '&intro='  + encodeURIComponent(cfg.intro || 'Welcome to our live MLS search.')
+    return redirect(url, 'GET')
   }
 
-  // ── AGENT DIRECTORY ──────────────────────────────────────────────
+  // ── AGENT DIRECTORY ───────────────────────────────────────────
   if (node.type === 'directory') {
-    const dirUrl = BASE + '/api/twilio-directory?step=announce' +
-      '&voice=' + encodeURIComponent(cfg.voice || 'Polly.Joanna') +
-      '&to=' + encodeURIComponent(callData.to || '')
-    twiml += '<Redirect method="GET">' + dirUrl + '</Redirect>'
-    return twiml
+    const url = BASE + '/api/twilio-directory?step=announce' +
+      '&voice=' + encodeURIComponent(voice) +
+      '&to='    + encodeURIComponent(callData.to || '')
+    return redirect(url, 'GET')
   }
 
-  // ── UNKNOWN NODE ─────────────────────────────────────────────────
-  console.warn('[call-flow] Unrecognized node type "' + node.type + '" at depth ' + depth)
-  nextEdge = edges.find(e => e.from === nodeId)
-  if (nextEdge) return await walkFlow(nodes, edges, nextEdge.to, callData, supabase, depth+1)
-  return say('Goodbye.')
+  // ── UNKNOWN ───────────────────────────────────────────────────
+  console.warn('[walkFlow] Unknown node type "' + node.type + '" id=' + nodeId)
+  const fallback = edges.find(e => e.from === nodeId)
+  if (fallback) return walkFlow(nodes, edges, fallback.to, callData, supabase, depth + 1)
+  return say('Goodbye.', voice) + hangup()
 }
 
-// ── HELPERS ──────────────────────────────────────────────────────
-function normalizePhone(p) {
-  const d = (p||'').replace(/[^0-9]/g, '')
-  return d.startsWith('1') && d.length === 11 ? '+' + d : d.length === 10 ? '+1' + d : p
-}
-
-function isBusinessHours() {
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone:'America/New_York', hour:'numeric', hour12:false })
-  const h = parseInt(fmt.format(new Date()), 10)
-  return h >= 9 && h < 18
-}
-
-function xmlEscape(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-}
-
-// Store flow context in DB so Gather action URL stays short
-async function storeMenuContext(supabase, ctx) {
-  if (!supabase) return null
-  try {
-    const { data, error } = await supabase
-      .from('call_flow_contexts')
-      .insert({ context: ctx, created_at: new Date().toISOString() })
-      .select('id').single()
-    if (error || !data) return null
-    return data.id
-  } catch(e) { return null }
-}
-
-async function loadMenuContext(supabase, ctxId) {
-  if (!supabase || !ctxId) return null
-  try {
-    const { data } = await supabase.from('call_flow_contexts').select('context').eq('id', ctxId).maybeSingle()
-    return data ? data.context : null
-  } catch(e) { return null }
-}
-
-module.exports = { walkFlow, wrap, say, vmXml, isBusinessHours, storeMenuContext, loadMenuContext }
+// Keep exporting wrap/say/vmXml for backward compat with any older imports
+const vmXml = voicemailTwiml
+module.exports = { walkFlow, wrap, say, vmXml, voicemailTwiml }
