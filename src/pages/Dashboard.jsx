@@ -1980,8 +1980,39 @@ export function Dashboard() {
     return null
   }
 
+  const [phoneFixed,  setPhoneFixed]  = useState(false)
+  const [phoneFixing, setPhoneFixing] = useState(false)
+  async function fixPhoneSystem() {
+    setPhoneFixing(true)
+    try {
+      const r = await fetch('/api/twilio-reset-flow')
+      const d = await r.json()
+      if (d.ok) {
+        setPhoneFixed(true)
+        toast('✅ Phone system saved! ' + (d.agents_in_ringall > 0 ? d.agents_in_ringall + ' agents in Ring All' : 'Add agent phone numbers in Settings → Profile'))
+      } else { toast('❌ ' + (d.error || 'Failed'), '#DC2626') }
+    } catch(e) { toast('❌ ' + e.message, '#DC2626') }
+    finally { setPhoneFixing(false) }
+  }
+
   return (
     <div style={{ fontFamily: ff }}>
+
+      {/* Phone setup banner */}
+      {!phoneFixed && (
+        <div style={{ background:'#1B2B4B', borderRadius:'var(--radius)', padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:12 }}>
+          <span style={{ fontSize:22, flexShrink:0 }}>📞</span>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:13, fontWeight:800, color:'#fff' }}>Save the Target Team call flow</div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.55)' }}>Click to make the phone system live with the correct menu flow.</div>
+          </div>
+          <button onClick={fixPhoneSystem} disabled={phoneFixing}
+            style={{ padding:'7px 16px', borderRadius:8, border:'none', background:'#CC2200', color:'#fff', fontSize:12, fontWeight:800, cursor:'pointer', fontFamily:ff, flexShrink:0, whiteSpace:'nowrap', opacity:phoneFixing?.7:1 }}>
+            {phoneFixing ? '⏳ Saving...' : '🔧 Fix Phone System'}
+          </button>
+          <button onClick={()=>setPhoneFixed(true)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.35)', fontSize:18, cursor:'pointer', flexShrink:0, lineHeight:1 }}>×</button>
+        </div>
+      )}
 
       {/* TOP BAR */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
