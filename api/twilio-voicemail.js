@@ -1,11 +1,6 @@
 'use strict'
 const querystring = require('querystring')
-function getSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
-  if (!url || !key) return null
-  return require('@supabase/supabase-js').createClient(url, key)
-}
+const { getSupabase } = require('./_lib/phone')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')

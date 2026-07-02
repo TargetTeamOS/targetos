@@ -555,6 +555,7 @@ export function CallFlow() {
         {dirty&&<div style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:20,background:'rgba(245,166,35,.12)',border:'1px solid rgba(245,166,35,.35)',fontSize:11,color:'#D97706',fontWeight:700}}>● Unsaved</div>}
         {!dirty&&dbStatus==='ok'&&<div style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:20,background:'rgba(16,185,129,.1)',border:'1px solid rgba(16,185,129,.3)',fontSize:11,color:'#10B981',fontWeight:700}}>● Live</div>}
         {dbStatus==='no_columns'&&<div style={{fontSize:11,color:'#D97706',background:'rgba(245,166,35,.1)',padding:'4px 10px',borderRadius:8,border:'1px solid rgba(245,166,35,.3)'}}>⚠️ Run SQL to add flow_nodes / flow_edges columns — see Settings</div>}
+        {(dbStatus==='empty'||!dbStatus)&&nodes.length<=1&&<div style={{fontSize:11,color:'#0EA5E9',background:'rgba(14,165,233,.1)',padding:'4px 10px',borderRadius:8,border:'1px solid rgba(14,165,233,.3)'}}>💡 No flow saved yet — click <strong>📋 Reset to Template</strong> to load and save the Target Team call flow</div>}
         <div style={{flex:1}} />
         <button onClick={()=>{if(window.confirm('Clear canvas?')){setNodes([{id:'start',type:'incoming',x:80,y:200,config:{}}]);setEdges([]);setSelected(null);setDirty(true)}}} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--muted)',fontSize:11,cursor:'pointer',fontFamily:ff}}>🗑 Clear</button>
         <button onClick={async ()=>{

@@ -3,12 +3,7 @@
 // Shows exactly what the IVR system sees — flow, agents, columns, etc.
 'use strict'
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
-  if (!url || !key) return null
-  return require('@supabase/supabase-js').createClient(url, key)
-}
+const { getSupabase } = require('./_lib/phone')
 
 function parseJ(v) {
   if (!v) return null

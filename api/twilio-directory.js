@@ -4,12 +4,7 @@
 'use strict'
 const querystring = require('querystring')
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
-  if (!url || !key) return null
-  return require('@supabase/supabase-js').createClient(url, key)
-}
+const { getSupabase } = require('./_lib/phone')
 
 const say  = (t, v) => '<Say voice="' + (v||'Polly.Joanna') + '">' + String(t||'') + '</Say>'
 const wrap = xml => '<?xml version="1.0" encoding="UTF-8"?><Response>' + xml + '</Response>'

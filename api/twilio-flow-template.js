@@ -3,12 +3,7 @@
 // Also handles POST to save the flow directly to phone_ivr.
 'use strict'
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
-  if (!url || !key) return null
-  return require('@supabase/supabase-js').createClient(url, key)
-}
+const { getSupabase } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')

@@ -14,12 +14,7 @@ function getRawBody(req) {
   })
 }
 
-function getSupabase() {
-  var url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  var key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
-  if (!url || !key) return null
-  return require('@supabase/supabase-js').createClient(url, key)
-}
+const { getSupabase } = require('./_lib/phone')
 
 var wrap = function(xml) { return '<?xml version="1.0" encoding="UTF-8"?><Response>' + xml + '</Response>' }
 var say  = function(t, voice) { return '<Say voice="' + (voice || 'Polly.Joanna') + '">' + t + '</Say>' }
