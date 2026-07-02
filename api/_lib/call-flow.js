@@ -75,25 +75,13 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
     if (opts.length !== (cfg.options||[]).length) {
       console.warn('[call-flow] Menu "' + nodeId + '" had duplicate keys — deduplicated')
     }
-    const cleanNode = { ...node, config: { ...cfg, options: opts } }
-    const ctxPayload = { nodes: nodes.map(n => n.id === nodeId ? cleanNode : n), edges, menuNodeId: nodeId }
-    const ctxId = await storeMenuContext(supabase, ctxPayload)
-    const ctxJson = JSON.stringify(ctxPayload)
-    const ctxEnc  = encodeURIComponent(ctxJson)
 
-    let actionUrl, extraFields = ''
-    if (ctxId) {
-      actionUrl = BASE + '/api/twilio-menu?ctxId=' + ctxId
-    } else if (ctxEnc.length <= 1800) {
-      actionUrl = BASE + '/api/twilio-menu?ctx=' + ctxEnc
-    } else {
-      // Flow too large for URL — embed context in POST body via <Parameter>
-      actionUrl = BASE + '/api/twilio-menu'
-      extraFields = '<Parameter name="ctx" value="' + xmlEscape(ctxJson) + '" />'
-    }
+    // ACTION URL: only pass the menuNodeId (short string).
+    // twilio-menu.js reloads the full flow from phone_ivr on every keypress.
+    // This avoids all URL-length issues — no context embedding needed at all.
+    const actionUrl = BASE + '/api/twilio-menu?menuNodeId=' + encodeURIComponent(nodeId)
 
     twiml += '<Gather numDigits="1" action="' + actionUrl + '" method="POST" timeout="' + (cfg.timeout||10) + '">'
-    if (extraFields) twiml += extraFields
     twiml += say(cfg.text || 'Please make a selection.', cfg.voice)
     twiml += '</Gather>'
     twiml += say('We did not receive your selection. Goodbye.', cfg.voice)
@@ -102,23 +90,8 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 
   // ── LANGUAGE ─────────────────────────────────────────────────────
   if (node.type === 'language') {
-    const ctxPayload = { nodes, edges, menuNodeId: nodeId }
-    const ctxId = await storeMenuContext(supabase, ctxPayload)
-    const ctxJson = JSON.stringify(ctxPayload)
-    const ctxEnc  = encodeURIComponent(ctxJson)
-
-    let actionUrl, extraFields = ''
-    if (ctxId) {
-      actionUrl = BASE + '/api/twilio-menu?ctxId=' + ctxId
-    } else if (ctxEnc.length <= 1800) {
-      actionUrl = BASE + '/api/twilio-menu?ctx=' + ctxEnc
-    } else {
-      actionUrl = BASE + '/api/twilio-menu'
-      extraFields = '<Parameter name="ctx" value="' + xmlEscape(ctxJson) + '" />'
-    }
-
+    const actionUrl = BASE + '/api/twilio-menu?menuNodeId=' + encodeURIComponent(nodeId)
     twiml += '<Gather numDigits="1" action="' + actionUrl + '" method="POST" timeout="' + (cfg.timeout||10) + '">'
-    if (extraFields) twiml += extraFields
     twiml += say(cfg.prompt || 'For English press 1.', cfg.voice)
     twiml += '</Gather>'
     twiml += say('We did not receive your selection. Goodbye.', cfg.voice)
