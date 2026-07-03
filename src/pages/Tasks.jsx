@@ -94,8 +94,24 @@ export function Tasks() {
         setSelected(updated)
         toast('✅ Task saved')
       } else {
-        await add({ ...form, agent_id: form.agent_id || agent?.id, created_by: agent?.id })
-        toast('✅ Task added')
+        const newTask = await add({ ...form, agent_id: form.agent_id || agent?.id, created_by: agent?.id })
+        // Auto-create calendar event if task has a due date
+        if (form.due_date && newTask?.id) {
+          import('../lib/supabase').then(({ supabase }) => {
+            supabase.from('calendar_events').insert({
+              agent_id:   form.agent_id || agent?.id,
+              contact_id: form.contact_id || null,
+              title:      '✅ ' + form.title,
+              start_date: form.due_date,
+              start_time: '09:00',
+              type:       'task',
+              notes:      form.notes || '',
+              task_id:    newTask.id,
+              created_at: new Date().toISOString(),
+            }).catch(() => {}) // Fail silently
+          }).catch(() => {})
+        }
+        toast('✅ Task added' + (form.due_date ? ' + calendar event created' : ''))
         closePanel()
       }
     } catch(e) {

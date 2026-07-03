@@ -179,6 +179,7 @@ const TL_TYPES = {
   assigned:     { icon: '👤', color: '#0EA5E9', label: 'Agent Assigned' },
   automation:   { icon: '⚡', color: '#CC2200', label: 'Automation' },
   interest:     { icon: '❤️', color: '#EC4899', label: 'Property Interest' },
+  web_activity: { icon: '🌐', color: '#0EA5E9', label: 'Web Activity' },
   deleted:      { icon: '🗑️', color: '#DC2626', label: 'Deleted' },
 }
 
@@ -963,12 +964,34 @@ export function ContactDetail() {
   async function loadTimeline() {
     setTlLoading(true)
     try {
-      const [calls, logs] = await Promise.all([
+      const [calls, smsMessages, webActivity, logs] = await Promise.all([
         supabase.from('calls').select('id,direction,outcome,called_at,duration_sec,notes,recording_url,voicemail_url,voicemail_transcript,from_number,to_number,agents(id,name,color)').eq('contact_id', id).order('called_at', { ascending: false }).then(r => r.data || []),
+        supabase.from('sms_messages').select('id,body,direction,from_number,to_number,created_at,agents(id,name,color)').eq('contact_id', id).order('created_at', { ascending: false }).limit(20).then(r => r.data || []).catch(()=>[]),
+        supabase.from('audit_log').select('id,action,field_name,new_value,metadata,created_at,agents(id,name,color)').eq('record_id', id).eq('field_name', 'web_activity').order('created_at', { ascending: false }).limit(20).then(r => r.data || []).catch(()=>[]),
         supabase.from('audit_log').select('*, agents(id,name,color)').eq('record_id', id).order('created_at', { ascending: false }).limit(100).then(r => r.data || []),
       ])
 
       const items = []
+
+      // SMS messages in timeline
+      smsMessages.forEach(m => items.push({
+        id: m.id, type: 'sms',
+        title: (m.direction === 'inbound' ? '📲 Received' : '📤 Sent') + ' SMS',
+        body:  m.body || '',
+        meta:  m.direction === 'inbound' ? 'From: ' + (m.from_number||'') : 'To: ' + (m.to_number||''),
+        agent: m.agents,
+        created_at: m.created_at,
+      }))
+
+      // Web activity in timeline
+      webActivity.forEach(a => items.push({
+        id: a.id + '_web', type: 'web_activity',
+        title: a.metadata?.description || a.new_value || 'Website visit',
+        body:  a.metadata?.page || '',
+        meta:  'Web Activity',
+        agent: a.agents,
+        created_at: a.created_at,
+      }))
 
       calls.forEach(c => items.push({
         id: c.id, type: c.voicemail_url ? 'voicemail' : 'call',
@@ -1420,7 +1443,15 @@ export function ContactDetail() {
               <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{timeline.length} entries</span>
             </div>
             <div style={{ padding: '16px' }}>
-              <AddToTimeline contactId={id} agentId={agent?.id} onAdded={loadTimeline} />
+              {activeTab === 'emails' ? (
+                <EmailCompose
+                  contact={contact}
+                  contactId={id}
+                  onSent={() => { loadTimeline(); setActiveTab('activity') }}
+                />
+              ) : (
+                <AddToTimeline contactId={id} agentId={agent?.id} onAdded={loadTimeline} />
+              )}
 
               {tlLoading && <div style={{ textAlign: 'center', padding: '20px' }}><Spinner size={20} color="var(--muted)" /></div>}
 
