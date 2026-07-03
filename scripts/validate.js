@@ -119,6 +119,44 @@ if (failures.length) {
 } else {
 
 
+
+  // Hook-order check: useState/useEffect must not appear inside if() blocks
+  // This causes React error #310 which crashes the entire app
+  let hookInConditional = 0
+  const hookFiles = ['src/pages/Dashboard.jsx', 'src/pages/Contacts.jsx', 
+    'src/pages/Tasks.jsx', 'src/pages/ContactDetail.jsx']
+  hookFiles.forEach(f => {
+    try {
+      const lines = require('fs').readFileSync(f,'utf8').split('\n')
+      let braceDepth = 0
+      let inComponent = false
+      let componentBraceStart = 0
+      lines.forEach((line, i) => {
+        const opens  = (line.match(/\{/g)||[]).length
+        const closes = (line.match(/\}/g)||[]).length
+        if (/^(export )?function [A-Z]/.test(line.trim())) {
+          inComponent = true
+          componentBraceStart = braceDepth
+        }
+        braceDepth += opens - closes
+        if (inComponent && braceDepth > componentBraceStart + 2) {
+          if (/\buseState\(|\buseEffect\(|\buseRef\(|\buseMemo\(|\buseCallback\(/.test(line) && 
+              !line.trim().startsWith('//')) {
+            hookInConditional++
+            console.log('  ⚠️  Hook in deep block: ' + f + ':' + (i+1))
+          }
+        }
+        if (inComponent && braceDepth <= componentBraceStart) inComponent = false
+      })
+    } catch {}
+  })
+  if (hookInConditional === 0) {
+    console.log('  ✓ No hooks inside deep blocks (React error #310 check)')
+  } else {
+    console.log('  ❌ ' + hookInConditional + ' hooks found inside deep blocks — WILL CAUSE React error #310')
+    errors++
+  }
+
   console.log('\n  ✅ ALL CHECKS PASSED — safe to deploy\n')
   console.log('  Deploy commands:')
   console.log('    npm run build')
