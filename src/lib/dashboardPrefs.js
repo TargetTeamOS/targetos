@@ -63,17 +63,17 @@ export async function saveDashPrefs(agentId, widgets, layout = {}) {
 
   let error
   if (existing) {
-    // Row exists — UPDATE it
     const result = await supabase
       .from('briefing_prefs')
       .update({ dashboard_widgets: widgets, dashboard_layout: layout, updated_at: new Date().toISOString() })
       .eq('agent_id', agentId)
+      .then(r => r)
     error = result.error
   } else {
-    // No row yet — INSERT
     const result = await supabase
       .from('briefing_prefs')
       .insert(payload)
+      .then(r => r)
     error = result.error
   }
 
