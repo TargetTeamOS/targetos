@@ -545,9 +545,11 @@ function CustomWidgetBuilder({ onSave, onClose, agents }) {
 // ── CUSTOM WIDGET RENDERER ────────────────────────────────────────
 function CustomWidgetContent({ config, agentId, allAgents }) {
   const navigate = useNavigate()
-  const [items,   setItems]   = useState([])
-  const [count,   setCount]   = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [items,       setItems]       = useState([])
+  const [count,       setCount]       = useState(0)
+  const [loading,     setLoading]     = useState(true)
+  const [activeSlice, setActiveSlice] = useState(null)
+  const [drillItems,  setDrillItems]  = useState(null)
 
   useEffect(function() {
     if (!config?.board) return
@@ -598,6 +600,8 @@ function CustomWidgetContent({ config, agentId, allAgents }) {
       }
     }
     load()
+    setActiveSlice(null)
+    setDrillItems(null)
     return function() { cancelled = true }
   }, [config?.board, JSON.stringify(config?.statuses), config?.dateRange, config?.agentScope, config?.sortBy, config?.limitRows, agentId])
 
@@ -649,9 +653,6 @@ function CustomWidgetContent({ config, agentId, allAgents }) {
     const total = items.length
     const slices = Object.entries(groups)
     const COLORS = ['#3B82F6','#10B981','#F5A623','#CC2200','#8B5CF6','#EC4899','#14B8A6','#84CC16','#F97316','#06B6D4']
-
-    const [activeSlice, setActiveSlice] = React.useState(null)
-    const [drillItems, setDrillItems]   = React.useState(null)
 
     function clickSlice(status, grp) {
       if (activeSlice === status) { setActiveSlice(null); setDrillItems(null); return }
