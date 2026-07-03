@@ -907,6 +907,8 @@ export function ContactDetail() {
   const [rightTab,  setRightTab]  = useState('deals')
   const [confirmDel,setConfirmDel]= useState(false)
   const [savingAuto,setSavingAuto]= useState(false)
+  const [activeTab,  setActiveTab]  = useState('activity')  // activity | notes | calls | tasks | emails
+  const [tlFilter,   setTlFilter]   = useState('all')
 
   useEffect(() => {
     if (!id) return
@@ -1089,39 +1091,64 @@ export function ContactDetail() {
   return (
     <div style={{ fontFamily: ff }}>
 
-      {/* ── TOP HEADER ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <button onClick={() => navigate('/contacts')}
-          style={{ background: 'var(--dim)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontSize: '12px', color: 'var(--muted)', fontFamily: ff }}>
-          ← Contacts
-        </button>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{ width: 44, height: 44, borderRadius: '50%', background: statusColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 700, flexShrink: 0 }}>
-            {initials((f.first_name || '') + ' ' + (f.last_name || ''))}
+      {/* ── TOP HEADER — HubSpot-style ── */}
+      <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 18px', marginBottom:14 }}>
+        {/* Row 1: back + name + status */}
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:10 }}>
+          <button onClick={() => navigate('/contacts')}
+            style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:12, color:'var(--muted)', fontFamily:ff, padding:'2px 0', display:'flex', alignItems:'center', gap:4 }}>
+            ← Contacts
+          </button>
+          <div style={{ width:42, height:42, borderRadius:'50%', background:statusColor, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, flexShrink:0 }}>
+            {initials((f.first_name||'')+' '+(f.last_name||''))}
           </div>
-          <div>
-            <h1 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text)', margin: 0, lineHeight: 1.2 }}>
-              {f.first_name} {f.last_name}
-            </h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
-              <Pill label={f.status || 'New'} color={statusColor} size="md" />
-              {f.source && <span style={{ fontSize: '11px', color: 'var(--muted)' }}>via {f.source}</span>}
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <h1 style={{ fontSize:18, fontWeight:800, color:'var(--text)', margin:0 }}>{f.first_name} {f.last_name}</h1>
+              <Pill label={f.status||'New'} color={statusColor} size="md" />
+              {f.source && <span style={{ fontSize:11, color:'var(--muted)' }}>via {f.source}</span>}
               {daysSinceContact !== null && (
-                <span style={{ fontSize: '11px', color: daysSinceContact > 14 ? '#DC2626' : 'var(--muted)', fontWeight: daysSinceContact > 14 ? 700 : 400 }}>
-                  {daysSinceContact === 0 ? 'Reached today' : "Last contact " + (daysSinceContact) + "d ago"}
+                <span style={{ fontSize:11, color:daysSinceContact>14?'#DC2626':'var(--muted)', fontWeight:daysSinceContact>14?700:400 }}>
+                  · {daysSinceContact===0?'Reached today':'Last contact '+daysSinceContact+'d ago'}
                 </span>
               )}
             </div>
+            <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
+              {[f.phone, f.email, f.company].filter(Boolean).join(' · ')}
+            </div>
           </div>
+          {/* Quick status change */}
+          <select value={f.status||'New'} onChange={e=>saveField('status',e.target.value)}
+            style={{ padding:'5px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, cursor:'pointer' }}>
+            {CONTACT_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
-        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-          {f.phone && <Btn variant="secondary" size="sm" onClick={() => window.open(phoneHref(f.phone))}>📞 Call</Btn>}
-          {f.email && <Btn variant="secondary" size="sm" onClick={() => window.open('mailto:' + f.email)}>📧 Email</Btn>}
+        {/* Row 2: HubSpot-style action buttons */}
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          {[
+            { icon:'📝', label:'Note',        action:()=>{ setActiveTab('note') } },
+            { icon:'📧', label:'Email',        action:()=>{ if(f.email) window.open('mailto:'+f.email) } },
+            { icon:'📞', label:'Call',         action:()=>{ if(f.phone) window.open(phoneHref(f.phone)) } },
+            { icon:'✅', label:'Task',         action:()=>{ setActiveTab('task') } },
+            { icon:'📅', label:'Appointment',  action:()=>{ setActiveTab('appt') } },
+            { icon:'💬', label:'SMS',          action:()=>{ if(f.phone) window.open('sms:'+f.phone) } },
+          ].map(function(btn) {
+            return (
+              <button key={btn.label} onClick={btn.action}
+                style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff, transition:'background .12s' }}
+                onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'}
+                onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
+                <span>{btn.icon}</span>{btn.label}
+              </button>
+            )
+          })}
+          <div style={{ flex:1 }} />
+          {f.phone && <ClickToCall phone={f.phone} contactName={(f.first_name||'')+' '+(f.last_name||'')} contactId={contactId} showLabel />}
         </div>
       </div>
 
-      {/* ── THREE PANEL LAYOUT ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 270px', gap: '14px', alignItems: 'start' }}>
+      {/* ── THREE PANEL LAYOUT — GHL/HubSpot style ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '12px', alignItems: 'start', minHeight: 'calc(100vh - 200px)' }}>
 
         {/* ══════════════════════════════════════════════════════
             LEFT PANEL
@@ -1338,6 +1365,23 @@ export function ContactDetail() {
           <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>💬 Conversation History</div>
+              {/* HubSpot-style tabs */}
+              <div style={{ display:'flex', gap:2 }}>
+                {[
+                  { id:'activity', label:'Activity', icon:'⚡' },
+                  { id:'notes',    label:'Notes',    icon:'📝' },
+                  { id:'calls',    label:'Calls',    icon:'📞' },
+                  { id:'tasks',    label:'Tasks',    icon:'✅' },
+                  { id:'emails',   label:'Emails',   icon:'📧' },
+                ].map(tab => (
+                  <button key={tab.id} onClick={()=>setActiveTab(tab.id)}
+                    style={{ padding:'5px 10px', borderRadius:6, border:'none', cursor:'pointer', fontFamily:ff, fontSize:11, fontWeight:700,
+                      background: activeTab===tab.id ? 'var(--brand)' : 'transparent',
+                      color: activeTab===tab.id ? '#fff' : 'var(--muted)' }}>
+                    {tab.icon} {tab.label}
+                  </button>
+                ))}
+              </div>
               <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{timeline.length} entries</span>
             </div>
             <div style={{ padding: '16px' }}>
@@ -1352,7 +1396,28 @@ export function ContactDetail() {
                 </div>
               )}
 
-              {timeline.map(item => <TimelineItem key={item.id + item.type} item={item} />)}
+              {timeline
+                .filter(item => {
+                  if (activeTab === 'activity') return true
+                  if (activeTab === 'notes')    return ['note','manual'].includes(item.type)
+                  if (activeTab === 'calls')    return ['call_inbound','call_outbound','call'].includes(item.type)
+                  if (activeTab === 'tasks')    return ['task','task_completed'].includes(item.type)
+                  if (activeTab === 'emails')   return ['email'].includes(item.type)
+                  return true
+                })
+                .map(item => <TimelineItem key={item.id + item.type} item={item} />)}
+              {timeline.filter(item => {
+                if (activeTab === 'activity') return true
+                if (activeTab === 'notes')    return ['note','manual'].includes(item.type)
+                if (activeTab === 'calls')    return ['call_inbound','call_outbound','call'].includes(item.type)
+                if (activeTab === 'tasks')    return ['task','task_completed'].includes(item.type)
+                if (activeTab === 'emails')   return ['email'].includes(item.type)
+                return true
+              }).length === 0 && (
+                <div style={{ textAlign:'center', padding:'32px 16px', color:'var(--muted)', fontSize:12 }}>
+                  No {activeTab} activity yet
+                </div>
+              )}
             </div>
           </div>
         </div>
