@@ -8,7 +8,11 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return }
   if (req.method !== 'POST')    { res.status(405).json({ error: 'Method not allowed' }); return }
 
-  const RESEND_KEY = process.env.RESEND_API_KEY || 're_ShsDysNB_2MDVrReA864LkDRGCgbadc93'
+  const RESEND_KEY = process.env.RESEND_API_KEY
+  if (!RESEND_KEY) {
+    console.error('[send-email] RESEND_API_KEY not set in environment variables')
+    return res.status(500).json({ error: 'Email service not configured' })
+  }
 
   try {
     const response = await fetch('https://api.resend.com/emails', {
