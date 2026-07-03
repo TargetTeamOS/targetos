@@ -626,51 +626,133 @@ function CustomWidgetContent({ config, agentId, allAgents }) {
     )
   }
 
-  // ── DONUT MODE ──
+  // ── DONUT MODE — fully interactive, click slice to drill down ──
   if (config.display === 'donut') {
     if (!boardDef.statusField || items.length === 0) {
       return <div style={{ color:'var(--muted)', fontSize:12, textAlign:'center', padding:'16px 0' }}>No data to chart</div>
     }
-    const counts = {}
-    items.forEach(function(it) { const v = it[boardDef.statusField]||'Unknown'; counts[v]=(counts[v]||0)+1 })
+
+    // Group by status field — count AND collect actual records
+    const groups = {}
+    items.forEach(function(it) {
+      const v = it[boardDef.statusField] || 'Unknown'
+      if (!groups[v]) groups[v] = { count: 0, records: [], value: 0 }
+      groups[v].count++
+      groups[v].records.push(it)
+      // Sum value field if present (e.g. GCI for deals)
+      if (boardDef.valueField && it[boardDef.valueField]) {
+        const n = parseFloat(String(it[boardDef.valueField]).replace(/[$,]/g,''))
+        if (!isNaN(n)) groups[v].value += n
+      }
+    })
+
     const total = items.length
-    const slices = Object.entries(counts)
-    const COLORS = ['#CC2200','#3B82F6','#10B981','#F5A623','#8B5CF6','#EC4899','#14B8A6','#84CC16']
+    const slices = Object.entries(groups)
+    const COLORS = ['#3B82F6','#10B981','#F5A623','#CC2200','#8B5CF6','#EC4899','#14B8A6','#84CC16','#F97316','#06B6D4']
+
+    const [activeSlice, setActiveSlice] = React.useState(null)
+    const [drillItems, setDrillItems]   = React.useState(null)
+
+    function clickSlice(status, grp) {
+      if (activeSlice === status) { setActiveSlice(null); setDrillItems(null); return }
+      setActiveSlice(status)
+      setDrillItems(grp.records)
+    }
+
+    // SVG donut — interactive slices
+    const CX = 60, CY = 60, R = 48, THICK = 20
+    const circ = 2 * Math.PI * R
+    let offset = 0
+    const svgSlices = slices.map(function([status, grp], i) {
+      const pct  = grp.count / total
+      const dash = pct * circ
+      const isActive = activeSlice === status
+      const el = (
+        <circle key={status}
+          cx={CX} cy={CY} r={R} fill="none"
+          stroke={COLORS[i % COLORS.length]}
+          strokeWidth={isActive ? THICK + 6 : THICK}
+          strokeDasharray={dash + ' ' + (circ - dash)}
+          strokeDashoffset={circ * 0.25 - offset}
+          style={{ cursor:'pointer', transition:'stroke-width .15s, opacity .15s', opacity: activeSlice && !isActive ? 0.45 : 1 }}
+          onClick={function() { clickSlice(status, grp) }}
+        />
+      )
+      offset += dash
+      return el
+    })
+
     return (
-      <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
-        <div style={{ position:'relative', width:80, height:80, flexShrink:0 }}>
-          <svg width={80} height={80} viewBox="0 0 80 80">
-            {(function() {
-              let offset = 0
-              const circ = 2*Math.PI*28
-              return slices.map(function([status, cnt], i) {
-                const pctVal = cnt / total
-                const dash = pctVal * circ
-                const el = (
-                  <circle key={status} cx={40} cy={40} r={28} fill="none"
-                    stroke={COLORS[i%COLORS.length]} strokeWidth={14}
-                    strokeDasharray={dash + ' ' + (circ - dash)}
-                    strokeDashoffset={-offset}
-                    transform="rotate(-90 40 40)" />
-                )
-                offset += dash
-                return el
-              })
-            })()}
-          </svg>
-          <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:900, color:'var(--text)' }}>{total}</div>
+      <div>
+        <div style={{ display:'flex', gap:16, alignItems:'center' }}>
+          {/* Donut chart */}
+          <div style={{ position:'relative', flexShrink:0 }}>
+            <svg width={120} height={120} viewBox="0 0 120 120">
+              {svgSlices}
+              <text x={CX} y={CY-6} textAnchor="middle" style={{ fontSize:20, fontWeight:900, fill:'var(--text)' }}>
+                {activeSlice ? groups[activeSlice]?.count : total}
+              </text>
+              <text x={CX} y={CY+10} textAnchor="middle" style={{ fontSize:9, fill:'var(--muted)' }}>
+                {activeSlice ? activeSlice.slice(0,12) : 'total'}
+              </text>
+            </svg>
+          </div>
+
+          {/* Legend — clickable */}
+          <div style={{ flex:1, minWidth:0 }}>
+            {slices.map(function([status, grp], i) {
+              const isActive = activeSlice === status
+              const pct = Math.round(grp.count / total * 100)
+              return (
+                <div key={status}
+                  onClick={function() { clickSlice(status, grp) }}
+                  style={{ display:'flex', alignItems:'center', gap:7, marginBottom:5, cursor:'pointer', padding:'3px 6px', borderRadius:6,
+                    background: isActive ? COLORS[i%COLORS.length]+'18' : 'transparent',
+                    border: isActive ? '1px solid '+COLORS[i%COLORS.length]+'44' : '1px solid transparent',
+                    transition:'all .12s' }}>
+                  <div style={{ width:10, height:10, borderRadius:'50%', background:COLORS[i%COLORS.length], flexShrink:0 }} />
+                  <div style={{ flex:1, fontSize:11, fontWeight: isActive?700:500, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{status}</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:COLORS[i%COLORS.length], flexShrink:0 }}>{grp.count}</div>
+                  <div style={{ fontSize:10, color:'var(--muted)', flexShrink:0 }}>{pct}%</div>
+                  {boardDef.valueField && grp.value > 0 && (
+                    <div style={{ fontSize:10, color:'#10B981', flexShrink:0, fontWeight:700 }}>{fmt$(grp.value)}</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
-        <div style={{ flex:1, minWidth:0 }}>
-          {slices.map(function([status, cnt], i) {
-            return (
-              <div key={status} style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
-                <div style={{ width:8, height:8, borderRadius:'50%', background:COLORS[i%COLORS.length], flexShrink:0 }} />
-                <div style={{ flex:1, fontSize:11, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{status}</div>
-                <div style={{ fontSize:11, fontWeight:700, color:'var(--text)', flexShrink:0 }}>{cnt}</div>
+
+        {/* Drill-down panel — shows when a slice is clicked */}
+        {activeSlice && drillItems && (
+          <div style={{ marginTop:10, borderTop:'1px solid var(--border)', paddingTop:8 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:6 }}>
+              {activeSlice} — {drillItems.length} record{drillItems.length!==1?'s':''}
+            </div>
+            {drillItems.slice(0,8).map(function(item, i) {
+              const name = boardDef.nameField === 'first_name'
+                ? ((item.first_name||'')+' '+(item.last_name||'')).trim()
+                : (item[boardDef.nameField]||'—')
+              const val = boardDef.valueField && item[boardDef.valueField] ? fmt$(item[boardDef.valueField]) : ''
+              const sub = boardDef.subField ? (item[boardDef.subField]||'') : ''
+              return (
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:12, flexShrink:0 }}>{boardDef.icon}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{name}</div>
+                    {sub && <div style={{ fontSize:10, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
+                  </div>
+                  {val && <div style={{ fontSize:11, fontWeight:700, color:'#10B981', flexShrink:0 }}>{val}</div>}
+                </div>
+              )
+            })}
+            {drillItems.length > 8 && (
+              <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', paddingTop:6 }}>
+                +{drillItems.length-8} more — click View all below
               </div>
-            )
-          })}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     )
   }
