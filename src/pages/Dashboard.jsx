@@ -570,9 +570,17 @@ function CustomWidgetContent({ config, agentId, allAgents }) {
           q = q.in(boardDef.statusField, config.statuses)
         }
 
-        // Date range
+        // Date range — use the correct date field per board type
         const dr = getDateRange(config.dateRange || 'all')
-        if (dr) q = q.gte('created_at', dr.from).lte('created_at', dr.to + 'T23:59:59')
+        if (dr) {
+          const dateField = {
+            deals: 'ao_date',
+            calls: 'called_at',
+            offers: 'offer_date',
+            open_houses: 'date',
+          }[config.board] || 'created_at'
+          q = q.gte(dateField, dr.from).lte(dateField, dr.to + 'T23:59:59')
+        }
 
         // Sort
         const sortField = config.sortBy || 'created_at'
@@ -1248,7 +1256,7 @@ function WidgetManager({ widgets, role, onSave, onClose, onAddCustom }) {
             Active Widgets — {visible.length}
           </div>
           {visible.map(w => {
-            const isCustom = w.id.startsWith('custom_')
+            const isCustom = w.id.startsWith('custom_') || w.id === 'custom'
             const def = isCustom ? { label: w.customConfig?.label || 'Custom', icon: w.customConfig?.icon || '🔲' } : WIDGET_DEFS[w.id]
             if (!def) return null
             return (
@@ -1299,7 +1307,7 @@ function WidgetManager({ widgets, role, onSave, onClose, onAddCustom }) {
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
                 {hidden.map(w => {
-                  const isCustom = w.id.startsWith('custom_')
+                  const isCustom = w.id.startsWith('custom_') || w.id === 'custom'
                   const def = isCustom ? { label: w.customConfig?.label || 'Custom', icon: w.customConfig?.icon || '🔲' } : WIDGET_DEFS[w.id]
                   if (!def) return null
                   return (
