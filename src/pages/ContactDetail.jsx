@@ -157,46 +157,73 @@ function Section({ title, icon, children, collapsible = true }) {
 
 // ── TIMELINE ITEM ─────────────────────────────────────────────────
 const TL_TYPES = {
-  call:       { icon: '📞', color: '#10B981', label: 'Call' },
-  note:       { icon: '📝', color: '#8B5CF6', label: 'Note' },
-  email:      { icon: '📧', color: '#3B82F6', label: 'Email' },
-  sms:        { icon: '💬', color: '#F97316', label: 'SMS' },
-  voice:      { icon: '🎙', color: '#CC2200', label: 'Voice Capture' },
-  status:     { icon: '🔄', color: '#F5A623', label: 'Status Changed' },
-  created:    { icon: '✨', color: '#10B981', label: 'Contact Created' },
-  task:       { icon: '✅', color: '#6366F1', label: 'Task Created' },
-  meeting:    { icon: '🤝', color: '#EC4899', label: 'Meeting' },
-  updated:    { icon: '✏️', color: '#94A3B8', label: 'Field Updated' },
-  file:       { icon: '📎', color: '#14B8A6', label: 'File Uploaded' },
-  agreement:  { icon: '📋', color: '#10B981', label: 'Agreement Signed' },
-  appointment:{ icon: '📅', color: '#8B5CF6', label: 'Appointment' },
-  gift:       { icon: '🎁', color: '#EC4899', label: 'Gift' },
-  assigned:   { icon: '👤', color: '#0EA5E9', label: 'Agent Assigned' },
-  automation: { icon: '⚡', color: '#CC2200', label: 'Automation Fired' },
-  deleted:    { icon: '🗑️', color: '#DC2626', label: 'Record Deleted' },
+  call:         { icon: '📞', color: '#10B981', label: 'Call' },
+  call_inbound: { icon: '📲', color: '#10B981', label: 'Inbound Call' },
+  call_outbound:{ icon: '📤', color: '#3B82F6', label: 'Outbound Call' },
+  voicemail:    { icon: '📬', color: '#F97316', label: 'Voicemail' },
+  note:         { icon: '📝', color: '#8B5CF6', label: 'Note' },
+  email:        { icon: '📧', color: '#3B82F6', label: 'Email' },
+  sms:          { icon: '💬', color: '#F97316', label: 'SMS' },
+  showing:      { icon: '🏡', color: '#10B981', label: 'Showing' },
+  voice:        { icon: '🎙', color: '#CC2200', label: 'Voice Capture' },
+  status:       { icon: '🔄', color: '#F5A623', label: 'Status Changed' },
+  created:      { icon: '✨', color: '#10B981', label: 'Contact Created' },
+  task:         { icon: '✅', color: '#6366F1', label: 'Task Created' },
+  task_completed:{ icon:'✔️', color: '#10B981', label: 'Task Completed' },
+  meeting:      { icon: '🤝', color: '#EC4899', label: 'Meeting' },
+  updated:      { icon: '✏️', color: '#94A3B8', label: 'Field Updated' },
+  file:         { icon: '📎', color: '#14B8A6', label: 'File Uploaded' },
+  agreement:    { icon: '📋', color: '#10B981', label: 'Agreement' },
+  appointment:  { icon: '📅', color: '#8B5CF6', label: 'Appointment' },
+  gift:         { icon: '🎁', color: '#EC4899', label: 'Gift' },
+  assigned:     { icon: '👤', color: '#0EA5E9', label: 'Agent Assigned' },
+  automation:   { icon: '⚡', color: '#CC2200', label: 'Automation' },
+  interest:     { icon: '❤️', color: '#EC4899', label: 'Property Interest' },
+  deleted:      { icon: '🗑️', color: '#DC2626', label: 'Deleted' },
 }
 
 function TimelineItem({ item }) {
+  const [expanded, setExpanded] = React.useState(false)
   const t = TL_TYPES[item.type] || { icon: '•', color: '#94A3B8', label: item.type }
+
   return (
     <div style={{ display: 'flex', gap: '10px', paddingBottom: '14px', position: 'relative' }}>
       <div style={{ position: 'absolute', left: '13px', top: '26px', bottom: 0, width: '2px', background: 'var(--border)' }} />
-      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--panel)', border: "2px solid " + (t.color), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', flexShrink: 0, zIndex: 1 }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--panel)', border: '2px solid ' + t.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', flexShrink: 0, zIndex: 1 }}>
         {t.icon}
       </div>
       <div style={{ flex: 1, background: 'var(--dim)', borderRadius: '10px', padding: '9px 12px', border: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px', flexWrap: 'wrap', gap: '4px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '10px', fontWeight: 700, color: t.color, textTransform: 'uppercase', letterSpacing: '.04em' }}>{t.label}</span>
-            {item.agent && (
-              <span style={{ fontSize: '10px', color: 'var(--muted)' }}>· {item.agent.name?.split(' ')[0]}</span>
-            )}
+            {item.agent && <span style={{ fontSize: '10px', color: 'var(--muted)' }}>· {item.agent.name?.split(' ')[0]}</span>}
           </div>
           <span style={{ fontSize: '10px', color: 'var(--muted)' }}>{fmtDateTime(item.created_at)}</span>
         </div>
         {item.title && <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '2px' }}>{item.title}</div>}
         {item.body && <div style={{ fontSize: '12px', color: 'var(--text)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{item.body}</div>}
         {item.meta && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '3px' }}>{item.meta}</div>}
+
+        {/* Call recording player */}
+        {item.recording_url && (
+          <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--panel)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>📼 Call Recording</div>
+            <audio controls style={{ width: '100%', height: 32 }} src={item.recording_url} />
+          </div>
+        )}
+
+        {/* Voicemail player + transcript */}
+        {item.voicemail_url && (
+          <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(249,115,22,.06)', borderRadius: 8, border: '1px solid rgba(249,115,22,.2)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#F97316', textTransform: 'uppercase', marginBottom: 4 }}>📬 Voicemail</div>
+            <audio controls style={{ width: '100%', height: 32 }} src={item.voicemail_url} />
+            {item.voicemail_transcript && (
+              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                <strong>Transcript:</strong> {item.voicemail_transcript}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -659,7 +686,11 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       <AgreementsSection contactId={contactId} agentId={f.agent_id || agent?.id} contactName={f.first_name + ' ' + (f.last_name || '')} onActivityLog={onRefreshTimeline} />
 
       {/* ── APPOINTMENTS ── */}
-      <RightSection title="Appointments" icon="📅" color="#8B5CF6"
+      <RightSection title="Showings & Interest" icon="🏡" color="#10B981">
+      <BuyerInterest contactId={contactId} agentId={f.agent_id || agent?.id} />
+    </RightSection>
+
+    <RightSection title="Appointments" icon="📅" color="#8B5CF6"
         action={{ label: '+ Add', onClick: () => setAddingAppt(true) }}>
         {appts.length === 0 && <EmptyState text="No appointments yet" action={{ label: '+ Schedule', onClick: () => setAddingAppt(true) }} />}
         {appts.map(a => (
@@ -933,19 +964,23 @@ export function ContactDetail() {
     setTlLoading(true)
     try {
       const [calls, logs] = await Promise.all([
-        supabase.from('calls').select('*, agents(id,name,color)').eq('contact_id', id).order('called_at', { ascending: false }).then(r => r.data || []),
+        supabase.from('calls').select('id,direction,outcome,called_at,duration_sec,notes,recording_url,voicemail_url,voicemail_transcript,from_number,to_number,agents(id,name,color)').eq('contact_id', id).order('called_at', { ascending: false }).then(r => r.data || []),
         supabase.from('audit_log').select('*, agents(id,name,color)').eq('record_id', id).order('created_at', { ascending: false }).limit(100).then(r => r.data || []),
       ])
 
       const items = []
 
       calls.forEach(c => items.push({
-        id: c.id, type: 'call',
-        title:      c.contact_name || '',
-        body:       [c.notes, c.outcome ? "Outcome: " + (c.outcome) : '', c.duration ? "Duration: " + (c.duration) : ''].filter(Boolean).join('\n'),
-        meta: (c.direction || 'Outbound') + ' call' + (c.outcome ? ' · ' + c.outcome : ''),
-        agent:      c.agents,
-        created_at: c.called_at,
+        id: c.id, type: c.voicemail_url ? 'voicemail' : 'call',
+        title:       (c.direction||'Outbound') + ' call' + (c.outcome ? ' · ' + c.outcome : '') + (c.duration_sec > 0 ? ' · ' + Math.floor(c.duration_sec/60) + 'm' : ''),
+        body:        c.notes || '',
+        meta:        c.from_number || '',
+        recording_url: c.recording_url || null,
+        voicemail_url: c.voicemail_url || null,
+        voicemail_transcript: c.voicemail_transcript || null,
+        duration_sec: c.duration_sec || 0,
+        agent:       c.agents,
+        created_at:  c.called_at,
       }))
 
       logs.forEach(a => {

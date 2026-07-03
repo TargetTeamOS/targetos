@@ -208,6 +208,7 @@ export function Contacts() {
   const { agents } = useAgents()
 
   const [search,      setSearch]      = useState('')
+  const [tagFilter,   setTagFilter]   = useState('')
   const [statusF,     setStatusF]     = useState('')
   const [agentF,      setAgentF]      = useState('')
   const [sourceF,     setSourceF]     = useState('')
@@ -343,6 +344,7 @@ export function Contacts() {
       if (dateRange?.from && c.created_at && c.created_at.slice(0,10) < dateRange.from) return false
       if (dateRange?.to   && c.created_at && c.created_at.slice(0,10) > dateRange.to)   return false
       if (search  && !matchSearch(c, search, ['first_name','last_name','phone','email','address','notes'])) return false
+      if (tagFilter && !(c.tags || []).some(t => String(t).toLowerCase().includes(tagFilter.toLowerCase()))) return false
       return true
     })
     // Sort
@@ -353,7 +355,7 @@ export function Contacts() {
       return 0
     })
     return result
-  }, [contacts, statusF, agentF, sourceF, typeF, dateRange, search, sortKey, sortDir])
+  }, [contacts, statusF, agentF, sourceF, typeF, dateRange, search, tagFilter, sortKey, sortDir])
 
   const statusColor = (s) => CONTACT_STATUSES.find(x => x.value === s)?.color || '#94A3B8'
 
@@ -402,9 +404,10 @@ export function Contacts() {
         page="contacts"
         searchKey="search"
         placeholder="Name, phone, email..."
-        filters={{ search, statusF, agentF, sourceF, typeF, dateRange }}
+        filters={{ search, statusF, agentF, sourceF, typeF, dateRange, tagFilter }}
         onChange={f => {
           if ('search'    in f) setSearch(f.search)
+          if ('tagFilter' in f) setTagFilter(f.tagFilter)
           if ('statusF'   in f) setStatusF(f.statusF)
           if ('agentF'    in f) setAgentF(f.agentF)
           if ('sourceF'   in f) setSourceF(f.sourceF)
