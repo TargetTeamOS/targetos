@@ -1542,7 +1542,13 @@ export function Dashboard() {
   const show = id => widgets.find(w => w.id === id)?.visible
   const wColor = id => widgets.find(w => w.id === id)?.color || '#CC2200'
   const wSize  = id => widgets.find(w => w.id === id)?.size  || 'md'
-  const visibleOrdered = widgets.filter(w => w.visible && WIDGET_DEFS[w.id]?.roles.includes(agent?.role || 'agent'))
+  const visibleOrdered = widgets.filter(w => {
+    if (!w.visible) return false
+    // Custom widgets (id starts with 'custom_') always pass role check
+    if (w.id.startsWith('custom_') || w.id === 'custom') return true
+    // Standard widgets check role
+    return WIDGET_DEFS[w.id]?.roles.includes(agent?.role || 'agent')
+  })
 
   const greeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'
   const years = Array.from({ length: 10 }, (_, i) => (new Date().getFullYear() - i).toString())
@@ -2410,14 +2416,18 @@ export function Dashboard() {
 
       {showCustomWidget && (
         <CustomWidgetBuilder
-          onSave={cfg => {
-            // Add new custom widget to the list and stage it
+          onSave={async cfg => {
             const newWidget = { ...cfg }
             const updated   = [...widgets, newWidget]
             setWidgets(updated)
-            setPendingWidgets(updated)
             setShowCustomWidget(false)
-            toast('✅ Custom widget added — click Save Layout to lock it in')
+            // Auto-save immediately — no extra step needed
+            try {
+              await persistWidgets(updated)
+              toast('✅ Custom widget added and saved')
+            } catch(e) {
+              toast('Widget added but save failed: ' + e.message, '#DC2626')
+            }
           }}
           onClose={() => setShowCustomWidget(false)}
           agents={agents}
