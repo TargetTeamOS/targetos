@@ -17,17 +17,16 @@ export const AGENT_EMAILS = {
 const FROM = 'TargetOS <office@targetreteam.com>'
 
 export async function sendEmail({ to, subject, html, cc, replyTo }) {
+  // Always route through the server-side API endpoint
+  // Never call Resend directly from the browser — keeps API key server-side only
   try {
-    const res = await fetch('https://api.resend.com/emails', {
+    const res = await fetch('/api/send-email', {
       method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer re_PeBKnMhe_BHcQFt2DfYUfnMB5PvVbNGcM`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: FROM, to, subject, html, cc, reply_to: replyTo })
     })
     const data = await res.json()
-    if (!res.ok) throw new Error(data.message || 'Email send failed')
+    if (!res.ok) throw new Error(data.message || data.error || 'Email send failed')
     return { success: true, id: data.id }
   } catch(e) {
     console.error('Email error:', e)
