@@ -35,17 +35,12 @@ export async function loadDashPrefs(agentId) {
       .single()
 
     if (data?.dashboard_widgets?.length) {
-      const customs = data.dashboard_widgets.filter(w => w.id?.startsWith('custom_'))
-      console.log('[loadDashPrefs] loaded', data.dashboard_widgets.length, 'widgets,', customs.length, 'custom')
       return {
         widgets: data.dashboard_widgets,
         layout:  data.dashboard_layout || {},
       }
     }
-    console.log('[loadDashPrefs] no saved widgets — using defaults')
-  } catch(e) {
-    console.warn('[loadDashPrefs] error:', e.message)
-  }
+  } catch { /* no prefs yet — use defaults */ }
 
   return { widgets: DEFAULT_WIDGETS, layout: {} }
 }
@@ -82,14 +77,7 @@ export async function saveDashPrefs(agentId, widgets, layout = {}) {
     error = result.error
   }
 
-  if (error) {
-    console.error('[saveDashPrefs] error:', error.message, 'code:', error.code)
-    if (error.message?.includes('dashboard_widgets')) {
-      throw new Error('Column "dashboard_widgets" missing from briefing_prefs table. Run: alter table briefing_prefs add column if not exists dashboard_widgets jsonb;')
-    }
-    throw new Error('saveDashPrefs failed: ' + error.message)
-  }
-  console.log('[saveDashPrefs] saved', widgets.length, 'widgets for agent', agentId?.slice(0,8))
+  if (error) throw new Error('saveDashPrefs failed: ' + error.message)
 }
 
 // ── LOAD AGENT GOALS FROM DB ──────────────────────────────────────

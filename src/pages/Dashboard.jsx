@@ -1383,16 +1383,7 @@ export function Dashboard() {
     setSavingPrefs(true)
     try {
       await saveDashPrefs(agent.id, newWidgets)
-      // Reload from DB to confirm what was actually saved
-      const reloaded = await loadDashPrefs(agent.id)
-      const savedWidgets = reloaded.widgets || newWidgets
-      setWidgets(savedWidgets)
-      const customCount = savedWidgets.filter(w => w.id.startsWith('custom_') && w.visible).length
-      if (customCount > 0) {
-        console.log('[Dashboard] Saved', savedWidgets.length, 'widgets,', customCount, 'custom visible')
-      }
     } catch(e) {
-      console.error('[Dashboard] persistWidgets error:', e.message)
       toast('Could not save layout: ' + e.message, '#DC2626')
     } finally { setSavingPrefs(false) }
   }
@@ -2426,17 +2417,16 @@ export function Dashboard() {
       {showCustomWidget && (
         <CustomWidgetBuilder
           onSave={async cfg => {
-            setShowCustomWidget(false)
-            // Build new list and save
-            const newWidget = { ...cfg, visible: true }
+            const newWidget = { ...cfg }
             const updated   = [...widgets, newWidget]
+            setWidgets(updated)
+            setShowCustomWidget(false)
+            // Auto-save immediately — no extra step needed
             try {
               await persistWidgets(updated)
-              toast('✅ Widget added to dashboard')
+              toast('✅ Custom widget added and saved')
             } catch(e) {
-              // Even if save fails, show the widget in current session
-              setWidgets(updated)
-              toast('Widget added — save failed: ' + e.message, '#F97316')
+              toast('Widget added but save failed: ' + e.message, '#DC2626')
             }
           }}
           onClose={() => setShowCustomWidget(false)}
