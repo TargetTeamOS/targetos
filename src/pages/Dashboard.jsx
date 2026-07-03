@@ -33,6 +33,40 @@ import { Avatar, Pill, Btn, Loading, Spinner, Field, Input } from '../components
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
+// ── WIDGET ERROR BOUNDARY ─────────────────────────────────────────
+// Catches errors in individual widgets so one broken widget
+// never crashes the entire dashboard
+class WidgetErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, info) {
+    console.error('[Widget Error]', error.message, info.componentStack?.slice(0, 200))
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '14px', textAlign: 'center', color: 'var(--muted)', fontSize: '11px' }}>
+          <div style={{ fontSize: '24px', marginBottom: '6px' }}>⚠️</div>
+          <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: '4px' }}>Widget Error</div>
+          <div style={{ fontSize: '10px', color: '#DC2626', fontFamily: 'monospace', background: 'var(--dim)', padding: '6px', borderRadius: '6px', maxHeight: '60px', overflow: 'hidden' }}>
+            {this.state.error?.message || 'Unknown error'}
+          </div>
+          <button onClick={() => this.setState({ hasError: false, error: null })}
+            style={{ marginTop: '8px', padding: '4px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: '11px', cursor: 'pointer' }}>
+            Retry
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ── WIDGET REGISTRY ───────────────────────────────────────────────
 const WIDGET_DEFS = {
   gci_goal:        { label: 'My GCI Goal',           icon: '🎯', roles: ['admin','secretary','agent'] },
@@ -106,67 +140,137 @@ function MiniBar({ data, color = '#CC2200' }) {
 const BOARD_OPTIONS = [
   {
     id:'contacts', label:'Contacts', icon:'👤', table:'contacts',
-    statusField:'status', nameField:'first_name', subField:'last_name', valueField:null,
-    statusOptions:['New','Hot','Warm','Cold','Active','Nurturing','Closed','Unresponsive'],
-    extraFilters:[{field:'source',label:'Source'},{field:'type',label:'Type'}],
-    sortOptions:[{field:'created_at',label:'Newest'},{field:'last_activity',label:'Last Activity'},{field:'first_name',label:'Name A-Z'}],
-    displayCols:[{field:'first_name',label:'Name'},{field:'phone',label:'Phone'},{field:'email',label:'Email'},{field:'status',label:'Status'},{field:'source',label:'Source'}],
+    statusField:'status', nameField:'first_name', subField:'source', valueField:null,
+    dateField:'created_at',
+    groupByOptions:['status','source','type','buyer_type','language'],
+    statusOptions:['New','Hot','Warm','Cold','Active','Nurturing','Past Client','Unresponsive','Do Not Contact'],
+    extraFilters:[{field:'source',label:'Source'},{field:'type',label:'Type'},{field:'buyer_type',label:'Buyer Type'}],
+    sortOptions:[{field:'created_at',label:'Newest'},{field:'updated_at',label:'Last Updated'},{field:'first_name',label:'Name A-Z'}],
+    displayCols:[
+      {field:'first_name',label:'Name'},{field:'phone',label:'Phone'},{field:'email',label:'Email'},
+      {field:'status',label:'Status'},{field:'source',label:'Source'},{field:'type',label:'Type'},
+      {field:'buyer_type',label:'Buyer Type'},{field:'language',label:'Language'},
+      {field:'created_at',label:'Date Added'},{field:'agent_id',label:'Agent'},
+    ],
+    chartFields:[{field:'status',label:'By Status'},{field:'source',label:'By Source'},{field:'buyer_type',label:'By Buyer Type'}],
+    numericFields:[],
   },
   {
-    id:'deals', label:'Deals', icon:'💼', table:'deals',
-    statusField:'stage', nameField:'addr', subField:'client_legal_name', valueField:'gci',
+    id:'deals', label:'Production / Deals', icon:'💼', table:'deals',
+    statusField:'stage', nameField:'addr', subField:'client_name', valueField:'gci',
+    dateField:'ao_date',
+    groupByOptions:['stage','side','sale_type','agent_id'],
     statusOptions:['Negotiations','Offer Accapted','Under Shtar','Under Contract','Closed','Deal Fell Through'],
-    extraFilters:[{field:'side',label:'Side'},{field:'sale_type',label:'Sale Type'}],
-    sortOptions:[{field:'created_at',label:'Newest'},{field:'ao_date',label:'A/O Date'},{field:'gci',label:'GCI High-Low'}],
-    displayCols:[{field:'addr',label:'Address'},{field:'stage',label:'Stage'},{field:'side',label:'Side'},{field:'gci',label:'GCI'},{field:'close_date',label:'Close Date'}],
+    extraFilters:[{field:'side',label:'Side'},{field:'sale_type',label:'Sale Type'},{field:'agent_id',label:'Agent'}],
+    sortOptions:[{field:'ao_date',label:'A/O Date'},{field:'close_date',label:'Close Date'},{field:'gci',label:'GCI High-Low'},{field:'created_at',label:'Newest'}],
+    displayCols:[
+      {field:'addr',label:'Address'},{field:'stage',label:'Stage'},{field:'side',label:'Side'},
+      {field:'gci',label:'GCI'},{field:'production',label:'Production'},{field:'ao_date',label:'A/O Date'},
+      {field:'close_date',label:'Close Date'},{field:'expected_close_date',label:'Expected Close'},
+      {field:'client_name',label:'Client'},{field:'client_legal_name',label:'Legal Name'},
+      {field:'sale_type',label:'Sale Type'},{field:'deal_type',label:'Deal Type'},
+      {field:'status',label:'Status'},{field:'mls_number',label:'MLS#'},
+      {field:'list_price',label:'List Price'},{field:'sale_price',label:'Sale Price'},
+      {field:'agent_commission',label:'Agent Commission'},{field:'agent_id',label:'Agent'},
+      {field:'notes',label:'Notes'},
+    ],
+    chartFields:[{field:'stage',label:'By Stage'},{field:'side',label:'By Side'},{field:'sale_type',label:'By Type'},{field:'agent_id',label:'By Agent'}],
+    numericFields:[{field:'gci',label:'Total GCI'},{field:'production',label:'Total Production'},{field:'sale_price',label:'Total Volume'}],
   },
   {
     id:'tasks', label:'Tasks', icon:'✅', table:'tasks',
     statusField:'status', nameField:'title', subField:'due_date', valueField:null,
+    dateField:'due_date',
+    groupByOptions:['status','priority','agent_id'],
     statusOptions:['pending','in_progress','done','cancelled'],
-    extraFilters:[{field:'priority',label:'Priority'}],
-    sortOptions:[{field:'due_date',label:'Due Date'},{field:'created_at',label:'Newest'},{field:'priority',label:'Priority'}],
-    displayCols:[{field:'title',label:'Task'},{field:'status',label:'Status'},{field:'priority',label:'Priority'},{field:'due_date',label:'Due'}],
+    extraFilters:[{field:'priority',label:'Priority'},{field:'agent_id',label:'Agent'}],
+    sortOptions:[{field:'due_date',label:'Due Date'},{field:'priority',label:'Priority'},{field:'created_at',label:'Newest'}],
+    displayCols:[
+      {field:'title',label:'Task'},{field:'status',label:'Status'},{field:'priority',label:'Priority'},
+      {field:'due_date',label:'Due Date'},{field:'agent_id',label:'Agent'},{field:'notes',label:'Notes'},
+    ],
+    chartFields:[{field:'status',label:'By Status'},{field:'priority',label:'By Priority'}],
+    numericFields:[],
   },
   {
     id:'listings', label:'Listings', icon:'🏡', table:'listings',
-    statusField:'status', nameField:'addr', subField:'mls_number', valueField:'list_price',
+    statusField:'status', nameField:'addr', subField:'city', valueField:'list_price',
+    dateField:'list_date',
+    groupByOptions:['status','property_type','city','agent_id'],
     statusOptions:['Active','Under Contract','Sold','Expired','Withdrawn','Coming Soon'],
-    extraFilters:[{field:'side',label:'Side'}],
-    sortOptions:[{field:'created_at',label:'Newest'},{field:'list_price',label:'Price High-Low'},{field:'list_date',label:'List Date'}],
-    displayCols:[{field:'addr',label:'Address'},{field:'status',label:'Status'},{field:'list_price',label:'Price'},{field:'beds',label:'Beds'},{field:'baths',label:'Baths'}],
+    extraFilters:[{field:'property_type',label:'Property Type'},{field:'city',label:'City'},{field:'agent_id',label:'Agent'}],
+    sortOptions:[{field:'list_date',label:'List Date'},{field:'list_price',label:'Price High-Low'},{field:'created_at',label:'Newest'}],
+    displayCols:[
+      {field:'addr',label:'Address'},{field:'city',label:'City'},{field:'status',label:'Status'},
+      {field:'list_price',label:'List Price'},{field:'beds',label:'Beds'},{field:'baths',label:'Baths'},
+      {field:'sqft',label:'Sq Ft'},{field:'property_type',label:'Type'},{field:'mls_number',label:'MLS#'},
+      {field:'list_date',label:'List Date'},{field:'agent_id',label:'Agent'},
+    ],
+    chartFields:[{field:'status',label:'By Status'},{field:'property_type',label:'By Type'},{field:'city',label:'By City'}],
+    numericFields:[{field:'list_price',label:'Total List Price'}],
   },
   {
-    id:'calls', label:'Calls', icon:'📞', table:'calls',
-    statusField:'outcome', nameField:'contact_name', subField:'from_number', valueField:null,
-    statusOptions:['Connected','Voicemail','No Answer','Hot Lead','Appointment Set','Not Interested'],
-    extraFilters:[{field:'direction',label:'Direction'}],
-    sortOptions:[{field:'called_at',label:'Newest'},{field:'contact_name',label:'Contact'}],
-    displayCols:[{field:'contact_name',label:'Contact'},{field:'direction',label:'Dir'},{field:'outcome',label:'Outcome'},{field:'called_at',label:'Date'}],
+    id:'calls', label:'Calls & SMS', icon:'📞', table:'calls',
+    statusField:'direction', nameField:'contact_name', subField:'from_number', valueField:null,
+    dateField:'called_at',
+    groupByOptions:['direction','outcome','status'],
+    statusOptions:['Inbound','Outbound'],
+    extraFilters:[{field:'direction',label:'Direction'},{field:'outcome',label:'Outcome'}],
+    sortOptions:[{field:'called_at',label:'Newest'},{field:'contact_name',label:'Contact'},{field:'duration_sec',label:'Duration'}],
+    displayCols:[
+      {field:'contact_name',label:'Contact'},{field:'direction',label:'Direction'},
+      {field:'outcome',label:'Outcome'},{field:'duration_sec',label:'Duration'},
+      {field:'called_at',label:'Date'},{field:'from_number',label:'From'},{field:'to_number',label:'To'},
+    ],
+    chartFields:[{field:'direction',label:'By Direction'},{field:'outcome',label:'By Outcome'}],
+    numericFields:[{field:'duration_sec',label:'Total Duration (sec)'}],
   },
   {
     id:'gifts', label:'Gifts', icon:'🎁', table:'gifts',
-    statusField:'order_status', nameField:'client_name', subField:'gift_type', valueField:null,
+    statusField:'order_status', nameField:'client_name', subField:'gift_type', valueField:'amount',
+    dateField:'sent_date',
+    groupByOptions:['order_status','gift_type','occasion'],
     statusOptions:['Pending','Ordered','Shipped','Delivered'],
-    extraFilters:[{field:'gift_type',label:'Type'}],
-    sortOptions:[{field:'created_at',label:'Newest'},{field:'client_name',label:'Name'}],
-    displayCols:[{field:'client_name',label:'Client'},{field:'gift_type',label:'Type'},{field:'order_status',label:'Status'},{field:'sent_date',label:'Sent'}],
+    extraFilters:[{field:'gift_type',label:'Type'},{field:'occasion',label:'Occasion'}],
+    sortOptions:[{field:'created_at',label:'Newest'},{field:'client_name',label:'Name'},{field:'amount',label:'Amount'}],
+    displayCols:[
+      {field:'client_name',label:'Client'},{field:'gift_type',label:'Type'},
+      {field:'order_status',label:'Status'},{field:'amount',label:'Amount'},
+      {field:'sent_date',label:'Sent'},{field:'occasion',label:'Occasion'},{field:'agent_id',label:'Agent'},
+    ],
+    chartFields:[{field:'order_status',label:'By Status'},{field:'gift_type',label:'By Type'},{field:'occasion',label:'By Occasion'}],
+    numericFields:[{field:'amount',label:'Total Spent'}],
   },
   {
     id:'offers', label:'Offers', icon:'📝', table:'offers',
     statusField:'status', nameField:'listing_addr', subField:'client_name', valueField:'offer_price',
+    dateField:'offer_date',
+    groupByOptions:['status','agent_id'],
     statusOptions:['Pending','Accepted','Rejected','Countered','Withdrawn'],
-    extraFilters:[],
-    sortOptions:[{field:'offer_date',label:'Newest'},{field:'offer_price',label:'Price'}],
-    displayCols:[{field:'listing_addr',label:'Address'},{field:'status',label:'Status'},{field:'offer_price',label:'Price'},{field:'offer_date',label:'Date'}],
+    extraFilters:[{field:'agent_id',label:'Agent'}],
+    sortOptions:[{field:'offer_date',label:'Newest'},{field:'offer_price',label:'Price High-Low'}],
+    displayCols:[
+      {field:'listing_addr',label:'Address'},{field:'status',label:'Status'},
+      {field:'offer_price',label:'Offer Price'},{field:'offer_date',label:'Date'},
+      {field:'client_name',label:'Client'},{field:'agent_id',label:'Agent'},
+    ],
+    chartFields:[{field:'status',label:'By Status'}],
+    numericFields:[{field:'offer_price',label:'Total Value'}],
   },
   {
     id:'open_houses', label:'Open Houses', icon:'🚪', table:'open_houses',
     statusField:null, nameField:'listing_addr', subField:'date', valueField:null,
+    dateField:'date',
+    groupByOptions:['agent_id'],
     statusOptions:[],
-    extraFilters:[],
+    extraFilters:[{field:'agent_id',label:'Agent'}],
     sortOptions:[{field:'date',label:'Date'},{field:'created_at',label:'Newest'}],
-    displayCols:[{field:'listing_addr',label:'Address'},{field:'date',label:'Date'},{field:'start_time',label:'Time'}],
+    displayCols:[
+      {field:'listing_addr',label:'Address'},{field:'date',label:'Date'},
+      {field:'start_time',label:'Start'},{field:'end_time',label:'End'},{field:'agent_id',label:'Agent'},
+    ],
+    chartFields:[],
+    numericFields:[],
   },
 ]
 
@@ -244,128 +348,144 @@ function getDateRange(rangeId) {
 
 // ── CUSTOM WIDGET BUILDER ────────────────────────────────────────
 function CustomWidgetBuilder({ onSave, onClose, agents }) {
-  const [step,       setStep]      = useState(1)
-  const [availYears, setAvailYears] = useState(DATE_RANGES)
-  const [board,      setBoard]     = useState(null)
-  const [statuses,   setStatuses]  = useState([])
-  const [extraVals,  setExtraVals] = useState({})  // {field: [values]}
-  const [display,    setDisplay]   = useState('list')
-  const [label,      setLabel]     = useState('')
-  const [color,      setColor]     = useState('#3B82F6')
-  const [dateRange,  setDateRange] = useState('all')
-  const [agentScope, setAgentScope]= useState('mine')  // 'mine' | 'all' | agentId
-  const [columns,    setColumns]   = useState([])
-  const [sortBy,     setSortBy]    = useState('')
-  const [limitRows,  setLimitRows] = useState(10)
-  const [liveCount,  setLiveCount] = useState(null)
-  const [loadingCnt, setLoadingCnt]= useState(false)
+  // ── ALL STATE AT TOP — never inside conditionals ──────────────
+  const [step,        setStep]       = useState(1)
+  const [availYears,  setAvailYears] = useState(DATE_RANGES)
+  const [board,       setBoard]      = useState(null)
+  const [chartType,   setChartType]  = useState('donut')
+  const [groupBy,     setGroupBy]    = useState('')
+  const [statuses,    setStatuses]   = useState([])
+  const [display,     setDisplay]    = useState('donut')
+  const [label,       setLabel]      = useState('')
+  const [color,       setColor]      = useState('#3B82F6')
+  const [dateRange,   setDateRange]  = useState('all')
+  const [agentScope,  setAgentScope] = useState('mine')
+  const [columns,     setColumns]    = useState([])
+  const [sortBy,      setSortBy]     = useState('created_at')
+  const [limitRows,   setLimitRows]  = useState(10)
+  const [numericField,setNumericField]=useState('')
+  const [liveCount,   setLiveCount]  = useState(null)
+  const [loadingCnt,  setLoadingCnt] = useState(false)
+  const [showCols,    setShowCols]   = useState(false)
 
-  // Load years fresh when widget builder opens — AFTER all useState declarations
+  const STEPS = ['Board', 'Chart', 'Filters', 'Display']
+
   React.useEffect(() => {
-    loadAvailableYears(supabase).then(() => {
-      setAvailYears([...DATE_RANGES])
-    }).catch(() => setAvailYears([...DATE_RANGES]))
+    loadAvailableYears(supabase).then(() => setAvailYears([...DATE_RANGES])).catch(() => setAvailYears([...DATE_RANGES]))
   }, [])
 
   const boardDef = BOARD_OPTIONS.find(b => b.id === board)
 
-  // Auto-set default columns when board changes
   React.useEffect(function() {
-    if (boardDef) {
-      setColumns(boardDef.displayCols.slice(0,3).map(function(c){ return c.field }))
-      setSortBy(boardDef.sortOptions[0]?.field || 'created_at')
-    }
-  }, [board])
-
-  // Live count preview
-  React.useEffect(function() {
-    if (!boardDef) return
+    if (!board || !boardDef) return
     let cancelled = false
-    setLoadingCnt(true)
-    async function loadCount() {
+    async function countIt() {
+      setLoadingCnt(true)
       try {
         let q = supabase.from(boardDef.table).select('id', { count: 'exact', head: true })
         if (statuses.length && boardDef.statusField) q = q.in(boardDef.statusField, statuses)
         const dr = getDateRange(dateRange)
-        if (dr) q = q.gte('created_at', dr.from).lte('created_at', dr.to + 'T23:59:59')
+        if (dr && boardDef.dateField) q = q.gte(boardDef.dateField, dr.from).lte(boardDef.dateField, dr.to + 'T23:59:59')
         const { count } = await q
         if (!cancelled) setLiveCount(count || 0)
-      } catch(e) { if (!cancelled) setLiveCount(null) }
+      } catch { if (!cancelled) setLiveCount(null) }
       finally { if (!cancelled) setLoadingCnt(false) }
     }
-    loadCount()
-    return function() { cancelled = true }
-  }, [board, JSON.stringify(statuses), dateRange])
+    countIt()
+    return () => { cancelled = true }
+  }, [board, statuses.join(','), dateRange, agentScope])
 
-  function toggleStatus(s) {
-    setStatuses(function(prev) { return prev.includes(s) ? prev.filter(function(x){return x!==s}) : [...prev, s] })
-  }
+  React.useEffect(function() {
+    if (!boardDef) return
+    setGroupBy(boardDef.statusField || '')
+    setNumericField(boardDef.numericFields && boardDef.numericFields[0] ? boardDef.numericFields[0].field : '')
+    setColumns(boardDef.displayCols.slice(0, 4).map(function(c){ return c.field }))
+    setSortBy(boardDef.sortOptions && boardDef.sortOptions[0] ? boardDef.sortOptions[0].field : 'created_at')
+    if (!label) setLabel(boardDef.label)
+  }, [board])
 
-  function toggleColumn(f) {
-    setColumns(function(prev) { return prev.includes(f) ? prev.filter(function(x){return x!==f}) : [...prev, f] })
-  }
+  const CHART_TYPES = [
+    { id:'donut',   label:'Donut',   icon:'🍩', desc:'Group by status' },
+    { id:'bar',     label:'Bar',     icon:'📊', desc:'Compare groups' },
+    { id:'number',  label:'Number',  icon:'🔢', desc:'Single KPI' },
+    { id:'battery', label:'Battery', icon:'🔋', desc:'Progress to goal' },
+    { id:'list',    label:'List',    icon:'📋', desc:'Record list' },
+    { id:'table',   label:'Table',   icon:'⬜', desc:'Multi-column' },
+    { id:'column',  label:'Column',  icon:'📉', desc:'Over time' },
+    { id:'line',    label:'Line',    icon:'📈', desc:'Trend line' },
+  ]
+  const COLOR_OPTS = ['#3B82F6','#10B981','#CC2200','#F5A623','#8B5CF6','#EC4899','#14B8A6','#84CC16','#1B2B4B','#F97316']
 
-  function finish() {
+  function toggleStatus(s) { setStatuses(function(p){ return p.includes(s) ? p.filter(function(x){return x!==s}) : [...p, s] }) }
+  function toggleCol(f)    { setColumns(function(p){ return p.includes(f) ? p.filter(function(x){return x!==f}) : [...p, f] }) }
+
+  function save() {
     if (!board) return
-    const widgetLabel = label.trim() || ((boardDef?.label || '') + (statuses.length ? ' · ' + statuses.slice(0,2).join(', ') : '') + (dateRange !== 'all' ? ' · ' + dateRange : ''))
-    onSave({
-      id:           'custom_' + Date.now(),
-      size:         'md',
-      color,
-      visible:      true,
+    const displayMode = ['list','table'].includes(chartType) ? chartType : chartType === 'number' || chartType === 'battery' ? 'count' : 'donut'
+    const cfg = {
+      id: 'custom_' + Date.now(),
+      visible: true, size: 'md', color,
       customConfig: {
-        board, statuses, extraVals, display, label: widgetLabel,
-        icon: boardDef?.icon || '🔲', dateRange, agentScope,
-        columns: columns.length ? columns : (boardDef?.displayCols.slice(0,3).map(function(c){return c.field}) || []),
-        sortBy: sortBy || 'created_at',
-        limitRows: parseInt(limitRows) || 10,
-      },
-    })
+        board, label: label || boardDef.label, icon: boardDef.icon || '🔲',
+        chartType, display: displayMode,
+        groupBy: groupBy || boardDef.statusField,
+        statuses, dateRange, agentScope,
+        sortBy, limitRows,
+        columns: columns.length ? columns : boardDef.displayCols.slice(0,4).map(function(c){return c.field}),
+        numericField,
+      }
+    }
+    onSave(cfg)
   }
 
-  const STEPS = ['Board', 'Filters', 'Display']
-  const canNext = step === 1 ? !!board : true
+  const S = { width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }
+  const SL = { fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:5, marginTop:12, display:'block' }
 
   return (
-    <div onClick={function(e){ if(e.target===e.currentTarget) onClose() }}
-      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px', fontFamily:ff }}>
-      <div style={{ background:'var(--panel)', borderRadius:'14px', width:'100%', maxWidth:'580px', boxShadow:'0 20px 50px rgba(0,0,0,.3)', display:'flex', flexDirection:'column', maxHeight:'92vh', overflow:'hidden' }}>
+    <div style={{ position:'fixed', inset:0, zIndex:3000, background:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+      onClick={onClose}>
+      <div onClick={function(e){e.stopPropagation()}}
+        style={{ background:'var(--panel)', borderRadius:16, width:'100%', maxWidth:680, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 20px 60px rgba(0,0,0,.3)', overflow:'hidden' }}>
 
-        {/* Header */}
-        <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:'10px', flexShrink:0 }}>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:'15px', fontWeight:800, color:'var(--text)' }}>🔲 Add Custom Widget</div>
-            <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>Step {step} of 3 — {STEPS[step-1]}</div>
-          </div>
-          <div style={{ display:'flex', gap:'5px' }}>
-            {STEPS.map(function(s, i) {
-              return <div key={i} style={{ width:8, height:8, borderRadius:'50%', background:step>i?'#CC2200':'var(--border)', transition:'background .2s' }} />
-            })}
+        <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <div style={{ fontSize:16, fontWeight:800, color:'var(--text)' }}>Add Widget</div>
+            <div style={{ display:'flex', gap:6, marginTop:6 }}>
+              {STEPS.map(function(s,i) {
+                return (
+                  <button key={s} onClick={function(){if(i<step-1)setStep(i+1)}}
+                    style={{ padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:700, cursor:i<step-1?'pointer':'default', fontFamily:ff,
+                      background: step===i+1 ? 'var(--brand)' : i<step-1 ? 'var(--dim)' : 'transparent',
+                      color: step===i+1 ? '#fff' : i<step-1 ? 'var(--text)' : 'var(--muted)',
+                      border: '1px solid ' + (step===i+1 ? 'var(--brand)' : 'var(--border)') }}>
+                    {i+1}. {s}
+                  </button>
+                )
+              })}
+            </div>
           </div>
           {liveCount !== null && (
-            <div style={{ padding:'4px 12px', borderRadius:20, background:'rgba(204,34,0,.1)', border:'1px solid rgba(204,34,0,.3)', fontSize:12, fontWeight:700, color:'#CC2200' }}>
-              {loadingCnt ? '…' : liveCount} items
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:28, fontWeight:900, color:color }}>{loadingCnt ? '...' : liveCount}</div>
+              <div style={{ fontSize:10, color:'var(--muted)' }}>matching records</div>
             </div>
           )}
-          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:'18px', cursor:'pointer', color:'var(--muted)' }}>✕</button>
         </div>
 
-        <div style={{ flex:1, overflowY:'auto', padding:'16px 18px' }}>
+        <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
 
-          {/* ── STEP 1: BOARD ── */}
           {step === 1 && (
             <div>
-              <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'12px' }}>Which board do you want to show?</div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+              <div style={{ fontSize:13, color:'var(--muted)', marginBottom:12 }}>What data should this widget show?</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
                 {BOARD_OPTIONS.map(function(b) {
-                  const active = board === b.id
                   return (
-                    <div key={b.id} onClick={function(){ setBoard(b.id); setStatuses([]); setExtraVals({}) }}
-                      style={{ padding:'12px', borderRadius:'9px', border:'2px solid '+(active?'#CC2200':'var(--border)'), background:active?'rgba(204,34,0,.06)':'var(--dim)', cursor:'pointer', display:'flex', alignItems:'center', gap:'8px', transition:'all .15s' }}>
-                      <span style={{ fontSize:'22px' }}>{b.icon}</span>
-                      <div>
-                        <div style={{ fontSize:'13px', fontWeight:700, color:active?'#CC2200':'var(--text)' }}>{b.label}</div>
-                      </div>
+                    <div key={b.id} onClick={function(){setBoard(b.id);setStep(2)}}
+                      style={{ padding:'12px 14px', borderRadius:10, border:'2px solid '+(board===b.id?'var(--brand)':'var(--border)'),
+                        background: board===b.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', transition:'all .12s' }}>
+                      <div style={{ fontSize:20, marginBottom:4 }}>{b.icon}</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{b.label}</div>
+                      <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>{b.displayCols.length} fields</div>
                     </div>
                   )
                 })}
@@ -373,176 +493,176 @@ function CustomWidgetBuilder({ onSave, onClose, agents }) {
             </div>
           )}
 
-          {/* ── STEP 2: FILTERS ── */}
           {step === 2 && boardDef && (
-            <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
-              {/* Widget name */}
-              <div>
-                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Widget Title</div>
-                <input value={label} onChange={function(e){setLabel(e.target.value)}}
-                  placeholder={boardDef.label + (statuses.length ? ' · ' + statuses[0] : '')}
-                  style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, boxSizing:'border-box' }} />
+            <div>
+              <div style={{ fontSize:13, color:'var(--muted)', marginBottom:12 }}>Choose visualization type</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
+                {CHART_TYPES.map(function(ct) {
+                  return (
+                    <div key={ct.id} onClick={function(){setChartType(ct.id);setDisplay(ct.id==='list'?'list':ct.id==='table'?'table':ct.id==='number'?'count':'donut')}}
+                      style={{ padding:'10px 8px', borderRadius:10, border:'2px solid '+(chartType===ct.id?'var(--brand)':'var(--border)'),
+                        background: chartType===ct.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', textAlign:'center', transition:'all .12s' }}>
+                      <div style={{ fontSize:22, marginBottom:4 }}>{ct.icon}</div>
+                      <div style={{ fontSize:11, fontWeight:700, color:'var(--text)' }}>{ct.label}</div>
+                      <div style={{ fontSize:9, color:'var(--muted)', marginTop:2, lineHeight:1.3 }}>{ct.desc}</div>
+                    </div>
+                  )
+                })}
               </div>
-
-              {/* Status filter */}
-              {boardDef.statusOptions.length > 0 && (
+              {['donut','bar','column','line'].includes(chartType) && boardDef.chartFields && boardDef.chartFields.length > 0 && (
                 <div>
-                  <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>
-                    Filter by {boardDef.statusField || 'Status'} <span style={{ fontWeight:400 }}>(leave empty = show all)</span>
-                  </div>
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                    {boardDef.statusOptions.map(function(s) {
-                      const on = statuses.includes(s)
-                      return (
-                        <div key={s} onClick={function(){toggleStatus(s)}}
-                          style={{ padding:'5px 12px', borderRadius:'20px', border:'1px solid '+(on?'#CC2200':'var(--border)'), background:on?'rgba(204,34,0,.1)':'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color:on?'#CC2200':'var(--muted)', transition:'all .12s' }}>
-                          {s}
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <span style={SL}>Group / Segment by</span>
+                  <select value={groupBy} onChange={function(e){setGroupBy(e.target.value)}} style={S}>
+                    {boardDef.chartFields.map(function(f){ return <option key={f.field} value={f.field}>{f.label}</option> })}
+                  </select>
                 </div>
               )}
-
-              {/* Date range */}
-              <div>
-                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Date Range</div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                  {availYears.map(function(dr) {
-                    const on = dateRange === dr.id
-                    return (
-                      <div key={dr.id} onClick={function(){setDateRange(dr.id)}}
-                        style={{ padding:'5px 12px', borderRadius:'20px', border:'1px solid '+(on?'#3B82F6':'var(--border)'), background:on?'rgba(59,130,246,.1)':'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color:on?'#3B82F6':'var(--muted)', transition:'all .12s' }}>
-                        {dr.label}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Scope */}
-              <div>
-                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Show data for</div>
-                <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
-                  {[['mine','My records only'],['all','All agents']].concat((agents||[]).map(function(a){return [a.id, a.name]})).map(function(opt) {
-                    const on = agentScope === opt[0]
-                    return (
-                      <div key={opt[0]} onClick={function(){setAgentScope(opt[0])}}
-                        style={{ padding:'5px 12px', borderRadius:'20px', border:'1px solid '+(on?'#10B981':'var(--border)'), background:on?'rgba(16,185,129,.1)':'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color:on?'#10B981':'var(--muted)', transition:'all .12s' }}>
-                        {opt[1]}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Sort */}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              {['number','battery','bar','column','line'].includes(chartType) && boardDef.numericFields && boardDef.numericFields.length > 0 && (
                 <div>
-                  <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Sort by</div>
-                  <select value={sortBy} onChange={function(e){setSortBy(e.target.value)}}
-                    style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
-                    {boardDef.sortOptions.map(function(s) { return <option key={s.field} value={s.field}>{s.label}</option> })}
+                  <span style={SL}>Value to measure</span>
+                  <select value={numericField} onChange={function(e){setNumericField(e.target.value)}} style={S}>
+                    <option value="">Count of records</option>
+                    {boardDef.numericFields.map(function(f){ return <option key={f.field} value={f.field}>{f.label}</option> })}
                   </select>
                 </div>
-                <div>
-                  <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Max rows</div>
-                  <select value={limitRows} onChange={function(e){setLimitRows(e.target.value)}}
-                    style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
-                    {[5,10,15,20,50].map(function(n){ return <option key={n} value={n}>{n} rows</option> })}
-                  </select>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
-          {/* ── STEP 3: DISPLAY ── */}
-          {step === 3 && (
-            <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
-              {/* Display mode */}
-              <div>
-                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Display mode</div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                  {DISPLAY_MODES.map(function(d) {
-                    const active = display === d.id
-                    return (
-                      <div key={d.id} onClick={function(){setDisplay(d.id)}}
-                        style={{ padding:'12px', borderRadius:'9px', border:'2px solid '+(active?'#CC2200':'var(--border)'), background:active?'rgba(204,34,0,.06)':'var(--dim)', cursor:'pointer', transition:'all .15s' }}>
-                        <div style={{ fontSize:'20px', marginBottom:4 }}>{d.icon}</div>
-                        <div style={{ fontSize:'13px', fontWeight:700, color:active?'#CC2200':'var(--text)' }}>{d.label}</div>
-                        <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:2 }}>{d.desc}</div>
-                      </div>
-                    )
-                  })}
-                </div>
+          {step === 3 && boardDef && (
+            <div>
+              <span style={SL}>Widget label</span>
+              <input value={label} onChange={function(e){setLabel(e.target.value)}} placeholder={boardDef.label} style={S} />
+
+              <span style={SL}>Show data for</span>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
+                {[{id:'all',label:'All agents'},{id:'mine',label:'My records'},...agents.filter(function(a){return a.active}).map(function(a){return{id:a.id,label:a.name.split(' ')[0],color:a.color}})].map(function(opt) {
+                  const active = agentScope === opt.id
+                  const c = opt.color || 'var(--brand)'
+                  return (
+                    <button key={opt.id} onClick={function(){setAgentScope(opt.id)}}
+                      style={{ padding:'5px 12px', borderRadius:99, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff,
+                        border:'1px solid '+(active?c:'var(--border)'), background:active?c+'18':'transparent', color:active?c:'var(--muted)' }}>
+                      {opt.label}
+                    </button>
+                  )
+                })}
               </div>
 
-              {/* Columns (for table mode) */}
-              {display === 'table' && boardDef && (
+              <span style={SL}>Date range</span>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
+                {availYears.map(function(dr) {
+                  return (
+                    <button key={dr.id} onClick={function(){setDateRange(dr.id)}}
+                      style={{ padding:'4px 10px', borderRadius:99, fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:ff,
+                        border:'1px solid '+(dateRange===dr.id?'var(--brand)':'var(--border)'), background:dateRange===dr.id?'rgba(204,34,0,.08)':'transparent', color:dateRange===dr.id?'var(--brand)':'var(--muted)' }}>
+                      {dr.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {boardDef.statusOptions && boardDef.statusOptions.length > 0 && (
                 <div>
-                  <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Table columns</div>
+                  <span style={SL}>Filter by stage/status (empty = all)</span>
                   <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                    {boardDef.displayCols.map(function(col) {
-                      const on = columns.includes(col.field)
+                    {boardDef.statusOptions.map(function(s) {
                       return (
-                        <div key={col.field} onClick={function(){toggleColumn(col.field)}}
-                          style={{ padding:'5px 12px', borderRadius:'20px', border:'1px solid '+(on?'#8B5CF6':'var(--border)'), background:on?'rgba(139,92,246,.1)':'var(--dim)', cursor:'pointer', fontSize:'12px', fontWeight:600, color:on?'#8B5CF6':'var(--muted)' }}>
-                          {on?'✓ ':''}{col.label}
-                        </div>
+                        <button key={s} onClick={function(){toggleStatus(s)}}
+                          style={{ padding:'4px 10px', borderRadius:99, fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:ff,
+                            border:'1px solid '+(statuses.includes(s)?'var(--brand)':'var(--border)'), background:statuses.includes(s)?'rgba(204,34,0,.08)':'transparent', color:statuses.includes(s)?'var(--brand)':'var(--muted)' }}>
+                          {s}
+                        </button>
                       )
                     })}
                   </div>
                 </div>
               )}
+            </div>
+          )}
 
-              {/* Color */}
-              <div>
-                <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Accent color</div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                  {['#CC2200','#DC2626','#F97316','#F5A623','#10B981','#0EA5E9','#3B82F6','#8B5CF6','#EC4899','#14B8A6','#84CC16','#6366F1'].map(function(c) {
-                    return (
-                      <div key={c} onClick={function(){setColor(c)}}
-                        style={{ width:26, height:26, borderRadius:'50%', background:c, cursor:'pointer', border:color===c?'3px solid var(--text)':'2px solid transparent', transition:'border .1s' }} />
-                    )
-                  })}
+          {step === 4 && boardDef && (
+            <div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <div>
+                  <span style={SL}>Sort by</span>
+                  <select value={sortBy} onChange={function(e){setSortBy(e.target.value)}} style={S}>
+                    {boardDef.sortOptions.map(function(s){ return <option key={s.field} value={s.field}>{s.label}</option> })}
+                  </select>
+                </div>
+                <div>
+                  <span style={SL}>Max rows</span>
+                  <select value={limitRows} onChange={function(e){setLimitRows(Number(e.target.value))}} style={S}>
+                    {[5,10,15,20,25,50].map(function(n){ return <option key={n} value={n}>{n} rows</option> })}
+                  </select>
                 </div>
               </div>
 
-              {/* Summary */}
-              <div style={{ padding:'12px 14px', background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', fontSize:12, color:'var(--muted)', lineHeight:1.7 }}>
-                <strong style={{ color:'var(--text)' }}>Summary:</strong>{' '}
-                {boardDef?.icon} {boardDef?.label}
-                {statuses.length > 0 ? ' · ' + statuses.join(', ') : ' · All statuses'}
-                {dateRange !== 'all' ? ' · ' + dateRange : ''}
-                {' · ' + (display === 'count' ? 'count' : display === 'list' ? 'list view' : display === 'table' ? 'table view' : 'donut chart')}
-                {liveCount !== null && <span style={{ color:'#CC2200', fontWeight:700 }}> · {liveCount} items match</span>}
+              <span style={SL}>Widget accent color</span>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+                {COLOR_OPTS.map(function(c) {
+                  return (
+                    <div key={c} onClick={function(){setColor(c)}}
+                      style={{ width:28, height:28, borderRadius:'50%', background:c, cursor:'pointer',
+                        border: color===c ? '3px solid var(--text)' : '2px solid transparent', transition:'border .1s' }} />
+                  )
+                })}
               </div>
+
+              {['list','table'].includes(chartType) && (
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:4, marginBottom:8 }}>
+                    <span style={{...SL, marginTop:0, marginBottom:0}}>Choose columns to show</span>
+                    <button onClick={function(){setShowCols(function(p){return !p})}}
+                      style={{ fontSize:11, color:'var(--brand)', background:'none', border:'none', cursor:'pointer', fontFamily:ff, fontWeight:700 }}>
+                      {showCols ? 'Hide' : 'Edit (' + columns.length + ' selected)'}
+                    </button>
+                  </div>
+                  {showCols && (
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4, padding:10, background:'var(--dim)', borderRadius:8 }}>
+                      {boardDef.displayCols.map(function(col) {
+                        return (
+                          <label key={col.field} style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', padding:'3px 6px', borderRadius:6, fontSize:12, color:'var(--text)' }}>
+                            <input type="checkbox" checked={columns.includes(col.field)} onChange={function(){toggleCol(col.field)}}
+                              style={{ width:14, height:14, accentColor:'var(--brand)', cursor:'pointer' }} />
+                            {col.label}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px', justifyContent:'flex-end', flexShrink:0 }}>
-          {step > 1 && <button onClick={function(){setStep(function(s){return s-1})}} style={{ padding:'8px 16px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', cursor:'pointer', fontFamily:ff, fontSize:13 }}>← Back</button>}
-          {step < 3 && (
-            <button onClick={function(){ if(!board && step===1) return; setStep(function(s){return s+1}) }}
-              style={{ padding:'8px 18px', borderRadius:8, border:'none', background:canNext?'#CC2200':'var(--dim)', color:canNext?'#fff':'var(--muted)', cursor:canNext?'pointer':'default', fontFamily:ff, fontSize:13, fontWeight:700 }}>
-              Next →
-            </button>
-          )}
-          {step === 3 && (
-            <button onClick={finish}
-              style={{ padding:'8px 20px', borderRadius:8, border:'none', background:'#10B981', color:'#fff', cursor:'pointer', fontFamily:ff, fontSize:13, fontWeight:700 }}>
-              ✅ Add to Dashboard
-            </button>
-          )}
+        <div style={{ padding:'12px 20px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <button onClick={step>1?function(){setStep(function(p){return p-1})}:onClose}
+            style={{ padding:'8px 18px', borderRadius:8, border:'1px solid var(--border)', background:'transparent', color:'var(--text)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:ff }}>
+            {step>1 ? '← Back' : 'Cancel'}
+          </button>
+          <div style={{ display:'flex', gap:8 }}>
+            {step < 4 ? (
+              <button onClick={function(){if(step===1&&!board)return;setStep(function(p){return p+1})}}
+                disabled={step===1&&!board}
+                style={{ padding:'8px 20px', borderRadius:8, border:'none', background:step===1&&!board?'var(--dim)':'var(--brand)', color:'#fff', fontSize:13, fontWeight:700, cursor:step===1&&!board?'not-allowed':'pointer', fontFamily:ff }}>
+                Next →
+              </button>
+            ) : (
+              <button onClick={save}
+                style={{ padding:'8px 24px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                ✓ Add Widget
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-// ── CUSTOM WIDGET RENDERER ────────────────────────────────────────
+
 function CustomWidgetContent({ config, agentId, allAgents }) {
   const navigate = useNavigate()
   const [items,       setItems]       = useState([])
@@ -2386,7 +2506,7 @@ export function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}><Loading /></div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px', alignItems: 'start' }}>
-          {visibleOrdered.map(w => renderWidget(w))}
+          {visibleOrdered.map(w => <WidgetErrorBoundary key={w.id}>{renderWidget(w)}</WidgetErrorBoundary>)}
         </div>
       )}
 
