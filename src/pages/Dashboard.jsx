@@ -2043,7 +2043,7 @@ export function Dashboard() {
       return shell(
         <CustomWidgetContent
           config={w.customConfig}
-          agentId={viewAgentId}
+          agentId={agent?.id}
           allAgents={agents}
         />
       )
