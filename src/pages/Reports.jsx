@@ -93,7 +93,21 @@ export function Reports() {
   const [agents, setAgents]  = useState([])
   const [agentFilter, setAgentFilter] = useState('')
 
-  const years = Array.from({length:5},(_,i)=>(new Date().getFullYear()-i).toString())
+  const [years, setYears] = React.useState(
+    Array.from({length: new Date().getFullYear() - 2014}, (_, i) => String(new Date().getFullYear() - i))
+  )
+
+  // Load actual years from DB
+  React.useEffect(() => {
+    supabase.from('deals').select('ao_date').not('ao_date','is',null).order('ao_date',{ascending:true}).limit(1)
+      .then(({ data }) => {
+        if (data?.[0]?.ao_date) {
+          const minYear = parseInt(data[0].ao_date.slice(0,4))
+          const curYear = new Date().getFullYear()
+          setYears(Array.from({length: curYear - minYear + 1}, (_, i) => String(curYear - i)))
+        }
+      }).catch(() => {})
+  }, [])
 
   useEffect(() => { load() }, [year])
 

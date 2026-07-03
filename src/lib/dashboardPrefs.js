@@ -28,11 +28,18 @@ const DEFAULT_WIDGETS = [
 // ── LOAD PREFS FROM DB ────────────────────────────────────────────
 export async function loadDashPrefs(agentId) {
   try {
-    const { data } = await supabase
+    // maybeSingle() returns null (not an error) when no row exists
+    // single() throws when no row — was causing silent fallback to defaults
+    const { data, error } = await supabase
       .from('briefing_prefs')
       .select('dashboard_widgets, dashboard_layout')
       .eq('agent_id', agentId)
-      .single()
+      .maybeSingle()
+
+    if (error) {
+      console.warn('[dashPrefs] load error:', error.message)
+      return { widgets: DEFAULT_WIDGETS, layout: {} }
+    }
 
     if (data?.dashboard_widgets?.length) {
       return {
@@ -40,7 +47,9 @@ export async function loadDashPrefs(agentId) {
         layout:  data.dashboard_layout || {},
       }
     }
-  } catch { /* no prefs yet — use defaults */ }
+  } catch(e) {
+    console.warn('[dashPrefs] loadDashPrefs error:', e.message)
+  }
 
   return { widgets: DEFAULT_WIDGETS, layout: {} }
 }
