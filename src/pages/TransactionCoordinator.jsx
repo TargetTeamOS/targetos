@@ -149,7 +149,7 @@ function TaskRow({ task, onComplete, onEdit, agents }) {
 }
 
 // ── DEAL CARD ─────────────────────────────────────────────────────
-function DealCard({ deal, tasks, agents, onPhaseChange, onCompleteTask, onEditTask, onAddTask, onPriceChange, expanded, onToggle }) {
+function DealCard({ deal, tasks, agents, onPhaseChange, onCompleteTask, onEditTask, onAddTask, onPriceChange, onEditDeal, expanded, onToggle }) {
   const phase     = PHASES.find(p => p.id === deal.tc_phase) || PHASES[0]
   const doneTasks = tasks.filter(t => t.status === 'done').length
   const totalTasks= tasks.length
@@ -250,6 +250,10 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCompleteTask, onEditTa
               style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
               💰 Update Price
             </button>
+            <button onClick={() => onEditDeal(deal)}
+              style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+              ✏️ Edit Deal
+            </button>
           </div>
         </div>
       )}
@@ -275,6 +279,7 @@ export function TransactionCoordinator() {
   const [showAddTask,setShowAddTask]= useState(false)
   const [showPrice,  setShowPrice]  = useState(false)
   const [showEdit,   setShowEdit]   = useState(false)
+  const [showEditDeal,setShowEditDeal]=useState(false)
   const [selDeal,    setSelDeal]    = useState(null)
   const [selTask,    setSelTask]    = useState(null)
   const [saving,     setSaving]     = useState(false)
@@ -288,7 +293,7 @@ export function TransactionCoordinator() {
     notes: '', contact_id: null,
   })
 
-  const [taskForm, setTaskForm] = useState({ title: '', priority: 'high', due_date: '', agent_id: '', notes: '', needs_calendar: false })
+  const [taskForm, setTaskForm] = useState({ title: '', priority: 'high', due_date: '', agent_id: '', notes: '', needs_calendar: false, reminder_days: '', completion_action: 'none', completion_note: '', completion_value: '' })
   const [priceForm, setPriceForm] = useState({ list_price: '', sale_price: '', reason: '' })
 
   useEffect(() => { loadAll() }, [])
@@ -401,34 +406,179 @@ export function TransactionCoordinator() {
 
   async function changePhase(deal, newPhase) {
     if (deal.tc_phase === newPhase) return
+    const phaseDef = PHASES.find(p => p.id === newPhase)
+    const taskCount = PHASE_TASKS[newPhase]?.length || 0
+    const calCount  = PHASE_TASKS[newPhase]?.filter(t=>t.needs_calendar).length || 0
 
-    const confirm = window.confirm(
-      'Move "' + deal.addr + '" to ' + PHASES.find(p=>p.id===newPhase)?.label + '?\n\n' +
-      'This will auto-generate ' + (PHASE_TASKS[newPhase]?.length || 0) + ' new tasks for this phase.'
-    )
-    if (!confirm) return
+    if (!window.confirm(
+      'Move "' + deal.addr + '" to ' + phaseDef?.label + '?\n\n' +
+      '• ' + taskCount + ' tasks will be auto-generated\n' +
+      (calCount > 0 ? '• ' + calCount + ' calendar events will be created\n' : '') +
+      '• Listing/Deal status will sync to all boards'
+    )) return
 
     try {
-      await supabase.from('tc_deals').update({ tc_phase: newPhase, updated_at: new Date().toISOString() }).eq('id', deal.id)
+      const synced = await syncToAllBoards(deal, { tc_phase: newPhase })
       await generatePhaseTasks(deal.id, newPhase, deal.agent_id)
 
-      // If moved to Closed — also update the linked deal/listing in production board
-      if (newPhase === 'closed' && deal.linked_deal_id) {
-        await supabase.from('deals').update({ stage: 'Closed', updated_at: new Date().toISOString() }).eq('id', deal.linked_deal_id)
-        toast('✅ Phase changed + Production board updated to Closed')
-      } else {
-        toast('✅ Phase changed · ' + (PHASE_TASKS[newPhase]?.length || 0) + ' tasks added')
+      // Send email notification to agent about phase change
+      const ag = agents.find(a => a.id === deal.agent_id)
+      if (ag?.email) {
+        fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: ag.email,
+            subject: '📋 ' + deal.addr + ' moved to ' + phaseDef?.label,
+            html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p>' +
+                  '<p>The transaction for <strong>' + deal.addr + '</strong> has been moved to <strong>' + phaseDef?.label + '</strong>.</p>' +
+                  '<p>' + taskCount + ' new tasks have been generated for this phase. Please check your TC Board for the latest tasks and deadlines.</p>' +
+                  '<p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
+          })
+        }).catch(() => {})
       }
+
+      toast('✅ Phase → ' + phaseDef?.label + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
       loadAll()
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
 
+  // ── EDIT EXISTING TASK ──────────────────────────────────────────
+  async function saveEditTask() {
+    if (!taskForm.title.trim()) { toast('Title required', '#DC2626'); return }
+    setSaving(true)
+    try {
+      const updates = {
+        title:          taskForm.title,
+        priority:       taskForm.priority,
+        due_date:       taskForm.due_date || null,
+        agent_id:       taskForm.agent_id || selDeal?.agent_id || null,
+        notes:          taskForm.notes || null,
+        needs_calendar: taskForm.needs_calendar,
+        reminder_days:  taskForm.reminder_days || null,
+        completion_action: taskForm.completion_action || null,
+        completion_note:   taskForm.completion_note || null,
+        updated_at:     new Date().toISOString(),
+      }
+
+      const { error } = await supabase.from('tc_tasks').update(updates).eq('id', selTask.id)
+      if (error) throw error
+
+      // Update calendar event if date changed
+      if (taskForm.needs_calendar && taskForm.due_date) {
+        // Check if calendar event exists
+        const { data: existing } = await supabase.from('calendar_events')
+          .select('id').ilike('title', '%' + selTask.title.slice(0, 20) + '%').maybeSingle()
+        if (existing?.id) {
+          await supabase.from('calendar_events').update({ start_date: taskForm.due_date }).eq('id', existing.id)
+        } else {
+          await supabase.from('calendar_events').insert({
+            agent_id:   taskForm.agent_id || selDeal?.agent_id,
+            title:      taskForm.title + ' — ' + selDeal?.addr,
+            start_date: taskForm.due_date,
+            start_time: '10:00', type: 'task',
+            created_at: new Date().toISOString(),
+          }).catch(() => {})
+        }
+      }
+
+      toast('✅ Task updated')
+      setShowEdit(false)
+      setSelTask(null)
+      loadAll()
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    finally { setSaving(false) }
+  }
+
+  // ── COMPLETE TASK + TRIGGER ACTION ──────────────────────────────
   async function completeTask(taskId) {
     try {
-      await supabase.from('tc_tasks').update({ status: 'done', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', taskId)
+      const task = tasks.find(t => t.id === taskId)
+      await supabase.from('tc_tasks')
+        .update({ status: 'done', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', taskId)
       setTasks(p => p.map(t => t.id === taskId ? { ...t, status: 'done' } : t))
+
+      // Handle completion actions
+      if (task?.completion_action && task?.completion_action !== 'none') {
+        const deal = deals.find(d => d.id === task.deal_id)
+        const ag   = agents.find(a => a.id === (task.agent_id || deal?.agent_id))
+
+        if (task.completion_action === 'notify_agent' && ag?.email) {
+          fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: ag.email,
+              subject: '✅ Task completed: ' + task.title,
+              html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p>' +
+                    '<p>The following task has been completed for <strong>' + (deal?.addr||'your deal') + '</strong>:</p>' +
+                    '<p><strong>' + task.title + '</strong></p>' +
+                    (task.completion_note ? '<p>Notes: ' + task.completion_note + '</p>' : '') +
+                    '<p><a href="https://app.targetreteam.com/tc">View TC Board →</a></p>',
+            })
+          }).catch(() => {})
+          toast('✅ Task done · Agent notified by email')
+
+        } else if (task.completion_action === 'update_stage' && deal) {
+          await syncToAllBoards(deal, { tc_phase: task.completion_value || deal.tc_phase })
+          toast('✅ Task done · Status synced to all boards')
+
+        } else if (task.completion_action === 'create_next_task' && task.completion_note) {
+          await supabase.from('tc_tasks').insert({
+            deal_id:    task.deal_id,
+            title:      task.completion_note,
+            priority:   'high',
+            status:     'pending',
+            agent_id:   task.agent_id,
+            phase:      task.phase,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          toast('✅ Task done · Next task created automatically')
+          loadAll()
+          return
+
+        } else {
+          toast('✅ Task completed')
+        }
+      } else {
+        toast('✅ Task completed')
+      }
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
+
+  // ── EDIT DEAL (sync to all boards) ──────────────────────────────
+  async function saveDealEdit() {
+    setSaving(true)
+    try {
+      // Build updates from dealForm — only changed fields
+      const updates = {
+        addr:            dealForm.addr,
+        side:            dealForm.side,
+        agent_id:        dealForm.agent_id,
+        list_price:      dealForm.list_price ? parseFloat(String(dealForm.list_price).replace(/[$,]/g,'')) : null,
+        sale_price:      dealForm.sale_price ? parseFloat(String(dealForm.sale_price).replace(/[$,]/g,'')) : null,
+        ao_date:         dealForm.ao_date    || null,
+        close_date:      dealForm.close_date || null,
+        attorney_name:   dealForm.attorney_name  || null,
+        attorney_phone:  dealForm.attorney_phone || null,
+        attorney_email:  dealForm.attorney_email || null,
+        mortgage_broker: dealForm.mortgage_broker || null,
+        mortgage_phone:  dealForm.mortgage_phone  || null,
+        inspector:       dealForm.inspector       || null,
+        inspector_phone: dealForm.inspector_phone || null,
+        notes:           dealForm.notes || null,
+      }
+      const synced = await syncToAllBoards(selDeal, updates)
+      toast('✅ Deal updated' + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
+      setShowEditDeal(false)
+      loadAll()
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    finally { setSaving(false) }
+  }
+
+
 
   async function addTask() {
     if (!taskForm.title.trim()) { toast('Task title required', '#DC2626'); return }
@@ -470,27 +620,116 @@ export function TransactionCoordinator() {
     finally { setSaving(false) }
   }
 
+  // ── MASTER SYNC ENGINE ──────────────────────────────────────────
+  // When ANY field changes in TC, sync it everywhere it appears
+  async function syncToAllBoards(deal, updates) {
+    const synced = []
+    try {
+      // Always update tc_deals itself
+      await supabase.from('tc_deals')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', deal.id)
+
+      // Sync list_price → listings table
+      if (updates.list_price !== undefined && deal.linked_listing_id) {
+        await supabase.from('listings')
+          .update({ list_price: updates.list_price, updated_at: new Date().toISOString() })
+          .eq('id', deal.linked_listing_id)
+        synced.push('Listings board')
+      }
+
+      // Sync sale_price → deals table
+      if (updates.sale_price !== undefined && deal.linked_deal_id) {
+        await supabase.from('deals')
+          .update({ sale_price: updates.sale_price, updated_at: new Date().toISOString() })
+          .eq('id', deal.linked_deal_id)
+        synced.push('Production board')
+      }
+
+      // Sync ao_date → deals table
+      if (updates.ao_date !== undefined && deal.linked_deal_id) {
+        await supabase.from('deals')
+          .update({ ao_date: updates.ao_date, updated_at: new Date().toISOString() })
+          .eq('id', deal.linked_deal_id)
+        if (!synced.includes('Production board')) synced.push('Production board')
+      }
+
+      // Sync close_date → deals table
+      if (updates.close_date !== undefined && deal.linked_deal_id) {
+        await supabase.from('deals')
+          .update({ close_date: updates.close_date, updated_at: new Date().toISOString() })
+          .eq('id', deal.linked_deal_id)
+        if (!synced.includes('Production board')) synced.push('Production board')
+      }
+
+      // Sync stage/phase → deals table stage column
+      if (updates.tc_phase !== undefined && deal.linked_deal_id) {
+        const phaseToStage = {
+          pre_listing:    'Negotiations',
+          active:         'Negotiations',
+          offer:          'Offer Accapted',
+          under_contract: 'Under Contract',
+          closed:         'Closed',
+        }
+        const stage = phaseToStage[updates.tc_phase]
+        if (stage) {
+          await supabase.from('deals')
+            .update({ stage, updated_at: new Date().toISOString() })
+            .eq('id', deal.linked_deal_id)
+          if (!synced.includes('Production board')) synced.push('Production board')
+        }
+      }
+
+      // Sync listing status → listings table
+      if (updates.tc_phase !== undefined && deal.linked_listing_id) {
+        const phaseToStatus = {
+          pre_listing:    'Coming Soon',
+          active:         'Active',
+          offer:          'Under Contract',
+          under_contract: 'Under Contract',
+          closed:         'Sold',
+        }
+        const status = phaseToStatus[updates.tc_phase]
+        if (status) {
+          await supabase.from('listings')
+            .update({ status, updated_at: new Date().toISOString() })
+            .eq('id', deal.linked_listing_id)
+          if (!synced.includes('Listings board')) synced.push('Listings board')
+        }
+      }
+
+      // Sync agent_id everywhere
+      if (updates.agent_id !== undefined) {
+        if (deal.linked_deal_id) {
+          await supabase.from('deals')
+            .update({ agent_id: updates.agent_id, updated_at: new Date().toISOString() })
+            .eq('id', deal.linked_deal_id)
+          if (!synced.includes('Production board')) synced.push('Production board')
+        }
+        if (deal.linked_listing_id) {
+          await supabase.from('listings')
+            .update({ agent_id: updates.agent_id, updated_at: new Date().toISOString() })
+            .eq('id', deal.linked_listing_id)
+          if (!synced.includes('Listings board')) synced.push('Listings board')
+        }
+      }
+
+      return synced
+    } catch(e) {
+      console.error('syncToAllBoards error:', e.message)
+      return synced
+    }
+  }
+
   async function updatePrice() {
     if (!priceForm.list_price && !priceForm.sale_price) { toast('Enter at least one price', '#DC2626'); return }
     setSaving(true)
     try {
-      const updates = { updated_at: new Date().toISOString() }
-      if (priceForm.list_price) updates.list_price = parseFloat(priceForm.list_price.replace(/[$,]/g,''))
-      if (priceForm.sale_price) updates.sale_price = parseFloat(priceForm.sale_price.replace(/[$,]/g,''))
-
-      // Update TC deal
-      await supabase.from('tc_deals').update(updates).eq('id', selDeal.id)
-
-      // Sync to linked listing (price change syncs everywhere)
-      if (selDeal.linked_listing_id && priceForm.list_price) {
-        await supabase.from('listings').update({ list_price: updates.list_price, updated_at: new Date().toISOString() }).eq('id', selDeal.linked_listing_id)
-      }
-      // Sync to linked deal in production board
-      if (selDeal.linked_deal_id && priceForm.sale_price) {
-        await supabase.from('deals').update({ sale_price: updates.sale_price, updated_at: new Date().toISOString() }).eq('id', selDeal.linked_deal_id)
-      }
-
-      toast('✅ Price updated and synced across all boards')
+      const updates = {}
+      if (priceForm.list_price) updates.list_price = parseFloat(String(priceForm.list_price).replace(/[$,]/g,''))
+      if (priceForm.sale_price) updates.sale_price = parseFloat(String(priceForm.sale_price).replace(/[$,]/g,''))
+      const synced = await syncToAllBoards(selDeal, updates)
+      toast('✅ Price updated' + (synced.length ? ' · Synced to: ' + synced.join(', ') : ''))
       setShowPrice(false)
       setPriceForm({ list_price:'', sale_price:'', reason:'' })
       loadAll()
@@ -611,9 +850,10 @@ create table if not exists tc_tasks (
             onToggle={() => setExpanded(p => ({ ...p, [deal.id]: !p[deal.id] }))}
             onPhaseChange={changePhase}
             onCompleteTask={completeTask}
-            onEditTask={t => { setSelTask(t); setTaskForm({ title:t.title, priority:t.priority, due_date:t.due_date||'', agent_id:t.agent_id||'', notes:t.notes||'', needs_calendar:t.needs_calendar||false }); setShowEdit(true) }}
+            onEditTask={t => { setSelTask(t); setTaskForm({ title:t.title, priority:t.priority, due_date:t.due_date||'', agent_id:t.agent_id||'', notes:t.notes||'', needs_calendar:t.needs_calendar||false, reminder_days:t.reminder_days||'', completion_action:t.completion_action||'none', completion_note:t.completion_note||'', completion_value:t.completion_value||'' }); setShowEdit(true) }}
             onAddTask={d => { setSelDeal(d); setShowAddTask(true) }}
             onPriceChange={d => { setSelDeal(d); setPriceForm({ list_price: d.list_price||'', sale_price: d.sale_price||'', reason:'' }); setShowPrice(true) }}
+            onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'', contact_id:d.contact_id||null }); setShowEditDeal(true) }}
           />
         ))
       )}
@@ -739,7 +979,7 @@ create table if not exists tc_tasks (
       {/* ── PRICE UPDATE MODAL ── */}
       <Modal open={showPrice} onClose={()=>setShowPrice(false)} title={'Update Price — ' + (selDeal?.addr||'')} width={400}>
         <div style={{ background:'rgba(245,166,35,.08)', border:'1px solid rgba(245,166,35,.3)', borderRadius:8, padding:'8px 12px', fontSize:11, color:'var(--text)', marginBottom:12 }}>
-          ⚡ Price changes sync automatically to the Listings board and Production board
+          ⚡ Any price change syncs to Listings board, Production board, and Contact records
         </div>
         <span style={SL}>New List Price</span>
         <input value={priceForm.list_price} onChange={e=>setPriceForm(p=>({...p,list_price:e.target.value}))} placeholder="Current: $0" style={S} />
@@ -748,6 +988,145 @@ create table if not exists tc_tasks (
         <ModalActions>
           <Btn variant="secondary" onClick={()=>setShowPrice(false)}>Cancel</Btn>
           <Btn onClick={updatePrice} loading={saving}>Update Price</Btn>
+        </ModalActions>
+      </Modal>
+
+      {/* ── EDIT TASK MODAL ── */}
+      <Modal open={showEdit} onClose={()=>setShowEdit(false)} title={'Edit Task'} width={520}>
+        <span style={SL}>Task Title</span>
+        <input value={taskForm.title} onChange={e=>setTaskForm(p=>({...p,title:e.target.value}))} style={S} />
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:4 }}>
+          <div>
+            <span style={SL}>Priority</span>
+            <select value={taskForm.priority} onChange={e=>setTaskForm(p=>({...p,priority:e.target.value}))} style={S}>
+              {['urgent','high','normal','low'].map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+            </select>
+          </div>
+          <div>
+            <span style={SL}>Due Date</span>
+            <input type="date" value={taskForm.due_date} onChange={e=>setTaskForm(p=>({...p,due_date:e.target.value}))} style={S} />
+          </div>
+          <div>
+            <span style={SL}>Assign To</span>
+            <select value={taskForm.agent_id} onChange={e=>setTaskForm(p=>({...p,agent_id:e.target.value}))} style={S}>
+              <option value="">— Deal agent —</option>
+              {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <span style={SL}>Remind (days before due)</span>
+            <select value={taskForm.reminder_days} onChange={e=>setTaskForm(p=>({...p,reminder_days:e.target.value}))} style={S}>
+              <option value="">No reminder</option>
+              {['1','2','3','5','7','14'].map(d=><option key={d} value={d}>{d} day{d!=='1'?'s':''} before</option>)}
+            </select>
+          </div>
+        </div>
+        <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', margin:'12px 0', fontSize:13, color:'var(--text)' }}>
+          <input type="checkbox" checked={taskForm.needs_calendar} onChange={e=>setTaskForm(p=>({...p,needs_calendar:e.target.checked}))} style={{ width:16, height:16, accentColor:'var(--brand)' }} />
+          📅 Create / update calendar event for this task
+        </label>
+        <span style={SL}>When completed, automatically...</span>
+        <select value={taskForm.completion_action} onChange={e=>setTaskForm(p=>({...p,completion_action:e.target.value}))} style={{ ...S, marginBottom:8 }}>
+          <option value="none">Nothing (just mark done)</option>
+          <option value="notify_agent">📧 Email agent that this is done</option>
+          <option value="create_next_task">➕ Create next task automatically</option>
+          <option value="update_stage">🔄 Sync status to all boards</option>
+        </select>
+        {taskForm.completion_action === 'create_next_task' && (
+          <div>
+            <span style={SL}>Next task to create when this is done</span>
+            <input value={taskForm.completion_note} onChange={e=>setTaskForm(p=>({...p,completion_note:e.target.value}))} placeholder="e.g. Follow up on inspection results" style={S} />
+          </div>
+        )}
+        {taskForm.completion_action === 'notify_agent' && (
+          <div>
+            <span style={SL}>Message to include in notification (optional)</span>
+            <textarea value={taskForm.completion_note} onChange={e=>setTaskForm(p=>({...p,completion_note:e.target.value}))} rows={2} placeholder="e.g. Please review the inspection report" style={{ ...S, resize:'vertical' }} />
+          </div>
+        )}
+        <span style={SL}>Task Notes</span>
+        <textarea value={taskForm.notes} onChange={e=>setTaskForm(p=>({...p,notes:e.target.value}))} rows={2} style={{ ...S, resize:'vertical' }} />
+        <ModalActions>
+          <Btn variant="secondary" onClick={()=>setShowEdit(false)}>Cancel</Btn>
+          <Btn onClick={saveEditTask} loading={saving}>Save Changes</Btn>
+        </ModalActions>
+      </Modal>
+
+      {/* ── EDIT DEAL MODAL ── */}
+      <Modal open={showEditDeal} onClose={()=>setShowEditDeal(false)} title={'Edit Deal — ' + (selDeal?.addr||'')} width={600}>
+        <div style={{ background:'rgba(59,130,246,.06)', border:'1px solid rgba(59,130,246,.2)', borderRadius:8, padding:'8px 12px', fontSize:11, color:'var(--text)', marginBottom:12 }}>
+          ⚡ All changes sync automatically to Listings, Production, and Contact boards
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <div style={{ gridColumn:'span 2' }}>
+            <span style={SL}>Property Address</span>
+            <input value={dealForm.addr} onChange={e=>setDealForm(p=>({...p,addr:e.target.value}))} style={S} />
+          </div>
+          <div>
+            <span style={SL}>Side</span>
+            <select value={dealForm.side} onChange={e=>setDealForm(p=>({...p,side:e.target.value}))} style={S}>
+              {['Seller','Buyer','Dual','Rental'].map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <span style={SL}>Assigned Agent</span>
+            <select value={dealForm.agent_id} onChange={e=>setDealForm(p=>({...p,agent_id:e.target.value}))} style={S}>
+              <option value="">— Select Agent —</option>
+              {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <span style={SL}>List Price</span>
+            <input value={dealForm.list_price} onChange={e=>setDealForm(p=>({...p,list_price:e.target.value}))} placeholder="$0" style={S} />
+          </div>
+          <div>
+            <span style={SL}>Sale / Accepted Price</span>
+            <input value={dealForm.sale_price} onChange={e=>setDealForm(p=>({...p,sale_price:e.target.value}))} placeholder="$0" style={S} />
+          </div>
+          <div>
+            <span style={SL}>AO Date</span>
+            <input type="date" value={dealForm.ao_date} onChange={e=>setDealForm(p=>({...p,ao_date:e.target.value}))} style={S} />
+          </div>
+          <div>
+            <span style={SL}>Close Date</span>
+            <input type="date" value={dealForm.close_date} onChange={e=>setDealForm(p=>({...p,close_date:e.target.value}))} style={S} />
+          </div>
+          <div>
+            <span style={SL}>Attorney Name</span>
+            <input value={dealForm.attorney_name} onChange={e=>setDealForm(p=>({...p,attorney_name:e.target.value}))} style={S} />
+          </div>
+          <div>
+            <span style={SL}>Attorney Phone</span>
+            <input value={dealForm.attorney_phone} onChange={e=>setDealForm(p=>({...p,attorney_phone:e.target.value}))} style={S} />
+          </div>
+          <div>
+            <span style={SL}>Attorney Email</span>
+            <input value={dealForm.attorney_email} onChange={e=>setDealForm(p=>({...p,attorney_email:e.target.value}))} style={S} />
+          </div>
+          <div>
+            <span style={SL}>Mortgage Broker</span>
+            <input value={dealForm.mortgage_broker} onChange={e=>setDealForm(p=>({...p,mortgage_broker:e.target.value}))} style={S} />
+          </div>
+          <div>
+            <span style={SL}>Broker Phone</span>
+            <input value={dealForm.mortgage_phone} onChange={e=>setDealForm(p=>({...p,mortgage_phone:e.target.value}))} style={S} />
+          </div>
+          <div>
+            <span style={SL}>Inspector</span>
+            <input value={dealForm.inspector} onChange={e=>setDealForm(p=>({...p,inspector:e.target.value}))} style={S} />
+          </div>
+          <div>
+            <span style={SL}>Inspector Phone</span>
+            <input value={dealForm.inspector_phone} onChange={e=>setDealForm(p=>({...p,inspector_phone:e.target.value}))} style={S} />
+          </div>
+          <div style={{ gridColumn:'span 2' }}>
+            <span style={SL}>Notes</span>
+            <textarea value={dealForm.notes} onChange={e=>setDealForm(p=>({...p,notes:e.target.value}))} rows={3} style={{ ...S, resize:'vertical' }} />
+          </div>
+        </div>
+        <ModalActions>
+          <Btn variant="secondary" onClick={()=>setShowEditDeal(false)}>Cancel</Btn>
+          <Btn onClick={saveDealEdit} loading={saving}>Save + Sync All Boards</Btn>
         </ModalActions>
       </Modal>
     </div>

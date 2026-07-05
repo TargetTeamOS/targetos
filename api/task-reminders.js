@@ -17,12 +17,34 @@ module.exports = async function handler(req, res) {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
 
     // Load all pending tasks due today or overdue, grouped by agent
-    const { data: tasks } = await sb
-      .from('tasks')
-      .select('id, title, due_date, priority, notes, agent_id, contact_id, agents(id, name, email)')
-      .eq('status', 'pending')
-      .lte('due_date', tomorrow)
-      .order('due_date', { ascending: true })
+    const [tasksRes, tcTasksRes] = await Promise.all([
+      sb.from('tasks')
+        .select('id, title, due_date, priority, notes, agent_id, contact_id, agents(id, name, email)')
+        .eq('status', 'pending')
+        .lte('due_date', tomorrow)
+        .order('due_date', { ascending: true }),
+      sb.from('tc_tasks')
+        .select('id, title, due_date, priority, notes, agent_id, reminder_days, tc_deals(addr, tc_phase), agents(id, name, email)')
+        .eq('status', 'pending')
+        .not('reminder_days', 'is', null)
+        .order('due_date', { ascending: true })
+        .catch(() => ({ data: [] }))
+    ])
+
+    // Add TC tasks where reminder_days before due date matches today
+    const tcTasks = (tcTasksRes.data || []).filter(t => {
+      if (!t.due_date || !t.reminder_days) return false
+      const dueDate = new Date(t.due_date)
+      const remind  = new Date(dueDate)
+      remind.setDate(remind.getDate() - parseInt(t.reminder_days))
+      return remind.toISOString().slice(0, 10) === today
+    }).map(t => ({
+      ...t,
+      title: '[TC] ' + (t.tc_deals?.addr || '') + ' — ' + t.title,
+      source: 'tc'
+    }))
+
+    const tasks = [...(tasksRes.data || []), ...tcTasks]
 
     if (!tasks || tasks.length === 0) {
       return res.status(200).json({ ok: true, sent: 0, message: 'No tasks due' })
