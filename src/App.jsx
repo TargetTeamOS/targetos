@@ -48,6 +48,7 @@ import { PublicHome, PublicListings, PublicListingDetail, PublicAbout, PublicCon
 import { Route as RoutePage } from './pages/Route'
 import { CustomFields }          from './pages/CustomFields'
 import { TransactionCoordinator } from './pages/TransactionCoordinator'
+import { MyListings }            from './pages/MyListings'
 import { Segments }       from './pages/Segments'
 import { Reports }        from './pages/Reports'
 
@@ -174,6 +175,7 @@ function AppShell() {
           <Route path="/segments"           element={<Segments />} />
           <Route path="/custom-fields"      element={<CustomFields />} />
           <Route path="/tc"                 element={<TransactionCoordinator />} />
+          <Route path="/my-listings"          element={<MyListings />} />
           <Route path="/reports"            element={<Reports />} />
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />
