@@ -110,105 +110,131 @@ export function Admin() {
 
   // ── Add new user ───────────────────────────────────────────────
   async function addUser() {
-    if (!addForm.name.trim() || !addForm.email.trim()) { toast('Name and email required','#DC2626'); return }
+    if (!addForm.name.trim() || !addForm.email.trim()) { toast('Name and email required', '#DC2626'); return }
     setAdding(true)
     try {
       const res = await fetch('/api/admin-users', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action:   addForm.sendInvite ? 'invite' : 'create',
-          name:     addForm.name,
-          email:    addForm.email,
-          phone:    addForm.phone,
+          name:     addForm.name.trim(),
+          email:    addForm.email.trim().toLowerCase(),
+          phone:    addForm.phone || null,
           role:     addForm.role,
           color:    addForm.color,
           password: addForm.password || 'TargetOS2024!',
         })
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        // If service key not set, fall back to agent-only creation
+        if (data.error?.includes('SUPABASE_SERVICE_KEY')) {
+          await createAgentOnly()
+          return
+        }
+        throw new Error(data.error || 'Server error ' + res.status)
+      }
 
       await refetch()
-      const existed = data?.existed
-      if (addForm.sendInvite) {
-        toast(existed ? '✅ ' + addForm.name + ' linked to existing account' : '📧 Invite sent to ' + addForm.email)
-      } else {
-        toast(existed ? '✅ ' + addForm.name + ' linked (password updated)' : '✅ User created — ' + addForm.name)
-      }
+      const msg = data.message || (data.existed
+        ? '✅ ' + addForm.name + ' linked to existing account'
+        : addForm.sendInvite
+          ? '📧 Invite sent to ' + addForm.email
+          : '✅ ' + addForm.name + ' created')
+      toast(msg)
       setShowAdd(false)
       setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
     } catch(e) {
-      // If API not configured, just create the agent record (no auth)
-      if (e.message.includes('not configured') || e.message.includes('fetch')) {
-        await supabase.from('agents').insert({
-          name:  addForm.name,
-          email: addForm.email,
-          phone: addForm.phone || null,
-          role:  addForm.role,
-          color: addForm.color,
-          active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        await refetch()
-        toast('✅ '+addForm.name+' added (ask them to set up login via Supabase Auth)')
-        setShowAdd(false)
-        setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
+      // Fallback: create agent record without auth
+      if (e.message?.toLowerCase().includes('fetch') || e.message?.toLowerCase().includes('network')) {
+        await createAgentOnly()
       } else {
-        toast('Failed: '+e.message, '#DC2626')
+        toast('❌ ' + e.message, '#DC2626')
       }
-    }
-    finally { setAdding(false) }
+    } finally { setAdding(false) }
+  }
+
+  async function createAgentOnly() {
+    const { error } = await supabase.from('agents').insert({
+      name:  addForm.name.trim(),
+      email: addForm.email.trim().toLowerCase(),
+      phone: addForm.phone || null,
+      role:  addForm.role,
+      color: addForm.color,
+      active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    if (error) { toast('❌ ' + error.message, '#DC2626'); return }
+    await refetch()
+    toast('✅ ' + addForm.name + ' added. To set up their login, add SUPABASE_SERVICE_KEY to Vercel.')
+    setShowAdd(false)
+    setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
   }
 
   // ── Deactivate user ───────────────────────────────────────────
   async function deactivateUser(a) {
     try {
+      // Always update agents table first — this is the source of truth
+      const { error } = await supabase.from('agents')
+        .update({ active: false, updated_at: new Date().toISOString() })
+        .eq('id', a.id)
+      if (error) throw error
+
+      // Also ban from Supabase Auth if they have a login (non-fatal)
       if (a.auth_user_id) {
-        await fetch('/api/admin-users', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ action:'deactivate', userId: a.auth_user_id })
-        })
+        fetch('/api/admin-users', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'deactivate', userId: a.auth_user_id })
+        }).catch(() => {})
       }
-      await supabase.from('agents').update({ active:false, updated_at:new Date().toISOString() }).eq('id', a.id)
+
       await refetch()
-      toast(a.name+' deactivated')
-    } catch(e) { toast('Failed: '+e.message,'#DC2626') }
+      toast('✅ ' + a.name + ' deactivated')
+    } catch(e) { toast('❌ ' + e.message, '#DC2626') }
     finally { setConfirmDel(null) }
   }
 
   // ── Reactivate user ───────────────────────────────────────────
   async function reactivateUser(a) {
     try {
+      const { error } = await supabase.from('agents')
+        .update({ active: true, updated_at: new Date().toISOString() })
+        .eq('id', a.id)
+      if (error) throw error
+
       if (a.auth_user_id) {
-        await fetch('/api/admin-users', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ action:'reactivate', userId: a.auth_user_id })
-        })
+        fetch('/api/admin-users', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reactivate', userId: a.auth_user_id })
+        }).catch(() => {})
       }
-      await supabase.from('agents').update({ active:true, updated_at:new Date().toISOString() }).eq('id', a.id)
+
       await refetch()
-      toast(a.name+' reactivated')
-    } catch(e) { toast('Failed: '+e.message,'#DC2626') }
+      toast('✅ ' + a.name + ' reactivated')
+    } catch(e) { toast('❌ ' + e.message, '#DC2626') }
   }
 
   // ── Permanently delete user ───────────────────────────────────
   async function permanentlyDeleteUser(a) {
     try {
-      // Delete auth user if exists
-      if (a.auth_user_id) {
-        await fetch('/api/admin-users', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ action:'delete', userId: a.auth_user_id })
-        })
-      }
-      // Delete agent record
+      // Delete agent record first
       const { error } = await supabase.from('agents').delete().eq('id', a.id)
       if (error) throw error
+
+      // Delete from Supabase Auth too (non-fatal)
+      if (a.auth_user_id) {
+        fetch('/api/admin-users', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', userId: a.auth_user_id })
+        }).catch(() => {})
+      }
+
       await refetch()
-      toast(a.name + ' permanently deleted')
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+      toast('✅ ' + a.name + ' permanently deleted')
+    } catch(e) { toast('❌ ' + e.message, '#DC2626') }
     finally { setConfirmDel(null) }
   }
 
