@@ -129,22 +129,13 @@ export function Admin() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
-      // If invite: create agent record manually since the user isn't fully created yet
-      if (addForm.sendInvite) {
-        await supabase.from('agents').insert({
-          name:  addForm.name,
-          email: addForm.email,
-          phone: addForm.phone || null,
-          role:  addForm.role,
-          color: addForm.color,
-          active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-      }
-
       await refetch()
-      toast(addForm.sendInvite ? '📧 Invite sent to '+addForm.email : '✅ User created — '+addForm.name)
+      const existed = data?.existed
+      if (addForm.sendInvite) {
+        toast(existed ? '✅ ' + addForm.name + ' linked to existing account' : '📧 Invite sent to ' + addForm.email)
+      } else {
+        toast(existed ? '✅ ' + addForm.name + ' linked (password updated)' : '✅ User created — ' + addForm.name)
+      }
       setShowAdd(false)
       setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
     } catch(e) {
