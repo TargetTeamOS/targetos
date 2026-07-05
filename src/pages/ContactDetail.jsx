@@ -1180,7 +1180,7 @@ export function ContactDetail() {
           {/* Quick status change */}
           <select value={f.status||'New'} onChange={e=>saveField('status',e.target.value)}
             style={{ padding:'5px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, cursor:'pointer' }}>
-            {CONTACT_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
+            {CONTACT_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
         {/* Row 2: HubSpot-style action buttons */}
