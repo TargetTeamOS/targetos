@@ -23,6 +23,8 @@ import { CONTACT_STATUSES, CONTACT_SOURCES, PROPERTY_TYPES, LOCAL_CITIES } from 
 import { FileAttachments } from '../components/FileAttachments'
 import { uploadFile, listFiles, deleteFile, fmtFileSize, fileIcon } from '../lib/storage'
 import { Avatar, Pill, Btn, Loading, Confirm, Field, Spinner } from '../components/UI'
+import { BuyerInterest } from '../components/BuyerInterest'
+import { EmailCompose }  from '../components/EmailCompose'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
