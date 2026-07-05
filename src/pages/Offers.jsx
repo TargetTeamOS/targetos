@@ -217,6 +217,7 @@ export function Offers() {
   const [selected,   setSelected]   = useState(null)
   const [form,       setForm]       = useState({ ...BLANK })
   const [saving,     setSaving]     = useState(false)
+  const [downloading,setDownloading] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [tab,        setTab]        = useState('offer')
   const [listings,   setListings]   = useState([])
@@ -428,6 +429,46 @@ export function Offers() {
       seller_attorney_email:      contact.email || f.seller_attorney_email,
       seller_attorney_address:    contact.address || f.seller_attorney_address,
     }))
+  }
+
+  // ── DOWNLOAD PDF ──────────────────────────────────────────────
+  async function downloadPDF() {
+    setDownloading(true)
+    try {
+      // Build the full offer data including agent name
+      const buyersAgent = agents.find(a => a.id === (form.buyers_agent_id || form.agent_id))
+      const payload = {
+        ...form,
+        buyers_agent_name: buyersAgent?.name || agent?.name || '',
+        offer_date: form.offer_date || new Date().toISOString().slice(0, 10),
+      }
+
+      const res = await fetch('/api/generate-offer-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'PDF generation failed')
+      }
+
+      // Trigger download
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      const addr = (form.listing_addr || 'offer').replace(/[^a-z0-9]/gi, '_').slice(0, 40)
+      a.download = 'Offer_' + addr + '.pdf'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast('✅ PDF downloaded')
+    } catch(e) {
+      toast('❌ PDF failed: ' + e.message, '#DC2626')
+    } finally { setDownloading(false) }
   }
 
   // ── SAVE OFFER ─────────────────────────────────────────────────
@@ -902,6 +943,10 @@ export function Offers() {
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight:'auto', color:'#DC2626' }} onClick={()=>setConfirmDel(true)}>Delete</Btn>}
           <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
+          <Btn variant="secondary" onClick={downloadPDF} loading={downloading}
+            style={{ display:'flex', alignItems:'center', gap:6 }}>
+            📄 {downloading ? 'Generating...' : 'Download PDF'}
+          </Btn>
           <Btn onClick={saveOffer} loading={saving}>{selected ? 'Save Changes' : 'Submit Offer'}</Btn>
         </ModalActions>
       </Modal>
