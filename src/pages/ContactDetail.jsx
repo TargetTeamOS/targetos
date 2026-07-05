@@ -688,7 +688,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
 
       {/* ── APPOINTMENTS ── */}
       <RightSection title="Showings & Interest" icon="🏡" color="#10B981">
-      <BuyerInterest contactId={id} agentId={f.agent_id || agent?.id} />
+      <BuyerInterest contactId={contactId} agentId={f.agent_id || agent?.id} />
     </RightSection>
 
     <RightSection title="Appointments" icon="📅" color="#8B5CF6"
