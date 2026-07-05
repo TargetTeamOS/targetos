@@ -46,7 +46,8 @@ import { Mortgage }      from './pages/Mortgage'
 import { WebsiteBuilder } from './pages/WebsiteBuilder'
 import { PublicHome, PublicListings, PublicListingDetail, PublicAbout, PublicContact } from './pages/PublicSite'
 import { Route as RoutePage } from './pages/Route'
-import { CustomFields }  from './pages/CustomFields'
+import { CustomFields }          from './pages/CustomFields'
+import { TransactionCoordinator } from './pages/TransactionCoordinator'
 import { Segments }       from './pages/Segments'
 import { Reports }        from './pages/Reports'
 
@@ -172,6 +173,7 @@ function AppShell() {
           <Route path="/route"               element={<RoutePage />} />
           <Route path="/segments"           element={<Segments />} />
           <Route path="/custom-fields"      element={<CustomFields />} />
+          <Route path="/tc"                 element={<TransactionCoordinator />} />
           <Route path="/reports"            element={<Reports />} />
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />
