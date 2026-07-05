@@ -418,6 +418,28 @@ export function TransactionCoordinator() {
     mortgage_broker:'', mortgage_phone:'',
     inspector:'', inspector_phone:'', notes:'',
   }
+
+  // Safe insert — only columns confirmed in tc_deals table
+  function dealPayload(f) {
+    return {
+      addr:            f.addr,
+      side:            f.side || 'Seller',
+      agent_id:        f.agent_id || null,
+      tc_phase:        f.tc_phase || 'pre_listing',
+      list_price:      f.list_price ? parseFloat(String(f.list_price).replace(/[$,]/g,'')) : null,
+      sale_price:      f.sale_price ? parseFloat(String(f.sale_price).replace(/[$,]/g,'')) : null,
+      ao_date:         f.ao_date    || null,
+      close_date:      f.close_date || null,
+      attorney_name:   f.attorney_name   || null,
+      attorney_phone:  f.attorney_phone  || null,
+      attorney_email:  f.attorney_email  || null,
+      mortgage_broker: f.mortgage_broker || null,
+      mortgage_phone:  f.mortgage_phone  || null,
+      inspector:       f.inspector       || null,
+      inspector_phone: f.inspector_phone || null,
+      notes:           f.notes || null,
+    }
+  }
   const TASK_BLANK = {
     title:'', priority:'high', due_date:'', agent_id:'',
     notes:'', needs_calendar:false, reminder_days:'',
@@ -495,9 +517,7 @@ export function TransactionCoordinator() {
     setSaving(true)
     try {
       const { data:newDeal, error } = await supabase.from('tc_deals').insert({
-        ...dealForm,
-        list_price: dealForm.list_price ? parseFloat(dealForm.list_price.replace(/[$,]/g,'')) : null,
-        sale_price: dealForm.sale_price ? parseFloat(dealForm.sale_price.replace(/[$,]/g,'')) : null,
+        ...dealPayload(dealForm),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).select().single()
@@ -511,7 +531,10 @@ export function TransactionCoordinator() {
       setDealForm({ ...DEAL_BLANK })
       setExpanded(p => ({ ...p, [newDeal.id]:true }))
       loadAll()
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    } catch(e) {
+      console.error('createDeal error:', e)
+      toast('Failed: ' + (e.message || e.details || JSON.stringify(e)), '#DC2626')
+    }
     finally { setSaving(false) }
   }
 
@@ -678,12 +701,7 @@ export function TransactionCoordinator() {
     if (!dealForm.agent_id)    { toast('Agent required', '#DC2626'); return }
     setSaving(true)
     try {
-      const updates = {
-        ...dealForm,
-        list_price: dealForm.list_price ? parseFloat(String(dealForm.list_price).replace(/[$,]/g,'')) : null,
-        sale_price: dealForm.sale_price ? parseFloat(String(dealForm.sale_price).replace(/[$,]/g,'')) : null,
-      }
-      const synced = await syncToAllBoards(selDeal, updates)
+      const synced = await syncToAllBoards(selDeal, dealPayload(dealForm))
       toast('✅ Deal saved' + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
       setShowEditDeal(false); loadAll()
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
