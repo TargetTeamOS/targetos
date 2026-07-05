@@ -54,6 +54,18 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true })
     }
 
+    if (action === 'update_email') {
+      const { error } = await supabase.auth.admin.updateUserById(userId, { email })
+      if (error) return res.status(400).json({ error: error.message })
+      return res.status(200).json({ ok: true })
+    }
+
+    if (action === 'delete') {
+      const { error } = await supabase.auth.admin.deleteUser(userId)
+      if (error) return res.status(400).json({ error: error.message })
+      return res.status(200).json({ ok: true })
+    }
+
     if (action === 'deactivate') {
       // Disable auth user
       const { error } = await supabase.auth.admin.updateUserById(userId, { ban_duration: '876600h' })

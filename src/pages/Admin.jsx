@@ -31,6 +31,7 @@ export function Admin() {
   const [addForm,   setAddForm]   = useState({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
   const [adding,    setAdding]    = useState(false)
   const [confirmDel, setConfirmDel] = useState(null)
+  const [confirmDelType, setConfirmDelType] = useState('deactivate') // 'deactivate' | 'delete'
   const [resetPwd,   setResetPwd]   = useState(null)
   const [newPwd,     setNewPwd]     = useState('')
   const [resetting,  setResetting]  = useState(false)
@@ -82,11 +83,28 @@ export function Admin() {
     if (!form.name.trim() || !form.email.trim()) { toast('Name and email required','#DC2626'); return }
     setSaving(true)
     try {
-      await db.agents.update(selected.id, form, me.id)
+      const { error } = await supabase.from('agents').update({
+        name:       form.name.trim(),
+        email:      form.email.trim(),
+        phone:      form.phone || null,
+        role:       form.role,
+        color:      form.color,
+        updated_at: new Date().toISOString(),
+      }).eq('id', selected.id)
+      if (error) throw error
+
+      // If email changed, update Supabase Auth user email too
+      if (selected.auth_user_id && form.email !== selected.email) {
+        await fetch('/api/admin-users', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ action:'update_email', userId: selected.auth_user_id, email: form.email })
+        }).catch(() => {}) // non-fatal
+      }
+
       await refetch()
-      toast('Saved')
+      toast('✅ ' + form.name + ' saved')
       closePanel()
-    } catch(e) { toast('Save failed: '+e.message,'#DC2626') }
+    } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
     finally { setSaving(false) }
   }
 
@@ -184,6 +202,25 @@ export function Admin() {
     } catch(e) { toast('Failed: '+e.message,'#DC2626') }
   }
 
+  // ── Permanently delete user ───────────────────────────────────
+  async function permanentlyDeleteUser(a) {
+    try {
+      // Delete auth user if exists
+      if (a.auth_user_id) {
+        await fetch('/api/admin-users', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ action:'delete', userId: a.auth_user_id })
+        })
+      }
+      // Delete agent record
+      const { error } = await supabase.from('agents').delete().eq('id', a.id)
+      if (error) throw error
+      await refetch()
+      toast(a.name + ' permanently deleted')
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    finally { setConfirmDel(null) }
+  }
+
   // ── Reset password ────────────────────────────────────────────
   async function resetPassword() {
     if (!newPwd || newPwd.length < 8) { toast('Password must be at least 8 characters','#DC2626'); return }
@@ -245,7 +282,10 @@ export function Admin() {
 
           {/* Add user button */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-            <div style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>Team Members</div>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>Team Members</div>
+              <div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>Unlimited users — add as many agents, secretaries, and admins as needed</div>
+            </div>
             <Btn onClick={() => setShowAdd(true)}>+ Add User</Btn>
           </div>
 
@@ -668,11 +708,22 @@ export function Admin() {
           </strong>
         </div>
         <ModalActions>
-          {selected?.id !== me?.id && selected?.active && (
-            <Btn variant="ghost" style={{marginRight:'auto',color:'#DC2626'}} onClick={() => { closePanel(); setConfirmDel(selected) }}>Deactivate</Btn>
+          {selected?.id !== me?.id && (
+            <div style={{marginRight:'auto', display:'flex', gap:6}}>
+              {selected?.active && (
+                <button onClick={() => { closePanel(); setConfirmDelType('deactivate'); setConfirmDel(selected) }}
+                  style={{padding:'6px 12px',borderRadius:7,border:'1px solid #F97316',background:'rgba(249,115,22,.08)',color:'#F97316',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:ff}}>
+                  Deactivate
+                </button>
+              )}
+              <button onClick={() => { closePanel(); setConfirmDelType('delete'); setConfirmDel(selected) }}
+                style={{padding:'6px 12px',borderRadius:7,border:'1px solid #DC2626',background:'rgba(220,38,38,.08)',color:'#DC2626',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:ff}}>
+                🗑 Delete
+              </button>
+            </div>
           )}
           <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
-          <Btn onClick={saveAgent} loading={saving}>Save</Btn>
+          <Btn onClick={saveAgent} loading={saving}>Save Changes</Btn>
         </ModalActions>
       </Modal>
 
@@ -698,11 +749,13 @@ export function Admin() {
         </ModalActions>
       </Modal>
 
-      {/* ── CONFIRM DEACTIVATE ── */}
+      {/* ── CONFIRM DEACTIVATE / DELETE ── */}
       <Confirm
         open={!!confirmDel}
-        message={'Deactivate '+confirmDel?.name+'? They will not be able to log in until reactivated.'}
-        onConfirm={() => deactivateUser(confirmDel)}
+        message={confirmDelType === 'delete'
+          ? 'PERMANENTLY DELETE ' + confirmDel?.name + '? This cannot be undone. All their data will remain but their account will be removed.'
+          : 'Deactivate ' + confirmDel?.name + '? They will not be able to log in until reactivated.'}
+        onConfirm={() => confirmDelType === 'delete' ? permanentlyDeleteUser(confirmDel) : deactivateUser(confirmDel)}
         onCancel={() => setConfirmDel(null)}
       />
     </div>
