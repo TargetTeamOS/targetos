@@ -15,7 +15,7 @@
 // - Stats: total offers, accepted, per-client, conversion rate
 
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp }  from '../context/AppContext'
@@ -220,11 +220,80 @@ export function Offers() {
   const [confirmDel, setConfirmDel] = useState(false)
   const [tab,        setTab]        = useState('offer')
   const [listings,   setListings]   = useState([])
+  const [mlsSearchQ, setMlsSearchQ] = useState('')
+  const [mlsResults, setMlsResults] = useState([])
+  const [mlsLoading, setMlsLoading] = useState(false)
+  const [showMlsDrop,setShowMlsDrop]= useState(false)
+  const mlsRef = useRef(null)
 
   useEffect(() => {
     supabase.from('listings').select('id,addr,mls_number,agent_id,status,list_price,agents(name)')
       .then(r => setListings(r.data || [])).catch(() => {})
   }, [])
+
+  // Close MLS dropdown on outside click
+  useEffect(() => {
+    function close(e) { if (!mlsRef.current?.contains(e.target)) setShowMlsDrop(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+
+  // Search SimplyRETS MLS by address or MLS#
+  const searchMLS = useCallback(async (q) => {
+    if (!q || q.length < 3) { setMlsResults([]); return }
+    setMlsLoading(true)
+    try {
+      const MLS_USER = import.meta.env.VITE_SIMPLYRETS_USER || 'simplyrets'
+      const MLS_PASS = import.meta.env.VITE_SIMPLYRETS_PASS || 'simplyrets'
+      const auth     = btoa(MLS_USER + ':' + MLS_PASS)
+
+      // Try by MLS# first, then by address keyword
+      const isMLSNum = /^\d{5,}$/.test(q.trim())
+      const url = isMLSNum
+        ? 'https://api.simplyrets.com/listings?mlsId=' + encodeURIComponent(q.trim()) + '&limit=5'
+        : 'https://api.simplyrets.com/listings?q=' + encodeURIComponent(q.trim()) + '&limit=8&status=Active,Pending'
+
+      const res = await fetch(url, { headers: { Authorization: 'Basic ' + auth } })
+      if (!res.ok) throw new Error('MLS search failed')
+      const data = await res.json()
+      setMlsResults(Array.isArray(data) ? data : [])
+      setShowMlsDrop(true)
+    } catch(e) {
+      console.warn('MLS search:', e.message)
+      setMlsResults([])
+    } finally { setMlsLoading(false) }
+  }, [])
+
+  // Auto-fill form from MLS listing
+  function applyMLSListing(mls) {
+    const addr   = mls.address || {}
+    const street = [addr.streetNumber, addr.streetName, addr.unit ? '#'+addr.unit : null].filter(Boolean).join(' ')
+    const full   = [street, addr.city, addr.state, addr.postalCode].filter(Boolean).join(', ')
+    const agentFirst = mls.agent?.firstName || ''
+    const agentLast  = mls.agent?.lastName  || ''
+    const agentName  = [agentFirst, agentLast].filter(Boolean).join(' ')
+    const office     = mls.office?.name || mls.office?.officeName || ''
+
+    // Check if in-house
+    const inhouse = listings.find(l => l.mls_number === mls.mlsId || l.mls_number === String(mls.mlsId))
+
+    setForm(f => ({
+      ...f,
+      listing_addr:         full,
+      mls_number:           String(mls.mlsId || ''),
+      seller_name:          mls.sellers?.map(s=>(s.firstName||'')+' '+(s.lastName||'')).join(', ') || f.seller_name,
+      sellers_agent_name:   agentName || f.sellers_agent_name,
+      seller_agent_company: office    || f.seller_agent_company,
+      is_inhouse:           !!inhouse,
+      inhouse_listing_id:   inhouse?.id || null,
+    }))
+    setMlsSearchQ(full)
+    setShowMlsDrop(false)
+    setMlsResults([])
+
+    if (inhouse) toast('🏡 In-house listing — seller agent auto-filled')
+    else toast('✅ MLS data imported: ' + full)
+  }
 
   useEffect(() => {
     if (urlId && offers.length > 0 && urlId !== 'new') {
@@ -544,25 +613,99 @@ export function Offers() {
               </div>
             </div>
 
-            {/* PROPERTY INFORMATION */}
+            {/* PROPERTY INFORMATION — MLS Search auto-fills everything */}
             <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12, marginBottom:10 }}>
-              <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10 }}>🏠 Property Information</div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, marginBottom:8, alignItems:'end' }}>
-                <div>
-                  <span style={SL}>Address{form.is_inhouse ? ' 🏡 In-House Listing' : ''}</span>
-                  <AddressAutocomplete value={form.listing_addr||''} onChange={v=>handleAddressSelect(v)} placeholder="123 Main St, Monsey NY" />
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em' }}>
+                  🏠 Property Information
+                  {form.is_inhouse && <span style={{ color:'#10B981', background:'rgba(16,185,129,.12)', padding:'1px 7px', borderRadius:99, marginLeft:6, fontSize:10 }}>🏡 In-House</span>}
                 </div>
-                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--text)', cursor:'pointer', paddingBottom:2, whiteSpace:'nowrap' }}>
+                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--text)', cursor:'pointer' }}>
                   <input type="checkbox" checked={!!form.off_market} onChange={e=>set('off_market',e.target.checked)} style={{ accentColor:'var(--brand)' }} />
                   Off Market
                 </label>
               </div>
-              {!form.off_market && (
-                <div>
-                  <span style={SL}>MLS ID #</span>
-                  <input value={form.mls_number||''} onChange={e=>set('mls_number',e.target.value)} placeholder="MLS ID#" style={{ ...S, maxWidth:200 }} />
+
+              <span style={SL}>Address or MLS# — auto-fills seller name, agent &amp; company</span>
+              <div ref={mlsRef} style={{ position:'relative' }}>
+                <div style={{ display:'flex', gap:8, marginBottom:6 }}>
+                  <div style={{ flex:1, position:'relative' }}>
+                    <input
+                      value={mlsSearchQ || form.listing_addr || ''}
+                      onChange={e => {
+                        setMlsSearchQ(e.target.value)
+                        set('listing_addr', e.target.value)
+                        if (!form.off_market) searchMLS(e.target.value)
+                      }}
+                      placeholder={form.off_market ? 'Enter address manually...' : 'Type address or MLS# to search MLS...'}
+                      style={{ ...S, paddingRight: mlsLoading ? 32 : 10 }}
+                    />
+                    {mlsLoading && <div style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', fontSize:11 }}>⏳</div>}
+                  </div>
+                  {!form.off_market && (
+                    <input value={form.mls_number||''} onChange={e=>set('mls_number',e.target.value)}
+                      placeholder="MLS #" style={{ ...S, width:100, flexShrink:0 }} />
+                  )}
                 </div>
-              )}
+
+                {/* MLS dropdown results */}
+                {showMlsDrop && mlsResults.length > 0 && (
+                  <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'var(--panel)', border:'1px solid var(--border)', borderRadius:10, zIndex:300, boxShadow:'0 8px 32px rgba(0,0,0,.25)', overflow:'hidden', maxHeight:300, overflowY:'auto' }}>
+                    <div style={{ padding:'6px 12px', fontSize:10, fontWeight:700, color:'var(--muted)', background:'var(--dim)', textTransform:'uppercase' }}>
+                      MLS Results — click to auto-fill form
+                    </div>
+                    {mlsResults.map((mls, i) => {
+                      const addr    = mls.address || {}
+                      const street  = [addr.streetNumber, addr.streetName, addr.unit?'#'+addr.unit:null].filter(Boolean).join(' ')
+                      const full    = [street, addr.city, addr.state].filter(Boolean).join(', ')
+                      const agFull  = [mls.agent?.firstName, mls.agent?.lastName].filter(Boolean).join(' ')
+                      const office  = mls.office?.name || mls.office?.officeName || ''
+                      return (
+                        <div key={mls.mlsId||i} onMouseDown={() => applyMLSListing(mls)}
+                          style={{ padding:'10px 12px', cursor:'pointer', borderBottom:'1px solid var(--border)' }}
+                          onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
+                          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{full}</div>
+                              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
+                                MLS# {mls.mlsId}
+                                {mls.listPrice ? ' · $' + Number(mls.listPrice).toLocaleString() : ''}
+                                {mls.property?.bedrooms ? ' · ' + mls.property.bedrooms + 'bd' : ''}
+                                {mls.property?.bathsFull ? ' / ' + mls.property.bathsFull + 'ba' : ''}
+                              </div>
+                              {agFull && (
+                                <div style={{ fontSize:10, color:'#3B82F6', marginTop:2, fontWeight:600 }}>
+                                  Listed by: {agFull}{office ? ' · ' + office : ''}
+                                </div>
+                              )}
+                            </div>
+                            <span style={{ fontSize:10, padding:'2px 7px', borderRadius:99, background:'rgba(16,185,129,.1)', color:'#10B981', fontWeight:700, flexShrink:0 }}>
+                              {mls.mls?.status || 'Active'}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    <div style={{ padding:'7px 12px', fontSize:11, color:'var(--muted)', fontStyle:'italic', background:'var(--dim)' }}>
+                      Not found? Check "Off Market" and enter manually.
+                    </div>
+                  </div>
+                )}
+
+                {/* Confirmation chips after MLS selection */}
+                {form.mls_number && !showMlsDrop && (
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:4 }}>
+                    <span style={{ fontSize:10, background:'rgba(59,130,246,.1)', color:'#3B82F6', padding:'2px 8px', borderRadius:99, fontWeight:700 }}>MLS# {form.mls_number}</span>
+                    {form.sellers_agent_name && <span style={{ fontSize:10, background:'rgba(16,185,129,.1)', color:'#10B981', padding:'2px 8px', borderRadius:99, fontWeight:700 }}>Listed by: {form.sellers_agent_name}</span>}
+                    {form.seller_agent_company && <span style={{ fontSize:10, background:'var(--dim)', color:'var(--muted)', padding:'2px 8px', borderRadius:99 }}>{form.seller_agent_company}</span>}
+                    <button onClick={() => { setMlsSearchQ(''); setForm(f=>({...f,listing_addr:'',mls_number:'',sellers_agent_name:'',seller_agent_company:'',seller_name:'',is_inhouse:false})) }}
+                      style={{ fontSize:10, color:'var(--muted)', background:'none', border:'none', cursor:'pointer', fontFamily:ff }}>
+                      ✕ Clear
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* BUYER | SELLER */}
