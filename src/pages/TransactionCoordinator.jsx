@@ -558,7 +558,7 @@ export function TransactionCoordinator() {
 
     // Create calendar events for tasks that need it
     for (const t of rows.filter(r => r.needs_calendar)) {
-      await supabase.from('calendar_events').insert({
+      try { await supabase.from('calendar_events').insert({
         agent_id:   deal.agent_id,
         title:      t.title + ' — ' + deal.addr,
         start_date: t.due_date,
@@ -566,7 +566,7 @@ export function TransactionCoordinator() {
         type:       'task',
         notes:      'Auto-created by TC Board',
         created_at: new Date().toISOString(),
-      }).catch(() => {})
+      }) } catch(e) {}
     }
 
     // Email agent about calendar tasks (photography, inspections etc.)
@@ -610,7 +610,7 @@ export function TransactionCoordinator() {
         }).catch(() => {})
       }
 
-      toast(`✅ Phase → ${pDef?.label}${synced.length?` · Synced: ${synced.join(', ')}` : ''}`)
+      toast('✅ Phase → ' + (pDef?.label||'') + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
       loadAll()
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
@@ -665,7 +665,7 @@ export function TransactionCoordinator() {
             title:      taskForm.title + ' — ' + selDeal?.addr,
             start_date: taskForm.due_date, start_time:'10:00', type:'task',
             created_at: new Date().toISOString(),
-          }).catch(() => {})
+          })
         }
         toast('✅ Task updated')
       } else {
@@ -685,7 +685,7 @@ export function TransactionCoordinator() {
             title:      taskForm.title + ' — ' + selDeal.addr,
             start_date: taskForm.due_date, start_time:'10:00', type:'task',
             created_at: new Date().toISOString(),
-          }).catch(() => {})
+          })
         }
         toast('✅ Task added' + (taskForm.needs_calendar && taskForm.due_date ? ' · Calendar event created' : ''))
       }
@@ -912,9 +912,9 @@ export function TransactionCoordinator() {
         <div style={{ marginTop:12, padding:'10px 12px', background:'rgba(59,130,246,.06)', borderRadius:8, fontSize:11, color:'var(--muted)' }}>
           📋 <strong>{PHASE_TASKS[dealForm.tc_phase]?.length || 0} tasks</strong> will be auto-generated for <strong>{PHASES.find(p=>p.id===dealForm.tc_phase)?.label}</strong>
           {PHASE_TASKS[dealForm.tc_phase]?.filter(t=>t.cal).length > 0 &&
-            ` · 📅 ${PHASE_TASKS[dealForm.tc_phase].filter(t=>t.cal).length} calendar events`}
+            ' · 📅 ' + PHASE_TASKS[dealForm.tc_phase].filter(t=>t.cal).length + ' calendar events'}
           {PHASE_TASKS[dealForm.tc_phase]?.filter(t=>t.notify_agent).length > 0 &&
-            ` · 📧 Agent will be notified`}
+            ' · 📧 Agent will be notified'}
         </div>
         <ModalActions>
           <Btn variant="secondary" onClick={()=>setShowAddDeal(false)}>Cancel</Btn>
