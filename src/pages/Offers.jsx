@@ -439,8 +439,11 @@ export function Offers() {
       const buyersAgent = agents.find(a => a.id === (form.buyers_agent_id || form.agent_id))
       const payload = {
         ...form,
-        buyers_agent_name: buyersAgent?.name || agent?.name || '',
-        offer_date: form.offer_date || new Date().toISOString().slice(0, 10),
+        buyers_agent_name:       buyersAgent?.name || agent?.name || '',
+        offer_date:              form.offer_date || new Date().toISOString().slice(0, 10),
+        deposit_type:            form.deposit_type || 'dollar',
+        sellers_agent_commission:form.sellers_agent_commission || '',
+        seller_agent_company:    form.seller_agent_company || '',
       }
 
       const res = await fetch('/api/generate-offer-pdf', {
@@ -776,13 +779,19 @@ export function Offers() {
               <div style={{ background:'rgba(16,185,129,.05)', borderRadius:10, border:'1px solid rgba(16,185,129,.2)', padding:12 }}>
                 <div style={{ fontSize:11, fontWeight:800, color:'#10B981', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>SELLER</div>
                 <span style={SL}>Seller Name</span>
-                <input value={form.seller_name||''} onChange={e=>set('seller_name',e.target.value)} placeholder="Seller name" style={S} />
+                <ContactSearch value={form.seller_name||''} onChange={v=>set('seller_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' ')})) }}
+                  placeholder="Search contacts or enter name..." />
                 <span style={SL}>Co-Seller (optional)</span>
-                <input value={form.co_seller_name||''} onChange={e=>set('co_seller_name',e.target.value)} placeholder="Co-seller name" style={S} />
+                <ContactSearch value={form.co_seller_name||''} onChange={v=>set('co_seller_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,co_seller_name:[c.first_name,c.last_name].filter(Boolean).join(' ')})) }}
+                  placeholder="Co-seller name" />
                 <span style={SL}>Seller's Agent Name</span>
-                <input value={form.sellers_agent_name||''} onChange={e=>set('sellers_agent_name',e.target.value)} placeholder="Seller agent" style={S} />
-                <span style={SL}>Agent Company</span>
-                <input value={form.seller_agent_company||''} onChange={e=>set('seller_agent_company',e.target.value)} placeholder="Brokerage name" style={S} />
+                <input value={form.sellers_agent_name||''} onChange={e=>set('sellers_agent_name',e.target.value)} placeholder="Auto-filled from MLS or enter" style={S} />
+                <span style={SL}>Seller Agent Commission %</span>
+                <input value={form.sellers_agent_commission||''} onChange={e=>set('sellers_agent_commission',e.target.value)} placeholder="e.g. 2.5" style={S} />
+                <span style={SL}>Seller Agent's Broker Company</span>
+                <input value={form.seller_agent_company||''} onChange={e=>set('seller_agent_company',e.target.value)} placeholder="Auto-filled from MLS or enter" style={S} />
               </div>
             </div>
 
@@ -792,24 +801,41 @@ export function Offers() {
               <div style={{ background:'rgba(245,166,35,.05)', borderRadius:10, border:'1px solid rgba(245,166,35,.2)', padding:12 }}>
                 <div style={{ fontSize:11, fontWeight:800, color:'#B45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>💰 Purchase Price & Breakdown</div>
                 {[
-                  { label:'Purchase Price $', key:'purchase_price', bold:true },
-                  { label:'Deposit upon contract $', key:'deposit' },
-                  { label:"Seller's Concession $", key:'sellers_concession' },
-                  { label:'Net to Seller $', key:'net_to_seller', calc:true },
-                  { label:'Mortgage Amount $', key:'mortgage_amount' },
-                  { label:'Mortgage Amount %', key:'mortgage_pct', pct:true },
-                  { label:'Balance at Closing $', key:'balance_at_closing', calc:true },
+                  { label:'Purchase Price', key:'purchase_price', bold:true, prefix:'$' },
+                  { label:'Deposit upon contract', key:'deposit', isDeposit:true },
+                  { label:"Seller's Concession", key:'sellers_concession', prefix:'$' },
+                  { label:'Net to Seller', key:'net_to_seller', calc:true, prefix:'$' },
+                  { label:'Mortgage Amount', key:'mortgage_amount', prefix:'$' },
+                  { label:'Mortgage Amount', key:'mortgage_pct', prefix:'%' },
+                  { label:'Balance at Closing', key:'balance_at_closing', calc:true, prefix:'$' },
                 ].map(row => (
                   <div key={row.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                    <label style={{ fontSize:11, color: row.bold?'var(--text)':'var(--muted)', fontWeight: row.bold?700:400, flex:1 }}>{row.label}</label>
+                    <label style={{ fontSize:11, color:row.bold?'var(--text)':'var(--muted)', fontWeight:row.bold?700:400, flex:1 }}>{row.label}</label>
                     <div style={{ display:'flex', alignItems:'center', gap:4 }}>
                       {row.calc && <span style={{ fontSize:9, color:'#10B981', fontWeight:700 }}>auto</span>}
-                      <input
-                        value={form[row.key]||''}
-                        onChange={e => recalc({ [row.key]: e.target.value })}
-                        placeholder={row.pct ? '%' : '$0'}
-                        style={{ ...S, width:110, textAlign:'right', fontWeight:row.bold?800:400, fontSize:row.bold?13:11, borderColor:row.bold?'#F5A623':'var(--border)' }}
-                      />
+                      {row.isDeposit ? (
+                        <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                          {/* $ / % toggle for deposit */}
+                          <div style={{ display:'flex', borderRadius:6, border:'1px solid var(--border)', overflow:'hidden' }}>
+                            {['dollar','percent'].map(t=>(
+                              <button key={t} onClick={()=>set('deposit_type',t)}
+                                style={{ padding:'2px 7px', fontSize:10, fontWeight:700, border:'none', cursor:'pointer', fontFamily:ff, background:form.deposit_type===t?'var(--brand)':'transparent', color:form.deposit_type===t?'#fff':'var(--muted)' }}>
+                                {t==='dollar'?'$':'%'}
+                              </button>
+                            ))}
+                          </div>
+                          <input value={form.deposit||''} onChange={e=>recalc({deposit:e.target.value})}
+                            placeholder={form.deposit_type==='percent'?'%':'$0'}
+                            style={{ ...S, width:90, textAlign:'right', fontSize:11 }} />
+                        </div>
+                      ) : (
+                        <>
+                          <span style={{ fontSize:11, color:'var(--muted)', minWidth:10 }}>{row.prefix}</span>
+                          <input value={form[row.key]||''} onChange={e=>recalc({[row.key]:e.target.value})}
+                            placeholder={row.prefix==='%'?'0':'0'}
+                            style={{ ...S, width:100, textAlign:'right', fontWeight:row.bold?800:400, fontSize:row.bold?13:11, borderColor:row.bold?'#F5A623':'var(--border)' }} />
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
