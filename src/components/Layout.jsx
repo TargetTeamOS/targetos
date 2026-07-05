@@ -12,36 +12,47 @@ import { NotificationBell } from './NotificationBell'
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 const NAV = [
-  { id: '',             label: 'Dashboard',     icon: '🏠', roles: ['admin','secretary','agent'] },
-  { id: 'contacts',     label: 'Contacts',      icon: '👥', roles: ['admin','secretary','agent'] },
-  { id: 'segments',     label: 'Segments',      icon: '🎯', roles: ['admin','secretary','agent'] },
-  { id: 'production',   label: 'Production',    icon: '📊', roles: ['admin','secretary','agent'] },
-  { id: 'performance',  label: 'Performance',   icon: '📈', roles: ['admin','secretary'] },
-  { id: 'reports',      label: 'Reports',       icon: '📉', roles: ['admin','secretary'] },
-  { id: 'pipeline',     label: 'Pipeline',      icon: '🔀', roles: ['admin','secretary','agent'] },
-  { id: 'listings',     label: 'Listings',      icon: '🏡', roles: ['admin','secretary','agent'] },
-  { id: 'offers',       label: 'Offers',        icon: '📝', roles: ['admin','secretary','agent'] },
-  { id: 'transactions', label: 'Transactions',  icon: '💼', roles: ['admin','secretary'] },
-  { id: 'tasks',        label: 'Tasks',         icon: '✅', roles: ['admin','secretary','agent'] },
-  { id: 'calendar',     label: 'Calendar',      icon: '📅', roles: ['admin','secretary','agent'] },
-  { id: 'openhouse',    label: 'Open House',    icon: '🚪', roles: ['admin','secretary','agent'] },
-  { id: 'gifts',        label: 'Gifts',         icon: '🎁', roles: ['admin','secretary'] },
-  { id: 'call-flow', label: 'Call Flows',    icon: '🔀', roles: ['admin','secretary'] },
-  { id: 'calls',        label: 'Calls & SMS',   icon: '📞', roles: ['admin','secretary','agent'] },
-  { id: 'signs',        label: 'Signs',         icon: '🪧', roles: ['admin','secretary'] },
-  { id: 'social-cards', label: 'Social Cards',  icon: '📱', roles: ['admin','secretary','agent'] },
-  { id: 'listingprep',  label: 'Listing Prep',  icon: '🔧', roles: ['admin','secretary','agent'] },
-  { id: 'mortgage',     label: 'Calculator',    icon: '🏦', roles: ['admin','secretary','agent'] },
-  { id: 'website',      label: 'Website',       icon: '🌐', roles: ['admin','secretary'] },
-  { DIVIDER: true },
-  { id: 'announcements',label: 'Announcements', icon: '📣', roles: ['admin','secretary','agent'] },
-  { id: 'briefing',     label: 'Daily Briefing',icon: '☀️',  roles: ['admin','secretary','agent'] },
-  { id: 'email',        label: 'Email',         icon: '📧', roles: ['admin','secretary'] },
-  { id: 'automations',  label: 'Automations',   icon: '⚡', roles: ['admin'] },
-  { DIVIDER: true },
-  { id: 'activitylog',  label: 'Activity Log',  icon: '📋', roles: ['admin'] },
-  { id: 'admin',        label: 'Admin',         icon: '⚙️',  roles: ['admin'] },
-  { id: 'settings',     label: 'Settings',      icon: '🔧', roles: ['admin','secretary','agent'] },
+  // ── MAIN ──────────────────────────────────────────────────────────
+  { id: '',              label: 'Dashboard',      icon: '🏠', roles: ['admin','secretary','agent'] },
+  { id: 'contacts',      label: 'Contacts',       icon: '👥', roles: ['admin','secretary','agent'] },
+  { id: 'tasks',         label: 'Tasks',          icon: '✅', roles: ['admin','secretary','agent'] },
+  { id: 'calendar',      label: 'Calendar',       icon: '📅', roles: ['admin','secretary','agent'] },
+
+  // ── BOARD 1: PRODUCTION ───────────────────────────────────────────
+  { id: 'production',    label: 'Production',     icon: '📊', roles: ['admin','secretary','agent'] },
+  { id: 'performance',   label: 'Performance',    icon: '📈', roles: ['admin','secretary'] },
+  { id: 'reports',       label: 'Reports',        icon: '📉', roles: ['admin','secretary'] },
+
+  // ── BOARD 2: TC BOARD ────────────────────────────────────────────
+  { id: 'tc',            label: 'TC Board',       icon: '🎯', roles: ['admin','secretary'] },
+
+  // ── BOARD 3: LISTINGS ────────────────────────────────────────────
+  { id: 'my-listings',   label: 'My Listings',    icon: '🏡', roles: ['admin','secretary','agent'] },
+  { id: 'listings',      label: 'All Listings',   icon: '🔍', roles: ['admin','secretary','agent'] },
+  { id: 'openhouse',     label: 'Open House',     icon: '🚪', roles: ['admin','secretary','agent'] },
+  { id: 'offers',        label: 'Offers',         icon: '📝', roles: ['admin','secretary','agent'] },
+
+  // ── COMMUNICATION ─────────────────────────────────────────────────
+  { id: 'calls',         label: 'Calls & SMS',    icon: '📞', roles: ['admin','secretary','agent'] },
+  { id: 'email',         label: 'Email',          icon: '📧', roles: ['admin','secretary'] },
+
+  // ── TOOLS ─────────────────────────────────────────────────────────
+  { id: 'segments',      label: 'Segments',       icon: '🎯', roles: ['admin','secretary'] },
+  { id: 'gifts',         label: 'Gifts',          icon: '🎁', roles: ['admin','secretary'] },
+  { id: 'signs',         label: 'Signs',          icon: '🪧', roles: ['admin','secretary'] },
+  { id: 'social-cards',  label: 'Social Cards',   icon: '📱', roles: ['admin','secretary','agent'] },
+  { id: 'mortgage',      label: 'Calculator',     icon: '🏦', roles: ['admin','secretary','agent'] },
+  { id: 'briefing',      label: 'Daily Briefing', icon: '☀️',  roles: ['admin','secretary','agent'] },
+  { id: 'announcements', label: 'Announcements',  icon: '📣', roles: ['admin','secretary','agent'] },
+
+  // ── ADMIN ─────────────────────────────────────────────────────────
+  { id: 'automations',   label: 'Automations',    icon: '⚡', roles: ['admin'] },
+  { id: 'call-flow',     label: 'Call Flows',     icon: '🔀', roles: ['admin'] },
+  { id: 'website',       label: 'Website',        icon: '🌐', roles: ['admin'] },
+  { id: 'activitylog',   label: 'Activity Log',   icon: '📋', roles: ['admin'] },
+  { id: 'custom-fields', label: 'Custom Fields',  icon: '🔲', roles: ['admin'] },
+  { id: 'admin',         label: 'Admin',          icon: '⚙️',  roles: ['admin'] },
+  { id: 'settings',      label: 'Settings',       icon: '🔧', roles: ['admin','secretary','agent'] },
 ]
 
 export function Layout({ children }) {
