@@ -843,7 +843,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
             await supabase.from('audit_log').insert({
               agent_id:   f.agent_id || agent?.id,
               table_name: 'contacts',
-              record_id:  contactId,
+              record_id:  id,
               action:     'note',
               field_name: 'email',
               new_value:  'Listing alert sent to ' + (f.email || f.first_name),
@@ -874,7 +874,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
             await supabase.from('audit_log').insert({
               agent_id:   f.agent_id || agent?.id,
               table_name: 'contacts',
-              record_id:  contactId,
+              record_id:  id,
               action:     'note',
               field_name: 'email',
               new_value:  'Market report sent to ' + (f.email || f.first_name),
@@ -890,7 +890,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
 
       {/* ── FILES ── */}
       <RightSection title="Files" icon="📎" color="#14B8A6" defaultOpen={false}>
-        <FileAttachments tableName="contacts" recordId={contactId} />
+        <FileAttachments tableName="contacts" recordId={id} />
       </RightSection>
 
       {/* ── QUICK ACTIONS ── */}
@@ -1201,7 +1201,7 @@ export function ContactDetail() {
             )
           })}
           <div style={{ flex:1 }} />
-          {f.phone && <ClickToCall phone={f.phone} contactName={(f.first_name||'')+' '+(f.last_name||'')} contactId={contactId} showLabel />}
+          {f.phone && <ClickToCall phone={f.phone} contactName={(f.first_name||'')+' '+(f.last_name||'')} contactId={id} showLabel />}
         </div>
       </div>
 
