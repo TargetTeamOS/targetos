@@ -807,7 +807,7 @@ export function Offers() {
                   { label:'Net to Seller', key:'net_to_seller', calc:true, prefix:'$' },
                   { label:'Mortgage Amount', key:'mortgage_amount', prefix:'$' },
                   { label:'Mortgage Amount', key:'mortgage_pct', prefix:'%' },
-                  { label:'Balance at Closing', key:'balance_at_closing', calc:true, prefix:'$' },
+                  { label:'Balance at Closing', key:'balance_at_closing', isBalance:true },
                 ].map(row => (
                   <div key={row.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
                     <label style={{ fontSize:11, color:row.bold?'var(--text)':'var(--muted)', fontWeight:row.bold?700:400, flex:1 }}>{row.label}</label>
@@ -826,6 +826,20 @@ export function Offers() {
                           </div>
                           <input value={form.deposit||''} onChange={e=>recalc({deposit:e.target.value})}
                             placeholder={form.deposit_type==='percent'?'%':'$0'}
+                            style={{ ...S, width:90, textAlign:'right', fontSize:11 }} />
+                        </div>
+                      ) : row.isBalance ? (
+                        <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                          <div style={{ display:'flex', borderRadius:6, border:'1px solid var(--border)', overflow:'hidden' }}>
+                            {['dollar','percent'].map(t=>(
+                              <button key={t} onClick={()=>set('balance_type',t)}
+                                style={{ padding:'2px 7px', fontSize:10, fontWeight:700, border:'none', cursor:'pointer', fontFamily:ff, background:form.balance_type===t?'var(--brand)':'transparent', color:form.balance_type===t?'#fff':'var(--muted)' }}>
+                                {t==='dollar'?'$':'%'}
+                              </button>
+                            ))}
+                          </div>
+                          <input value={form.balance_at_closing||''} onChange={e=>recalc({balance_at_closing:e.target.value})}
+                            placeholder={form.balance_type==='percent'?'%':'$0'}
                             style={{ ...S, width:90, textAlign:'right', fontSize:11 }} />
                         </div>
                       ) : (
@@ -872,6 +886,8 @@ export function Offers() {
                   <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Agents</div>
                   <span style={SL}>Sellers Agent</span>
                   <input value={form.sellers_agent_name||''} onChange={e=>set('sellers_agent_name',e.target.value)} placeholder="Seller's agent name" style={S} />
+                  <span style={SL}>Buyers Agent Commission %</span>
+                  <input value={form.buyers_agent_commission||''} onChange={e=>set('buyers_agent_commission',e.target.value)} placeholder="e.g. 1.5" style={S} />
                   <span style={SL}>Buyers Agent</span>
                   {canManage || isAdmin ? (
                     // Secretary/Admin: dropdown of our agents
