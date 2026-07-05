@@ -157,6 +157,28 @@ if (failures.length) {
     errors++
   }
 
+
+  // Check: all components used in JSX are imported
+  let missingImports = 0
+  const criticalFiles = ['src/pages/ContactDetail.jsx', 'src/pages/Dashboard.jsx']
+  criticalFiles.forEach(f => {
+    try {
+      const c = require('fs').readFileSync(f, 'utf8')
+      // Find all <ComponentName props /> or <ComponentName> usages (capital letter start)
+      const used = [...new Set((c.match(/<([A-Z][a-zA-Z]+)[\s/>]/g)||[]).map(m=>m.slice(1).replace(/[\s/>].*/,'')))]
+      const imported = (c.match(/import\s*\{([^}]+)\}/g)||[]).flatMap(m=>m.replace(/import\s*\{/,'').replace(/\}/,'').split(',').map(s=>s.trim()))
+      const builtins = ['React','Fragment']
+      const locallyDefined = (c.match(/(?:const|function|class)\s+([A-Z][a-zA-Z]+)/g)||[]).map(m=>m.split(/\s+/)[1])
+      const missing = used.filter(u => !imported.includes(u) && !builtins.includes(u) && !locallyDefined.includes(u))
+      if (missing.length) {
+        console.log('  ❌ Missing imports in '+f+': '+missing.join(', '))
+        missingImports += missing.length
+      }
+    } catch {}
+  })
+  if (missingImports === 0) console.log('  ✓ All component imports verified')
+  else errors += missingImports
+
   console.log('\n  ✅ ALL CHECKS PASSED — safe to deploy\n')
   console.log('  Deploy commands:')
   console.log('    npm run build')
