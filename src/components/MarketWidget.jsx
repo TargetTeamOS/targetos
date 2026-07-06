@@ -157,15 +157,15 @@ export function MarketWidget() {
               <div style={{ display:'flex', gap:10, marginBottom:12 }}>
                 <RateCard
                   label="30-Year Fixed"
-                  rate={data.rates?.rate_30yr}
-                  prev={data.rates?.rate_30yr_prev}
+                  rate={data.rates?.rate30}
+                  prev={data.rates?.rate30_prev}
                   change={data.rates?.change}
-                  asOf={data.rates?.as_of}
+                  asOf={data.rates?.rate30_date}
                 />
                 <RateCard
                   label="15-Year Fixed"
-                  rate={data.rates?.rate_15yr}
-                  asOf={data.rates?.as_of}
+                  rate={data.rates?.rate15}
+                  asOf={data.rates?.rate30_date}
                 />
               </div>
               <div style={{ fontSize:10, color:'var(--muted)', textAlign:'right' }}>
