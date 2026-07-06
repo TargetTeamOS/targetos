@@ -8,33 +8,55 @@ const CACHE = { data: null, ts: 0 }
 const CACHE_TTL = 30 * 60 * 1000 // 30 min
 
 async function fetchRates() {
-  // Freddie Mac Primary Mortgage Market Survey — public JSON endpoint
-  // Falls back to FRED API (Federal Reserve Economic Data) if needed
-  try {
-    const res = await fetch(
-      'https://api.stlouisfed.org/fred/series/observations?series_id=MORTGAGE30US&api_key=eb6fabb6e0e23e47b2ee72ad2e0a3a15&sort_order=desc&limit=2&file_type=json',
-      { headers: { 'Accept': 'application/json' } }
-    )
-    if (!res.ok) throw new Error('FRED error')
-    const data = await res.json()
-    const obs = data.observations || []
-    const latest = obs.find(o => o.value !== '.')
-    const prev   = obs.find((o, i) => i > 0 && o.value !== '.')
-    return {
-      rate30: latest ? parseFloat(latest.value) : null,
-      rate30_prev: prev ? parseFloat(prev.value) : null,
-      rate30_date: latest?.date || null,
-    }
-  } catch(e) {
-    console.warn('FRED rates failed:', e.message)
-    return { rate30: null, rate30_prev: null, rate30_date: null }
+  // Freddie Mac PMMS data via FRED API — requires free API key
+  // Get yours free at https://fred.stlouisfed.org/docs/api/api_key.html
+  const FRED_KEY = process.env.FRED_API_KEY
+
+  if (FRED_KEY) {
+    try {
+      const res = await fetch(
+        'https://api.stlouisfed.org/fred/series/observations?series_id=MORTGAGE30US&api_key=' + FRED_KEY + '&sort_order=desc&limit=4&file_type=json'
+      )
+      if (res.ok) {
+        const data = await res.json()
+        const obs    = (data.observations || []).filter(o => o.value !== '.')
+        const latest = obs[0]
+        const prev   = obs[1]
+        return {
+          rate30:      latest ? parseFloat(latest.value) : null,
+          rate30_prev: prev   ? parseFloat(prev.value)   : null,
+          rate30_date: latest?.date || null,
+        }
+      }
+    } catch(e) { console.warn('FRED 30yr failed:', e.message) }
   }
+
+  // Fallback: scrape Mortgage News Daily public rate (no key needed)
+  try {
+    const res = await fetch('https://www.mortgagenewsdaily.com/mortgage-rates/rss/30-year-fixed', {
+      headers: { 'User-Agent': 'TargetOS/2.0' },
+      signal: AbortSignal.timeout(6000),
+    })
+    if (res.ok) {
+      const xml = await res.text()
+      // Extract rate from RSS description field
+      const match = xml.match(/(\d+\.\d+)%/)
+      if (match) {
+        return { rate30: parseFloat(match[1]), rate30_prev: null, rate30_date: new Date().toISOString().slice(0,10) }
+      }
+    }
+  } catch(e) { console.warn('MND fallback failed:', e.message) }
+
+  // Final fallback: return null so UI shows "—" not broken
+  return { rate30: null, rate30_prev: null, rate30_date: null }
 }
 
 async function fetch15YrRate() {
+  const FRED_KEY = process.env.FRED_API_KEY
+  if (!FRED_KEY) return null
   try {
     const res = await fetch(
-      'https://api.stlouisfed.org/fred/series/observations?series_id=MORTGAGE15US&api_key=eb6fabb6e0e23e47b2ee72ad2e0a3a15&sort_order=desc&limit=1&file_type=json'
+      'https://api.stlouisfed.org/fred/series/observations?series_id=MORTGAGE15US&api_key=' + FRED_KEY + '&sort_order=desc&limit=1&file_type=json'
     )
     const data = await res.json()
     const obs = (data.observations || []).find(o => o.value !== '.')
