@@ -186,6 +186,25 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true })
     }
 
+    // ── UPDATE AGENT RECORD (bypasses RLS via service key) ──────
+    if (action === 'update_agent') {
+      const { agentId, updates } = body
+      if (!agentId) return res.status(400).json({ error: 'agentId required' })
+      const { data, error } = await sb.from('agents')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', agentId)
+        .select()
+        .single()
+      if (error) return res.status(400).json({ error: error.message })
+
+      // Also update auth email if changed
+      if (updates.email && updates.auth_user_id) {
+        await sb.auth.admin.updateUserById(updates.auth_user_id, { email: updates.email }).catch(() => {})
+      }
+
+      return res.status(200).json({ ok: true, agent: data })
+    }
+
     // ── UPDATE EMAIL ─────────────────────────────────────────────
     if (action === 'update_email') {
       if (!userId) return res.status(400).json({ error: 'userId required' })

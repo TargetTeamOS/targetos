@@ -83,28 +83,48 @@ export function Admin() {
     if (!form.name.trim() || !form.email.trim()) { toast('Name and email required','#DC2626'); return }
     setSaving(true)
     try {
-      const { error } = await supabase.from('agents').update({
-        name:       form.name.trim(),
-        email:      form.email.trim(),
-        phone:      form.phone || null,
-        role:       form.role,
-        color:      form.color,
-        updated_at: new Date().toISOString(),
-      }).eq('id', selected.id)
-      if (error) throw error
-
-      // If email changed, update Supabase Auth user email too
-      if (selected.auth_user_id && form.email !== selected.email) {
-        await fetch('/api/admin-users', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ action:'update_email', userId: selected.auth_user_id, email: form.email })
-        }).catch(() => {}) // non-fatal
-      }
+      // Use API endpoint which uses service key (bypasses RLS)
+      const res = await fetch('/api/admin-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action:  'update_agent',
+          agentId: selected.id,
+          updates: {
+            name:         form.name.trim(),
+            email:        form.email.trim().toLowerCase(),
+            phone:        form.phone || null,
+            role:         form.role,
+            color:        form.color,
+            auth_user_id: selected.auth_user_id || null,
+          },
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Save failed (' + res.status + ')')
 
       await refetch()
       toast('✅ ' + form.name + ' saved')
       closePanel()
-    } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
+    } catch(e) {
+      // Fallback: try direct update (works if RLS allows it)
+      try {
+        const { error } = await supabase.from('agents').update({
+          name:  form.name.trim(),
+          email: form.email.trim(),
+          phone: form.phone || null,
+          role:  form.role,
+          color: form.color,
+          updated_at: new Date().toISOString(),
+        }).eq('id', selected.id)
+        if (error) throw error
+        await refetch()
+        toast('✅ ' + form.name + ' saved')
+        closePanel()
+      } catch(e2) {
+        toast('❌ Save failed: ' + e2.message + ' — Check SUPABASE_SERVICE_KEY in Vercel env vars', '#DC2626')
+      }
+    }
     finally { setSaving(false) }
   }
 
