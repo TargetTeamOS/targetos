@@ -4,6 +4,7 @@
 
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { TargetTeamLogo, TargetTeamIcon } from './TargetTeamLogo'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { Avatar } from './UI'
@@ -79,19 +80,18 @@ export function Layout({ children }) {
         {/* Logo */}
         <div style={{ padding: collapsed ? '18px 0' : '18px 16px', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between', borderBottom: '1px solid rgba(255,255,255,.08)', flexShrink: 0 }}>
           {!collapsed && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
               {custom.logoUrl ? (
-                <img src={custom.logoUrl} alt="logo" style={{ width:28, height:28, borderRadius:8, objectFit:'cover' }}
+                <img src={custom.logoUrl} alt="logo" style={{ height: 32, maxWidth: 140, objectFit: 'contain' }}
                   onError={e => { e.target.style.display='none' }} />
               ) : (
-                <div style={{ width: 28, height: 28, borderRadius: '8px', background: custom.brandColor||'#CC2200', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 900, color: '#fff' }}>
-                  {(custom.orgName||'T')[0].toUpperCase()}
-                </div>
+                <TargetTeamLogo size="sm" />
               )}
-              <div>
-                <div style={{ color: '#fff', fontWeight: 800, fontSize: '14px', letterSpacing: '-.01em', lineHeight: 1.2 }}>{custom.orgName||'Target Team'}</div>
-                {custom.orgSubtitle && <div style={{ color: 'rgba(255,255,255,.45)', fontSize: '9px', fontWeight: 500 }}>{custom.orgSubtitle}</div>}
-              </div>
+            </div>
+          )}
+          {collapsed && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
+              <TargetTeamIcon size={32} dark />
             </div>
           )}
           <button onClick={() => setSidebarCollapsed(!collapsed)}

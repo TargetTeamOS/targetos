@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { TargetTeamLogo, TargetTeamIcon } from './TargetTeamLogo'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { AGENTS } from '../lib/constants'
@@ -40,16 +41,12 @@ export function Login() {
         boxShadow:'0 32px 80px rgba(0,0,0,.35)', position:'relative', zIndex:1,
       }}>
         {/* Logo */}
-        <div style={{textAlign:'center', marginBottom:'6px'}}>
-          <img src="/logo.png" alt="Target Team Logo"
-            style={{width:'72px', height:'72px', objectFit:'contain'}}/>
-        </div>
-
-        <div style={{fontSize:'28px', fontWeight:900, color:'#1B2B4B', textAlign:'center', letterSpacing:'-.5px'}}>
-          Target<span style={{color:'#CC2200'}}>OS</span>
-        </div>
-        <div style={{fontSize:'11px', color:'#94A3B8', letterSpacing:'2px', textTransform:'uppercase', textAlign:'center', margin:'4px 0 28px'}}>
-          Keller Williams Valley Realty
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:10, marginBottom:24}}>
+          <TargetTeamIcon size={72} dark={false} />
+          <TargetTeamLogo size="md" dark={true} />
+          <div style={{fontSize:'10px', color:'#94A3B8', letterSpacing:'2px', textTransform:'uppercase', textAlign:'center'}}>
+            Keller Williams Valley Realty
+          </div>
         </div>
 
         <form onSubmit={handleLogin}>
