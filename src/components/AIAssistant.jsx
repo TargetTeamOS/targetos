@@ -167,11 +167,19 @@ Keep responses concise and practical. Use bullet points for lists. Be direct and
       })
 
       const data = await response.json()
+      if (!response.ok || data.error) {
+        const errMsg = data.error || 'API error ' + response.status
+        // Show helpful message if API key missing
+        const friendly = errMsg.includes('ANTHROPIC_API_KEY')
+          ? '⚙️ AI not configured yet. Ask your admin to add ANTHROPIC_API_KEY to Vercel environment variables.'
+          : '❌ ' + errMsg
+        setMessages(prev => [...prev, { role:'assistant', content:friendly }])
+        return
+      }
       const reply = data.content?.[0]?.text || 'Sorry, I had trouble with that. Please try again.'
-
       setMessages(prev => [...prev, { role:'assistant', content:reply }])
     } catch(e) {
-      setMessages(prev => [...prev, { role:'assistant', content:'Sorry, I ran into an error: ' + e.message + '. Please try again.' }])
+      setMessages(prev => [...prev, { role:'assistant', content:'❌ Error: ' + e.message }])
     } finally {
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 50)
