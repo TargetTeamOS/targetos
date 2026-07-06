@@ -1171,10 +1171,15 @@ export function Production() {
   async function load() {
     setLoading(true)
     try {
-      let q = supabase.from('deals').select('*, agents(id,name,color)').order('ao_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+      let q = supabase.from('deals').select('*, agents(id,name,color)', { count: 'exact' }).order('ao_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
       if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
-      const { data: dealsData } = await q
+      // Load up to 1000 deals — enough for thousands with filters
+      q = q.range(0, 999)
+      const { data: dealsData, count: totalDeals } = await q
       const deals = dealsData || []
+      if (totalDeals > 1000) {
+        toast('Showing 1,000 of ' + totalDeals.toLocaleString() + ' deals — use filters to narrow down', '#F5A623')
+      }
 
       // Fetch contact counts for all deals in one query
       if (deals.length > 0) {
@@ -1556,7 +1561,7 @@ export function Production() {
           action={<Btn onClick={openNew}>+ Add Deal</Btn>} />
       ) : viewMode === 'board' ? (
         /* BOARD VIEW — Monday.com style */
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', background: '#fff', border: '1px solid #e6e9ef', borderRadius: 4 }}>
+        <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid #e6e9ef', borderRadius: 4 }}>
           {/* Sticky column header — Monday.com style */}
           <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f5f6f8', borderBottom: '1px solid #c5c7d0', display: 'flex', height: 40, minWidth: 'max-content', width: '100%' }}>
             <div style={{ width: 50, flexShrink: 0, borderRight: '1px solid #e6e9ef', height: 40 }} />
