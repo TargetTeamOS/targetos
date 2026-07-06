@@ -48,11 +48,7 @@ async function fetchRates() {
       rate30_date: latest?.date || null,
       change,
       source: 'Freddie Mac PMMS via FRED',
-      // Debug fields — remove after confirming
-      _raw30:   latest?.value,
-      _raw30p:  prev?.value,
-      _raw15:   obs15[0]?.value,
-      _parsed30: r30,
+
     }
   } catch(e) {
     console.error('FRED fetch error:', e.message)

@@ -86,7 +86,7 @@ export function MarketWidget() {
     if (!silent) setLoading(true)
     setError(null)
     try {
-      const res  = await fetch('/api/market-data' + (silent ? '' : '?refresh=1'))
+      const res  = await fetch('/api/market-data?refresh=1')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to load market data')
       setData(json)
@@ -101,7 +101,7 @@ export function MarketWidget() {
   useEffect(() => {
     load()
     // Auto-refresh every 30 minutes
-    const interval = setInterval(() => load(true), 30 * 60 * 1000)
+    const interval = setInterval(() => load(), 60 * 60 * 1000)
     return () => clearInterval(interval)
   }, [load])
 
