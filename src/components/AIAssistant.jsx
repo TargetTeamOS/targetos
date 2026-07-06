@@ -58,8 +58,37 @@ export function AIAssistant() {
   const [messages, setMessages] = useState([])
   const [loading,  setLoading]  = useState(false)
   const [context,  setContext]  = useState(null)
+  const [pos,      setPos]      = useState({ x: 24, y: null }) // null y = bottom-anchored
+  const [dragging, setDragging] = useState(false)
+  const dragStart = useRef(null)
   const endRef  = useRef(null)
   const inputRef = useRef(null)
+  const btnRef  = useRef(null)
+
+  function onDragStart(e) {
+    e.preventDefault()
+    const rect = btnRef.current?.getBoundingClientRect()
+    dragStart.current = {
+      mx: e.clientX, my: e.clientY,
+      bx: pos.x,     by: pos.y ?? (window.innerHeight - 76),
+    }
+    setDragging(true)
+  }
+
+  React.useEffect(() => {
+    if (!dragging) return
+    function onMove(e) {
+      const dx = e.clientX - dragStart.current.mx
+      const dy = e.clientY - dragStart.current.my
+      const nx = Math.max(12, Math.min(window.innerWidth  - 64, dragStart.current.bx + dx))
+      const ny = Math.max(12, Math.min(window.innerHeight - 64, dragStart.current.by + dy))
+      setPos({ x: nx, y: ny })
+    }
+    function onUp() { setDragging(false) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [dragging])
 
   useEffect(() => {
     if (open && messages.length === 0) {
@@ -157,28 +186,29 @@ Keep responses concise and practical. Use bullet points for lists. Be direct and
     <>
       {/* Floating button */}
       <button
-        onClick={() => setOpen(o => !o)}
-        title="AI Assistant"
+        ref={btnRef}
+        onClick={() => !dragging && setOpen(o => !o)}
+        onMouseDown={onDragStart}
+        title="AI Assistant — drag to move"
         style={{
           position: 'fixed',
-          bottom: 24,
-          left: 24,
-          width: 52,
-          height: 52,
+          left:   pos.x,
+          top:    pos.y !== null ? pos.y : undefined,
+          bottom: pos.y === null ? 24 : undefined,
+          width: 48,
+          height: 48,
           borderRadius: '50%',
           background: '#CC2200',
-          border: 'none',
-          cursor: 'pointer',
-          fontSize: 22,
-          boxShadow: '0 4px 16px rgba(204,34,0,.45)',
+          border: '2px solid rgba(255,255,255,.25)',
+          cursor: dragging ? 'grabbing' : 'grab',
+          fontSize: 20,
+          boxShadow: '0 4px 16px rgba(204,34,0,.5)',
           zIndex: 9000,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          transition: 'transform .15s',
+          userSelect: 'none',
         }}
-        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
-        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
       >
         {open ? '✕' : '🤖'}
       </button>
@@ -187,8 +217,9 @@ Keep responses concise and practical. Use bullet points for lists. Be direct and
       {open && (
         <div style={{
           position: 'fixed',
-          bottom: 86,
-          left: 24,
+          left:   pos.x,
+          top:    pos.y !== null ? pos.y - 440 : undefined,
+          bottom: pos.y === null ? 80 : undefined,
           width: 380,
           maxWidth: 'calc(100vw - 40px)',
           height: 520,

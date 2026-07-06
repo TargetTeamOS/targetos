@@ -440,3 +440,84 @@ export function GlobalDialButton() {
     </>
   )
 }
+
+
+// ── HEADER CALL BUTTON ─────────────────────────────────────────────
+// Inline call button for page headers — opens dialpad as a dropdown
+// Use in Contacts and Listings page headers only
+export function HeaderCallButton() {
+  const [open, setOpen] = useState(false)
+  const [num,  setNum]  = useState('')
+  const g = useG()
+  const ref = React.useRef(null)
+
+  React.useEffect(() => {
+    function close(e) { if (!ref.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+
+  async function dial() {
+    if (!num.trim()) return
+    g.setState(p => ({ ...p, toNumber: num, active: true }))
+    setOpen(false)
+    setNum('')
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '7px 14px', borderRadius: 8,
+          border: '1px solid var(--border)',
+          background: open ? '#10B981' : 'var(--dim)',
+          color: open ? '#fff' : 'var(--text)',
+          fontSize: 13, fontWeight: 700, cursor: 'pointer',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          transition: 'all .15s',
+        }}>
+        📞 Call
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '110%', right: 0, zIndex: 500,
+          background: 'var(--panel)', borderRadius: 12,
+          border: '1px solid var(--border)',
+          boxShadow: '0 8px 32px rgba(0,0,0,.2)',
+          padding: 14, width: 260,
+          fontFamily: 'Inter, system-ui, sans-serif',
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+            Dial a number
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              autoFocus
+              value={num}
+              onChange={e => setNum(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && dial()}
+              placeholder="(845) 555-1234"
+              style={{
+                flex: 1, padding: '8px 10px', borderRadius: 8,
+                border: '1px solid var(--border)', background: 'var(--inp)',
+                color: 'var(--text)', fontSize: 13,
+                fontFamily: 'Inter, system-ui, sans-serif',
+              }}
+            />
+            <button onClick={dial} style={{
+              padding: '8px 12px', borderRadius: 8, border: 'none',
+              background: '#10B981', color: '#fff', fontWeight: 700,
+              cursor: 'pointer', fontSize: 13,
+            }}>Call</button>
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
+            Or click 📞 next to any contact to call them directly
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

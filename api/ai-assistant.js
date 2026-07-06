@@ -9,7 +9,19 @@ module.exports = async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set in Vercel environment variables' })
 
-  const { messages, system, max_tokens } = req.body || {}
+  // Parse body — Vercel does not auto-parse req.body
+  let body = {}
+  try {
+    const raw = await new Promise((ok, err) => {
+      let d = ''
+      req.on('data', c => { d += c })
+      req.on('end', () => ok(d))
+      req.on('error', err)
+    })
+    body = JSON.parse(raw || '{}')
+  } catch { body = {} }
+
+  const { messages, system, max_tokens } = body
   if (!messages?.length) return res.status(400).json({ error: 'messages required' })
 
   try {

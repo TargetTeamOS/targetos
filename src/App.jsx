@@ -184,7 +184,6 @@ function AppShell() {
       </Layout>
       <Toast />
       <ActiveCallBar />
-      <GlobalDialButton />
       <CommandPaletteWrapper />
       <LocationAwareTools />
     </>
@@ -197,14 +196,14 @@ function CommandPaletteWrapper() {
   return <CommandPalette open={open} onClose={() => setOpen(false)} />
 }
 
-// Mic only on Dashboard, AI assistant on all other pages
+// Mic only on Dashboard, AI assistant on ALL pages
 function LocationAwareTools() {
   const loc = useLocation()
   const isDashboard = loc.pathname === '/' || loc.pathname === '/dashboard'
   return (
     <>
       {isDashboard && <VoiceCapture />}
-      {!isDashboard && <AIAssistant />}
+      <AIAssistant />
     </>
   )
 }
