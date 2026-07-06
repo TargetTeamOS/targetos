@@ -2503,6 +2503,11 @@ export function Dashboard() {
         </div>
       )}
 
+      {/* ── MARKET PULSE — always visible at top of dashboard ── */}
+      <WidgetErrorBoundary>
+        <MarketWidget />
+      </WidgetErrorBoundary>
+
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}><Loading /></div>
       ) : (
