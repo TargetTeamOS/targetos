@@ -13,6 +13,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { ClickToCall } from '../components/ClickToCall'
+import { MarketWidget } from '../components/MarketWidget'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
