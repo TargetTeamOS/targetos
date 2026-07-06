@@ -625,9 +625,25 @@ export function Offers() {
       <Modal open={!!(selected || urlId==='new')} onClose={closePanel}
         title={selected ? 'Offer — ' + selected.listing_addr : 'New Offer for Sale of Real Estate'} width={680}>
 
+        {/* Mode selector — two ways to create an offer */}
+        {!selected && (
+          <div style={{ display:'flex', gap:10, padding:'12px 0', marginBottom:12 }}>
+            <div style={{ flex:1, padding:'12px 14px', borderRadius:10, border:'2px solid '+(tab==='offer'?'#CC2200':'var(--border)'), cursor:'pointer', background:tab==='offer'?'rgba(204,34,0,.04)':'var(--dim)' }}
+              onClick={()=>setTab('offer')}>
+              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>📋 Fill Out Form</div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>Fill out fields → saves to CRM + option to download PDF</div>
+            </div>
+            <div style={{ flex:1, padding:'12px 14px', borderRadius:10, border:'2px solid '+(tab==='pdf_only'?'#3B82F6':'var(--border)'), cursor:'pointer', background:tab==='pdf_only'?'rgba(59,130,246,.04)':'var(--dim)' }}
+              onClick={()=>setTab('pdf_only')}>
+              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>💾 Quick Save to CRM</div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>Enter key info only → saves deal to CRM without PDF</div>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div style={{ display:'flex', borderBottom:'1px solid var(--border)', marginBottom:16, gap:0 }}>
-          {[['offer','📋 Offer Form'],['docs','📎 Documents'],['activity','📋 Activity']].map(([id,label])=>(
+          {(selected ? [['offer','📋 Offer Form'],['docs','📎 Documents'],['activity','📋 Activity']] : [['offer','📋 Offer Form'],['docs','📎 Documents']]).map(([id,label])=>(
             <button key={id} onClick={()=>setTab(id)}
               style={{ padding:'7px 14px', border:'none', background:'none', cursor:'pointer', borderBottom:tab===id?'2px solid #CC2200':'2px solid transparent', marginBottom:'-1px', fontSize:12, fontWeight:tab===id?700:400, color:tab===id?'#CC2200':'var(--muted)', fontFamily:ff }}>
               {label}
@@ -982,14 +998,69 @@ export function Offers() {
           <RecordActivityFeed table="offers" recordId={selected.id} />
         )}
 
+        {/* QUICK SAVE TAB — minimal fields, no PDF */}
+        {tab === 'pdf_only' && !selected && (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            <div style={{ padding:'10px 12px', background:'rgba(59,130,246,.06)', borderRadius:8, fontSize:11, color:'var(--muted)' }}>
+              Enter key deal information to track in CRM. No PDF generated.
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              <div style={{ gridColumn:'span 2' }}>
+                <span style={SL}>Property Address *</span>
+                <input value={form.listing_addr||''} onChange={e=>set('listing_addr',e.target.value)} placeholder="123 Main St..." style={S} />
+              </div>
+              <div>
+                <span style={SL}>Buyer Name *</span>
+                <ContactSearch value={form.buyer_name||''} onChange={v=>set('buyer_name',v)} onSelect={selectBuyer} placeholder="Search or enter buyer..." />
+              </div>
+              <div>
+                <span style={SL}>Seller Name</span>
+                <input value={form.seller_name||''} onChange={e=>set('seller_name',e.target.value)} placeholder="Seller name" style={S} />
+              </div>
+              <div>
+                <span style={SL}>Purchase Price</span>
+                <input value={form.purchase_price||''} onChange={e=>recalc({purchase_price:e.target.value})} placeholder="$0" style={S} />
+              </div>
+              <div>
+                <span style={SL}>Status</span>
+                <select value={form.status} onChange={e=>set('status',e.target.value)} style={S}>
+                  {OFFER_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <span style={SL}>Date</span>
+                <input type="date" value={form.offer_date} onChange={e=>set('offer_date',e.target.value)} style={S} />
+              </div>
+              <div>
+                <span style={SL}>Buyers Agent</span>
+                {canManage||isAdmin ? (
+                  <select value={form.buyers_agent_id||''} onChange={e=>setForm(f=>({...f,buyers_agent_id:e.target.value,agent_id:e.target.value}))} style={S}>
+                    <option value="">— Select agent —</option>
+                    {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                ) : (
+                  <input value={agent?.name||''} readOnly style={{...S,background:'var(--dim)',color:'var(--muted)'}} />
+                )}
+              </div>
+              <div style={{ gridColumn:'span 2' }}>
+                <span style={SL}>Notes</span>
+                <textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)} rows={2} style={{...S,resize:'vertical'}} />
+              </div>
+            </div>
+          </div>
+        )}
+
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight:'auto', color:'#DC2626' }} onClick={()=>setConfirmDel(true)}>Delete</Btn>}
           <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
-          <Btn variant="secondary" onClick={downloadPDF} loading={downloading}
-            style={{ display:'flex', alignItems:'center', gap:6 }}>
-            📄 {downloading ? 'Generating...' : 'Download PDF'}
+          {tab !== 'pdf_only' && (
+            <Btn variant="secondary" onClick={downloadPDF} loading={downloading}>
+              📄 {downloading ? 'Generating...' : 'Download PDF'}
+            </Btn>
+          )}
+          <Btn onClick={saveOffer} loading={saving}>
+            {selected ? 'Save Changes' : tab === 'pdf_only' ? 'Save to CRM' : 'Save + Download PDF'}
           </Btn>
-          <Btn onClick={saveOffer} loading={saving}>{selected ? 'Save Changes' : 'Submit Offer'}</Btn>
         </ModalActions>
       </Modal>
 
