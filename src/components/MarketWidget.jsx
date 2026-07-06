@@ -28,7 +28,7 @@ function RateCard({ label, rate, prev, change, asOf }) {
       <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>{label}</div>
       <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
         <span style={{ fontSize:26, fontWeight:900, color:'var(--text)', lineHeight:1 }}>
-          {rate ? rate.toFixed(2) + '%' : '—'}
+          {(rate !== null && rate !== undefined && !isNaN(rate) && rate > 0) ? rate.toFixed(2) + '%' : '—'}
         </span>
         {change !== null && change !== undefined && (
           <span style={{ fontSize:11, fontWeight:700, color, background:color+'15', padding:'2px 7px', borderRadius:99 }}>

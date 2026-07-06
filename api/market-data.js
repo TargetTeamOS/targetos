@@ -28,18 +28,26 @@ async function fetchRates() {
 
     if (d30.error_message) throw new Error(d30.error_message)
 
-    const obs30  = (d30.observations || []).filter(o => o.value !== '.' && o.value !== '')
-    const obs15  = (d15.observations || []).filter(o => o.value !== '.' && o.value !== '')
+    const obs30  = (d30.observations || []).filter(o => o.value && o.value !== '.' && o.value.trim() !== '')
+    const obs15  = (d15.observations || []).filter(o => o.value && o.value !== '.' && o.value.trim() !== '')
     const latest = obs30[0]
     const prev   = obs30[1]
 
+    console.log('FRED obs30 sample:', JSON.stringify(obs30.slice(0,2)))
+
+    const r30      = latest ? parseFloat(String(latest.value).trim()) : null
+    const r30prev  = prev   ? parseFloat(String(prev.value).trim())   : null
+    const r15      = obs15[0] ? parseFloat(String(obs15[0].value).trim()) : null
+    const change   = (r30 && r30prev && !isNaN(r30) && !isNaN(r30prev))
+                       ? parseFloat((r30 - r30prev).toFixed(2)) : null
+
     return {
-      rate30:      latest ? parseFloat(latest.value) : null,
-      rate30_prev: prev   ? parseFloat(prev.value)   : null,
-      rate15:      obs15[0] ? parseFloat(obs15[0].value) : null,
+      rate30:      (!isNaN(r30) && r30 > 0) ? r30 : null,
+      rate30_prev: (!isNaN(r30prev) && r30prev > 0) ? r30prev : null,
+      rate15:      (!isNaN(r15) && r15 > 0) ? r15 : null,
       rate30_date: latest?.date || null,
-      change:      latest && prev ? parseFloat((parseFloat(latest.value) - parseFloat(prev.value)).toFixed(2)) : null,
-      source:      'Freddie Mac PMMS via FRED',
+      change,
+      source: 'Freddie Mac PMMS via FRED',
     }
   } catch(e) {
     console.error('FRED fetch error:', e.message)
