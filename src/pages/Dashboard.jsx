@@ -2340,6 +2340,11 @@ export function Dashboard() {
   return (
     <div style={{ fontFamily: ff }}>
 
+      {/* ── MARKET PULSE — rates + news, always visible ── */}
+      <div style={{ marginBottom: 16 }}>
+        <MarketWidget />
+      </div>
+
       {/* TOP BAR */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
@@ -2502,11 +2507,6 @@ export function Dashboard() {
           </div>
         </div>
       )}
-
-      {/* ── MARKET PULSE — always visible at top of dashboard ── */}
-      <WidgetErrorBoundary>
-        <MarketWidget />
-      </WidgetErrorBoundary>
 
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}><Loading /></div>
