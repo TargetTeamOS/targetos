@@ -312,7 +312,10 @@ offers: {
   async list(filters = {}) {
     let q = supabase.from('offers').select('*, agents(id,name,color)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
-    return run(q.order('created_at', { ascending: false }))
+    if (filters.status)   q = q.eq('status', filters.status)
+    const limit  = filters.limit  || 200
+    const offset = filters.offset || 0
+    return run(q.order('created_at', { ascending: false }).range(offset, offset + limit - 1))
   },
   async get(id) {
     return run(supabase.from('offers').select('*, agents(id,name,color)').eq('id', id).single())
@@ -375,7 +378,9 @@ tasks: {
     if (filters.status)     q = q.eq('status', filters.status)
     if (filters.deal_id)    q = q.eq('deal_id', filters.deal_id)
     if (filters.contact_id) q = q.eq('contact_id', filters.contact_id)
-    return run(q.order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }))
+    const limit  = filters.limit  || 200
+    const offset = filters.offset || 0
+    return run(q.order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }).range(offset, offset + limit - 1))
   },
   async get(id) {
     return run(supabase.from('tasks').select('*, agents(id,name,color)').eq('id', id).single())

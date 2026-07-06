@@ -531,15 +531,18 @@ export function Listings() {
   async function load() {
     setLoading(true)
     try {
-      let q = supabase.from('listings').select('*').order('list_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+      let q = supabase.from('listings').select('*', { count: 'exact' }).order('list_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
       if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
-      const { data } = await q
+      q = q.range(0, 499) // Load up to 500 listings — filter by status/agent for more
+      const { data, count } = await q
       const rows = data || []
+      if (count > 500) toast('Showing 500 of ' + count.toLocaleString() + ' listings — use filters to narrow', '#F5A623')
 
-      // Count showings per listing (safe - table may not exist yet)
+      // Count showings per listing — only for loaded listings
       if (rows.length) {
         try {
-          const { data: sc } = await supabase.from('showings').select('listing_id')
+          const ids = rows.map(l => l.id)
+          const { data: sc } = await supabase.from('showings').select('listing_id').in('listing_id', ids)
           const counts = {}
           ;(sc||[]).forEach(s => { counts[s.listing_id] = (counts[s.listing_id]||0)+1 })
           rows.forEach(l => { l.showings_count = counts[l.id] || 0 })

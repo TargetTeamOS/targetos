@@ -234,12 +234,20 @@ export function MyListings() {
     try {
       let q = supabase.from('listings').select('*').order('list_date', { ascending: false })
       if (!isAdmin) q = q.eq('agent_id', agent?.id)
+      q = q.range(0, 199) // 200 max per agent — more than enough
 
-      const [listRes, showRes, ohRes] = await Promise.all([
-        q,
-        supabase.from('listing_showings').select('*').order('showing_date', { ascending: false }).catch(() => ({ data: [] })),
-        supabase.from('open_houses').select('*').order('date', { ascending: false }),
-      ])
+      const listRes = await q
+      const listingIds = (listRes.data || []).map(l => l.id)
+
+      // Scope showings + open houses to only loaded listings
+      const [showRes, ohRes] = await Promise.all([
+        listingIds.length
+          ? supabase.from('listing_showings').select('*').in('listing_id', listingIds).order('showing_date', { ascending: false })
+          : Promise.resolve({ data: [] }),
+        listingIds.length
+          ? supabase.from('open_houses').select('*').in('listing_id', listingIds).order('date', { ascending: false })
+          : Promise.resolve({ data: [] }),
+      ]).catch(() => [{ data: [] }, { data: [] }])
 
       setListings(listRes.data || [])
       setShowings(showRes.data || [])

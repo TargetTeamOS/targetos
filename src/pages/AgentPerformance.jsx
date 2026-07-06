@@ -441,7 +441,8 @@ export function AgentPerformance() {
       const [dealsRes, agentsRes] = await Promise.all([
         supabase.from('deals')
           .select('id, addr, agent_id, stage, side, production, gci, ao_date, close_date, expected_close_date, created_at')
-          .order('ao_date', { ascending: false }),
+          .order('ao_date', { ascending: false })
+          .range(0, 2999), // 3000 max — enough for years of data
         supabase.from('agents').select('id, name, color, role').eq('active', true).order('name'),
       ])
       if (dealsRes.error) throw dealsRes.error

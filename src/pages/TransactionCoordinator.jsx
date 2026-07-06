@@ -455,8 +455,8 @@ export function TransactionCoordinator() {
     setLoading(true)
     try {
       const [dr, tr, ar] = await Promise.all([
-        supabase.from('tc_deals').select('*').order('updated_at', { ascending:false }),
-        supabase.from('tc_tasks').select('*').order('due_date',   { ascending:true  }),
+        supabase.from('tc_deals').select('*').order('updated_at', { ascending:false }).range(0, 499),
+        supabase.from('tc_tasks').select('*').order('due_date',   { ascending:true  }).range(0, 4999),
         supabase.from('agents').select('id,name,color,email').eq('active',true).order('name'),
       ])
       if (dr.error?.message?.includes('does not exist')) { setSqlError(true); return }

@@ -115,8 +115,8 @@ export function Reports() {
     setLoading(true)
     try {
       const [dealsRes, contactsRes, agentsRes] = await Promise.all([
-        supabase.from('deals').select('id,stage,gci,production,ao_date,close_date,agent_id,source,won_reason,lost_reason,side,created_at').order('ao_date',{ascending:false}),
-        supabase.from('contacts').select('id,status,source,agent_id,created_at').order('created_at',{ascending:false}),
+        supabase.from('deals').select('id,stage,gci,production,ao_date,close_date,agent_id,source,won_reason,lost_reason,side,created_at').order('ao_date',{ascending:false}).range(0,2999),
+        supabase.from('contacts').select('id,status,source,agent_id,created_at').order('created_at',{ascending:false}).range(0,4999),
         supabase.from('agents').select('id,name,color').eq('active',true),
       ])
       setDeals(dealsRes.data||[])
