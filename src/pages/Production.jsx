@@ -1145,6 +1145,7 @@ export function Production() {
   const [hiddenCols,    setHiddenCols]    = useState([])
   const [showColPicker, setShowColPicker] = useState(false)
   const [customGroups,  setCustomGroups]  = useState(null)
+  const [trueTotals,    setTrueTotals]    = useState(null) // { total_count, total_gci, closed_gci, pipeline_gci } from production_totals() RPC — null until loaded
 
   const activeGroups  = useMemo(() => customGroups || [...BOARD_GROUPS, ...buildYearGroups(deals)], [customGroups, deals])
   const visibleCols   = ALL_COLUMNS.filter(c => !hiddenCols.includes(c.key))
@@ -1173,12 +1174,26 @@ export function Production() {
     try {
       let q = supabase.from('deals').select('*, agents(id,name,color)', { count: 'exact' }).order('ao_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
       if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
-      // Load up to 1000 deals — enough for thousands with filters
-      q = q.range(0, 999)
+      // Load up to 5,000 deals — raised from 1,000 (July 2026) after the team
+      // crossed 600-1000 deals and risked silently truncating the board.
+      // True totals (GCI/production) below no longer depend on this cap at all.
+      q = q.range(0, 4999)
       const { data: dealsData, count: totalDeals } = await q
       const deals = dealsData || []
-      if (totalDeals > 1000) {
-        toast('Showing 1,000 of ' + totalDeals.toLocaleString() + ' deals — use filters to narrow down', '#F5A623')
+
+      // True totals via server-side aggregate — always accurate regardless
+      // of the row cap above. See production_totals.sql.
+      const scopeAgentId = (!isAdmin && !canManage) ? agent?.id : null
+      const { data: totalsData, error: totalsErr } = await supabase.rpc('production_totals', { p_agent_id: scopeAgentId })
+      if (!totalsErr && totalsData?.[0]) {
+        setTrueTotals(totalsData[0])
+      } else {
+        setTrueTotals(null)
+        if (totalsErr) console.warn('production_totals RPC error:', totalsErr.message)
+      }
+
+      if (totalDeals > 5000) {
+        toast('Showing 5,000 of ' + totalDeals.toLocaleString() + ' deals — use filters to narrow down', '#F5A623')
       }
 
       // Fetch contact counts for all deals in one query
@@ -1368,6 +1383,7 @@ export function Production() {
   const closedGCI     = closedArr.reduce((s, d) => s + parseNum(d.gci), 0)
   const activeArr     = filtered.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
   const pipelineGCI   = activeArr.reduce((s, d) => s + parseNum(d.gci), 0)
+  const isTruncated   = !!(trueTotals && deals.length < trueTotals.total_count)
 
   return (
     <div style={{ fontFamily: ff }}>
@@ -1380,6 +1396,15 @@ export function Production() {
             {filtered.length} deals · {fmt$(totalGCIAll)} GCI
           </div>
         </div>
+
+        {isTruncated && (
+          <div style={{ background: 'rgba(245,166,35,.08)', border: '1px solid rgba(245,166,35,.35)', borderRadius: 8, padding: '8px 14px', fontSize: 12, color: '#8a5a00', maxWidth: 480 }}>
+            <strong>⚠ Board is showing {deals.length.toLocaleString()} of {trueTotals.total_count.toLocaleString()} deals.</strong>{' '}
+            True totals (all deals): {fmt$(trueTotals.total_gci)} GCI · {fmt$(trueTotals.closed_gci)} closed · {fmt$(trueTotals.pipeline_gci)} pipeline.
+            Use filters to narrow the board view — the numbers above the board reflect only what's currently loaded.
+          </div>
+        )}
+
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           {/* View mode */}
           <div style={{ display: 'flex', background: 'var(--dim)', borderRadius: '8px', padding: '3px', gap: '2px' }}>
