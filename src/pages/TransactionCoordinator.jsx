@@ -411,6 +411,8 @@ export function TransactionCoordinator() {
   const [selDeal,      setSelDeal]      = useState(null)
   const [selTask,      setSelTask]      = useState(null)
 
+
+
   const DEAL_BLANK = {
     addr:'', side:'Seller', agent_id:'', tc_phase:'pre_listing',
     list_price:'', sale_price:'', ao_date:'', close_date:'',
@@ -449,7 +451,20 @@ export function TransactionCoordinator() {
   const [dealForm, setDealForm] = useState({ ...DEAL_BLANK })
   const [taskForm, setTaskForm] = useState({ ...TASK_BLANK })
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { if (canManage) loadAll() }, [canManage])
+
+  // TC Board is Secretary + Admin only — agents get zero access.
+  // Placed after every hook call (useState/useEffect above) so this
+  // conditional return never violates the rules of hooks.
+  if (!canManage) return (
+    <div>
+      <PageHeader title="TC Board" />
+      <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:40,textAlign:'center'}}>
+        <div style={{fontSize:32,marginBottom:12}}>🔒</div>
+        <div style={{fontWeight:700,fontSize:16,color:'var(--text)'}}>Secretary or Admin Access Only</div>
+      </div>
+    </div>
+  )
 
   async function loadAll() {
     setLoading(true)
@@ -507,7 +522,10 @@ export function TransactionCoordinator() {
         if (deal.linked_listing_id) await supabase.from('listings').update({ agent_id:updates.agent_id }).eq('id', deal.linked_listing_id)
         synced.push('All boards')
       }
-    } catch(e) { console.warn('sync error:', e.message) }
+    } catch(e) {
+      console.warn('sync error:', e.message)
+      toast('Some changes may not have synced to other boards — please verify Listings/Production.', '#DC2626')
+    }
     return synced
   }
 
