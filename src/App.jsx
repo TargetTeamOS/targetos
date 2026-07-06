@@ -196,14 +196,14 @@ function CommandPaletteWrapper() {
   return <CommandPalette open={open} onClose={() => setOpen(false)} />
 }
 
-// Mic only on Dashboard, AI assistant on ALL pages
+// Mic on Dashboard only, AI on all pages EXCEPT dashboard
 function LocationAwareTools() {
   const loc = useLocation()
   const isDashboard = loc.pathname === '/' || loc.pathname === '/dashboard'
   return (
     <>
       {isDashboard && <VoiceCapture />}
-      <AIAssistant />
+      {!isDashboard && <AIAssistant />}
     </>
   )
 }

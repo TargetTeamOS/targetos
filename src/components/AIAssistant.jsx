@@ -58,7 +58,7 @@ export function AIAssistant() {
   const [messages, setMessages] = useState([])
   const [loading,  setLoading]  = useState(false)
   const [context,  setContext]  = useState(null)
-  const [pos,      setPos]      = useState({ x: 24, y: null }) // null y = bottom-anchored
+  const [pos,      setPos]      = useState({ x: 84, y: null }) // null y = bottom-anchored, offset from mic
   const [dragging, setDragging] = useState(false)
   const dragStart = useRef(null)
   const endRef  = useRef(null)

@@ -21,7 +21,7 @@ export function VoiceCapture() {
   const [parsed,  setParsed]  = useState(null)
   const [step,    setStep]    = useState('idle') // idle | reviewing | done
   const [saving,  setSaving]  = useState(false)
-  const [pos,     setPos]     = useState({ x: null, y: null }) // null = bottom-right default
+  const [pos,     setPos]     = useState({ x: null, y: null }) // null = bottom-left default
   const recRef = useRef(null)
   const dragging = useRef(false)
   const dragStart = useRef(null)
@@ -29,7 +29,7 @@ export function VoiceCapture() {
   // ── DRAG ──────────────────────────────────────────────────────
   function onMouseDown(e) {
     dragging.current = false
-    dragStart.current = { x: e.clientX, y: e.clientY, px: pos.x || window.innerWidth - 70, py: pos.y || window.innerHeight - 70 }
+    dragStart.current = { x: e.clientX, y: e.clientY, px: pos.x !== null ? pos.x : 24, py: pos.y !== null ? pos.y : window.innerHeight - 70 }
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
   }
@@ -147,10 +147,9 @@ export function VoiceCapture() {
   const btnY = pos.y !== null ? pos.y : undefined
   const btnStyle = {
     position:  'fixed',
-    left:      btnX !== undefined ? undefined : '24px',
-    bottom:    btnY !== undefined ? undefined : '24px',
-    left:      btnX !== undefined ? (btnX) + "px" : undefined,
-    top:       btnY !== undefined ? (btnY) + "px" : undefined,
+    left:      btnX !== undefined ? btnX + 'px' : '24px',
+    bottom:    btnY !== undefined ? undefined    : '24px',
+    top:       btnY !== undefined ? btnY + 'px'  : undefined,
     width:     52, height: 52,
     borderRadius: '50%',
     background:  recording ? '#DC2626' : '#CC2200',
@@ -176,7 +175,7 @@ export function VoiceCapture() {
 
       {/* Panel */}
       {open && (
-        <div style={{ position: 'fixed', left: 24, bottom: 86, width: 340, background: 'var(--panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 899, fontFamily: ff, overflow: 'hidden' }}>
+        <div style={{ position: 'fixed', left: pos.x !== null ? pos.x : 24, bottom: pos.y !== null ? undefined : 86, top: pos.y !== null ? pos.y - 360 : undefined, width: 340, background: 'var(--panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 899, fontFamily: ff, overflow: 'hidden' }}>
 
           {/* Header */}
           <div style={{ background: '#CC2200', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
