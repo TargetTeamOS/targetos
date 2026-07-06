@@ -3,6 +3,7 @@
 // Every task has its own URL. Full CRUD with priorities.
 // ═══════════════════════════════════════════════════════════════
 
+import FilterBar from '../components/FilterBar'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -238,26 +239,19 @@ export function Tasks() {
       />
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <SearchInput value={search} onChange={setSearch} placeholder="Search tasks..." style={{ flex: 1, minWidth: '200px' }} />
-        <select value={statusF} onChange={e => setStatusF(e.target.value)}
-          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-          <option value="">All Statuses</option>
-          {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
-        <select value={priorF} onChange={e => setPriorF(e.target.value)}
-          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-          <option value="">All Priorities</option>
-          {TASK_PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-        </select>
-        {(isAdmin || canManage) && (
-          <select value={agentF} onChange={e => setAgentF(e.target.value)}
-            style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-            <option value="">All Agents</option>
-            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-        )}
-      </div>
+      <FilterBar
+        page="tasks"
+        filters={{ search, status:statusF, priority:priorF, agent_id:agentF }}
+        onChange={f => { setSearch(f.search||''); setStatusF(f.status||''); setPriorF(f.priority||''); setAgentF(f.agent_id||'') }}
+        searchKey="search" placeholder="Search tasks..."
+        definitions={[
+          { key:'status',   label:'Status',   multiSelect:false, options: TASK_STATUSES.map(s=>({value:s.value,label:s.label,color:s.color})) },
+          { key:'priority', label:'Priority', multiSelect:false, options: TASK_PRIORITIES.map(p=>({value:p.value,label:p.label,color:p.color})) },
+          { key:'agent_id', label:'Agent',    options: agents.map(a=>({value:a.id,label:a.name,color:a.color})) },
+        ]}
+        totalCount={tasks.length}
+        filteredCount={filtered.length}
+      />
 
       {/* Selection bar */}
       {selectedIds.length > 0 && (
