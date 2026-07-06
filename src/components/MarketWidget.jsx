@@ -86,7 +86,7 @@ export function MarketWidget() {
     if (!silent) setLoading(true)
     setError(null)
     try {
-      const res  = await fetch('/api/market-data')
+      const res  = await fetch('/api/market-data' + (silent ? '' : '?refresh=1'))
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed to load market data')
       setData(json)
