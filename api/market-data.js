@@ -4,7 +4,7 @@
 // News: RSS feeds from NAR, HousingWire, Calculated Risk
 'use strict'
 
-const CACHE = { data: null, ts: 0 }
+const CACHE = { data: null, ts: 0, bust: '202607061418' }
 const CACHE_TTL = 30 * 60 * 1000 // 30 min
 
 async function fetchRates() {
