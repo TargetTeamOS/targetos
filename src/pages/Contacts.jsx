@@ -202,9 +202,12 @@ export function Contacts() {
   const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
 
-  // Admins/secretaries see all; agents see their own
-  const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
-  const { contacts, loading, add, update, remove, refetch } = useContacts(filters)
+  // Paginated loading — 100 at a time, load more on scroll
+  const [contacts,    setContacts]    = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [totalCount,  setTotalCount]  = useState(0)
+  const [pageOffset,  setPageOffset]  = useState(0)
+  const PAGE_SIZE = 100
   const { agents } = useAgents()
 
   const [search,      setSearch]      = useState('')
@@ -213,6 +216,44 @@ export function Contacts() {
   const [agentF,      setAgentF]      = useState('')
   const [sourceF,     setSourceF]     = useState('')
   const [typeF,       setTypeF]       = useState('')
+
+  // Load contacts with server-side pagination
+  async function loadContacts(offset = 0, append = false) {
+    if (offset === 0) setLoading(true)
+    try {
+      const agentFilter = isAdmin || canManage ? null : agent?.id
+      let q = supabase.from('contacts').select('*, agents(id,name,color)', { count: 'exact' })
+      if (agentFilter) q = q.eq('agent_id', agentFilter)
+      if (statusF)     q = q.eq('status', statusF)
+      if (typeF)       q = q.eq('type', typeF)
+      if (agentF)      q = q.eq('agent_id', agentF)
+      if (search && search.length >= 2) {
+        q = q.or('first_name.ilike.%'+search+'%,last_name.ilike.%'+search+'%,phone.ilike.%'+search+'%,email.ilike.%'+search+'%')
+      }
+      q = q.order('last_activity', { ascending:false, nullsFirst:false })
+           .order('created_at',    { ascending:false })
+           .range(offset, offset + PAGE_SIZE - 1)
+
+      const { data, count, error } = await q
+      if (error) throw error
+      setTotalCount(count || 0)
+      setContacts(prev => append ? [...prev, ...(data||[])] : (data||[]))
+      setPageOffset(offset)
+    } catch(e) { console.error('Load contacts:', e.message) }
+    finally { if (offset === 0) setLoading(false) }
+  }
+
+  async function refetch() { await loadContacts(0) }
+
+  // Reload when filters change (debounced for search)
+  useEffect(() => {
+    const t = setTimeout(() => loadContacts(0), search ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [search, statusF, typeF, agentF, agent?.id])
+
+  async function add(data)          { const r = await db.contacts.create(data); await refetch(); return r }
+  async function update(id, data)   { const r = await db.contacts.update(id, data, agent?.id); await refetch(); return r }
+  async function remove(id)         { await db.contacts.delete(id); await refetch() }
   const [dateRange,   setDateRange]   = useState({})
   const [sortKey,     setSortKey]     = useState('created_at')
   const [sortDir,     setSortDir]     = useState('desc')
@@ -426,7 +467,7 @@ export function Contacts() {
         ]}
         sortKey={sortKey} sortDir={sortDir}
         onSortChange={(k,d) => { setSortKey(k); setSortDir(d) }}
-        totalCount={contacts.length} filteredCount={filtered.length}
+        totalCount={totalCount} filteredCount={filtered.length}
       />
 
       {/* Selection bar */}

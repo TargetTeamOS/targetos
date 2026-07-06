@@ -21,7 +21,7 @@ export function VoiceCapture() {
   const [parsed,  setParsed]  = useState(null)
   const [step,    setStep]    = useState('idle') // idle | reviewing | done
   const [saving,  setSaving]  = useState(false)
-  const [pos,     setPos]     = useState({ x: null, y: null }) // null = bottom-left default
+  const [pos,     setPos]     = useState({ x: 24, y: null }) // bottom-left
   const recRef = useRef(null)
   const dragging = useRef(false)
   const dragStart = useRef(null)
@@ -29,7 +29,7 @@ export function VoiceCapture() {
   // ── DRAG ──────────────────────────────────────────────────────
   function onMouseDown(e) {
     dragging.current = false
-    dragStart.current = { x: e.clientX, y: e.clientY, px: pos.x !== null ? pos.x : 24, py: pos.y !== null ? pos.y : window.innerHeight - 70 }
+    dragStart.current = { x: e.clientX, y: e.clientY, px: pos.x ?? 24, py: pos.y ?? (window.innerHeight - 70) }
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
   }
@@ -147,9 +147,9 @@ export function VoiceCapture() {
   const btnY = pos.y !== null ? pos.y : undefined
   const btnStyle = {
     position:  'fixed',
-    left:      btnX !== undefined ? btnX + 'px' : '24px',
-    bottom:    btnY !== undefined ? undefined    : '24px',
-    top:       btnY !== undefined ? btnY + 'px'  : undefined,
+    left:   pos.x,
+    bottom: pos.y === null ? 24 : undefined,
+    top:    pos.y !== null ? pos.y : undefined,
     width:     52, height: 52,
     borderRadius: '50%',
     background:  recording ? '#DC2626' : '#CC2200',

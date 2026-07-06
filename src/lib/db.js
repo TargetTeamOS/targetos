@@ -147,8 +147,26 @@ contacts: {
     let q = supabase.from('contacts').select('*, agents(id,name,color)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
     if (filters.status)   q = q.eq('status', filters.status)
+    if (filters.type)     q = q.eq('type', filters.type)
+    if (filters.search) {
+      // Server-side search — efficient with DB index
+      q = q.or('first_name.ilike.%' + filters.search + '%,last_name.ilike.%' + filters.search + '%,phone.ilike.%' + filters.search + '%,email.ilike.%' + filters.search + '%')
+    }
+    const limit  = filters.limit  || 100
+    const offset = filters.offset || 0
+    return run(
+      q.order('last_activity', { ascending: false, nullsFirst: false })
+       .order('created_at',   { ascending: false })
+       .range(offset, offset + limit - 1)
+    )
+  },
+  async count(filters = {}) {
+    let q = supabase.from('contacts').select('id', { count: 'exact', head: true })
+    if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
+    if (filters.status)   q = q.eq('status', filters.status)
     if (filters.search)   q = q.or('first_name.ilike.%' + filters.search + '%,last_name.ilike.%' + filters.search + '%,phone.ilike.%' + filters.search + '%,email.ilike.%' + filters.search + '%')
-    return run(q.order('last_activity', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }))
+    const { count } = await q
+    return count || 0
   },
   async get(id) {
     return run(supabase.from('contacts').select('*, agents(id,name,color)').eq('id', id).single())

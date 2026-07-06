@@ -1,5 +1,4 @@
 import React, { useState } from 'react'
-import { TargetTeamLogo, TargetTeamIcon } from './TargetTeamLogo'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { AGENTS } from '../lib/constants'
@@ -41,11 +40,22 @@ export function Login() {
         boxShadow:'0 32px 80px rgba(0,0,0,.35)', position:'relative', zIndex:1,
       }}>
         {/* Logo */}
-        <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:10, marginBottom:24}}>
-          <TargetTeamIcon size={72} dark={false} />
-          <TargetTeamLogo size="md" dark={true} />
-          <div style={{fontSize:'10px', color:'#94A3B8', letterSpacing:'2px', textTransform:'uppercase', textAlign:'center'}}>
-            Keller Williams Valley Realty
+        <div style={{textAlign:'center', marginBottom:24}}>
+          <div style={{display:'inline-flex', flexDirection:'column', alignItems:'center', gap:8}}>
+            <div style={{width:72, height:72, borderRadius:18, background:'#1B2B4B', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 24px rgba(27,43,75,.35)', gap:3}}>
+              <span style={{color:'#fff', fontWeight:900, fontSize:16, letterSpacing:'.1em', lineHeight:1}}>TARGET</span>
+              <div style={{display:'flex', alignItems:'center', gap:4, width:52}}>
+                <div style={{flex:1, height:'1.5px', background:'#CC2200'}} />
+                <span style={{color:'#CC2200', fontWeight:800, fontSize:9, letterSpacing:'.2em'}}>TEAM</span>
+                <div style={{flex:1, height:'1.5px', background:'#CC2200'}} />
+              </div>
+            </div>
+            <div style={{fontSize:26, fontWeight:900, color:'#1B2B4B', letterSpacing:'-.5px', lineHeight:1}}>
+              Target<span style={{color:'#CC2200'}}>OS</span>
+            </div>
+            <div style={{fontSize:10, color:'#94A3B8', letterSpacing:'2px', textTransform:'uppercase'}}>
+              Keller Williams Valley Realty
+            </div>
           </div>
         </div>
 

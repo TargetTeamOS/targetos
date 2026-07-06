@@ -4,7 +4,6 @@
 
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { TargetTeamLogo, TargetTeamIcon } from './TargetTeamLogo'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { Avatar } from './UI'
@@ -80,18 +79,38 @@ export function Layout({ children }) {
         {/* Logo */}
         <div style={{ padding: collapsed ? '18px 0' : '18px 16px', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between', borderBottom: '1px solid rgba(255,255,255,.08)', flexShrink: 0 }}>
           {!collapsed && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:9, flex:1, minWidth:0 }}>
               {custom.logoUrl ? (
-                <img src={custom.logoUrl} alt="logo" style={{ height: 32, maxWidth: 140, objectFit: 'contain' }}
-                  onError={e => { e.target.style.display='none' }} />
+                <img src={custom.logoUrl} alt="logo" style={{ height:34, maxWidth:150, objectFit:'contain' }}
+                  onError={e=>{ e.target.style.display='none' }} />
               ) : (
-                <TargetTeamLogo size="sm" />
+                <>
+                  {/* Square icon */}
+                  <div style={{ width:32, height:32, borderRadius:7, background:'#1B2B4B', border:'1px solid rgba(255,255,255,.12)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flexShrink:0, gap:1 }}>
+                    <span style={{ color:'#fff', fontWeight:900, fontSize:9, letterSpacing:'.1em', lineHeight:1 }}>TARGET</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:2, width:'100%', padding:'0 3px' }}>
+                      <div style={{ flex:1, height:'1px', background:'#CC2200' }} />
+                      <span style={{ color:'#CC2200', fontWeight:800, fontSize:6, letterSpacing:'.15em' }}>TEAM</span>
+                      <div style={{ flex:1, height:'1px', background:'#CC2200' }} />
+                    </div>
+                  </div>
+                  {/* Text */}
+                  <div style={{ lineHeight:1 }}>
+                    <div style={{ color:'#fff', fontWeight:900, fontSize:15, letterSpacing:'.06em', textTransform:'uppercase' }}>Target</div>
+                    <div style={{ color:'rgba(255,255,255,.45)', fontWeight:600, fontSize:9, letterSpacing:'.15em', textTransform:'uppercase', marginTop:1 }}>Team · KW Valley Realty</div>
+                  </div>
+                </>
               )}
             </div>
           )}
           {collapsed && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
-              <TargetTeamIcon size={32} dark />
+            <div style={{ width:32, height:32, borderRadius:7, background:'#1B2B4B', border:'1px solid rgba(255,255,255,.12)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:1 }}>
+              <span style={{ color:'#fff', fontWeight:900, fontSize:7, letterSpacing:'.1em' }}>TGT</span>
+              <div style={{ display:'flex', alignItems:'center', gap:1, width:'100%', padding:'0 3px' }}>
+                <div style={{ flex:1, height:'1px', background:'#CC2200' }} />
+                <span style={{ color:'#CC2200', fontWeight:800, fontSize:5 }}>TM</span>
+                <div style={{ flex:1, height:'1px', background:'#CC2200' }} />
+              </div>
             </div>
           )}
           <button onClick={() => setSidebarCollapsed(!collapsed)}
