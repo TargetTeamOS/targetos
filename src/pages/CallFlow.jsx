@@ -337,13 +337,13 @@ function FlowNode({node,selected,agents,connectedPorts,activePort,onMouseDownNod
       <rect x={2} y={3} width={NW} height={nodeH} rx={11} fill="rgba(0,0,0,.08)" />
       <rect x={0} y={0} width={NW} height={nodeH} rx={11} fill={fill} stroke={stroke} strokeWidth={selected?2.5:1.5} style={{cursor:'grab'}} onMouseDown={e=>onMouseDownNode(e,node.id)} />
       <rect x={0} y={0} width={7} height={nodeH} rx={5} fill={def.color} />
-      <text x={22} y={NH/2} fontSize={18} y={nodeH/2} dominantBaseline="middle">{def.icon}</text>
+      <text x={22} y={nodeH/2} fontSize={18} dominantBaseline="middle">{def.icon}</text>
       <text x={48} y={nodeH/2-7} fontSize={13} fontWeight={700} fill={tFill} fontFamily={ff} dominantBaseline="middle">{def.label}</text>
       <text x={48} y={nodeH/2+9} fontSize={10} fill={sFill} fontFamily={ff} dominantBaseline="middle">{sub.length>32?sub.slice(0,30)+'…':sub}</text>
 
       {node.type!=='incoming'&&(
         <g>
-          <rect x={-22} y={0} width={NW/2} height={NH} height={nodeH} fill="transparent" onMouseUp={e=>{e.stopPropagation();onPortDrop(node.id)}} />
+          <rect x={-22} y={0} width={NW/2} height={nodeH} fill="transparent" onMouseUp={e=>{e.stopPropagation();onPortDrop(node.id)}} />
           <circle cx={0} cy={nodeH/2} r={PR} fill="var(--panel)" stroke={def.color} strokeWidth={2.5} style={{pointerEvents:'none'}} />
         </g>
       )}
