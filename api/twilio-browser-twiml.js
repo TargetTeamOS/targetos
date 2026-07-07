@@ -29,10 +29,9 @@ module.exports = async function handler(req, res) {
   res.send(
     '<?xml version="1.0" encoding="UTF-8"?>' +
     '<Response>' +
-      '<Dial callerId="' + from + '" record="record-from-answer" ' +
+      '<Dial callerId="' + from + '" record="record-from-answer" answerOnBridge="true" ' +
         'recordingStatusCallback="' + statusUrl + '" ' +
-        'recordingStatusCallbackMethod="POST" ' +
-        'action="' + statusUrl + '" method="POST">' +
+        'recordingStatusCallbackMethod="POST">' +
         '<Number statusCallback="' + statusUrl + '" ' +
           'statusCallbackMethod="POST" statusCallbackEvent="initiated ringing answered completed">' + toNum + '</Number>' +
       '</Dial>' +
