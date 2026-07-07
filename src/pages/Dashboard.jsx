@@ -2573,6 +2573,26 @@ export function Dashboard() {
         </div>
       )}
 
+      {!loading && !hasBackupLayout && (
+        <div style={{
+          background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+          borderRadius: '14px', padding: '16px 20px', marginBottom: '16px',
+          display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap',
+          boxShadow: '0 4px 16px rgba(99,102,241,.25)',
+        }}>
+          <span style={{ fontSize: '26px' }}>✨</span>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: '14px', fontWeight: 800, color: '#fff' }}>A new dashboard layout is available</div>
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.85)', marginTop: '2px' }}>
+              Better widget sizing and a more useful order. Your current layout is saved automatically — switch back anytime.
+            </div>
+          </div>
+          <Btn onClick={tryNewLayout} style={{ background: '#fff', color: '#6366F1', flexShrink: 0, fontWeight: 800 }}>
+            Try the New Layout
+          </Btn>
+        </div>
+      )}
+
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}><Loading /></div>
       ) : (
