@@ -7,6 +7,10 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Content-Type', 'application/json')
 
+  const { requireAdminOrSecretary } = require('./_lib/phone')
+  const authCheck = await requireAdminOrSecretary(req)
+  if (!authCheck.ok) return res.status(authCheck.status).json({ ok: false, error: authCheck.message })
+
   const accountSid = process.env.TWILIO_ACCOUNT_SID
   const authToken  = process.env.TWILIO_AUTH_TOKEN
   const existingSid = process.env.TWILIO_TWIML_APP_SID

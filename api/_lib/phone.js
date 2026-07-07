@@ -77,7 +77,36 @@ function parseQS(req) {
   return require('querystring').parse(q)
 }
 
-// ── TWILIO SIGNATURE VALIDATION ─────────────────────────────────────
+// ── ADMIN/SECRETARY AUTH CHECK ───────────────────────────────────────
+// For endpoints that are real features (not Twilio webhooks) but should
+// only be usable by a logged-in admin or secretary — e.g. resetting the
+// phone flow, running first-time setup. Expects the frontend to send
+// 'Authorization: Bearer <supabase access token>'.
+async function requireAdminOrSecretary(req) {
+  const authHeader = req.headers['authorization'] || req.headers['Authorization'] || ''
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim()
+  if (!token) return { ok: false, status: 401, message: 'Missing Authorization header — please log in again' }
+
+  try {
+    const supabase = getSupabase()
+    const { data: userData, error: userErr } = await supabase.auth.getUser(token)
+    if (userErr || !userData?.user) {
+      return { ok: false, status: 401, message: 'Invalid or expired session — please log in again' }
+    }
+
+    const { data: agentRow, error: agentErr } = await supabase
+      .from('agents').select('role').eq('auth_user_id', userData.user.id).maybeSingle()
+    if (agentErr || !agentRow) {
+      return { ok: false, status: 403, message: 'No matching agent record found' }
+    }
+    if (!['admin', 'secretary'].includes(agentRow.role)) {
+      return { ok: false, status: 403, message: 'Requires admin or secretary role' }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, status: 500, message: 'Auth check failed: ' + e.message }
+  }
+}
 // Confirms a webhook request actually came from Twilio, not a spoofed
 // POST from anyone who found the URL. Added July 2026.
 //
@@ -227,7 +256,7 @@ module.exports = {
   // HTTP
   parseBody, parseQS,
   // Security
-  validateTwilioSignature, logTwilioValidation,
+  validateTwilioSignature, logTwilioValidation, requireAdminOrSecretary,
   // Phone
   normalizePhone, formatPhone,
   // Business logic

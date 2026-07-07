@@ -59,7 +59,10 @@ function PhoneSetup() {
   async function checkSetup() {
     setLoading(true)
     try {
-      const res  = await fetch('/api/twilio-setup')
+      const { data: { session } } = await supabase.auth.getSession()
+      const res  = await fetch('/api/twilio-setup', {
+        headers: session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}
+      })
       const data = await res.json()
       setStatus(data); setChecked(true)
     } catch(e) { setStatus({ ok:false, message:'Could not reach setup: ' + e.message }) }

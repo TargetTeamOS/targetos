@@ -1,11 +1,14 @@
 // TargetOS V2 — Flow Reset (GET or POST)
 'use strict'
 
-const { getSupabase } = require('./_lib/phone')
+const { getSupabase, requireAdminOrSecretary } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   res.setHeader('Cache-Control', 'no-store')
+
+  const authCheck = await requireAdminOrSecretary(req)
+  if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
 
   const supabase = getSupabase()
 

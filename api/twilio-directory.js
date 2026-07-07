@@ -84,6 +84,7 @@ module.exports = async function handler(req, res) {
 
     return res.send(wrap(
       say('Connecting you to ' + firstName + '. Please hold.', voice) +
+      say('This call may be recorded for quality and training purposes.', voice) +
       '<Dial callerId="' + esc(to) + '" timeout="30" record="record-from-answer" recordingStatusCallback="' + BASE_URL + '/api/twilio-status">' +
         '<Number statusCallback="' + BASE_URL + '/api/twilio-status" statusCallbackMethod="POST">' + esc(phone) + '</Number>' +
       '</Dial>' +

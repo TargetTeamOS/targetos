@@ -362,6 +362,7 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 function buildDial(callerId, singlePhone, timeout, innerTwiml) {
   const inner = innerTwiml || ('<Number>' + esc(singlePhone) + '</Number>')
   return (
+    '<Say voice="Polly.Joanna">This call may be recorded for quality and training purposes.</Say>' +
     '<Dial callerId="' + callerId + '"' +
     ' timeout="' + timeout + '"' +
     ' record="record-from-answer"' +

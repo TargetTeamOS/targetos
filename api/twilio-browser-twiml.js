@@ -34,7 +34,8 @@ module.exports = async function handler(req, res) {
         'recordingStatusCallback="' + statusUrl + '" ' +
         'recordingStatusCallbackMethod="POST">' +
         '<Number statusCallback="' + statusUrl + '" ' +
-          'statusCallbackMethod="POST" statusCallbackEvent="initiated ringing answered completed">' + toNum + '</Number>' +
+          'statusCallbackMethod="POST" statusCallbackEvent="initiated ringing answered completed" ' +
+          'url="' + base + '/api/twilio-recording-notice">' + toNum + '</Number>' +
       '</Dial>' +
     '</Response>'
   )

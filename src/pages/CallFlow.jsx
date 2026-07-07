@@ -562,7 +562,10 @@ export function CallFlow() {
           if (!window.confirm('Reset to the standard Target Team call flow?\n\nThis will:\n• Play your greeting\n• Menu: 1=Ring All Agents, 2=Directory, 3=Voicemail, 4=Listings, 5=MLS\n• Save immediately to the database\n\nContinue?')) return
           try {
             toast('⏳ Saving flow...')
-            const r = await fetch('/api/twilio-reset-flow')
+            const { data: { session } } = await supabase.auth.getSession()
+            const r = await fetch('/api/twilio-reset-flow', {
+              headers: session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}
+            })
             const d = await r.json()
             if (!r.ok || !d.ok) throw new Error(d.error || 'Save failed — check Vercel logs')
             // Load the saved flow onto canvas

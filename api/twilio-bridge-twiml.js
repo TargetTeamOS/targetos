@@ -7,7 +7,7 @@ function getRaw(req) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
   try { require('./_lib/phone').logTwilioValidation(req, {}, 'twilio-bridge-twiml') } catch(e) {}
-  const to     = req.query?.to     || ''
+  const to     = (req.query?.to || '').replace(/[^+0-9]/g, '')
   const name   = req.query?.name   || 'your contact'
   const logId  = req.query?.logId  || ''
   const base   = 'https://app.targetreteam.com'
@@ -19,7 +19,7 @@ module.exports = async function handler(req, res) {
         'recordingStatusCallback="' + statusUrl + '" ' +
         'recordingStatusCallbackMethod="POST">' +
         '<Number statusCallback="' + statusUrl + '" ' +
-          'statusCallbackMethod="POST">' + to + '</Number>' +
+          'statusCallbackMethod="POST" url="' + base + '/api/twilio-recording-notice">' + to + '</Number>' +
       '</Dial>' +
     '</Response>'
   )
