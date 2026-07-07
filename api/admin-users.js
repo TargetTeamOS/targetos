@@ -3,6 +3,7 @@
 // Requires SUPABASE_SERVICE_KEY in Vercel environment variables
 
 const { createClient } = require('@supabase/supabase-js')
+const { requireAdmin } = require('./_lib/phone')
 
 async function parseBody(req) {
   return new Promise((resolve) => {
@@ -22,6 +23,13 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  // CRITICAL: this endpoint uses the Supabase service key (bypasses all
+  // RLS) to create/delete/modify user accounts and change roles. Until
+  // July 2026 this had ZERO auth of any kind. Admin-only, matching how
+  // Admin.jsx itself is already restricted on the frontend.
+  const authCheck = await requireAdmin(req)
+  if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
 
   // Parse body — Vercel does NOT auto-parse req.body for API routes
   const body = await parseBody(req)

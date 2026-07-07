@@ -13,6 +13,20 @@ import {
   SectionTitle, Pill, Tabs, Toggle, Confirm, Loading
 } from '../components/UI'
 
+// Shared helper — every admin-users call needs the current session's
+// access token now that the endpoint actually checks auth (July 2026).
+async function callAdminUsers(payload) {
+  const { data: { session } } = await supabase.auth.getSession()
+  return fetch('/api/admin-users', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+    },
+    body: JSON.stringify(payload),
+  })
+}
+
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const ROLES  = ['admin','secretary','agent']
 const COLORS = ['#CC2200','#0EA5E9','#10B981','#F5A623','#8B5CF6','#EC4899','#14B8A6','#E8650A','#6366F1','#84CC16']
@@ -84,21 +98,17 @@ export function Admin() {
     setSaving(true)
     try {
       // Use API endpoint which uses service key (bypasses RLS)
-      const res = await fetch('/api/admin-users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action:  'update_agent',
-          agentId: selected.id,
-          updates: {
-            name:         form.name.trim(),
-            email:        form.email.trim().toLowerCase(),
-            phone:        form.phone || null,
-            role:         form.role,
-            color:        form.color,
-            auth_user_id: selected.auth_user_id || null,
-          },
-        }),
+      const res = await callAdminUsers({
+        action:  'update_agent',
+        agentId: selected.id,
+        updates: {
+          name:         form.name.trim(),
+          email:        form.email.trim().toLowerCase(),
+          phone:        form.phone || null,
+          role:         form.role,
+          color:        form.color,
+          auth_user_id: selected.auth_user_id || null,
+        },
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Save failed (' + res.status + ')')
@@ -133,18 +143,14 @@ export function Admin() {
     if (!addForm.name.trim() || !addForm.email.trim()) { toast('Name and email required', '#DC2626'); return }
     setAdding(true)
     try {
-      const res = await fetch('/api/admin-users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action:   addForm.sendInvite ? 'invite' : 'create',
-          name:     addForm.name.trim(),
-          email:    addForm.email.trim().toLowerCase(),
-          phone:    addForm.phone || null,
-          role:     addForm.role,
-          color:    addForm.color,
-          password: addForm.password || 'TargetOS2024!',
-        })
+      const res = await callAdminUsers({
+        action:   addForm.sendInvite ? 'invite' : 'create',
+        name:     addForm.name.trim(),
+        email:    addForm.email.trim().toLowerCase(),
+        phone:    addForm.phone || null,
+        role:     addForm.role,
+        color:    addForm.color,
+        password: addForm.password || 'TargetOS2024!',
       })
       const data = await res.json().catch(() => ({}))
 
@@ -205,10 +211,7 @@ export function Admin() {
 
       // Also ban from Supabase Auth if they have a login (non-fatal)
       if (a.auth_user_id) {
-        fetch('/api/admin-users', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'deactivate', userId: a.auth_user_id })
-        }).catch(() => {})
+        callAdminUsers({ action: 'deactivate', userId: a.auth_user_id }).catch(() => {})
       }
 
       await refetch()
@@ -226,10 +229,7 @@ export function Admin() {
       if (error) throw error
 
       if (a.auth_user_id) {
-        fetch('/api/admin-users', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'reactivate', userId: a.auth_user_id })
-        }).catch(() => {})
+        callAdminUsers({ action: 'reactivate', userId: a.auth_user_id }).catch(() => {})
       }
 
       await refetch()
@@ -246,10 +246,7 @@ export function Admin() {
 
       // Delete from Supabase Auth too (non-fatal)
       if (a.auth_user_id) {
-        fetch('/api/admin-users', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delete', userId: a.auth_user_id })
-        }).catch(() => {})
+        callAdminUsers({ action: 'delete', userId: a.auth_user_id }).catch(() => {})
       }
 
       await refetch()
@@ -264,10 +261,7 @@ export function Admin() {
     if (!resetPwd?.auth_user_id) { toast('This user has no auth account yet','#DC2626'); return }
     setResetting(true)
     try {
-      const res = await fetch('/api/admin-users', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ action:'reset_password', userId: resetPwd.auth_user_id, password: newPwd })
-      })
+      const res = await callAdminUsers({ action:'reset_password', userId: resetPwd.auth_user_id, password: newPwd })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       toast('Password reset for '+resetPwd.name)
