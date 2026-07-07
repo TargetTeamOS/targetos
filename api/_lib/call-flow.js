@@ -273,11 +273,18 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
   // ── VOICEMAIL ─────────────────────────────────────────────────
   if (node.type === 'voicemail') {
     if (cfg.pin_enabled && cfg.pin) {
+      // SECURITY (July 2026): the actual PIN used to travel in this ctx
+      // blob, visible in the URL / Twilio request logs on every retry.
+      // Now we only pass a reference to WHICH node this is — the real
+      // PIN gets re-fetched fresh from the database on each attempt in
+      // twilio-voicemail-access.js, so the secret itself never leaves
+      // the server.
       const ctx  = encodeURIComponent(JSON.stringify({
-        greeting: cfg.text, voice, pin: cfg.pin,
+        nodeId: node.id, greeting: cfg.text, voice,
         max_length: cfg.max_length || 120,
         transcribe: cfg.transcribe !== false,
         attempts: cfg.pin_attempts || 3, attempt: 0,
+        pinLen: String(cfg.pin).length,
       }))
       const pinLen = String(cfg.pin).length
       return (

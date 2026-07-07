@@ -14,7 +14,7 @@ function getRawBody(req) {
   })
 }
 
-const { getSupabase, logTwilioValidation, say, wrap } = require('./_lib/phone')
+const { getSupabase, logTwilioValidation, say, wrap, loadFlow } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
@@ -31,9 +31,25 @@ module.exports = async function handler(req, res) {
   var digits = body.Digits || ''
   var from   = body.From || ''
   var voice  = ctx.voice || 'Polly.Joanna'
+  var supabase = getSupabase()
+
+  // SECURITY (July 2026): re-fetch the real PIN fresh from the database
+  // on every attempt, rather than trusting a pin value round-tripped
+  // through the URL (which would have been visible in request logs on
+  // every retry). Only a node reference (non-secret) travels in ctx.
+  var realPin = null
+  try {
+    var flow = await loadFlow(supabase)
+    var vmNode = (flow.nodes || []).find(function(n) { return n.id === ctx.nodeId })
+    realPin = vmNode && vmNode.config ? String(vmNode.config.pin || '') : null
+  } catch(e) { console.warn('voicemail PIN lookup:', e.message) }
+
+  if (!realPin) {
+    return res.status(200).send(wrap(say('This voicemail box is no longer available. Goodbye.', voice)))
+  }
 
   // Check PIN
-  if (digits !== String(ctx.pin)) {
+  if (digits !== realPin) {
     var attempt = (ctx.attempt || 0) + 1
     var maxAttempts = ctx.attempts || 3
 
@@ -45,7 +61,7 @@ module.exports = async function handler(req, res) {
 
     // Try again
     var newCtx = encodeURIComponent(JSON.stringify(Object.assign({}, ctx, { attempt: attempt })))
-    var twiml = '<Gather numDigits="' + String(ctx.pin).length + '" action="/api/twilio-voicemail-access?ctx=' + newCtx + '" method="POST" timeout="15">'
+    var twiml = '<Gather numDigits="' + (ctx.pinLen || realPin.length) + '" action="/api/twilio-voicemail-access?ctx=' + newCtx + '" method="POST" timeout="15">'
     twiml += say('Incorrect PIN. Please try again.', voice)
     twiml += '</Gather>'
     twiml += say('No input received. Goodbye.', voice)
@@ -54,7 +70,6 @@ module.exports = async function handler(req, res) {
 
   // PIN correct — play voicemails or record a new one
   // Check if this is an agent calling in to retrieve messages
-  var supabase = getSupabase()
   var hasMessages = false
   var messages = []
 
