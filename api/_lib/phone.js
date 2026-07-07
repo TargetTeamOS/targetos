@@ -77,6 +77,49 @@ function parseQS(req) {
   return require('querystring').parse(q)
 }
 
+// ── TWILIO SIGNATURE VALIDATION ─────────────────────────────────────
+// Confirms a webhook request actually came from Twilio, not a spoofed
+// POST from anyone who found the URL. Added July 2026.
+//
+// PHASE 1 (current): LOG-ONLY. Call logTwilioValidation(req, params)
+// after parsing the body — it warns on failure but never blocks a
+// request. This lets us confirm real Twilio traffic validates
+// correctly (check Vercel function logs for '[TWILIO-SIG]' warnings)
+// before switching to enforcement.
+//
+// PHASE 2 (future, once Phase 1 logs look clean for a while): change
+// call sites to check the return value and return a 403 on failure
+// instead of just logging. See handoff doc checklist.
+//
+// params: for POST requests, the parsed body (from parseBody()).
+//         for GET requests, pass {} — query params are already part
+//         of the URL itself and don't need to be passed separately.
+function validateTwilioSignature(req, params) {
+  try {
+    const twilio = require('twilio')
+    const authToken = process.env.TWILIO_AUTH_TOKEN
+    if (!authToken) {
+      console.warn('[TWILIO-SIG] TWILIO_AUTH_TOKEN not set — cannot validate, skipping check')
+      return null // unknown, not a pass or fail
+    }
+    const signature = req.headers['x-twilio-signature']
+    const url = BASE_URL + req.url
+    return twilio.validateRequest(authToken, signature, url, params || {})
+  } catch (e) {
+    console.warn('[TWILIO-SIG] validation threw an error:', e.message)
+    return null
+  }
+}
+
+// Convenience wrapper for Phase 1 — call this, ignore the return value,
+// just watch the logs. Never blocks anything.
+function logTwilioValidation(req, params, endpointName) {
+  const result = validateTwilioSignature(req, params)
+  if (result === false) {
+    console.warn('[TWILIO-SIG] FAILED validation for ' + (endpointName || req.url) + ' — would be blocked once Phase 2 is enabled. From: ' + (req.headers['x-forwarded-for'] || 'unknown'))
+  }
+}
+
 // ── PHONE NORMALIZATION ───────────────────────────────────────────
 // Returns E.164 format: +1XXXXXXXXXX
 function normalizePhone(p) {
@@ -183,6 +226,8 @@ module.exports = {
   getSupabase, parseJson,
   // HTTP
   parseBody, parseQS,
+  // Security
+  validateTwilioSignature, logTwilioValidation,
   // Phone
   normalizePhone, formatPhone,
   // Business logic

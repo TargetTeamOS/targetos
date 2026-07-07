@@ -1,12 +1,13 @@
 'use strict'
 const querystring = require('querystring')
-const { getSupabase } = require('./_lib/phone')
+const { getSupabase, logTwilioValidation } = require('./_lib/phone')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   if (req.method !== 'POST') return res.status(200).json({ ok: true })
   let body = {}
   try { body = querystring.parse(await getRawBody(req)) } catch(e) { body = req.body || {} }
+  logTwilioValidation(req, body, 'twilio-voicemail')
   const { CallSid, RecordingUrl, RecordingDuration, TranscriptionText, From } = body
   try {
     const supabase = getSupabase()

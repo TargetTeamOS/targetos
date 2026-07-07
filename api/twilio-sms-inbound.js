@@ -9,6 +9,7 @@ module.exports = async function handler(req, res) {
     const raw = await new Promise((ok,err) => { let d=''; req.on('data',c=>d+=c); req.on('end',()=>ok(d)); req.on('error',err) })
     body = querystring.parse(raw)
   } catch(e) { body = req.body || {} }
+  try { require('./_lib/phone').logTwilioValidation(req, body, 'twilio-sms-inbound') } catch(e) {}
 
   const from = body.From || ''
   const text = body.Body || ''

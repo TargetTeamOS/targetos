@@ -4,7 +4,7 @@
 
 const querystring = require('querystring')
 
-const { say, wrap, BASE_URL } = require('./_lib/phone')
+const { say, wrap, BASE_URL, logTwilioValidation } = require('./_lib/phone')
 
 const MLS_USER = process.env.SIMPLYRETS_USER || process.env.VITE_SIMPLYRETS_USER || 'simplyrets'
 const MLS_PASS = process.env.SIMPLYRETS_PASS || process.env.VITE_SIMPLYRETS_PASS || 'simplyrets'
@@ -43,6 +43,7 @@ module.exports = async function handler(req, res) {
       body = querystring.parse(raw)
     } catch(e) { body = req.body || {} }
   }
+  logTwilioValidation(req, body, 'twilio-mls-search')
 
   const rawUrl = req.url || ''
   const qStr   = rawUrl.includes('?') ? rawUrl.split('?')[1] : ''

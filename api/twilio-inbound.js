@@ -5,6 +5,7 @@
 const {
   wrap, say, voicemailTwiml, getSupabase,
   parseBody, formatPhone, loadFlow, lookupContact,
+  logTwilioValidation,
 } = require('./_lib/phone')
 const { walkFlow } = require('./_lib/call-flow')
 
@@ -91,6 +92,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
   const body    = await parseBody(req)
+  logTwilioValidation(req, body, 'twilio-inbound')
   const from    = body.From    || ''
   const to      = body.To      || ''
   const callSid = body.CallSid || ''

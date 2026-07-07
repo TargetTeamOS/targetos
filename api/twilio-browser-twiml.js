@@ -9,6 +9,7 @@ function getRawBody(req) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
   const body = querystring.parse(await getRawBody(req))
+  try { require('./_lib/phone').logTwilioValidation(req, body, 'twilio-browser-twiml') } catch(e) {}
   const to        = body.To || body.to || ''
   const callLogId = body.callLogId || ''
   const from = process.env.TWILIO_PHONE_NUMBER || '+18453271778'

@@ -14,10 +14,7 @@ function getRawBody(req) {
   })
 }
 
-const { getSupabase } = require('./_lib/phone')
-
-var wrap = function(xml) { return '<?xml version="1.0" encoding="UTF-8"?><Response>' + xml + '</Response>' }
-var say  = function(t, voice) { return '<Say voice="' + (voice || 'Polly.Joanna') + '">' + t + '</Say>' }
+const { getSupabase, logTwilioValidation, say, wrap } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
@@ -30,6 +27,7 @@ module.exports = async function handler(req, res) {
 
   var raw = await getRawBody(req)
   var body = querystring.parse(raw)
+  logTwilioValidation(req, body, 'twilio-voicemail-access')
   var digits = body.Digits || ''
   var from   = body.From || ''
   var voice  = ctx.voice || 'Polly.Joanna'

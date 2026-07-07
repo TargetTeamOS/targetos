@@ -1,6 +1,6 @@
 'use strict'
 const querystring = require('querystring')
-const { getSupabase } = require('./_lib/phone')
+const { getSupabase, logTwilioValidation } = require('./_lib/phone')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 const OUTCOME = { completed:'Connected', busy:'No Answer', 'no-answer':'No Answer', failed:'No Answer', canceled:'No Answer' }
 module.exports = async function handler(req, res) {
@@ -9,6 +9,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).json({ ok: true })
   let body = {}
   try { body = querystring.parse(await getRawBody(req)) } catch(e) { body = req.body || {} }
+  logTwilioValidation(req, body, 'twilio-status')
   const { CallSid, CallStatus, CallDuration, RecordingUrl, RecordingSid } = body
   // callLogId can be passed via query string (most reliable) — set by twilio-browser-twiml / twilio-outbound
   const callLogId = (req.query && req.query.callLogId) || null
