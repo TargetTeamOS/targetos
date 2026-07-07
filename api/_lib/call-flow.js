@@ -174,8 +174,8 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
     return twiml + voicemailTwiml('That person is unavailable. Please leave a message.', voice)
   }
 
-  // ── RING ALL / ROUND ROBIN ────────────────────────────────────
-  if (node.type === 'ringall' || node.type === 'roundrobin') {
+  // ── RING ALL ───────────────────────────────────────────────────
+  if (node.type === 'ringall') {
     const ids    = cfg.agent_ids || []
     const phones = []
 
@@ -206,6 +206,66 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
     if (rest) return twiml + rest
     return twiml + voicemailTwiml(
       'We are sorry, all agents are currently unavailable. Please leave your name and number and we will return your call.',
+      voice
+    )
+  }
+
+  // ── ROUND ROBIN (least-calls-first) ─────────────────────────────
+  // Rings ONLY the single agent (among agent_ids) who has taken the
+  // fewest inbound calls today — not everyone at once. That's what the
+  // builder UI promises ("Round Robin (least-calls first)"), but the
+  // code previously treated this identically to Ring All. Fixed July
+  // 2026. Ties broken by agent_ids array order (stable/deterministic).
+  // Note: if the chosen agent doesn't answer, this falls through to
+  // 'noanswer' (same single-fallback-port pattern as Ring All) rather
+  // than cascading to the next-least-busy agent — a true call-center
+  // "hunt group" would try several agents in sequence; this is the
+  // simpler, honest version matching the existing graph shape.
+  if (node.type === 'roundrobin') {
+    const ids = cfg.agent_ids || []
+    let agentsData = []
+
+    if (ids.length > 0 && supabase) {
+      try {
+        const { data: ags } = await supabase
+          .from('agents').select('id, phone').in('id', ids)
+        agentsData = (ags || []).filter(a => a.phone)
+      } catch(e) { console.warn('[walkFlow] roundrobin lookup:', e.message) }
+    }
+
+    if (agentsData.length === 0) {
+      console.warn('[walkFlow] roundrobin: no phones for agent_ids:', ids)
+      const rest = await follow('noanswer')
+      if (rest) return rest
+      return voicemailTwiml(
+        'All agents are currently unavailable. Please leave your name and number and we will call you back.',
+        voice
+      )
+    }
+
+    let leastBusy = agentsData[0]
+    try {
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      const { data: todaysCalls } = await supabase
+        .from('calls').select('agent_id')
+        .in('agent_id', agentsData.map(a => a.id))
+        .eq('direction', 'Inbound')
+        .gte('called_at', todayStart.toISOString())
+      const counts = {}
+      agentsData.forEach(a => { counts[a.id] = 0 })
+      ;(todaysCalls || []).forEach(c => { if (counts[c.agent_id] !== undefined) counts[c.agent_id]++ })
+      leastBusy = agentsData.reduce((min, a) => counts[a.id] < counts[min.id] ? a : min, agentsData[0])
+    } catch(e) {
+      console.warn('[walkFlow] roundrobin count lookup:', e.message)
+    }
+
+    const phone = normalizePhone(leastBusy.phone)
+    let twiml = buildDial(to, phone, cfg.timeout || 30)
+    const rest = await follow('noanswer')
+    if (rest) return twiml + rest
+    return twiml + voicemailTwiml(
+      'We are sorry, that agent is currently unavailable. Please leave your name and number and we will return your call.',
       voice
     )
   }

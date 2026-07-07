@@ -5,11 +5,9 @@
 'use strict'
 const querystring = require('querystring')
 
-const { getSupabase } = require('./_lib/phone')
+const { getSupabase, say, wrap, BASE_URL } = require('./_lib/phone')
 
-const say  = (t, v) => '<Say voice="' + (v||'Polly.Joanna') + '">' + String(t||'') + '</Say>'
-const wrap = xml => '<?xml version="1.0" encoding="UTF-8"?><Response>' + xml + '</Response>'
-const BASE = 'https://app.targetreteam.com/api/twilio-listings'
+const BASE = BASE_URL + '/api/twilio-listings'
 
 // ── ROCKLAND COUNTY AREAS ─────────────────────────────────────────
 // These match what you'd type in the city/neighborhood field on the Listings board.
@@ -250,10 +248,10 @@ module.exports = async function handler(req, res) {
   // ── FOLLOWUP ────────────────────────────────────────────────────
   if (step === 'followup') {
     if (digits === '1') return res.send(wrap('<Redirect method="GET">' + buildNextUrl('intro', base) + '</Redirect>'))
-    if (digits === '9') return res.send(wrap(say('Please leave a message after the tone.', voice) + '<Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />'))
+    if (digits === '9') return res.send(wrap(say('Please leave a message after the tone.', voice) + '<Record maxLength="120" transcribe="true" transcribeCallback="' + BASE_URL + '/api/twilio-voicemail" />'))
     if (digits === '*') return res.send(wrap(say('Thank you for calling Target Team. Goodbye.', voice) + '<Hangup />'))
     // Press 2 or anything else → connect to agent
-    return res.send(wrap(say('Connecting you to an agent. Please hold.', voice) + '<Redirect method="POST">https://app.targetreteam.com/api/twilio-inbound</Redirect>'))
+    return res.send(wrap(say('Connecting you to an agent. Please hold.', voice) + '<Redirect method="POST">' + BASE_URL + '/api/twilio-inbound</Redirect>'))
   }
 
   return res.send(wrap(say('Thank you for calling. Goodbye.', voice) + '<Hangup />'))

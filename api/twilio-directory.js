@@ -4,11 +4,9 @@
 'use strict'
 const querystring = require('querystring')
 
-const { getSupabase } = require('./_lib/phone')
+const { getSupabase, say, wrap, esc, BASE_URL } = require('./_lib/phone')
 
-const say  = (t, v) => '<Say voice="' + (v||'Polly.Joanna') + '">' + String(t||'') + '</Say>'
-const wrap = xml => '<?xml version="1.0" encoding="UTF-8"?><Response>' + xml + '</Response>'
-const BASE = 'https://app.targetreteam.com/api/twilio-directory'
+const BASE = BASE_URL + '/api/twilio-directory'
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
@@ -64,7 +62,7 @@ module.exports = async function handler(req, res) {
   if (step === 'connect') {
     if (digits === '0') {
       // Back to main menu
-      return res.send(wrap('<Redirect method="POST">https://app.targetreteam.com/api/twilio-inbound</Redirect>'))
+      return res.send(wrap('<Redirect method="POST">' + BASE_URL + '/api/twilio-inbound</Redirect>'))
     }
 
     const agent = agentList.find(a => a._ext === digits)
@@ -85,11 +83,11 @@ module.exports = async function handler(req, res) {
 
     return res.send(wrap(
       say('Connecting you to ' + firstName + '. Please hold.', voice) +
-      '<Dial callerId="' + to + '" timeout="30" record="record-from-answer" recordingStatusCallback="/api/twilio-status">' +
-        '<Number statusCallback="/api/twilio-status" statusCallbackMethod="POST">' + phone + '</Number>' +
+      '<Dial callerId="' + esc(to) + '" timeout="30" record="record-from-answer" recordingStatusCallback="' + BASE_URL + '/api/twilio-status">' +
+        '<Number statusCallback="' + BASE_URL + '/api/twilio-status" statusCallbackMethod="POST">' + esc(phone) + '</Number>' +
       '</Dial>' +
       say('I\'m sorry, ' + firstName + ' is unavailable. Please leave a message after the tone.', voice) +
-      '<Record maxLength="120" transcribe="true" transcribeCallback="/api/twilio-voicemail" />'
+      '<Record maxLength="120" transcribe="true" transcribeCallback="' + BASE_URL + '/api/twilio-voicemail" />'
     ))
   }
 

@@ -339,160 +339,24 @@ function ExtensionManager({ agents }) {
 }
 
 // ── IVR BUILDER ──────────────────────────────────────────────
-function IVRBuilder({ agents }) {
-  const { toast } = useApp()
-  const [ivr,     setIvr]  = useState(null)
-  const [loading, setLoad] = useState(true)
-  const [saving,  setSave] = useState(false)
-  const [exts,    setExts] = useState([])
-
-  useEffect(() => {
-    Promise.all([
-      supabase.from('phone_ivr').select('*').order('created_at').limit(1).maybeSingle(),
-      supabase.from('phone_extensions').select('*').order('order_index'),
-    ]).then(([ivrRes, extRes]) => {
-      setIvr(ivrRes.data || { name:'Main Menu', is_active:true, greeting_text:'', menu_options:[], voicemail_extension:'9', after_hours_text:'' })
-      setExts(extRes.data || [])
-      setLoad(false)
-    }).catch(() => {
-      setIvr({ name:'Main Menu', is_active:false, greeting_text:'', menu_options:[], voicemail_extension:'9', after_hours_text:'' })
-      setExts([])
-      setLoad(false)
-    })
-  }, [])
-
-  const set = (k, v) => setIvr(prev => ({ ...prev, [k]: v }))
-
-  function setOption(i, k, v) {
-    const opts = [...(ivr.menu_options || [])]
-    opts[i] = { ...opts[i], [k]: v }
-    set('menu_options', opts)
-  }
-
-  function addOption() {
-    const opts = [...(ivr.menu_options || [])]
-    opts.push({ key: String(opts.length + 1), label: '', action: 'extension', value: '' })
-    set('menu_options', opts)
-  }
-
-  function removeOption(i) {
-    const opts = [...(ivr.menu_options || [])]
-    opts.splice(i, 1)
-    set('menu_options', opts)
-  }
-
-  async function saveIVR() {
-    setSave(true)
-    try {
-      if (ivr.id) {
-        const { id: _iid, ...cleanIvr } = ivr
-        await supabase.from('phone_ivr').update({ ...cleanIvr, updated_at: new Date().toISOString() }).eq('id', ivr.id)
-      } else {
-        const { data } = await supabase.from('phone_ivr').insert(ivr).select().single()
-        setIvr(data)
-      }
-      toast('✅ IVR menu saved')
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
-    finally { setSave(false) }
-  }
-
-  if (loading) return <Loading />
-  if (!ivr) return null
-
-  const Lbl = ({ c }) => <div style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'4px' }}>{c}</div>
-
+function IVRBuilder() {
+  const navigate = useNavigate()
   return (
     <div style={{ maxWidth:'700px' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'20px' }}>
-        <div>
-          <div style={{ fontSize:'15px', fontWeight:800, color:'var(--text)' }}>IVR Menu Builder</div>
-          <div style={{ fontSize:'12px', color:'var(--muted)' }}>Configure what callers hear and the options they can press.</div>
+      <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'24px', textAlign:'center' }}>
+        <div style={{ fontSize:'28px', marginBottom:'10px' }}>📞</div>
+        <div style={{ fontSize:'15px', fontWeight:800, color:'var(--text)', marginBottom:'6px' }}>
+          Phone menu setup moved to the Call Flow builder
         </div>
-        <div style={{ marginLeft:'auto', display:'flex', gap:'8px', alignItems:'center' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-            <div style={{ width:8, height:8, borderRadius:'50%', background: ivr.is_active ? '#10B981' : '#DC2626' }} />
-            <span style={{ fontSize:'12px', color:'var(--muted)' }}>{ivr.is_active ? 'Active' : 'Inactive'}</span>
-          </div>
-          <button onClick={() => set('is_active', !ivr.is_active)}
-            style={{ padding:'5px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--dim)', cursor:'pointer', fontSize:'12px', fontFamily:ff, color:'var(--muted)' }}>
-            {ivr.is_active ? 'Deactivate' : 'Activate'}
-          </button>
+        <div style={{ fontSize:'13px', color:'var(--muted)', marginBottom:'16px', lineHeight:1.5 }}>
+          This panel used to edit a greeting and keypad list that the phone
+          system never actually read — changes made here looked saved but
+          had no effect on real calls. Removed July 2026 to stop that
+          confusion. Use the visual Call Flow builder below to configure
+          what callers actually hear.
         </div>
+        <Btn onClick={() => navigate('/call-flow')}>Open Call Flow Builder</Btn>
       </div>
-
-      <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'16px', marginBottom:'12px' }}>
-        <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'10px' }}>📢 Greeting Message</div>
-        <Lbl c="Spoken when caller picks up (Text-to-Speech)" />
-        <textarea value={ivr.greeting_text||''} onChange={e => set('greeting_text', e.target.value)}
-          placeholder="Thank you for calling Target Team. For Sales, press 1. To leave a voicemail, press 9."
-          rows={4} style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, resize:'vertical', boxSizing:'border-box' }} />
-      </div>
-
-      <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'16px', marginBottom:'12px' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'12px' }}>
-          <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>📱 Keypad Options</div>
-          <button onClick={addOption}
-            style={{ padding:'5px 12px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', fontSize:'12px', cursor:'pointer', fontFamily:ff }}>
-            + Add Option
-          </button>
-        </div>
-        {(!ivr.menu_options || ivr.menu_options.length === 0) && (
-          <div style={{ textAlign:'center', padding:'16px', color:'var(--muted)', fontSize:'12px', fontStyle:'italic' }}>
-            No options yet — click "Add Option" to add the first one
-          </div>
-        )}
-        {(ivr.menu_options || []).map((opt, i) => (
-          <div key={i} style={{ display:'grid', gridTemplateColumns:'56px 1fr 140px 1fr 32px', gap:'8px', marginBottom:'8px', alignItems:'center' }}>
-            <div style={{ textAlign:'center' }}>
-              <div style={{ fontSize:'10px', color:'var(--muted)', marginBottom:'2px', fontWeight:700 }}>PRESS</div>
-              <input value={opt.key||''} onChange={e => setOption(i,'key',e.target.value)}
-                style={{ width:'100%', padding:'6px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'16px', fontWeight:900, textAlign:'center', fontFamily:ff }} />
-            </div>
-            <input value={opt.label||''} onChange={e => setOption(i,'label',e.target.value)}
-              placeholder="Option label (e.g. Sales)"
-              style={{ padding:'8px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', fontFamily:ff }} />
-            <select value={opt.action||'extension'} onChange={e => setOption(i,'action',e.target.value)}
-              style={{ padding:'8px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', fontFamily:ff }}>
-              <option value="extension">Extension</option>
-              <option value="round_robin">Round Robin</option>
-              <option value="voicemail">Voicemail</option>
-              <option value="listing_search">Listing Search</option>
-              <option value="repeat">Repeat Menu</option>
-            </select>
-            {opt.action === 'extension' ? (
-              <select value={opt.value||''} onChange={e => setOption(i,'value',e.target.value)}
-                style={{ padding:'8px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', fontFamily:ff }}>
-                <option value="">— Select extension —</option>
-                {exts.map(e => <option key={e.id} value={e.number}>Ext {e.number} — {e.label}</option>)}
-              </select>
-            ) : opt.action === 'round_robin' ? (
-              <input value={opt.value||''} onChange={e => setOption(i,'value',e.target.value)}
-                placeholder="Group name (e.g. all_agents)"
-                style={{ padding:'8px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', fontFamily:ff }} />
-            ) : (
-              <div style={{ padding:'8px', fontSize:'12px', color:'var(--muted)', fontStyle:'italic' }}>{opt.action}</div>
-            )}
-            <button onClick={() => removeOption(i)}
-              style={{ width:28, height:28, borderRadius:'6px', border:'1px solid #DC262644', background:'#FEF2F2', color:'#DC2626', fontSize:'14px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'16px', marginBottom:'16px' }}>
-        <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'10px' }}>🌙 After-Hours Message</div>
-        <textarea value={ivr.after_hours_text||''} onChange={e => set('after_hours_text', e.target.value)}
-          placeholder="Thank you for calling Target Team. Our office is currently closed. Please leave a voicemail."
-          rows={3} style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, resize:'vertical', boxSizing:'border-box' }} />
-        <div style={{ marginTop:'10px', display:'flex', alignItems:'center', gap:'10px' }}>
-          <div style={{ fontSize:'12px', color:'var(--muted)', fontWeight:700 }}>Voicemail extension key:</div>
-          <input value={ivr.voicemail_extension||'9'} onChange={e => set('voicemail_extension', e.target.value)}
-            style={{ width:48, padding:'5px 8px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'14px', fontWeight:700, textAlign:'center', fontFamily:ff }} />
-        </div>
-      </div>
-
-      <Btn onClick={saveIVR} loading={saving}>💾 Save IVR Menu</Btn>
     </div>
   )
 }

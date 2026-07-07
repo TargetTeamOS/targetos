@@ -23,6 +23,7 @@ import {
   loadDashPrefs, saveDashPrefs,
   loadAgentGoals, saveAgentGoal,
   loadTeamGoal, saveTeamGoal,
+  switchToNewDashLayout, restoreOldDashLayout,
   DEFAULT_WIDGETS
 } from '../lib/dashboardPrefs'
 import {
@@ -30,7 +31,7 @@ import {
   isOverdue, isDueToday, getDaysUntil
 } from '../lib/utils'
 import { DEAL_STAGES } from '../lib/constants'
-import { Avatar, Pill, Btn, Loading, Spinner, Field, Input } from '../components/UI'
+import { Avatar, Pill, Btn, Loading, Spinner, Field, Input, Confirm } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -1152,9 +1153,10 @@ function WidgetSettings({ widget, onUpdate, onClose }) {
 }
 
 // ── CUSTOMIZE PANEL ───────────────────────────────────────────────
-function CustomizePanel({ widgets, onSave, onClose, role }) {
+function CustomizePanel({ widgets, onSave, onClose, role, hasBackupLayout, onTryNewLayout, onRestorePreviousLayout }) {
   const [wids, setWids] = useState(widgets.map(w => ({ ...w })))
   const [editing, setEditing] = useState(null)
+  const [confirmSwitch, setConfirmSwitch] = useState(null) // 'new' | 'old' | null
 
   function toggleVisible(id) {
     setWids(ws => ws.map(w => w.id === id ? { ...w, visible: !w.visible } : w))
@@ -1173,6 +1175,27 @@ function CustomizePanel({ widgets, onSave, onClose, role }) {
           <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>🎛 Customize Dashboard</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
         </div>
+
+        <div style={{ padding: '12px 20px 0', flexShrink: 0 }}>
+          <div style={{ background: 'var(--dim)', borderRadius: '10px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '16px' }}>✨</span>
+            <div style={{ flex: 1, fontSize: '11px', color: 'var(--muted)', lineHeight: 1.4 }}>
+              {hasBackupLayout
+                ? "You're on the new recommended layout. Your previous one is saved."
+                : 'A new recommended layout is available (better widget sizing, more useful order).'}
+            </div>
+            {hasBackupLayout ? (
+              <Btn variant="secondary" onClick={() => setConfirmSwitch('old')} style={{ fontSize: '11px', padding: '6px 10px', flexShrink: 0 }}>
+                Switch Back
+              </Btn>
+            ) : (
+              <Btn onClick={() => setConfirmSwitch('new')} style={{ fontSize: '11px', padding: '6px 10px', flexShrink: 0 }}>
+                Try It
+              </Btn>
+            )}
+          </div>
+        </div>
+
         <div style={{ fontSize: '12px', color: 'var(--muted)', padding: '10px 20px 0' }}>Toggle, resize, or change colors. Drag widgets on the dashboard to reorder.</div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '10px 20px' }}>
           {available.map(w => {
@@ -1204,6 +1227,15 @@ function CustomizePanel({ widgets, onSave, onClose, role }) {
         </div>
       </div>
       {editing && <WidgetSettings widget={editing} onUpdate={updateWidget} onClose={() => setEditing(null)} />}
+      <Confirm
+        open={!!confirmSwitch}
+        danger={false}
+        message={confirmSwitch === 'new'
+          ? 'Try the new layout? Your current layout will be saved so you can switch back anytime.'
+          : 'Switch back to your previous layout? This replaces your current layout with the one you had before trying the new default.'}
+        onConfirm={() => { confirmSwitch === 'new' ? onTryNewLayout() : onRestorePreviousLayout(); setConfirmSwitch(null) }}
+        onCancel={() => setConfirmSwitch(null)}
+      />
     </div>
   )
 }
@@ -1661,11 +1693,15 @@ export function Dashboard() {
   const [pendingWidgets, setPendingWidgets]  = useState(null) // staged changes before save
   const [configWidget,   setConfigWidget]    = useState(null) // widget being configured
   const [savingPrefs,  setSavingPrefs]  = useState(false)
+  const [hasBackupLayout, setHasBackupLayout] = useState(false)
 
   // ── LOAD PREFS AND GOALS FROM DB ──────────────────────────────
   useEffect(() => {
     if (!agent) return
-    loadDashPrefs(agent.id).then(p => setWidgets(p.widgets || DEFAULT_WIDGETS))
+    loadDashPrefs(agent.id).then(p => {
+      setWidgets(p.widgets || DEFAULT_WIDGETS)
+      setHasBackupLayout(!!p.hasBackup)
+    })
     loadAgentGoals(agent.id).then(setAgentGoals)
     loadTeamGoal().then(setTeamGoals)
   }, [agent?.id])
@@ -1678,6 +1714,35 @@ export function Dashboard() {
       await saveDashPrefs(agent.id, newWidgets)
     } catch(e) {
       toast('Could not save layout: ' + e.message, '#DC2626')
+    } finally { setSavingPrefs(false) }
+  }
+
+  // ── TRY THE NEW RECOMMENDED LAYOUT (backs up current layout first) ──
+  async function tryNewLayout() {
+    setSavingPrefs(true)
+    try {
+      await switchToNewDashLayout(agent.id, widgets)
+      setWidgets(DEFAULT_WIDGETS)
+      setHasBackupLayout(true)
+      toast('✅ Switched to the new layout — your old one is saved, switch back anytime')
+    } catch(e) {
+      toast('Could not switch layout: ' + e.message, '#DC2626')
+    } finally { setSavingPrefs(false) }
+  }
+
+  // ── RESTORE THE PREVIOUS LAYOUT ───────────────────────────────
+  async function restorePreviousLayout() {
+    setSavingPrefs(true)
+    try {
+      const restored = await restoreOldDashLayout(agent.id)
+      if (restored) {
+        setWidgets(restored)
+        toast('✅ Restored your previous layout')
+      } else {
+        toast('No previous layout found to restore', '#DC2626')
+      }
+    } catch(e) {
+      toast('Could not restore layout: ' + e.message, '#DC2626')
     } finally { setSavingPrefs(false) }
   }
 
@@ -1896,7 +1961,7 @@ export function Dashboard() {
                 setPendingWidgets(updated)
               }}
                 style={{ padding: '2px 7px', borderRadius: '5px', border: "1px solid " + (color) + "44", background: color + '11', color: color, fontSize: '10px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
-                {w.size === 'lg' ? '◻ Half' : '▭ Full'}
+                {w.size === 'lg' ? '▭ Full' : '◻ Half'}
               </button>
               {/* Color picker dots */}
               <div style={{ display: 'flex', gap: '3px' }}>
@@ -2681,6 +2746,9 @@ export function Dashboard() {
 
       {showCustomize && (
         <CustomizePanel widgets={widgets} role={agent.role}
+          hasBackupLayout={hasBackupLayout}
+          onTryNewLayout={async () => { await tryNewLayout(); setShowCustomize(false) }}
+          onRestorePreviousLayout={async () => { await restorePreviousLayout(); setShowCustomize(false) }}
           onSave={newW => { persistWidgets(newW); toast('✅ Layout saved') }}
           onClose={() => setShowCustomize(false)} />
       )}
