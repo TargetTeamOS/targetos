@@ -18,6 +18,7 @@ import { useAuth }    from '../context/AuthContext'
 import { useApp }     from '../context/AppContext'
 import { supabase }   from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
+import { phaseToStage, phaseToStatus } from '../lib/tcPhaseMap'
 import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
@@ -506,8 +507,6 @@ export function TransactionCoordinator() {
         if (!synced.includes('Production')) synced.push('Production')
       }
       if (updates.tc_phase !== undefined) {
-        const phaseToStage  = { pre_listing:'Negotiations', active:'Negotiations', offer:'Offer Accapted', under_contract:'Under Contract', closed:'Closed' }
-        const phaseToStatus = { pre_listing:'Coming Soon', active:'Active', offer:'Under Contract', under_contract:'Under Contract', closed:'Sold' }
         if (deal.linked_deal_id) {
           await supabase.from('deals').update({ stage:phaseToStage[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
           if (!synced.includes('Production')) synced.push('Production')

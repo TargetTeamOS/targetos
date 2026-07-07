@@ -2,9 +2,18 @@
 // TargetOS V2 — Pre-deploy Validator
 // Run: node scripts/validate.js
 // Must show ALL CHECKS PASSED before every deploy.
+//
+// Design rule (July 2026 rewrite): every check pushes into ONE shared
+// `failures` array. The exit code is decided ONCE, at the very end, from
+// that single array. Do not add a check that decides its own pass/fail
+// outside this array — that's exactly the bug this rewrite fixes (a
+// separate, never-declared `errors` counter meant some checks reported
+// failures but never actually blocked a deploy, and crashed instead of
+// failing cleanly when it did trigger).
 
 const fs   = require('fs')
 const path = require('path')
+const { execSync } = require('child_process')
 
 let failures = []
 let passes   = []
@@ -87,7 +96,7 @@ try {
 // ── CHECK 7: No duplicate Supabase channel names ───────────────
 const allSrc   = jsxFiles.map(f => fs.readFileSync(f, 'utf8')).join('\n')
 const subSrc = allSrc.split('\n').filter(l => !l.includes('removeChannel')).join('\n')
-  const chMatches = subSrc.match(/supabase\.channel\(['"`]([^'"`\$]+)['"`]\)/g) || []
+const chMatches = subSrc.match(/supabase\.channel\(['"`]([^'"`\$]+)['"`]\)/g) || []
 const chNames   = chMatches.map(c => c.match(/['"`]([^'"`]+)['"`]/)?.[1]).filter(Boolean)
 const dupes     = chNames.filter((n, i) => chNames.indexOf(n) !== i)
 const uniqueDupes = [...new Set(dupes)]
@@ -106,7 +115,75 @@ jsxFiles.filter(f => f.includes('/pages/') && f.endsWith('.jsx')).forEach(f => {
 })
 if (!failures.some(f => f.startsWith('NO EXPORT'))) passes.push('✓ All pages export correctly')
 
-// ── SUMMARY ────────────────────────────────────────────────────
+// ── CHECK 9: Hook-order — useState/useEffect must not appear inside
+//            if() blocks. This causes React error #310, which crashes
+//            the entire app. (Restored from the old script's dead-end
+//            `else` branch, where it ran but could never actually fail
+//            the build.) ────────────────────────────────────────────
+let hookInConditional = 0
+const hookFiles = [
+  'src/pages/Dashboard.jsx', 'src/pages/Contacts.jsx',
+  'src/pages/Tasks.jsx', 'src/pages/ContactDetail.jsx',
+]
+hookFiles.forEach(f => {
+  try {
+    const lines = fs.readFileSync(f, 'utf8').split('\n')
+    let braceDepth = 0
+    let inComponent = false
+    let componentBraceStart = 0
+    lines.forEach((line, i) => {
+      const opens  = (line.match(/\{/g)||[]).length
+      const closes = (line.match(/\}/g)||[]).length
+      if (/^(export )?function [A-Z]/.test(line.trim())) {
+        inComponent = true
+        componentBraceStart = braceDepth
+      }
+      braceDepth += opens - closes
+      if (inComponent && braceDepth > componentBraceStart + 2) {
+        if (/\buseState\(|\buseEffect\(|\buseRef\(|\buseMemo\(|\buseCallback\(/.test(line) &&
+            !line.trim().startsWith('//')) {
+          hookInConditional++
+          failures.push('HOOK IN DEEP BLOCK (React error #310 risk): ' + f + ':' + (i+1))
+        }
+      }
+      if (inComponent && braceDepth <= componentBraceStart) inComponent = false
+    })
+  } catch {}
+})
+if (hookInConditional === 0) passes.push('✓ No hooks inside deep blocks (React error #310 check)')
+
+// ── CHECK 10: All components used in JSX are imported ──────────
+// (Restored from the old script's dead-end `else` branch — same fix.)
+let missingImports = 0
+const criticalFiles = ['src/pages/ContactDetail.jsx', 'src/pages/Dashboard.jsx']
+criticalFiles.forEach(f => {
+  try {
+    const c = fs.readFileSync(f, 'utf8')
+    const used = [...new Set((c.match(/<([A-Z][a-zA-Z]+)[\s/>]/g)||[]).map(m=>m.slice(1).replace(/[\s/>].*/,'')))]
+    const imported = (c.match(/import\s*\{([^}]+)\}/g)||[]).flatMap(m=>m.replace(/import\s*\{/,'').replace(/\}/,'').split(',').map(s=>s.trim()))
+    const builtins = ['React','Fragment']
+    const locallyDefined = (c.match(/(?:const|function|class)\s+([A-Z][a-zA-Z]+)/g)||[]).map(m=>m.split(/\s+/)[1])
+    const missing = used.filter(u => !imported.includes(u) && !builtins.includes(u) && !locallyDefined.includes(u))
+    if (missing.length) {
+      failures.push('MISSING IMPORTS in ' + f + ': ' + missing.join(', '))
+      missingImports += missing.length
+    }
+  } catch {}
+})
+if (missingImports === 0) passes.push('✓ All component imports verified')
+
+// ── CHECK 11: Unit tests (vitest) ───────────────────────────────
+// Added July 2026. Pure-logic regressions (e.g. the TC phase mapping,
+// currency/date formatting) are now caught here, before they ship.
+try {
+  execSync('npx vitest run', { stdio: 'pipe' })
+  passes.push('✓ Unit tests pass (npm test)')
+} catch (e) {
+  failures.push('UNIT TESTS FAILED — run `npm test` locally for full output:\n' +
+    (e.stdout ? e.stdout.toString().split('\n').slice(-25).join('\n') : e.message))
+}
+
+// ── SUMMARY — single source of truth for pass/fail ──────────────
 console.log('\n═══════════════════════════════════════')
 console.log('  TargetOS Pre-Deploy Validation')
 console.log('═══════════════════════════════════════\n')
@@ -116,72 +193,10 @@ if (failures.length) {
   failures.forEach(f => console.log('    ✗ ' + f))
   console.log('\n  Fix all failures before pushing.\n')
   process.exit(1)
-} else {
-
-
-
-  // Hook-order check: useState/useEffect must not appear inside if() blocks
-  // This causes React error #310 which crashes the entire app
-  let hookInConditional = 0
-  const hookFiles = ['src/pages/Dashboard.jsx', 'src/pages/Contacts.jsx', 
-    'src/pages/Tasks.jsx', 'src/pages/ContactDetail.jsx']
-  hookFiles.forEach(f => {
-    try {
-      const lines = require('fs').readFileSync(f,'utf8').split('\n')
-      let braceDepth = 0
-      let inComponent = false
-      let componentBraceStart = 0
-      lines.forEach((line, i) => {
-        const opens  = (line.match(/\{/g)||[]).length
-        const closes = (line.match(/\}/g)||[]).length
-        if (/^(export )?function [A-Z]/.test(line.trim())) {
-          inComponent = true
-          componentBraceStart = braceDepth
-        }
-        braceDepth += opens - closes
-        if (inComponent && braceDepth > componentBraceStart + 2) {
-          if (/\buseState\(|\buseEffect\(|\buseRef\(|\buseMemo\(|\buseCallback\(/.test(line) && 
-              !line.trim().startsWith('//')) {
-            hookInConditional++
-            console.log('  ⚠️  Hook in deep block: ' + f + ':' + (i+1))
-          }
-        }
-        if (inComponent && braceDepth <= componentBraceStart) inComponent = false
-      })
-    } catch {}
-  })
-  if (hookInConditional === 0) {
-    console.log('  ✓ No hooks inside deep blocks (React error #310 check)')
-  } else {
-    console.log('  ❌ ' + hookInConditional + ' hooks found inside deep blocks — WILL CAUSE React error #310')
-    errors++
-  }
-
-
-  // Check: all components used in JSX are imported
-  let missingImports = 0
-  const criticalFiles = ['src/pages/ContactDetail.jsx', 'src/pages/Dashboard.jsx']
-  criticalFiles.forEach(f => {
-    try {
-      const c = require('fs').readFileSync(f, 'utf8')
-      // Find all <ComponentName props /> or <ComponentName> usages (capital letter start)
-      const used = [...new Set((c.match(/<([A-Z][a-zA-Z]+)[\s/>]/g)||[]).map(m=>m.slice(1).replace(/[\s/>].*/,'')))]
-      const imported = (c.match(/import\s*\{([^}]+)\}/g)||[]).flatMap(m=>m.replace(/import\s*\{/,'').replace(/\}/,'').split(',').map(s=>s.trim()))
-      const builtins = ['React','Fragment']
-      const locallyDefined = (c.match(/(?:const|function|class)\s+([A-Z][a-zA-Z]+)/g)||[]).map(m=>m.split(/\s+/)[1])
-      const missing = used.filter(u => !imported.includes(u) && !builtins.includes(u) && !locallyDefined.includes(u))
-      if (missing.length) {
-        console.log('  ❌ Missing imports in '+f+': '+missing.join(', '))
-        missingImports += missing.length
-      }
-    } catch {}
-  })
-  if (missingImports === 0) console.log('  ✓ All component imports verified')
-  else errors += missingImports
-
-  console.log('\n  ✅ ALL CHECKS PASSED — safe to deploy\n')
-  console.log('  Deploy commands:')
-  console.log('    npm run build')
-  console.log('    git push origin v2')
-  console.log('    git push origin v2:main --force\n')
 }
+
+console.log('\n  ✅ ALL CHECKS PASSED — safe to deploy\n')
+console.log('  Deploy (two steps — test staging before promoting to production):')
+console.log('    1. npm run build && node scripts/validate.js && git push origin v2')
+console.log('       -> check https://targetos-git-v2-target-team.vercel.app')
+console.log('    2. git push origin v2:main   (no --force — see handoff doc)\n')

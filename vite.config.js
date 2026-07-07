@@ -7,6 +7,11 @@ export default defineConfig({
       include: 'src/**/*.{jsx,js}',
     })
   ],
+  test: {
+    environment: 'node',
+    globals: true,
+    include: ['src/**/*.test.js'],
+  },
   build: {
     outDir: 'dist',
     rollupOptions: {
