@@ -81,6 +81,7 @@ export function MarketWidget() {
   const [error,    setError]    = useState(null)
   const [lastFetch,setLastFetch]= useState(null)
   const [tab,      setTab]      = useState('rates') // 'rates' | 'news'
+  const [collapsed,setCollapsed]= useState(true) // compact by default — expand for full detail
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -107,16 +108,37 @@ export function MarketWidget() {
 
   return (
     <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', overflow:'hidden', fontFamily:ff }}>
-      {/* Header */}
-      <div style={{ padding:'12px 14px 0', borderBottom:'1px solid var(--border)' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-          <div>
-            <div style={{ fontSize:13, fontWeight:800, color:'var(--text)' }}>📈 Market Pulse</div>
-            <div style={{ fontSize:10, color:'var(--muted)', marginTop:1 }}>
-              {lastFetch ? 'Updated ' + timeAgo(lastFetch.toISOString()) : 'Loading...'}
-            </div>
+      {/* Compact header — always visible, one row */}
+      <div onClick={() => setCollapsed(c => !c)}
+        style={{ padding:'10px 14px', display:'flex', alignItems:'center', gap:12, cursor:'pointer', borderBottom: collapsed ? 'none' : '1px solid var(--border)' }}>
+        <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', flexShrink:0 }}>📈 Market Pulse</div>
+        {!loading && data && (
+          <div style={{ display:'flex', alignItems:'center', gap:10, fontSize:12, color:'var(--muted)', flex:1, minWidth:0, overflow:'hidden' }}>
+            <span style={{ color:'var(--text)', fontWeight:700 }}>
+              30yr {(data.rates?.rate30 > 0) ? data.rates.rate30.toFixed(2) + '%' : '—'}
+            </span>
+            {data.rates?.change !== null && data.rates?.change !== undefined && (
+              <span style={{ fontWeight:700, color: data.rates.change > 0 ? '#DC2626' : '#10B981' }}>
+                {data.rates.change > 0 ? '↑' : '↓'} {Math.abs(data.rates.change).toFixed(2)}%
+              </span>
+            )}
+            <span style={{ color:'var(--border)' }}>·</span>
+            <span style={{ color:'var(--text)', fontWeight:700 }}>
+              15yr {(data.rates?.rate15 > 0) ? data.rates.rate15.toFixed(2) + '%' : '—'}
+            </span>
           </div>
-          <button onClick={() => load()}
+        )}
+        {loading && <div style={{ fontSize:11, color:'var(--muted)', flex:1 }}>Loading...</div>}
+        <span style={{ fontSize:11, color:'var(--muted)', flexShrink:0 }}>{collapsed ? '▾ Details' : '▴ Collapse'}</span>
+      </div>
+
+      {!collapsed && (
+      <div style={{ padding:'0 14px 0' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10, paddingTop:10 }}>
+          <div style={{ fontSize:10, color:'var(--muted)' }}>
+            {lastFetch ? 'Updated ' + timeAgo(lastFetch.toISOString()) : 'Loading...'}
+          </div>
+          <button onClick={(e) => { e.stopPropagation(); load() }}
             style={{ background:'none', border:'1px solid var(--border)', borderRadius:7, padding:'4px 10px', fontSize:11, color:'var(--muted)', cursor:'pointer', fontFamily:ff }}>
             ↺ Refresh
           </button>
@@ -125,7 +147,7 @@ export function MarketWidget() {
         {/* Tabs */}
         <div style={{ display:'flex', gap:0, marginBottom:'-1px' }}>
           {[['rates','📊 Rates'],['news','📰 News']].map(([id,label]) => (
-            <button key={id} onClick={() => setTab(id)}
+            <button key={id} onClick={(e) => { e.stopPropagation(); setTab(id) }}
               style={{ padding:'6px 14px', border:'none', background:'none', cursor:'pointer',
                 fontFamily:ff, fontSize:12, fontWeight:tab===id?700:400,
                 color:tab===id?'var(--text)':'var(--muted)',
@@ -136,20 +158,21 @@ export function MarketWidget() {
           ))}
         </div>
       </div>
+      )}
 
-      {loading && (
+      {!collapsed && loading && (
         <div style={{ padding:24, textAlign:'center', color:'var(--muted)', fontSize:12 }}>
           Loading market data...
         </div>
       )}
 
-      {error && (
+      {!collapsed && error && (
         <div style={{ padding:14, fontSize:11, color:'#DC2626', background:'rgba(220,38,38,.06)' }}>
           ⚠️ {error} — <button onClick={()=>load()} style={{ background:'none', border:'none', color:'#CC2200', cursor:'pointer', fontFamily:ff, fontSize:11, fontWeight:700, padding:0 }}>retry</button>
         </div>
       )}
 
-      {!loading && data && (
+      {!collapsed && !loading && data && (
         <>
           {/* RATES TAB */}
           {tab === 'rates' && (

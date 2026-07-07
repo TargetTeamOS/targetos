@@ -120,13 +120,25 @@ function MiniBar({ data, color = '#CC2200' }) {
   const max = Math.max(...data.map(d => d.value), 1)
   const curMonth = new Date().getMonth()
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '60px' }}>
-      {data.map((d, i) => (
-        <div key={i} title={fmt$(d.value)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-          <div style={{ width: '100%', background: i === curMonth ? color : color + '44', borderRadius: '2px 2px 0 0', height: (Math.max(3, (d.value / max) * 50)) + "px", transition: 'height .4s ease' }} />
-          <div style={{ fontSize: '8px', color: 'var(--muted)' }}>{d.label}</div>
-        </div>
-      ))}
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '62px' }}>
+      {data.map((d, i) => {
+        const isCur = i === curMonth
+        const barColor = isCur ? color : color + '55'
+        return (
+          <div key={i} title={fmt$(d.value)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+            <div style={{ width: '100%', height: '48px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'var(--dim)', borderRadius: '3px 3px 2px 2px' }}>
+              <div style={{
+                width: '100%',
+                background: 'linear-gradient(180deg, ' + barColor + ', ' + barColor + 'CC)',
+                borderRadius: '3px 3px 2px 2px',
+                height: (Math.max(3, (d.value / max) * 48)) + 'px',
+                transition: 'height .4s ease',
+              }} />
+            </div>
+            <div style={{ fontSize: '8px', fontWeight: isCur ? 800 : 500, color: isCur ? 'var(--text)' : 'var(--muted)' }}>{d.label}</div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -1933,23 +1945,25 @@ export function Dashboard() {
         style={{
           gridColumn:    isLg ? 'span 2' : 'span 1',
           background:    'var(--panel)',
-          borderRadius:  '12px',
+          borderRadius:  '14px',
           border:        editMode ? "2px dashed " + (color) : "1px solid var(--border)",
-          borderTop:     editMode ? "2px dashed " + (color) : "3px solid " + (color),
+          boxShadow:     editMode ? 'none' : '0 1px 2px rgba(0,0,0,.04), 0 3px 8px rgba(0,0,0,.05)',
           display:       'flex',
           flexDirection: 'column',
           overflow:      'hidden',
           opacity:       dragId === w.id ? 0.35 : 1,
-          transition:    'opacity .15s, box-shadow .15s, border .15s',
+          transition:    'opacity .15s, box-shadow .15s, border .15s, transform .15s',
           cursor:        editMode ? 'grab' : 'default',
           position:      'relative',
         }}>
         {/* Widget header */}
-        <div style={{ padding: '11px 14px 9px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: editMode ? color + '0a' : 'transparent' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: editMode ? color + '0a' : 'transparent' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
             {editMode && <span style={{ fontSize: '14px', color: 'var(--muted)', cursor: 'grab' }}>⠿</span>}
-            <span style={{ fontSize: '14px' }}>{def?.icon}</span>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{def?.label}</span>
+            <div style={{ width: 20, height: 20, borderRadius: '6px', background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: '11px' }}>{def?.icon}</span>
+            </div>
+            <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', letterSpacing: '-.1px' }}>{def?.label}</span>
           </div>
           {editMode ? (
             /* Edit mode controls on each widget */
@@ -2001,7 +2015,7 @@ export function Dashboard() {
           )}
         </div>
         {/* Widget content — dimmed in edit mode so controls are clear */}
-        <div style={{ flex: 1, padding: '12px 14px', overflow: 'hidden', opacity: editMode ? 0.4 : 1, pointerEvents: editMode ? 'none' : 'auto' }}>
+        <div style={{ flex: 1, padding: '11px 14px', overflow: 'hidden', opacity: editMode ? 0.4 : 1, pointerEvents: editMode ? 'none' : 'auto' }}>
           {widgetContent}
         </div>
       </div>
@@ -2052,7 +2066,7 @@ export function Dashboard() {
           { label: 'Active Listings', value: data.activeListings?.length || 0, popup: 'active_listings',c: '#14B8A6' },
         ].map(s => (
           <div key={s.label} onClick={() => setPopup(s.popup)}
-            style={{ padding: '10px', background: 'var(--dim)', borderRadius: '8px', cursor: 'pointer', borderLeft: "3px solid " + (s.c) }}
+            style={{ padding: '10px', background: s.c + '0d', borderRadius: '8px', cursor: 'pointer', borderLeft: "3px solid " + (s.c), transition: 'box-shadow .12s' }}
             onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
             onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
             <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>{s.value}</div>
@@ -2295,7 +2309,9 @@ export function Dashboard() {
     if (w.id === 'overdue_alert') return shell(
       <div onClick={() => setPopup('overdue_alert')} style={{ cursor: 'pointer' }}>
         {data.overdueTasks?.length === 0
-          ? <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>✅ No overdue tasks</div>
+          ? <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--muted)', fontSize: '12px', padding: '2px 0' }}>
+              <span style={{ fontSize: '13px' }}>✅</span> No overdue tasks — nice work
+            </div>
           : <div style={{ background: '#FEF2F2', borderRadius: '8px', padding: '12px', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid #FECACA' }}>
               <span style={{ fontSize: '20px' }}>⚠️</span>
               <div style={{ fontWeight: 700, color: '#DC2626', fontSize: '13px' }}>{data.overdueTasks?.length} overdue task{data.overdueTasks?.length > 1 ? 's' : ''} — click to view</div>
@@ -2425,14 +2441,14 @@ export function Dashboard() {
             <>
               {/* Year selector */}
               <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
+                style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff, width: 'auto', flex: '0 0 auto' }}>
                 {years.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
 
               {/* Agent filter */}
               {(isAdmin || canManage) && (
                 <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)}
-                  style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
+                  style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff, width: 'auto', flex: '0 0 auto', maxWidth: '160px' }}>
                   <option value="">All Agents</option>
                   {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
@@ -2440,7 +2456,7 @@ export function Dashboard() {
 
               {/* Side filter */}
               <select value={sideFilter} onChange={e => setSideFilter(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff }}>
+                style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '12px', fontFamily: ff, width: 'auto', flex: '0 0 auto' }}>
                 <option value="">All Sides</option>
                 {['Buyer','Listing','Dual Buyer','Dual Listing','Flip'].map(s => <option key={s} value={s}>{s}</option>)}
               </select>
@@ -2479,6 +2495,7 @@ export function Dashboard() {
                 title="Refresh">↻</button>
               <Btn size="sm" variant="secondary" onClick={() => setShowGoals(true)}>🎯 Goals</Btn>
               {isAdmin && <Btn size="sm" variant="secondary" onClick={() => setShowAgentView(true)}>👥 Agent Views</Btn>}
+              <Btn size="sm" variant="secondary" onClick={() => setShowCustomWidget(true)}>🔲 Add Widget</Btn>
               <Btn size="sm" variant="secondary" onClick={() => setShowWidgetMgr(true)}>⚙️ Customize</Btn>
             </>
           )}
@@ -2497,27 +2514,6 @@ export function Dashboard() {
           )}
         </div>
       </div>
-
-      {/* ── CUSTOMIZE BAR — always visible ── */}
-      {!loading && !editMode && (
-        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, padding:'10px 14px', background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', flexWrap:'wrap' }}>
-          <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>📐 Dashboard</span>
-          <span style={{ fontSize:12, color:'var(--muted)' }}>Drag to reorder · customize what you see</span>
-          <div style={{ flex:1 }} />
-          <button onClick={() => setShowCustomWidget(true)}
-            style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'2px dashed #CC2200', background:'rgba(204,34,0,.06)', color:'#CC2200', fontSize:12, fontWeight:800, cursor:'pointer', fontFamily:ff }}>
-            🔲 Add Custom Widget
-          </button>
-          <button onClick={() => setShowWidgetMgr(true)}
-            style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel)', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
-            ⚙️ Manage Widgets
-          </button>
-          <button onClick={() => { setEditMode(true); setPendingWidgets(null) }}
-            style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel)', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
-            🎛 Reorder
-          </button>
-        </div>
-      )}
 
       {/* Active filter summary bar — shows totals for current filter combination */}
       {!loading && (stageFilter.length > 0 || sideFilter || agentFilter) && (
