@@ -48,6 +48,7 @@ export function Admin() {
   const [confirmDelType, setConfirmDelType] = useState('deactivate') // 'deactivate' | 'delete'
   const [resetPwd,   setResetPwd]   = useState(null)
   const [newPwd,     setNewPwd]     = useState('')
+  const [expandedSetup, setExpandedSetup] = useState(null)
   const [resetting,  setResetting]  = useState(false)
   const [showInactive, setShowInactive] = useState(false)
   const custom = state?.custom || {}
@@ -662,15 +663,46 @@ export function Admin() {
             { label:'Hosting',        status:'✅ Live',            detail:'Vercel — app.targetreteam.com', color:'#10B981' },
             { label:'Google Maps',    status:'✅ Active',          detail:'Address autocomplete + route planning', color:'#10B981' },
             { label:'AI Assistant',   status:'✅ Active',          detail:'Claude Sonnet — CRM assistant (bottom right)', color:'#10B981' },
-            { label:'File Storage',   status:'⚠️ Setup Required', detail:'Create "targetos-files" bucket in Supabase Storage', color:'#F97316' },
-            { label:'Error Tracking', status:'⚠️ Setup Required', detail:'Add VITE_SENTRY_DSN to Vercel env vars', color:'#F97316' },
+            { label:'File Storage',   status:'⚠️ Setup Required', detail:'Create "targetos-files" bucket in Supabase Storage', color:'#F97316',
+              steps: [
+                'Go to your Supabase dashboard → Storage (left sidebar)',
+                'Click "New bucket"',
+                'Name it exactly: targetos-files (must match exactly)',
+                'Toggle "Public bucket" ON — file attachments use public URLs so they can be opened directly. Note: anyone with a file\'s exact URL could view it without logging in (URLs are hard to guess — a random ID + timestamp — but this isn\'t real access control).',
+                'Click "Create bucket"',
+                'That\'s it — no other configuration needed. File uploads on Contacts/Deals will start working immediately.',
+              ] },
+            { label:'Error Tracking', status:'⚠️ Setup Required', detail:'Add VITE_SENTRY_DSN to Vercel env vars', color:'#F97316',
+              steps: [
+                'Sign up at sentry.io (free tier is enough for this team size)',
+                'Create a new project → choose "React" as the platform',
+                'Sentry shows you a DSN (looks like https://abc123@o000000.ingest.sentry.io/000000) — copy it',
+                'In Vercel: your project → Settings → Environment Variables',
+                'Add a new variable: Name = VITE_SENTRY_DSN, Value = the DSN you copied. Apply to Production (and Preview if you want errors caught there too)',
+                'Redeploy (any push will pick up the new env var) — this card will update automatically once it\'s live',
+              ] },
           ].map(item => (
-            <div key={item.label} style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:'14px 18px',display:'flex',alignItems:'center',gap:12}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:700,color:'var(--text)'}}>{item.label}</div>
-                <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{item.detail}</div>
+            <div key={item.label} style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',overflow:'hidden'}}>
+              <div onClick={() => item.steps && setExpandedSetup(p => p === item.label ? null : item.label)}
+                style={{padding:'14px 18px',display:'flex',alignItems:'center',gap:12,cursor:item.steps?'pointer':'default'}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:'var(--text)',display:'flex',alignItems:'center',gap:6}}>
+                    {item.label}
+                    {item.steps && <span style={{fontSize:10,color:'var(--muted)'}}>{expandedSetup===item.label ? '▲ hide steps' : '▼ how do I fix this?'}</span>}
+                  </div>
+                  <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{item.detail}</div>
+                </div>
+                <Pill label={item.status} color={item.color} />
               </div>
-              <Pill label={item.status} color={item.color} />
+              {item.steps && expandedSetup === item.label && (
+                <div style={{padding:'0 18px 16px', borderTop:'1px solid var(--border)', marginTop:0}}>
+                  <ol style={{margin:'12px 0 0', paddingLeft:20, display:'flex', flexDirection:'column', gap:8}}>
+                    {item.steps.map((s, i) => (
+                      <li key={i} style={{fontSize:12, color:'var(--text)', lineHeight:1.5}}>{s}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -28,6 +28,8 @@ import { RecordActivity } from '../pages/ActivityLog'
 import { ClickToCall } from '../components/ClickToCall'
 import { FilterBar } from '../components/FilterBar'
 import { ImportExport } from '../components/ImportExport'
+import { loadFieldDefs, saveFieldDefs, getFieldsForEntity, labelToKey, FIELD_TYPES, invalidateFieldCache } from '../lib/customFields'
+import { CustomFieldRenderer } from '../components/CustomFieldRenderer'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { useAgents } from '../lib/hooks'
 
@@ -277,7 +279,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   const [editing, setEditing] = React.useState(false)
   const [val, setVal] = React.useState('')
   const ref = React.useRef(null)
-  const raw = deal[col.key]
+  const raw = col.custom ? (deal.custom_data || {})[col.key] : deal[col.key]
 
   function startEdit(e) {
     e.stopPropagation()
@@ -287,7 +289,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   }
   function save() {
     setEditing(false)
-    if (String(val) !== String(raw || '')) onQuickUpdate(deal, col.key, val)
+    if (String(val) !== String(raw || '')) onQuickUpdate(deal, col.key, val, col.custom)
   }
   function cancel() { setEditing(false) }
 
@@ -331,14 +333,27 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
       <td style={{ height: 36, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
         <div style={{ ...base, cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
           <InlinePicker value={raw} options={opts} color={bg}
-            onSave={v => onQuickUpdate(deal, col.key, v)} />
+            onSave={v => onQuickUpdate(deal, col.key, v, col.custom)} />
         </div>
       </td>
     )
   }
 
-  // Number cell
-  if (col.type === 'number') {
+  // Checkbox cell (custom fields)
+  if (col.type === 'checkbox') {
+    return (
+      <td style={{ height: 36, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+        <div style={{ ...base, cursor: 'pointer' }} onClick={e => { e.stopPropagation(); onQuickUpdate(deal, col.key, !raw, col.custom) }}>
+          <div style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid ' + (raw ? '#0073ea' : '#c5c7d0'), background: raw ? '#0073ea' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {raw && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
+          </div>
+        </div>
+      </td>
+    )
+  }
+
+  // Number / currency cell
+  if (col.type === 'number' || col.type === 'currency') {
     if (editing) return (
       <td style={{ height: 36, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
         <input ref={ref} type="number" value={val} onChange={e => setVal(e.target.value)}
@@ -447,7 +462,7 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
 
 
 // ── MONDAY.COM GROUP ─────────────────────────────────────────────
-function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename }) {
+function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename, onDealDragStart, onDropDeal, isDragOver, onDragEnterGroup, onDragLeaveGroup, onColDragStart, onColDrop }) {
   const [collapsed, setCollapsed] = React.useState(false)
   const [renaming,  setRenaming]  = React.useState(false)
   const [renameVal, setRenameVal] = React.useState(group.label)
@@ -1146,9 +1161,58 @@ export function Production() {
   const [showColPicker, setShowColPicker] = useState(false)
   const [customGroups,  setCustomGroups]  = useState(null)
   const [trueTotals,    setTrueTotals]    = useState(null) // { total_count, total_gci, closed_gci, pipeline_gci } from production_totals() RPC — null until loaded
+  const [customFieldDefs, setCustomFieldDefs] = useState([])
+  const [colOrder,        setColOrder]        = useState(null) // array of column keys, custom order — null = default
+  const [showAddCol,      setShowAddCol]      = useState(false)
+  const [draggedDealId,   setDraggedDealId]   = useState(null)
+  const [draggedColKey,   setDraggedColKey]   = useState(null)
+  const [dragOverGroupId, setDragOverGroupId] = useState(null)
+
+  useEffect(() => {
+    getFieldsForEntity('deals').then(setCustomFieldDefs)
+    // Column order + hidden columns persisted per-agent (new prefs
+    // namespace — Production's hiddenCols had zero persistence before
+    // this, resetting on every reload)
+    if (agent?.id) {
+      import('../lib/userPrefs').then(({ loadPrefs }) => {
+        loadPrefs(agent.id).then(p => {
+          if (p?.productionColOrder)   setColOrder(p.productionColOrder)
+          if (p?.productionHiddenCols) setHiddenCols(p.productionHiddenCols)
+        }).catch(() => {})
+      })
+    }
+  }, [agent?.id])
+
+  async function persistColPrefs(newColOrder, newHiddenCols) {
+    if (!agent?.id) return
+    try {
+      const { loadPrefs, savePrefs } = await import('../lib/userPrefs')
+      const current = await loadPrefs(agent.id)
+      await savePrefs(agent.id, {
+        ...current,
+        productionColOrder:   newColOrder   !== undefined ? newColOrder   : current.productionColOrder,
+        productionHiddenCols: newHiddenCols !== undefined ? newHiddenCols : current.productionHiddenCols,
+      })
+    } catch(e) { console.warn('persistColPrefs:', e.message) }
+  }
+
+  const ALL_COLUMNS_WITH_CUSTOM = useMemo(() => [
+    ...ALL_COLUMNS,
+    ...customFieldDefs.map(f => ({
+      key: f.key, label: f.label, width: 130, type: f.type,
+      options: f.options, custom: true,
+    })),
+  ], [customFieldDefs])
 
   const activeGroups  = useMemo(() => customGroups || [...BOARD_GROUPS, ...buildYearGroups(deals)], [customGroups, deals])
-  const visibleCols   = ALL_COLUMNS.filter(c => !hiddenCols.includes(c.key))
+  const visibleCols   = useMemo(() => {
+    let cols = ALL_COLUMNS_WITH_CUSTOM.filter(c => !hiddenCols.includes(c.key))
+    if (colOrder) {
+      const orderMap = new Map(colOrder.map((k, i) => [k, i]))
+      cols = [...cols].sort((a, b) => (orderMap.has(a.key) ? orderMap.get(a.key) : 999) - (orderMap.has(b.key) ? orderMap.get(b.key) : 999))
+    }
+    return cols
+  }, [ALL_COLUMNS_WITH_CUSTOM, hiddenCols, colOrder])
 
   const years = []
   for (let y = new Date().getFullYear(); y >= 2015; y--) years.push(y.toString())
@@ -1309,8 +1373,92 @@ export function Production() {
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
 
-  async function quickUpdate(deal, field, value) {
+  async function createCustomColumn({ label, type, options }) {
+    if (!label?.trim()) { toast('Column name required', '#DC2626'); return }
+    try {
+      // CRITICAL: load ALL field defs (all entities), not just deals' —
+      // saveFieldDefs replaces the whole list, so loading only deals'
+      // fields here would silently delete every Contacts/Listings
+      // custom field.
+      const allDefs = await loadFieldDefs()
+      const dealsFields = allDefs.filter(f => f.entity === 'deals')
+      const maxOrder = dealsFields.reduce((m, f) => Math.max(m, f.order || 0), 0)
+      const newField = {
+        id: crypto.randomUUID(),
+        entity: 'deals',
+        label: label.trim(),
+        key: labelToKey(label),
+        type: type || 'text',
+        options: type === 'select' ? (options || []).filter(Boolean) : undefined,
+        required: false,
+        section: 'Custom',
+        order: maxOrder + 1,
+        active: true,
+      }
+      await saveFieldDefs([...allDefs, newField])
+      invalidateFieldCache()
+      const refreshed = await getFieldsForEntity('deals')
+      setCustomFieldDefs(refreshed)
+      setShowAddCol(false)
+      toast('✅ Column "' + newField.label + '" added')
+    } catch(e) {
+      toast('Failed to add column: ' + e.message, '#DC2626')
+    }
+  }
+
+  // Drag a deal card onto a stage group to change its stage. Only
+  // enabled for the 3 static pipeline groups (active/under_shtar/
+  // under_contract) -- the Closed/Fell Through groups are generated
+  // per-year from real close_date/ao_date values, so a stage-only drag
+  // there would land in an arbitrary or wrong year bucket. Those
+  // transitions go through the proper modal instead.
+  // Drag a column header onto another to reorder it there
+  function handleColDrop(targetKey) {
+    if (!draggedColKey || draggedColKey === targetKey) { setDraggedColKey(null); return }
+    const currentOrder = visibleCols.map(c => c.key)
+    const fromIdx = currentOrder.indexOf(draggedColKey)
+    const toIdx   = currentOrder.indexOf(targetKey)
+    if (fromIdx === -1 || toIdx === -1) { setDraggedColKey(null); return }
+    const newOrder = [...currentOrder]
+    newOrder.splice(fromIdx, 1)
+    newOrder.splice(toIdx, 0, draggedColKey)
+    // Include any hidden/undisplayed columns at the end so nothing gets lost from the saved order
+    const fullOrder = [...newOrder, ...ALL_COLUMNS_WITH_CUSTOM.map(c => c.key).filter(k => !newOrder.includes(k))]
+    setColOrder(fullOrder)
+    persistColPrefs(fullOrder, undefined)
+    setDraggedColKey(null)
+  }
+
+  function handleDealDrop(group) {
+    if (!draggedDealId || group.yearMatch) { setDraggedDealId(null); setDragOverGroupId(null); return }
+    const deal = deals.find(d => d.id === draggedDealId)
+    if (deal && group.stages?.[0] && deal.stage !== group.stages[0]) {
+      quickUpdate(deal, 'stage', group.stages[0])
+    }
+    setDraggedDealId(null)
+    setDragOverGroupId(null)
+  }
+
+  async function quickUpdate(deal, field, value, isCustom) {
     const today = new Date().toISOString().slice(0, 10)
+
+    // Custom field — value lives in deal.custom_data, not a direct column
+    if (isCustom) {
+      const newCustomData = { ...(deal.custom_data || {}), [field]: value }
+      const autoFields = { custom_data: newCustomData, updated_at: new Date().toISOString() }
+      setDeals(prev => prev.map(d => d.id === deal.id ? { ...d, ...autoFields } : d))
+      try {
+        const { data, error } = await supabase
+          .from('deals').update(autoFields).eq('id', deal.id)
+          .select('*, agents(id,name,color)').maybeSingle()
+        if (error) throw error
+        if (data) setDeals(prev => prev.map(d => d.id === deal.id ? data : d))
+      } catch(e) {
+        setDeals(prev => prev.map(d => d.id === deal.id ? deal : d))
+        toast('Update failed: ' + e.message, '#DC2626')
+      }
+      return
+    }
 
     // Auto-date logic: set the relevant date if not already set
     const autoFields = { [field]: value, updated_at: new Date().toISOString() }
@@ -1417,17 +1565,25 @@ export function Production() {
             {showColPicker && (
               <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid #e6e9ef', borderRadius: 8, padding: 12, zIndex: 300, width: 220, boxShadow: '0 8px 24px rgba(0,0,0,.12)' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Show / Hide Columns</div>
-                {ALL_COLUMNS.map(col => (
+                {ALL_COLUMNS_WITH_CUSTOM.map(col => (
                   <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', cursor: 'pointer', borderRadius: 4, fontSize: 12, color: '#323338' }}>
                     <input type="checkbox" checked={!hiddenCols.includes(col.key)}
-                      onChange={e => setHiddenCols(p => e.target.checked ? p.filter(k => k !== col.key) : [...p, col.key])} />
-                    {col.label}
+                      onChange={e => {
+                        const next = e.target.checked ? hiddenCols.filter(k => k !== col.key) : [...hiddenCols, col.key]
+                        setHiddenCols(next)
+                        persistColPrefs(undefined, next)
+                      }} />
+                    {col.label}{col.custom && <span style={{ fontSize: 9, color: '#0073ea', fontWeight: 700 }}>CUSTOM</span>}
                   </label>
                 ))}
                 <div style={{ borderTop: '1px solid #e6e9ef', marginTop: 8, paddingTop: 8, display: 'flex', gap: 6 }}>
-                  <button onClick={() => setHiddenCols([])} style={{ flex: 1, padding: 5, borderRadius: 6, border: '1px solid #e6e9ef', background: '#fff', color: '#676879', fontSize: 11, cursor: 'pointer' }}>Show all</button>
+                  <button onClick={() => { setHiddenCols([]); persistColPrefs(undefined, []) }} style={{ flex: 1, padding: 5, borderRadius: 6, border: '1px solid #e6e9ef', background: '#fff', color: '#676879', fontSize: 11, cursor: 'pointer' }}>Show all</button>
                   <button onClick={() => setShowColPicker(false)} style={{ flex: 1, padding: 5, borderRadius: 6, border: 'none', background: '#0073ea', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>Done</button>
                 </div>
+                <button onClick={() => { setShowColPicker(false); setShowAddCol(true) }}
+                  style={{ width: '100%', marginTop: 6, padding: '7px 5px', borderRadius: 6, border: '1px dashed #0073ea', background: '#f0f7ff', color: '#0073ea', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  + Add New Column
+                </button>
               </div>
             )}
           </div>
@@ -1617,6 +1773,13 @@ export function Production() {
               visibleCols={visibleCols}
               onRename={label => renameGroup(group.id, label)}
               onAddDeal={() => openNewWithGroup(group)}
+              onDealDragStart={setDraggedDealId}
+              onDropDeal={() => handleDealDrop(group)}
+              isDragOver={dragOverGroupId === group.id}
+              onDragEnterGroup={() => !group.yearMatch && setDragOverGroupId(group.id)}
+              onDragLeaveGroup={() => setDragOverGroupId(null)}
+              onColDragStart={setDraggedColKey}
+              onColDrop={targetKey => handleColDrop(targetKey)}
             />
           ))}
           <div onClick={addGroup}
@@ -1679,6 +1842,11 @@ export function Production() {
         </div>
       )}
 
+      {/* ── ADD CUSTOM COLUMN ── */}
+      {showAddCol && (
+        <AddColumnModal onClose={() => setShowAddCol(false)} onCreate={createCustomColumn} />
+      )}
+
       {/* ── DETAIL DRAWER ── */}
       {selected !== null && (
         <DealDrawer
@@ -1692,6 +1860,57 @@ export function Production() {
           onDelete={deleteDeal}
         />
       )}
+    </div>
+  )
+}
+
+// ── ADD COLUMN MODAL ──────────────────────────────────────────────
+function AddColumnModal({ onClose, onCreate }) {
+  const [label,   setLabel]   = useState('')
+  const [type,    setType]    = useState('text')
+  const [optText, setOptText] = useState('')
+  const [saving,  setSaving]  = useState(false)
+
+  async function submit() {
+    setSaving(true)
+    await onCreate({
+      label, type,
+      options: type === 'select' ? optText.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+    })
+    setSaving(false)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ff }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 360, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,.25)' }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: '#323338', marginBottom: 14 }}>+ Add Column</div>
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#676879', marginBottom: 4 }}>Column Name</div>
+        <input autoFocus value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Home Inspector"
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid #c5c7d0', fontSize: 13, fontFamily: ff, boxSizing: 'border-box', marginBottom: 12 }} />
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#676879', marginBottom: 4 }}>Column Type</div>
+        <select value={type} onChange={e => setType(e.target.value)}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid #c5c7d0', fontSize: 13, fontFamily: ff, marginBottom: 12 }}>
+          {FIELD_TYPES.map(t => <option key={t.value} value={t.value}>{t.icon} {t.label}</option>)}
+        </select>
+
+        {type === 'select' && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#676879', marginBottom: 4 }}>Options (comma-separated)</div>
+            <input value={optText} onChange={e => setOptText(e.target.value)} placeholder="e.g. Yes, No, Pending"
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid #c5c7d0', fontSize: 13, fontFamily: ff, boxSizing: 'border-box', marginBottom: 12 }} />
+          </>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '8px', borderRadius: 7, border: '1px solid #c5c7d0', background: '#fff', color: '#676879', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>Cancel</button>
+          <button onClick={submit} disabled={saving || !label.trim()}
+            style={{ flex: 1, padding: '8px', borderRadius: 7, border: 'none', background: '#0073ea', color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', fontFamily: ff, opacity: !label.trim() ? 0.5 : 1 }}>
+            {saving ? 'Adding…' : 'Add Column'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
