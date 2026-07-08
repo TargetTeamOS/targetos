@@ -290,14 +290,25 @@ async function transcribeAudio(recordingUrl) {
 
     // FIX (July 2026): Whisper's free-form auto-detection (choosing
     // among ~99 languages) was confirmed in real testing to misidentify
-    // Yiddish as an unrelated language (similar script/phonetics to
-    // Hebrew and German), producing genuine gibberish -- not just
-    // reduced accuracy. Since only these 3 languages matter here,
-    // explicitly transcribe with EACH hinted, then keep whichever
-    // result Whisper itself is most confident in, rather than letting
-    // it freely guess among languages that were never in scope.
-    const candidates = ['en', 'yi', 'es']
-    const attempts = await Promise.all(candidates.map(async (lang) => {
+    // Yiddish as an unrelated language (similar script to Hebrew,
+    // similar phonetics to German), producing genuine gibberish -- not
+    // just reduced accuracy.
+    //
+    // Priority order (July 2026, per business need): try Yiddish
+    // FIRST, then English, then Spanish -- stopping at the first one
+    // that looks confident. This matters because a purely
+    // confidence-based pick can be biased AGAINST Yiddish: English has
+    // vastly more Whisper training data and can score higher even when
+    // Yiddish is actually correct. Sequential (not parallel) so the
+    // common case (Yiddish confident on the first try) only costs one
+    // Whisper call, not three.
+    const priorityOrder = ['yi', 'en', 'es']
+    const CONFIDENCE_THRESHOLD = -0.5 // rough heuristic -- avg_logprob closer to 0 is more confident; may need tuning against real call data over time
+    const langNames = { en: 'english', yi: 'yiddish', es: 'spanish' }
+    let bestSoFar = null
+
+    for (const lang of priorityOrder) {
+      let attempt = null
       try {
         const form = new FormData()
         form.append('file', new Blob([audioBuffer], { type: 'audio/mpeg' }), 'recording.mp3')
@@ -310,26 +321,30 @@ async function transcribeAudio(recordingUrl) {
           headers: { Authorization: 'Bearer ' + openaiKey },
           body: form,
         })
-        if (!res.ok) return null
-        const result = await res.json()
-        const segments = result.segments || []
-        // Average log-probability across segments as a confidence proxy
-        // -- less negative (closer to 0) means more confident.
-        const avgLogProb = segments.length
-          ? segments.reduce((sum, s) => sum + (s.avg_logprob || -10), 0) / segments.length
-          : -10
-        return { lang, text: result.text || '', avgLogProb }
-      } catch (e) {
-        return null
+        if (res.ok) {
+          const result = await res.json()
+          const segments = result.segments || []
+          const avgLogProb = segments.length
+            ? segments.reduce((sum, s) => sum + (s.avg_logprob || -10), 0) / segments.length
+            : -10
+          attempt = { lang, text: result.text || '', avgLogProb }
+        }
+      } catch (e) { /* try next in priority order */ }
+
+      if (attempt && attempt.text.trim()) {
+        if (!bestSoFar || attempt.avgLogProb > bestSoFar.avgLogProb) bestSoFar = attempt
+        // Confident enough on a higher-priority language — stop here,
+        // don't spend more API calls checking lower-priority ones.
+        if (attempt.avgLogProb >= CONFIDENCE_THRESHOLD) {
+          return { text: attempt.text, language: langNames[attempt.lang] || attempt.lang }
+        }
       }
-    }))
+    }
 
-    const valid = attempts.filter(a => a && a.text.trim())
-    if (!valid.length) return null
-
-    const best = valid.reduce((a, b) => (b.avgLogProb > a.avgLogProb ? b : a))
-    const langNames = { en: 'english', yi: 'yiddish', es: 'spanish' }
-    return { text: best.text, language: langNames[best.lang] || best.lang }
+    // Nothing hit the confidence threshold — use whichever attempt
+    // scored best overall rather than returning nothing.
+    if (bestSoFar) return { text: bestSoFar.text, language: langNames[bestSoFar.lang] || bestSoFar.lang }
+    return null
   } catch (e) {
     console.warn('[transcribeAudio] failed:', e.message)
     return null
