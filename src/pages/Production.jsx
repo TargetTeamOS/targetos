@@ -413,16 +413,21 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
 }
 
 // ── MONDAY.COM ROW ────────────────────────────────────────────────
-function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect, visibleCols, onDealDragStart }) {
+function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect, visibleCols, onDealDragStart, onDealDropOnRow }) {
   const [hover, setHover] = React.useState(false)
+  const [dragOverRow, setDragOverRow] = React.useState(false)
 
   return (
     <tr
       draggable={!!onDealDragStart}
       onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', deal.id); onDealDragStart?.(deal.id) }}
+      onDragOver={e => { if (onDealDropOnRow) { e.preventDefault(); e.stopPropagation() } }}
+      onDragEnter={e => { if (onDealDropOnRow) { e.preventDefault(); e.stopPropagation(); setDragOverRow(true) } }}
+      onDragLeave={() => setDragOverRow(false)}
+      onDrop={e => { e.preventDefault(); e.stopPropagation(); setDragOverRow(false); onDealDropOnRow?.(deal) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', transition: 'background .08s' }}>
+      style={{ background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', borderTop: dragOverRow ? '2px solid #0073ea' : '2px solid transparent', transition: 'background .08s' }}>
 
       {/* Checkbox + color bar + drag handle */}
       <td style={{ width: 50, padding: 0, borderRight: '1px solid #e6e9ef', position: 'sticky', left: 0, background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', zIndex: 2 }}>
@@ -465,7 +470,7 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
 
 
 // ── MONDAY.COM GROUP ─────────────────────────────────────────────
-function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename, onDealDragStart, onDropDeal, isDragOver, onDragEnterGroup, onDragLeaveGroup }) {
+function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename, onDealDragStart, onDropDeal, isDragOver, onDragEnterGroup, onDragLeaveGroup, onDealDropOnRow }) {
   const [collapsed, setCollapsed] = React.useState(false)
   const [renaming,  setRenaming]  = React.useState(false)
   const [renameVal, setRenameVal] = React.useState(group.label)
@@ -536,7 +541,8 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
                 <DealRow key={d.id} deal={d} agents={agents} onOpen={onOpen} onQuickUpdate={onQuickUpdate}
                   isAdmin={isAdmin} isSelected={selectedIds.includes(d.id)}
                   onToggleSelect={onToggleSelect} visibleCols={visibleCols}
-                  onDealDragStart={onDealDragStart} />
+                  onDealDragStart={onDealDragStart}
+                  onDealDropOnRow={onDealDropOnRow ? (targetDeal) => onDealDropOnRow(targetDeal, group) : undefined} />
               ))}
             </tbody>
             {/* Totals footer */}
@@ -1448,6 +1454,45 @@ export function Production() {
     setDragOverGroupId(null)
   }
 
+  // Drop directly onto another deal row — reorders within that row's
+  // group (pure organization, independent of stage), and also changes
+  // stage if the drop lands in a different group than the dragged
+  // deal's current one.
+  async function handleRowDrop(targetDeal, group) {
+    const draggedId = draggedDealId
+    setDraggedDealId(null)
+    setDragOverGroupId(null)
+    if (!draggedId || draggedId === targetDeal.id || group.yearMatch) return
+    const deal = deals.find(d => d.id === draggedId)
+    if (!deal) return
+
+    // Build the new order for this group: everyone currently in it
+    // (excluding the dragged deal), with the dragged deal inserted
+    // right before the target row.
+    const groupDeals  = group.deals.filter(d => d.id !== draggedId)
+    const targetIdx   = groupDeals.findIndex(d => d.id === targetDeal.id)
+    const newOrder    = [...groupDeals]
+    newOrder.splice(targetIdx === -1 ? newOrder.length : targetIdx, 0, deal)
+    const positionUpdates = newOrder.map((d, i) => ({ id: d.id, board_position: i }))
+
+    // Optimistic update — reorder + stage change (if crossing groups) immediately
+    const newStage = (group.stages?.[0] && deal.stage !== group.stages[0]) ? group.stages[0] : null
+    setDeals(prev => prev.map(d => {
+      const u = positionUpdates.find(x => x.id === d.id)
+      if (!u) return d
+      return { ...d, board_position: u.board_position, ...(d.id === deal.id && newStage ? { stage: newStage } : {}) }
+    }))
+
+    try {
+      if (newStage) await quickUpdate(deal, 'stage', newStage)
+      await Promise.all(positionUpdates.map(u =>
+        supabase.from('deals').update({ board_position: u.board_position }).eq('id', u.id)
+      ))
+    } catch(e) {
+      toast('Reorder failed: ' + e.message, '#DC2626')
+    }
+  }
+
   async function quickUpdate(deal, field, value, isCustom) {
     const today = new Date().toISOString().slice(0, 10)
 
@@ -1530,6 +1575,14 @@ export function Production() {
         return year === group.yearMatch
       }
       return true
+    }).sort((a, b) => {
+      // Manual drag-order first; deals never manually positioned keep
+      // their original relative order, sorted after any positioned ones
+      const ap = a.board_position, bp = b.board_position
+      if (ap == null && bp == null) return 0
+      if (ap == null) return 1
+      if (bp == null) return -1
+      return ap - bp
     }),
   })), [activeGroups, filtered])
   const visibleGroups = groupedDeals.filter(g => g.custom ? true : g.yearMatch ? true : g.deals.length > 0 || ['active','under_shtar','under_contract'].includes(g.id))
@@ -1792,6 +1845,7 @@ export function Production() {
               isDragOver={dragOverGroupId === group.id}
               onDragEnterGroup={() => !group.yearMatch && setDragOverGroupId(group.id)}
               onDragLeaveGroup={() => setDragOverGroupId(null)}
+              onDealDropOnRow={handleRowDrop}
             />
           ))}
           <div onClick={addGroup}
