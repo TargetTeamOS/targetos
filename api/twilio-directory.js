@@ -28,11 +28,13 @@ module.exports = async function handler(req, res) {
   const supabase = getSupabase()
   if (!supabase) return res.send(wrap(say('Directory is unavailable. Goodbye.', voice)))
 
-  // Load active agents ordered consistently (by created_at) and assign extensions 101+
+  // Load active agents marked for the directory, ordered consistently
+  // (by created_at) and assign extensions 101+
   const { data: agents } = await supabase
     .from('agents')
     .select('id,name,phone,role')
     .eq('active', true)
+    .eq('in_directory', true)
     .order('created_at', { ascending: true })
     .limit(20)
 

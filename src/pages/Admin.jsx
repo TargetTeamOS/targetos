@@ -113,6 +113,7 @@ export function Admin() {
           role:                form.role,
           color:               form.color,
           can_hear_recordings: !!form.can_hear_recordings,
+          in_directory:        !!form.in_directory,
           auth_user_id:        selected.auth_user_id || null,
         },
       })
@@ -764,6 +765,9 @@ export function Admin() {
         <Field label="Role"><Select value={form.role} onChange={v=>set('role',v)} options={ROLES} /></Field>
         <Field label="Call Recordings" hint="Can this agent hear call recordings for any contact? (Per-contact access can also be granted from a contact's page.)">
           <Toggle value={!!form.can_hear_recordings} onChange={v=>set('can_hear_recordings', v)} label={form.can_hear_recordings ? 'Can hear all recordings' : 'No recording access'} />
+        </Field>
+        <Field label="Phone Directory" hint="Should this agent be reachable via the phone system's agent directory (press 3)?">
+          <Toggle value={!!form.in_directory} onChange={v=>set('in_directory', v)} label={form.in_directory ? 'Listed in directory' : 'Not in directory'} />
         </Field>
         <Field label="Avatar Color">
           <div style={{display:'flex',gap:8,flexWrap:'wrap',paddingTop:4}}>

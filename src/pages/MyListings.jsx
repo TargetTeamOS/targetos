@@ -60,7 +60,7 @@ function DOMBadge({ days }) {
   )
 }
 
-function ListingCard({ listing, showings, openHouses, onLogShowing, onScheduleOH, onPriceChange, onUpdateStatus, expanded, onToggle }) {
+function ListingCard({ listing, showings, openHouses, onLogShowing, onScheduleOH, onPriceChange, onUpdateStatus, onToggleIvr, expanded, onToggle }) {
   const dom    = daysOnMarket(listing.list_date)
   const status = listing.status || 'Active'
   const sc     = STATUS_COLORS[status] || '#94A3B8'
@@ -135,6 +135,11 @@ function ListingCard({ listing, showings, openHouses, onLogShowing, onScheduleOH
               style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: 12, fontFamily: ff, cursor: 'pointer' }}>
               {LISTING_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            <button onClick={() => onToggleIvr(listing)}
+              title={listing.ivr_enabled ? 'Visible in phone system — click to remove' : 'Not in phone system — click to feature it'}
+              style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + (listing.ivr_enabled ? '#10B981' : 'var(--border)'), background: listing.ivr_enabled ? 'rgba(16,185,129,.08)' : 'var(--dim)', color: listing.ivr_enabled ? '#10B981' : 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+              📞 {listing.ivr_enabled ? 'Featured on Phone' : 'Not on Phone'}
+            </button>
           </div>
 
           {/* Showings */}
@@ -369,6 +374,15 @@ export function MyListings() {
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') } finally { setSaving(false) }
   }
 
+  async function toggleIvr(listing) {
+    const next = !listing.ivr_enabled
+    try {
+      await supabase.from('listings').update({ ivr_enabled: next, updated_at: new Date().toISOString() }).eq('id', listing.id)
+      setListings(p => p.map(l => l.id === listing.id ? { ...l, ivr_enabled: next } : l))
+      toast(next ? '📞 Featured on phone system' : 'Removed from phone system')
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+  }
+
   async function updateStatus(listing, newStatus) {
     try {
       await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listing.id)
@@ -470,6 +484,7 @@ export function MyListings() {
             onScheduleOH={l => { setSelListing(l); setOhModal(true) }}
             onPriceChange={l => { setSelListing(l); setPriceForm({ list_price: l.list_price || '', reason: '' }); setPriceModal(true) }}
             onUpdateStatus={updateStatus}
+            onToggleIvr={toggleIvr}
           />
         ))
       )}

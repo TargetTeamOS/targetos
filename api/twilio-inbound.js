@@ -8,39 +8,7 @@ const {
   logTwilioValidation,
 } = require('./_lib/phone')
 const { walkFlow } = require('./_lib/call-flow')
-
-// The canonical Target Team call flow — saved automatically if phone_ivr is empty
-const DEFAULT_NODES = [
-  { id:'start',       type:'incoming',  x:60,   y:300, config:{} },
-  { id:'greeting',    type:'greeting',  x:340,  y:300, config:{ text:'Thank you for calling Target Team, Keller Williams Valley Realty. Your call is very important to us.', voice:'Polly.Joanna' } },
-  { id:'menu',        type:'menu',      x:640,  y:160, config:{
-    text:'Press 1 to be connected to an available agent. Press 2 for our agent directory. Press 3 to leave a voicemail. Press 4 for our exclusive listings. Press 5 to search live MLS listings.',
-    voice:'Polly.Joanna', timeout:10,
-    options:[
-      { key:'1', label:'Connect to Agent',  say:'Connecting you to the next available agent. Please hold.' },
-      { key:'2', label:'Agent Directory',   say:'Opening our agent directory.' },
-      { key:'3', label:'Leave Voicemail',   say:'' },
-      { key:'4', label:'Exclusive Listings',say:'Opening our exclusive listings search.' },
-      { key:'5', label:'Live MLS Search',   say:'Opening our live MLS search.' },
-    ]
-  }},
-  { id:'ringall',     type:'ringall',   x:960,  y:40,  config:{ agent_ids:[], timeout:30 } },
-  { id:'directory',   type:'directory', x:960,  y:160, config:{ voice:'Polly.Joanna' } },
-  { id:'voicemail',   type:'voicemail', x:960,  y:280, config:{ text:'Thank you for calling Target Team. Please leave your name, phone number, and a brief message and one of our agents will return your call as soon as possible.', voice:'Polly.Joanna', max_length:120, transcribe:true, notify_agent:true, pin_enabled:false } },
-  { id:'listings',    type:'listings',  x:960,  y:400, config:{ intro:'Welcome to our exclusive listings search. Search by area, price, bedrooms, bathrooms, and property type.', voice:'Polly.Joanna', max_results:5 } },
-  { id:'mlssearch',   type:'mlssearch', x:960,  y:520, config:{ intro:'Welcome to our live MLS search for Rockland County.', voice:'Polly.Joanna', max_results:5, area:'Rockland' } },
-  { id:'vm_fallback', type:'voicemail', x:1260, y:40,  config:{ text:'We are sorry, all agents are currently unavailable. Please leave your name and number and we will return your call promptly.', voice:'Polly.Joanna', max_length:120, transcribe:true, notify_agent:true, pin_enabled:false } },
-]
-const DEFAULT_EDGES = [
-  { id:'e1', from:'start',    port:'out',      to:'greeting'    },
-  { id:'e2', from:'greeting', port:'out',      to:'menu'        },
-  { id:'e3', from:'menu',     port:'key_1',    to:'ringall'     },
-  { id:'e4', from:'menu',     port:'key_2',    to:'directory'   },
-  { id:'e5', from:'menu',     port:'key_3',    to:'voicemail'   },
-  { id:'e6', from:'menu',     port:'key_4',    to:'listings'    },
-  { id:'e7', from:'menu',     port:'key_5',    to:'mlssearch'   },
-  { id:'e8', from:'ringall',  port:'noanswer', to:'vm_fallback' },
-]
+const { buildDefaultNodes, buildDefaultEdges } = require('./_lib/default-flow')
 
 async function ensureFlow(sb) {
   let { nodes, edges } = await loadFlow(sb)
@@ -54,15 +22,14 @@ async function ensureFlow(sb) {
       .select('id,phone').eq('active', true).order('created_at', { ascending: true })
     const agentIds = (agents || []).filter(a => a.phone).map(a => a.id)
 
-    // Inject real agent IDs into ringall node
-    const nodesWithAgents = DEFAULT_NODES.map(n =>
-      n.id === 'ringall' ? { ...n, config: { ...n.config, agent_ids: agentIds } } : n
-    )
+    // Inject real agent IDs into roundrobin node
+    const nodesWithAgents = buildDefaultNodes(agentIds)
+    const edges = buildDefaultEdges()
 
     const payload = {
       name:       'Target Team — Main Call Flow',
       flow_nodes: JSON.stringify(nodesWithAgents),
-      flow_edges: JSON.stringify(DEFAULT_EDGES),
+      flow_edges: JSON.stringify(edges),
       is_active:  true,
       updated_at: new Date().toISOString(),
     }
@@ -79,11 +46,11 @@ async function ensureFlow(sb) {
       })
     }
 
-    console.info('[inbound] Default flow saved with', agentIds.length, 'agents in ringall')
-    return { nodes: nodesWithAgents, edges: DEFAULT_EDGES }
+    console.info('[inbound] Default flow saved with', agentIds.length, 'agents in roundrobin')
+    return { nodes: nodesWithAgents, edges: edges }
   } catch(e) {
     console.error('[inbound] ensureFlow save failed:', e.message)
-    return { nodes: DEFAULT_NODES, edges: DEFAULT_EDGES }
+    return { nodes: buildDefaultNodes([]), edges: buildDefaultEdges() }
   }
 }
 

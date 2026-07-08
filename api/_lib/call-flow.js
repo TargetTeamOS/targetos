@@ -210,17 +210,14 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
     )
   }
 
-  // ── ROUND ROBIN (least-calls-first) ─────────────────────────────
-  // Rings ONLY the single agent (among agent_ids) who has taken the
-  // fewest inbound calls today — not everyone at once. That's what the
-  // builder UI promises ("Round Robin (least-calls first)"), but the
-  // code previously treated this identically to Ring All. Fixed July
-  // 2026. Ties broken by agent_ids array order (stable/deterministic).
-  // Note: if the chosen agent doesn't answer, this falls through to
-  // 'noanswer' (same single-fallback-port pattern as Ring All) rather
-  // than cascading to the next-least-busy agent — a true call-center
-  // "hunt group" would try several agents in sequence; this is the
-  // simpler, honest version matching the existing graph shape.
+  // ── ROUND ROBIN (sequential hunt group) ──────────────────────────
+  // Rings agents ONE AT A TIME, least-busy-first, ~20 seconds each,
+  // for up to ~1 minute total, then falls to voicemail. This is a
+  // real hunt group -- earlier versions only rang a single agent once
+  // (first just "ring all simultaneously" mislabeled as round robin,
+  // then "ring only the single least-busy agent" with an explicit
+  // code comment admitting it wasn't true sequential hunting). Fixed
+  // July 2026 per business requirement: 20 sec/agent, 1 min total.
   if (node.type === 'roundrobin') {
     const ids = cfg.agent_ids || []
     let agentsData = []
@@ -243,7 +240,10 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
       )
     }
 
-    let leastBusy = agentsData[0]
+    // Order least-busy-first (today's inbound call count), same
+    // fairness logic as before -- just applied to build a SEQUENCE
+    // now, not to pick a single winner.
+    let ordered = agentsData
     try {
       const todayStart = new Date()
       todayStart.setHours(0, 0, 0, 0)
@@ -255,17 +255,41 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
       const counts = {}
       agentsData.forEach(a => { counts[a.id] = 0 })
       ;(todaysCalls || []).forEach(c => { if (counts[c.agent_id] !== undefined) counts[c.agent_id]++ })
-      leastBusy = agentsData.reduce((min, a) => counts[a.id] < counts[min.id] ? a : min, agentsData[0])
+      ordered = [...agentsData].sort((a, b) => counts[a.id] - counts[b.id])
     } catch(e) {
       console.warn('[walkFlow] roundrobin count lookup:', e.message)
     }
 
-    const phone = normalizePhone(leastBusy.phone)
-    let twiml = buildDial(to, phone, cfg.timeout || 30)
+    // Ring each agent PER_AGENT_SECONDS in sequence until TOTAL_SECONDS
+    // is used up. A failed <Dial> (no answer/busy) falls straight
+    // through to the next <Dial> in the same TwiML response -- no
+    // redirect/round-trip needed for the hunt itself. Each <Number>
+    // carries its own statusCallback with agentId + callLogId so
+    // twilio-status.js can tell EXACTLY which agent answered (needed
+    // for the new-contact auto-assignment/email/task automation).
+    const PER_AGENT_SECONDS = cfg.per_agent_seconds || 20
+    const TOTAL_SECONDS     = cfg.total_seconds || 60
+    const maxAgents = Math.max(1, Math.floor(TOTAL_SECONDS / PER_AGENT_SECONDS))
+    const huntList  = ordered.slice(0, maxAgents)
+
+    let twiml = huntList.map(a => {
+      const phone = normalizePhone(a.phone)
+      const statusUrl = BASE_URL + '/api/twilio-status?agentId=' + encodeURIComponent(a.id) +
+        (callData.callId ? '&callLogId=' + encodeURIComponent(callData.callId) : '')
+      return (
+        '<Say voice="' + voice + '">This call may be recorded for quality and training purposes.</Say>' +
+        '<Dial callerId="' + to + '" timeout="' + PER_AGENT_SECONDS + '" record="record-from-answer"' +
+        ' recordingStatusCallback="' + BASE_URL + '/api/twilio-status">' +
+        '<Number statusCallback="' + esc(statusUrl) + '" statusCallbackMethod="POST"' +
+        ' statusCallbackEvent="answered">' + esc(phone) + '</Number>' +
+        '</Dial>'
+      )
+    }).join('')
+
     const rest = await follow('noanswer')
     if (rest) return twiml + rest
     return twiml + voicemailTwiml(
-      'We are sorry, that agent is currently unavailable. Please leave your name and number and we will return your call.',
+      'We are sorry, all agents are currently unavailable. Please leave your name and number and we will return your call.',
       voice
     )
   }
