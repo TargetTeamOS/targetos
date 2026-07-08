@@ -278,7 +278,8 @@ async function transcribeAudio(recordingUrl) {
 
   try {
     // Fetch the actual audio bytes from Twilio (same Basic Auth pattern
-    // used by the recording proxy)
+    // used by the recording proxy) -- once, then reused for all 3
+    // transcription attempts below.
     const basicAuth = 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64')
     const audioRes = await fetch(recordingUrl, { headers: { Authorization: basicAuth } })
     if (!audioRes.ok) {
@@ -287,24 +288,48 @@ async function transcribeAudio(recordingUrl) {
     }
     const audioBuffer = Buffer.from(await audioRes.arrayBuffer())
 
-    // Send to OpenAI Whisper
-    const form = new FormData()
-    form.append('file', new Blob([audioBuffer], { type: 'audio/mpeg' }), 'recording.mp3')
-    form.append('model', 'whisper-1')
-    form.append('response_format', 'verbose_json') // includes detected language
+    // FIX (July 2026): Whisper's free-form auto-detection (choosing
+    // among ~99 languages) was confirmed in real testing to misidentify
+    // Yiddish as an unrelated language (similar script/phonetics to
+    // Hebrew and German), producing genuine gibberish -- not just
+    // reduced accuracy. Since only these 3 languages matter here,
+    // explicitly transcribe with EACH hinted, then keep whichever
+    // result Whisper itself is most confident in, rather than letting
+    // it freely guess among languages that were never in scope.
+    const candidates = ['en', 'yi', 'es']
+    const attempts = await Promise.all(candidates.map(async (lang) => {
+      try {
+        const form = new FormData()
+        form.append('file', new Blob([audioBuffer], { type: 'audio/mpeg' }), 'recording.mp3')
+        form.append('model', 'whisper-1')
+        form.append('language', lang)
+        form.append('response_format', 'verbose_json')
 
-    const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + openaiKey },
-      body: form,
-    })
-    if (!whisperRes.ok) {
-      const errText = await whisperRes.text().catch(() => '')
-      console.warn('[transcribeAudio] Whisper API error:', whisperRes.status, errText.slice(0, 200))
-      return null
-    }
-    const result = await whisperRes.json()
-    return { text: result.text || '', language: result.language || null }
+        const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + openaiKey },
+          body: form,
+        })
+        if (!res.ok) return null
+        const result = await res.json()
+        const segments = result.segments || []
+        // Average log-probability across segments as a confidence proxy
+        // -- less negative (closer to 0) means more confident.
+        const avgLogProb = segments.length
+          ? segments.reduce((sum, s) => sum + (s.avg_logprob || -10), 0) / segments.length
+          : -10
+        return { lang, text: result.text || '', avgLogProb }
+      } catch (e) {
+        return null
+      }
+    }))
+
+    const valid = attempts.filter(a => a && a.text.trim())
+    if (!valid.length) return null
+
+    const best = valid.reduce((a, b) => (b.avgLogProb > a.avgLogProb ? b : a))
+    const langNames = { en: 'english', yi: 'yiddish', es: 'spanish' }
+    return { text: best.text, language: langNames[best.lang] || best.lang }
   } catch (e) {
     console.warn('[transcribeAudio] failed:', e.message)
     return null
