@@ -1166,7 +1166,7 @@ export function Production() {
   const [sideF,    setSideF]    = useState('')
   const [saleTypeF,setSaleTypeF]= useState('')
   const [propTypeF,setPropTypeF]= useState('')
-  const [yearF,    setYearF]    = useState(new Date().getFullYear().toString())
+  const [yearF,    setYearF]    = useState('')
   const [selected, setSelected] = useState(null) // deal being edited, or {} for new
   const [saving,   setSaving]   = useState(false)
   const [viewMode,    setViewMode]    = useState('board') // 'board' | 'table'
@@ -1587,11 +1587,30 @@ export function Production() {
   })), [activeGroups, filtered])
   const visibleGroups = groupedDeals.filter(g => g.custom ? true : g.yearMatch ? true : g.deals.length > 0 || ['active','under_shtar','under_contract'].includes(g.id))
 
-  // Stats
-  const totalGCIAll   = filtered.reduce((s, d) => s + parseNum(d.gci), 0)
-  const closedArr     = filtered.filter(d => d.stage === 'Closed')
+  // Stats — deliberately calculated from a FIXED "this year's business"
+  // scope, NOT from `filtered` (which reflects whatever the user is
+  // currently browsing with stage/agent/year filters). The board layout
+  // below shows everything, matching Monday.com's full structure; these
+  // summary cards should stay consistent regardless of what's being
+  // browsed. "This year" = active pipeline stages always count (no
+  // date requirement — a deal accepted 2 years ago that's still under
+  // contract is still part of this year's active business), while
+  // Closed/Deal Fell Through only count if they resolved this year.
+  const currentYear = new Date().getFullYear().toString()
+  const ACTIVE_STAGES = ['Negotiations', 'Offer Accapted', 'Under Shtar', 'Under Contract']
+  const thisYearScope = useMemo(() => deals.filter(d => {
+    if (ACTIVE_STAGES.includes(d.stage)) return true
+    if (d.stage === 'Closed' || d.stage === 'Deal Fell Through') {
+      const year = d.close_date?.slice(0,4) || d.ao_date?.slice(0,4) || d.created_at?.slice(0,4)
+      return year === currentYear
+    }
+    return false
+  }), [deals, currentYear])
+
+  const totalGCIAll   = thisYearScope.reduce((s, d) => s + parseNum(d.gci), 0)
+  const closedArr     = thisYearScope.filter(d => d.stage === 'Closed')
   const closedGCI     = closedArr.reduce((s, d) => s + parseNum(d.gci), 0)
-  const activeArr     = filtered.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
+  const activeArr     = thisYearScope.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
   const pipelineGCI   = activeArr.reduce((s, d) => s + parseNum(d.gci), 0)
   const isTruncated   = !!(trueTotals && deals.length < trueTotals.total_count)
 
@@ -1671,7 +1690,7 @@ export function Production() {
       {/* ── STATS ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
         {[
-          { label: 'Total Deals',    value: filtered.length,      color: '#3B82F6', prefix: '' },
+          { label: 'Total Deals',    value: thisYearScope.length, color: '#3B82F6', prefix: '' },
           { label: 'Active',         value: activeArr.length,     color: '#037f4c', prefix: '' },
           { label: 'Closed GCI',     value: fmt$(closedGCI),      color: '#10B981', prefix: '' },
           { label: 'Pipeline GCI',   value: fmt$(pipelineGCI),    color: '#F5A623', prefix: '' },
