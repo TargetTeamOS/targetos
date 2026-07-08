@@ -466,7 +466,6 @@ export function GlobalDialButton() {
 export function HeaderCallButton() {
   const [open, setOpen] = useState(false)
   const [num,  setNum]  = useState('')
-  const g = useG()
   const ref = React.useRef(null)
 
   React.useEffect(() => {
@@ -477,7 +476,11 @@ export function HeaderCallButton() {
 
   async function dial() {
     if (!num.trim()) return
-    g.setState(p => ({ ...p, toNumber: num, active: true }))
+    G.set({
+      show:true, active:false, status:'confirm', errorText:'',
+      name: num, phone: num, contactId:null,
+      callLogId:null, callSid:null, startTime:null, mode:null,
+    })
     setOpen(false)
     setNum('')
   }

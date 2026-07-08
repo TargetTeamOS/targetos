@@ -439,6 +439,7 @@ export function Contacts() {
                 </button>
               ))}
             </div>
+            <HeaderCallButton />
             <Btn onClick={openAdd}>+ Add Contact</Btn>
           </div>
         }
