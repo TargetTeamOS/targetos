@@ -7,7 +7,8 @@
 import React, { useState, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { startRecording, parseVoice } from '../lib/voice'
+import { supabase } from '../lib/supabase'
+import { startRecording, parseVoiceWithAI } from '../lib/voice'
 import { db } from '../lib/db'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
@@ -19,7 +20,7 @@ export function VoiceCapture() {
   const [open,    setOpen]    = useState(false)
   const [recording, setRecording] = useState(false)
   const [parsed,  setParsed]  = useState(null)
-  const [step,    setStep]    = useState('idle') // idle | reviewing | done
+  const [step,    setStep]    = useState('idle') // idle | parsing | reviewing | done
   const [saving,  setSaving]  = useState(false)
   const [pos,     setPos]     = useState({ x: 24, y: null }) // bottom-left
   const recRef = useRef(null)
@@ -65,10 +66,19 @@ export function VoiceCapture() {
     setParsed(null)
     setStep('idle')
     recRef.current = startRecording(
-      (transcript, result) => {
+      async (transcript) => {
         setRecording(false)
-        setParsed(result)
-        setStep('reviewing')
+        setStep('parsing')
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          const authHeaders = session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}
+          const result = await parseVoiceWithAI(transcript, authHeaders)
+          setParsed(result)
+          setStep('reviewing')
+        } catch(e) {
+          toast('Could not process — please try again', '#DC2626')
+          setStep('idle')
+        }
       },
       (err) => {
         setRecording(false)
@@ -92,6 +102,9 @@ export function VoiceCapture() {
         first_name: parsed.name?.first || 'Voice Lead',
         last_name:  parsed.name?.last  || '',
         phone:      parsed.phone       || '',
+        email:      parsed.email       || '',
+        address:    parsed.address     || '',
+        notes:      parsed.aiParsed ? parsed.notes : parsed.rawText,
         source:     'Voice Capture',
         agent_id:   agent.id,
       })
@@ -109,15 +122,41 @@ export function VoiceCapture() {
     setSaving(true)
     try {
       await db.tasks.create({
-        title:      parsed.rawText.slice(0, 100),
+        title:         parsed.title || parsed.rawText.slice(0, 100),
+        agent_id:      agent.id,
+        created_by:    agent.id,
+        due_date:      parsed.date || null,
+        reminder_days: parsed.reminderDays || null,
+        priority:      'normal',
+        status:        'pending',
+        notes:         parsed.aiParsed ? parsed.notes : parsed.rawText,
+      })
+      toast('✅ Task saved' + (parsed.reminderDays ? ' — reminder set for ' + parsed.reminderDays + ' day' + (parsed.reminderDays > 1 ? 's' : '') + ' before' : ''), '#10B981')
+      setStep('done')
+    } catch(e) {
+      toast('Save failed: ' + (e.message || JSON.stringify(e)), '#DC2626')
+    } finally { setSaving(false) }
+  }
+
+  // ── SAVE AS NOTE ───────────────────────────────────────────────
+  // No standalone "note" entity outside a specific contact/deal in
+  // this app -- saved as a no-due-date task so it's still visible
+  // somewhere (the agent's task list) instead of disappearing.
+  async function saveAsNote() {
+    if (!parsed) return
+    if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
+    setSaving(true)
+    try {
+      await db.tasks.create({
+        title:      parsed.title || 'Voice note',
         agent_id:   agent.id,
         created_by: agent.id,
-        due_date:   parsed.date || null,
+        due_date:   null,
         priority:   'normal',
         status:     'pending',
-        notes:      parsed.rawText,
+        notes:      parsed.aiParsed ? parsed.notes : parsed.rawText,
       })
-      toast('✅ Task saved', '#10B981')
+      toast('✅ Note saved to your tasks', '#10B981')
       setStep('done')
     } catch(e) {
       toast('Save failed: ' + (e.message || JSON.stringify(e)), '#DC2626')
@@ -131,9 +170,10 @@ export function VoiceCapture() {
     setSaving(true)
     try {
       await db.calendar.create({
-        title:      parsed.rawText.slice(0, 100),
+        title:      parsed.title || parsed.rawText.slice(0, 100),
         agent_id:   agent.id,
         start_date: parsed.date || new Date().toISOString().slice(0, 10),
+        start_time: parsed.eventTime || null,
         type:       'event',
       })
       toast('✅ Event saved', '#10B981')
@@ -189,13 +229,21 @@ export function VoiceCapture() {
             {step === 'idle' && (
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '16px' }}>
-                  Tap the mic to record a lead, task, or note.
+                  Tap the mic to record a lead, task, note, or reminder.
                 </div>
                 <button onClick={recording ? stopRecord : startRecord}
                   style={{ width: '70px', height: '70px', borderRadius: '50%', background: recording ? '#DC2626' : '#CC2200', border: 'none', color: '#fff', fontSize: '28px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(204,34,0,.3)', animation: recording ? 'pulse 1s infinite' : 'none' }}>
                   {recording ? '⏹' : '🎙'}
                 </button>
                 {recording && <div style={{ marginTop: '12px', color: '#DC2626', fontSize: '12px', fontWeight: 600 }}>Listening...</div>}
+              </div>
+            )}
+
+            {/* Step: parsing (waiting on AI) */}
+            {step === 'parsing' && (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ fontSize: '32px', marginBottom: '10px' }}>🤔</div>
+                <div style={{ fontSize: '13px', color: 'var(--muted)' }}>Understanding what you said...</div>
               </div>
             )}
 
@@ -207,13 +255,15 @@ export function VoiceCapture() {
                   "{parsed.rawText}"
                 </div>
 
-                {(parsed.hasName || parsed.hasPhone || parsed.hasAddress || parsed.hasDate) && (
+                {(parsed.hasName || parsed.hasPhone || parsed.hasAddress || parsed.hasDate || parsed.email || parsed.reminderDays) && (
                   <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px' }}>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: '#15803D', marginBottom: '6px' }}>Detected:</div>
                     {parsed.hasName && <div style={{ fontSize: '12px', color: '#166534', marginBottom: '3px' }}>👤 {parsed.name.first} {parsed.name.last}</div>}
                     {parsed.hasPhone && <div style={{ fontSize: '12px', color: '#166534', marginBottom: '3px' }}>📞 {parsed.phone}</div>}
+                    {parsed.email && <div style={{ fontSize: '12px', color: '#166534', marginBottom: '3px' }}>✉️ {parsed.email}</div>}
                     {parsed.hasAddress && <div style={{ fontSize: '12px', color: '#166534', marginBottom: '3px' }}>📍 {parsed.address}</div>}
-                    {parsed.hasDate && <div style={{ fontSize: '12px', color: '#166534' }}>📅 {parsed.date}</div>}
+                    {parsed.hasDate && <div style={{ fontSize: '12px', color: '#166534', marginBottom: '3px' }}>📅 {parsed.date}{parsed.eventTime ? ' at ' + parsed.eventTime : ''}</div>}
+                    {parsed.reminderDays && <div style={{ fontSize: '12px', color: '#166534' }}>⏰ Remind {parsed.reminderDays} day{parsed.reminderDays > 1 ? 's' : ''} before</div>}
                   </div>
                 )}
 
@@ -226,14 +276,18 @@ export function VoiceCapture() {
                   </button>
                   <button onClick={saveAsTask} disabled={saving}
                     style={{ padding: '10px 14px', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: '8px', color: '#C2410C', fontSize: '13px', fontWeight: 600, cursor: 'pointer', textAlign: 'left', fontFamily: ff }}>
-                    ✅ Save as Task
+                    ✅ Save as Task{parsed.hasDate ? ' — due ' + parsed.date : ''}
                   </button>
                   {parsed.hasDate && (
                     <button onClick={saveAsEvent} disabled={saving}
                       style={{ padding: '10px 14px', background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: '8px', color: '#6D28D9', fontSize: '13px', fontWeight: 600, cursor: 'pointer', textAlign: 'left', fontFamily: ff }}>
-                      📅 Save as Calendar Event — {parsed.date}
+                      📅 Save as Calendar Event — {parsed.date}{parsed.eventTime ? ' ' + parsed.eventTime : ''}
                     </button>
                   )}
+                  <button onClick={saveAsNote} disabled={saving}
+                    style={{ padding: '10px 14px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', color: '#475569', fontSize: '13px', fontWeight: 600, cursor: 'pointer', textAlign: 'left', fontFamily: ff }}>
+                    📝 Save as Note
+                  </button>
                 </div>
 
                 <button onClick={() => { setStep('idle'); setParsed(null) }}

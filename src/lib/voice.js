@@ -172,6 +172,69 @@ export function parseVoice(text) {
   }
 }
 
+// ── AI-POWERED PARSE (replaces rigid regex matching) ────────────────
+// Uses the existing /api/ai-assistant endpoint -- works today via
+// Claude (already configured), no OpenAI dependency for this part.
+// Falls back to the regex-based parseVoice() above if the AI call
+// fails for any reason (no key configured, network error, bad JSON
+// back) so the feature never fully breaks.
+export async function parseVoiceWithAI(text, authHeaders) {
+  if (!text?.trim()) return null
+  const today = new Date().toISOString().slice(0, 10)
+
+  const system = 'You are a voice-command parser for a real estate CRM used in Rockland County, NY. ' +
+    'The agent just spoke a command that should become a CONTACT, TASK, CALENDAR EVENT, or NOTE. ' +
+    'Extract ONLY a JSON object, no markdown fences, no explanation, matching this exact shape:\n' +
+    '{"intent":"contact"|"task"|"event"|"note",' +
+    '"first_name":string|null,"last_name":string|null,' +
+    '"phone":string|null (format as (XXX) XXX-XXXX),"email":string|null,"address":string|null,' +
+    '"title":string|null (short title, for task/event),' +
+    '"notes":string (a clean, well-written summary of what was said),' +
+    '"due_date":string|null (YYYY-MM-DD, resolve relative dates like tomorrow/next Friday using today\'s date),' +
+    '"event_time":string|null (HH:MM 24-hour, only if a specific time was mentioned),' +
+    '"reminder_days":number|null (days BEFORE due_date to send a reminder, only if the agent asked for an early reminder; null means remind exactly on the due date)}\n' +
+    'Today\'s date is ' + today + '. Return ONLY the JSON object.'
+
+  try {
+    const res = await fetch('/api/ai-assistant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(authHeaders || {}) },
+      body: JSON.stringify({
+        system,
+        max_tokens: 500,
+        messages: [{ role: 'user', content: text }],
+      }),
+    })
+    if (!res.ok) throw new Error('AI parse request failed')
+    const data = await res.json()
+    const raw = data.content?.[0]?.text || ''
+    const clean = raw.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(clean)
+
+    return {
+      rawText: text.trim(),
+      intent:  parsed.intent || 'note',
+      name:    { first: parsed.first_name || '', last: parsed.last_name || '' },
+      phone:   parsed.phone || null,
+      email:   parsed.email || null,
+      address: parsed.address || null,
+      title:   parsed.title || null,
+      notes:   parsed.notes || text.trim(),
+      date:    parsed.due_date || null,
+      eventTime: parsed.event_time || null,
+      reminderDays: parsed.reminder_days || null,
+      hasName:    !!(parsed.first_name),
+      hasPhone:   !!parsed.phone,
+      hasAddress: !!parsed.address,
+      hasDate:    !!parsed.due_date,
+      aiParsed:   true,
+    }
+  } catch(e) {
+    console.warn('[parseVoiceWithAI] falling back to regex parser:', e.message)
+    return { ...parseVoice(text), aiParsed: false }
+  }
+}
+
 // ── VOICE RECORDING ──────────────────────────────────────────────
 export function startRecording(onResult, onError) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -188,7 +251,7 @@ export function startRecording(onResult, onError) {
 
   rec.onresult = (e) => {
     const transcript = e.results[0][0].transcript
-    onResult?.(transcript, parseVoice(transcript))
+    onResult?.(transcript)
   }
 
   rec.onerror = (e) => {

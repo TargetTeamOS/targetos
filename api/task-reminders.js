@@ -34,12 +34,28 @@ module.exports = async function handler(req, res) {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
 
     // Load all pending tasks due today or overdue, grouped by agent
-    const [tasksRes, tcTasksRes] = await Promise.all([
+    const [tasksRes, earlyReminderRes, tcTasksRes] = await Promise.all([
       sb.from('tasks')
         .select('id, title, due_date, priority, notes, agent_id, contact_id, agents(id, name, email)')
         .eq('status', 'pending')
         .lte('due_date', tomorrow)
         .order('due_date', { ascending: true }),
+      (async () => {
+        // Regular tasks with a custom reminder lead time (reminder_days),
+        // due further out than tomorrow -- those already get caught by
+        // the query above. Same try/catch-not-.catch() pattern as below.
+        try {
+          return await sb.from('tasks')
+            .select('id, title, due_date, priority, notes, agent_id, contact_id, reminder_days, agents(id, name, email)')
+            .eq('status', 'pending')
+            .not('reminder_days', 'is', null)
+            .gt('due_date', tomorrow)
+            .order('due_date', { ascending: true })
+        } catch (e) {
+          console.warn('[task-reminders] tasks reminder_days query failed (column may not exist yet):', e.message)
+          return { data: [] }
+        }
+      })(),
       (async () => {
         // NOTE (July 2026): Supabase's query builder does not support
         // .catch() chained directly onto it -- doing so throws
@@ -60,6 +76,15 @@ module.exports = async function handler(req, res) {
       })()
     ])
 
+    // Regular tasks whose reminder_days-before-due-date lands on today
+    const earlyReminders = (earlyReminderRes.data || []).filter(t => {
+      if (!t.due_date || !t.reminder_days) return false
+      const dueDate = new Date(t.due_date)
+      const remind  = new Date(dueDate)
+      remind.setDate(remind.getDate() - parseInt(t.reminder_days))
+      return remind.toISOString().slice(0, 10) === today
+    })
+
     // Add TC tasks where reminder_days before due date matches today
     const tcTasks = (tcTasksRes.data || []).filter(t => {
       if (!t.due_date || !t.reminder_days) return false
@@ -73,7 +98,7 @@ module.exports = async function handler(req, res) {
       source: 'tc'
     }))
 
-    const tasks = [...(tasksRes.data || []), ...tcTasks]
+    const tasks = [...(tasksRes.data || []), ...earlyReminders, ...tcTasks]
 
     if (!tasks || tasks.length === 0) {
       return res.status(200).json({ ok: true, sent: 0, message: 'No tasks due' })
