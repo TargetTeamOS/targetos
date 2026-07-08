@@ -61,23 +61,68 @@ function Badge({ label, color }) {
 }
 
 // ── RECORDING PLAYER ─────────────────────────────────────────
-function RecordingPlayer({ url }) {
+function RecordingPlayer({ callId, voicemailId }) {
+  const [state,   setState]   = useState('idle') // idle | loading | ready | error
   const [playing, setPlaying] = useState(false)
-  const audio = useRef(null)
-  if (!url) return null
+  const audio    = useRef(null)
+  const blobUrl  = useRef(null)
+
+  if (!callId && !voicemailId) return null
+
+  const proxyUrl = '/api/twilio-recording-proxy?' + (callId ? 'callId=' + callId : 'voicemailId=' + voicemailId)
+
+  async function fetchRecording() {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(proxyUrl, {
+      headers: session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {},
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.error || 'Failed to load recording')
+    }
+    return URL.createObjectURL(await res.blob())
+  }
+
+  async function togglePlay() {
+    if (state === 'ready' && audio.current) {
+      if (playing) { audio.current.pause(); setPlaying(false) }
+      else { audio.current.play(); setPlaying(true) }
+      return
+    }
+    setState('loading')
+    try {
+      const url = await fetchRecording()
+      blobUrl.current = url
+      audio.current = new Audio(url)
+      audio.current.onended = () => setPlaying(false)
+      await audio.current.play()
+      setPlaying(true)
+      setState('ready')
+    } catch(e) {
+      setState('error')
+    }
+  }
+
+  async function download() {
+    try {
+      const url = await fetchRecording()
+      const a = document.createElement('a')
+      a.href = url; a.download = 'recording.mp3'; a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch(e) { /* silent */ }
+  }
+
   return (
     <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'6px 10px', background:'var(--dim)', borderRadius:'8px', border:'1px solid var(--border)', marginTop:'8px' }}>
-      <button onClick={() => {
-        if (!audio.current) audio.current = new Audio(url)
-        if (playing) { audio.current.pause(); setPlaying(false) }
-        else { audio.current.play(); setPlaying(true); audio.current.onended = () => setPlaying(false) }
-      }}
-        style={{ width:28, height:28, borderRadius:'50%', border:'none', background:'#CC2200', color:'#fff', cursor:'pointer', fontSize:'12px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-        {playing ? '⏸' : '▶'}
+      <button onClick={togglePlay} disabled={state === 'loading'}
+        style={{ width:28, height:28, borderRadius:'50%', border:'none', background:'#CC2200', color:'#fff', cursor: state === 'loading' ? 'wait' : 'pointer', fontSize:'12px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        {state === 'loading' ? '⏳' : playing ? '⏸' : '▶'}
       </button>
-      <span style={{ fontSize:'12px', color:'var(--muted)', flex:1 }}>Recording</span>
-      <a href={url} download target="_blank" rel="noopener noreferrer"
-        style={{ fontSize:'11px', color:'var(--brand)', textDecoration:'none' }}>⬇ Download</a>
+      <span style={{ fontSize:'12px', color: state === 'error' ? '#DC2626' : 'var(--muted)', flex:1 }}>
+        {state === 'error' ? 'Could not load recording' : 'Recording'}
+      </span>
+      <button onClick={download}
+        style={{ fontSize:'11px', color:'var(--brand)', background:'none', border:'none', cursor:'pointer', fontFamily:ff, padding:0 }}>⬇ Download</button>
     </div>
   )
 }
@@ -154,7 +199,12 @@ function CallDrawer({ call, agents, onSave, onClose, onDelete, saving }) {
           {call.recording_url && (
             <div>
               <Lbl c="Call Recording" />
-              <RecordingPlayer url={call.recording_url} />
+              <RecordingPlayer callId={call.id} />
+              {call.transcript && (
+                <div style={{ marginTop:6, fontSize:12, color:'var(--text)', fontStyle:'italic', lineHeight:1.5, background:'var(--dim)', padding:'8px 10px', borderRadius:7 }}>
+                  <strong>Transcript{call.transcript_language ? ' (' + call.transcript_language[0].toUpperCase() + call.transcript_language.slice(1) + ')' : ''}:</strong> {call.transcript}
+                </div>
+              )}
             </div>
           )}
           {!call.recording_url && call.has_recording && (
@@ -167,10 +217,13 @@ function CallDrawer({ call, agents, onSave, onClose, onDelete, saving }) {
           {call.is_voicemail && (
             <div style={{ padding:'12px', background:'#FFF7ED', borderRadius:'9px', border:'1px solid #F5A623' }}>
               <div style={{ fontSize:'12px', fontWeight:700, color:'#F5A623', marginBottom:'6px' }}>📬 Voicemail</div>
-              {call.voicemail_transcript && (
-                <div style={{ fontSize:'13px', color:'#92400E', lineHeight:1.5, marginBottom:'8px' }}>"{call.voicemail_transcript}"</div>
+              {(call.transcript || call.voicemail_transcript) && (
+                <div style={{ fontSize:'13px', color:'#92400E', lineHeight:1.5, marginBottom:'8px' }}>
+                  {call.transcript_language && <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', marginBottom:2 }}>{call.transcript_language}</div>}
+                  "{call.transcript || call.voicemail_transcript}"
+                </div>
               )}
-              <RecordingPlayer url={call.voicemail_url} />
+              <RecordingPlayer callId={call.id} />
             </div>
           )}
         </div>
@@ -599,7 +652,7 @@ function VoicemailInbox() {
                         "{vm.transcript}"
                       </div>
                     )}
-                    <RecordingPlayer url={vm.recording_url} />
+                    <RecordingPlayer voicemailId={vm.id} />
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:'6px', marginTop:'10px', justifyContent:'flex-end' }}>

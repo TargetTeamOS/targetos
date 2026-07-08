@@ -1,6 +1,6 @@
 'use strict'
 const querystring = require('querystring')
-const { getSupabase, logTwilioValidation } = require('./_lib/phone')
+const { getSupabase, logTwilioValidation, transcribeAudio } = require('./_lib/phone')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 const OUTCOME = { completed:'Connected', busy:'No Answer', 'no-answer':'No Answer', failed:'No Answer', canceled:'No Answer' }
 module.exports = async function handler(req, res) {
@@ -21,7 +21,21 @@ module.exports = async function handler(req, res) {
       if (CallStatus)    upd.status = CallStatus
       if (CallDuration)  upd.duration_sec = parseInt(CallDuration) || 0
       if (CallStatus)    upd.outcome = OUTCOME[CallStatus] || null
-      if (RecordingUrl) { upd.recording_url = RecordingUrl + '.mp3'; upd.recording_sid = RecordingSid }
+      let fullRecordingUrl = null
+      if (RecordingUrl) { fullRecordingUrl = RecordingUrl + '.mp3'; upd.recording_url = fullRecordingUrl; upd.recording_sid = RecordingSid }
+
+      // Transcribe (English/Yiddish/Spanish via Whisper) -- awaited
+      // deliberately: Vercel can freeze this function right after we
+      // respond, so "fire and forget" here would likely never finish.
+      // transcribeAudio() itself no-ops cleanly if OPENAI_API_KEY isn't
+      // set yet, so this is safe to leave in before that's configured.
+      if (fullRecordingUrl) {
+        const result = await transcribeAudio(fullRecordingUrl)
+        if (result) {
+          upd.transcript = result.text
+          upd.transcript_language = result.language
+        }
+      }
 
       if (Object.keys(upd).length > 0) {
         if (callLogId) {

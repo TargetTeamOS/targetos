@@ -95,14 +95,14 @@ async function requireRole(req, allowedRoles) {
     }
 
     const { data: agentRow, error: agentErr } = await supabase
-      .from('agents').select('role').eq('auth_user_id', userData.user.id).maybeSingle()
+      .from('agents').select('id, role').eq('auth_user_id', userData.user.id).maybeSingle()
     if (agentErr || !agentRow) {
       return { ok: false, status: 403, message: 'No matching agent record found' }
     }
     if (!allowedRoles.includes(agentRow.role)) {
       return { ok: false, status: 403, message: 'Requires ' + allowedRoles.join(' or ') + ' role' }
     }
-    return { ok: true }
+    return { ok: true, agentId: agentRow.id, role: agentRow.role }
   } catch (e) {
     return { ok: false, status: 500, message: 'Auth check failed: ' + e.message }
   }
@@ -252,6 +252,65 @@ const HOLD_MUSIC = {
   silence:   'https://demo.twilio.com/docs/silence.mp3',
 }
 
+// ── TRANSCRIPTION (OpenAI Whisper) ──────────────────────────────────
+// Transcribes a Twilio recording URL for calls AND voicemails, in
+// English, Yiddish, or Spanish (auto-detected -- Whisper doesn't
+// support restricting to a specific subset of languages, only hinting
+// at ONE expected language, which we don't know in advance). Whisper
+// officially supports Yiddish, but real-world accuracy for it is much
+// less proven than English/Spanish -- treat as best-effort.
+//
+// Returns { text, language } on success, or null if not configured /
+// on failure (never throws -- transcription failing should never
+// break the webhook that's calling this).
+async function transcribeAudio(recordingUrl) {
+  const openaiKey  = process.env.OPENAI_API_KEY
+  const accountSid = process.env.TWILIO_ACCOUNT_SID
+  const authToken  = process.env.TWILIO_AUTH_TOKEN
+  if (!openaiKey) {
+    console.warn('[transcribeAudio] OPENAI_API_KEY not set — skipping transcription')
+    return null
+  }
+  if (!accountSid || !authToken) {
+    console.warn('[transcribeAudio] Twilio credentials not set — cannot fetch recording audio')
+    return null
+  }
+
+  try {
+    // Fetch the actual audio bytes from Twilio (same Basic Auth pattern
+    // used by the recording proxy)
+    const basicAuth = 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64')
+    const audioRes = await fetch(recordingUrl, { headers: { Authorization: basicAuth } })
+    if (!audioRes.ok) {
+      console.warn('[transcribeAudio] could not fetch recording audio:', audioRes.status)
+      return null
+    }
+    const audioBuffer = Buffer.from(await audioRes.arrayBuffer())
+
+    // Send to OpenAI Whisper
+    const form = new FormData()
+    form.append('file', new Blob([audioBuffer], { type: 'audio/mpeg' }), 'recording.mp3')
+    form.append('model', 'whisper-1')
+    form.append('response_format', 'verbose_json') // includes detected language
+
+    const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + openaiKey },
+      body: form,
+    })
+    if (!whisperRes.ok) {
+      const errText = await whisperRes.text().catch(() => '')
+      console.warn('[transcribeAudio] Whisper API error:', whisperRes.status, errText.slice(0, 200))
+      return null
+    }
+    const result = await whisperRes.json()
+    return { text: result.text || '', language: result.language || null }
+  } catch (e) {
+    console.warn('[transcribeAudio] failed:', e.message)
+    return null
+  }
+}
+
 module.exports = {
   // TwiML
   wrap, say, pause, play, vmRecord, voicemailTwiml, hangup, redirect, esc,
@@ -264,7 +323,7 @@ module.exports = {
   // Phone
   normalizePhone, formatPhone,
   // Business logic
-  isBusinessHours, loadFlow, lookupContact,
+  isBusinessHours, loadFlow, lookupContact, transcribeAudio,
   // Constants
   BASE_URL, TWILIO_NUMBER, DEFAULT_VOICE, HOLD_MUSIC,
 }

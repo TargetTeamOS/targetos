@@ -187,7 +187,24 @@ const TL_TYPES = {
 
 function TimelineItem({ item }) {
   const [expanded, setExpanded] = React.useState(false)
+  const [recState, setRecState] = React.useState({ status: 'idle', url: null }) // call recording
+  const [vmState,  setVmState]  = React.useState({ status: 'idle', url: null }) // voicemail
   const t = TL_TYPES[item.type] || { icon: '•', color: '#94A3B8', label: item.type }
+
+  async function loadAudio(setState) {
+    setState({ status: 'loading', url: null })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/twilio-recording-proxy?callId=' + item.id, {
+        headers: session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {},
+      })
+      if (!res.ok) throw new Error('failed')
+      const blobUrl = URL.createObjectURL(await res.blob())
+      setState({ status: 'ready', url: blobUrl })
+    } catch(e) {
+      setState({ status: 'error', url: null })
+    }
+  }
 
   return (
     <div style={{ display: 'flex', gap: '10px', paddingBottom: '14px', position: 'relative' }}>
@@ -211,7 +228,19 @@ function TimelineItem({ item }) {
         {item.recording_url && (
           <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--panel)', borderRadius: 8, border: '1px solid var(--border)' }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>📼 Call Recording</div>
-            <audio controls style={{ width: '100%', height: 32 }} src={item.recording_url} />
+            {recState.status === 'ready'
+              ? <audio controls autoPlay style={{ width: '100%', height: 32 }} src={recState.url} />
+              : (
+                <button onClick={() => loadAudio(setRecState)} disabled={recState.status === 'loading'}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--dim)', color: recState.status === 'error' ? '#DC2626' : 'var(--text)', fontSize: 12, cursor: recState.status === 'loading' ? 'wait' : 'pointer', fontFamily: ff }}>
+                  {recState.status === 'loading' ? '⏳ Loading…' : recState.status === 'error' ? '⚠ Failed — retry' : '▶ Load & Play'}
+                </button>
+              )}
+            {item.transcript && (
+              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                <strong>Transcript{item.transcript_language ? ' (' + item.transcript_language[0].toUpperCase() + item.transcript_language.slice(1) + ')' : ''}:</strong> {item.transcript}
+              </div>
+            )}
           </div>
         )}
         {!item.recording_url && item.has_recording && (
@@ -225,10 +254,17 @@ function TimelineItem({ item }) {
         {item.voicemail_url && (
           <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(249,115,22,.06)', borderRadius: 8, border: '1px solid rgba(249,115,22,.2)' }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#F97316', textTransform: 'uppercase', marginBottom: 4 }}>📬 Voicemail</div>
-            <audio controls style={{ width: '100%', height: 32 }} src={item.voicemail_url} />
-            {item.voicemail_transcript && (
+            {vmState.status === 'ready'
+              ? <audio controls autoPlay style={{ width: '100%', height: 32 }} src={vmState.url} />
+              : (
+                <button onClick={() => loadAudio(setVmState)} disabled={vmState.status === 'loading'}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(249,115,22,.3)', background: '#fff', color: vmState.status === 'error' ? '#DC2626' : '#F97316', fontSize: 12, cursor: vmState.status === 'loading' ? 'wait' : 'pointer', fontFamily: ff }}>
+                  {vmState.status === 'loading' ? '⏳ Loading…' : vmState.status === 'error' ? '⚠ Failed — retry' : '▶ Load & Play'}
+                </button>
+              )}
+            {(item.transcript || item.voicemail_transcript) && (
               <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.5 }}>
-                <strong>Transcript:</strong> {item.voicemail_transcript}
+                <strong>Transcript{item.transcript_language ? ' (' + item.transcript_language[0].toUpperCase() + item.transcript_language.slice(1) + ')' : ''}:</strong> {item.transcript || item.voicemail_transcript}
               </div>
             )}
           </div>
@@ -1043,6 +1079,8 @@ export function ContactDetail() {
         recording_url: c.recording_url || null,
         voicemail_url: c.voicemail_url || null,
         voicemail_transcript: c.voicemail_transcript || null,
+        transcript: c.transcript || null,
+        transcript_language: c.transcript_language || null,
         duration_sec: c.duration_sec || 0,
         agent:       c.agent_id ? { id: c.agent_id, name: c.agent_name, color: c.agent_color } : null,
         created_at:  c.called_at,
