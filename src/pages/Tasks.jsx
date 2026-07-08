@@ -109,7 +109,7 @@ export function Tasks() {
               notes:      form.notes || '',
               task_id:    newTask.id,
               created_at: new Date().toISOString(),
-            }).catch(() => {}) // Fail silently
+            }).then(() => {}, () => {}) // Fail silently — .then(onOk, onErr), not .catch(), since the builder doesn't support .catch() directly
           }).catch(() => {})
         }
         toast('✅ Task added' + (form.due_date ? ' + calendar event created' : ''))

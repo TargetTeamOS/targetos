@@ -110,6 +110,7 @@ async function requireRole(req, allowedRoles) {
 
 function requireAdminOrSecretary(req) { return requireRole(req, ['admin', 'secretary']) }
 function requireAdmin(req)           { return requireRole(req, ['admin']) }
+function requireAnyAgent(req)        { return requireRole(req, ['admin', 'secretary', 'agent']) }
 // Confirms a webhook request actually came from Twilio, not a spoofed
 // POST from anyone who found the URL. Added July 2026.
 //
@@ -259,7 +260,7 @@ module.exports = {
   // HTTP
   parseBody, parseQS,
   // Security
-  validateTwilioSignature, logTwilioValidation, requireAdminOrSecretary, requireAdmin,
+  validateTwilioSignature, logTwilioValidation, requireAdminOrSecretary, requireAdmin, requireAnyAgent,
   // Phone
   normalizePhone, formatPhone,
   // Business logic

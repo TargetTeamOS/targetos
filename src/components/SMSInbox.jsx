@@ -52,9 +52,13 @@ export function SMSThread({ contactId, contactPhone, contactName }) {
       const optimistic = { id:'opt_'+Date.now(), direction:'outbound', body, contact_id:contactId, agent_id:agent?.id, created_at:new Date().toISOString(), status:'sending' }
       setMessages(p => [...p, optimistic])
 
+      const { data: { session } } = await supabase.auth.getSession()
       const res  = await fetch('/api/send-sms', {
         method:'POST',
-        headers:{ 'Content-Type':'application/json' },
+        headers:{
+          'Content-Type':'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
         body: JSON.stringify({ to: contactPhone, body, contactId, agentId: agent?.id })
       })
       const data = await res.json()

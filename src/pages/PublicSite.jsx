@@ -599,16 +599,18 @@ export function PublicListingDetail() {
   async function submitInquiry() {
     setSent(true)
     // Save to Supabase contacts
-    await supabase.from('contacts').insert({
-      first_name: form.name.split(' ')[0] || '',
-      last_name:  form.name.split(' ').slice(1).join(' ') || '',
-      email:      form.email,
-      phone:      form.phone,
-      source:     'Website Inquiry',
-      status:     'New',
-      notes:      'Inquiry about ' + street + ': ' + form.message,
-      created_at: new Date().toISOString(),
-    }).catch(err => console.warn('[PublicSite]', err.message))
+    try {
+      await supabase.from('contacts').insert({
+        first_name: form.name.split(' ')[0] || '',
+        last_name:  form.name.split(' ').slice(1).join(' ') || '',
+        email:      form.email,
+        phone:      form.phone,
+        source:     'Website Inquiry',
+        status:     'New',
+        notes:      'Inquiry about ' + street + ': ' + form.message,
+        created_at: new Date().toISOString(),
+      })
+    } catch(err) { console.warn('[PublicSite]', err.message) }
   }
 
   return (
@@ -857,16 +859,18 @@ export function PublicContact() {
   const [sent, setSent] = useState(false)
 
   async function submit() {
-    await supabase.from('contacts').insert({
-      first_name: form.name.split(' ')[0] || '',
-      last_name:  form.name.split(' ').slice(1).join(' ') || '',
-      email:      form.email,
-      phone:      form.phone,
-      source:     'Website Contact Form',
-      status:     'New',
-      notes:      'Looking to: ' + form.type + '\n\n' + form.message,
-      created_at: new Date().toISOString(),
-    }).catch(err => console.warn('[PublicSite]', err.message))
+    try {
+      await supabase.from('contacts').insert({
+        first_name: form.name.split(' ')[0] || '',
+        last_name:  form.name.split(' ').slice(1).join(' ') || '',
+        email:      form.email,
+        phone:      form.phone,
+        source:     'Website Contact Form',
+        status:     'New',
+        notes:      'Looking to: ' + form.type + '\n\n' + form.message,
+        created_at: new Date().toISOString(),
+      })
+    } catch(err) { console.warn('[PublicSite]', err.message) }
     setSent(true)
   }
 

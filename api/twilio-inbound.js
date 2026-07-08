@@ -138,12 +138,14 @@ module.exports = async function handler(req, res) {
 
   // 4. Activity log (non-blocking)
   if (finalContact?.id) {
-    sb.from('activity_log').insert({
-      table_name: 'contacts', record_id: finalContact.id,
-      action: 'call_inbound', agent_id: finalContact.agent_id || null,
-      metadata: { call_sid: callSid, from, call_id: callId },
-      created_at: new Date().toISOString(),
-    }).catch(e => console.warn('[inbound] activity:', e.message))
+    try {
+      await sb.from('activity_log').insert({
+        table_name: 'contacts', record_id: finalContact.id,
+        action: 'call_inbound', agent_id: finalContact.agent_id || null,
+        metadata: { call_sid: callSid, from, call_id: callId },
+        created_at: new Date().toISOString(),
+      })
+    } catch(e) { console.warn('[inbound] activity:', e.message) }
   }
 
   // 5. Repeat caller check (non-blocking)

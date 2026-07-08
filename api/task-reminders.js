@@ -8,6 +8,23 @@
 const { getSupabase } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
+  // Vercel automatically sends 'Authorization: Bearer <CRON_SECRET>' when
+  // calling this on its schedule, IF a CRON_SECRET env var is set in
+  // Vercel. Until that's set, this stays open to anyone who finds the
+  // URL (they could trigger unwanted reminder emails to your whole team
+  // repeatedly, using your Resend credits) -- add CRON_SECRET in Vercel
+  // env vars to close this. Logs a warning rather than hard-blocking
+  // until it's configured, so the actual cron schedule doesn't break.
+  const cronSecret = process.env.CRON_SECRET
+  if (cronSecret) {
+    const authHeader = req.headers['authorization'] || ''
+    if (authHeader !== 'Bearer ' + cronSecret) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+  } else {
+    console.warn('[task-reminders] CRON_SECRET not set — endpoint is unauthenticated. Add CRON_SECRET to Vercel env vars.')
+  }
+
   // Allow GET (cron) or POST (manual trigger)
   const sb = getSupabase()
   if (!sb) return res.status(500).json({ error: 'Supabase not configured' })
@@ -23,12 +40,24 @@ module.exports = async function handler(req, res) {
         .eq('status', 'pending')
         .lte('due_date', tomorrow)
         .order('due_date', { ascending: true }),
-      sb.from('tc_tasks')
-        .select('id, title, due_date, priority, notes, agent_id, reminder_days, tc_deals(addr, tc_phase), agents(id, name, email)')
-        .eq('status', 'pending')
-        .not('reminder_days', 'is', null)
-        .order('due_date', { ascending: true })
-        .catch(() => ({ data: [] }))
+      (async () => {
+        // NOTE (July 2026): Supabase's query builder does not support
+        // .catch() chained directly onto it -- doing so throws
+        // "TypeError: ...catch is not a function" SYNCHRONOUSLY, which
+        // was crashing this entire Promise.all() before either query
+        // ever ran. This exact bug class also caused the Contacts page
+        // Sentry error. Use a real try/catch instead.
+        try {
+          return await sb.from('tc_tasks')
+            .select('id, title, due_date, priority, notes, agent_id, reminder_days, tc_deals(addr, tc_phase), agents(id, name, email)')
+            .eq('status', 'pending')
+            .not('reminder_days', 'is', null)
+            .order('due_date', { ascending: true })
+        } catch (e) {
+          console.warn('[task-reminders] tc_tasks query failed (table may not exist):', e.message)
+          return { data: [] }
+        }
+      })()
     ])
 
     // Add TC tasks where reminder_days before due date matches today

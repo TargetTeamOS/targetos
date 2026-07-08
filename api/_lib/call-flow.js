@@ -302,13 +302,15 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
   // ── SAVE AS LEAD ──────────────────────────────────────────────
   if (node.type === 'savelead') {
     if (supabase && callData.from && !callData.contact) {
-      supabase.from('contacts').insert({
-        first_name: 'Unknown', last_name: 'Caller',
-        phone: callData.from, source: cfg.source || 'Inbound Call',
-        status: 'New', created_at: new Date().toISOString(),
-        notes: 'Auto-created from inbound call.',
-        updated_at: new Date().toISOString(),
-      }).catch(e => console.warn('[walkFlow] savelead:', e.message))
+      try {
+        await supabase.from('contacts').insert({
+          first_name: 'Unknown', last_name: 'Caller',
+          phone: callData.from, source: cfg.source || 'Inbound Call',
+          status: 'New', created_at: new Date().toISOString(),
+          notes: 'Auto-created from inbound call.',
+          updated_at: new Date().toISOString(),
+        })
+      } catch(e) { console.warn('[walkFlow] savelead:', e.message) }
     }
     const rest = await follow('out')
     return rest || ''

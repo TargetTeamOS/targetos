@@ -310,14 +310,16 @@ export function MyListings() {
         created_at:   new Date().toISOString(),
       })
       // Calendar event
-      await supabase.from('calendar_events').insert({
-        agent_id:   agent?.id,
-        title:      'Open House — ' + selListing.addr,
-        start_date: ohForm.date,
-        start_time: ohForm.start_time,
-        type:       'open_house',
-        created_at: new Date().toISOString(),
-      }).catch(() => {})
+      try {
+        await supabase.from('calendar_events').insert({
+          agent_id:   agent?.id,
+          title:      'Open House — ' + selListing.addr,
+          start_date: ohForm.date,
+          start_time: ohForm.start_time,
+          type:       'open_house',
+          created_at: new Date().toISOString(),
+        })
+      } catch(e) { console.warn('calendar_events insert failed:', e.message) }
       toast('✅ Open house scheduled + calendar event created')
       setOhModal(false)
       setOhForm({ date:'', start_time:'11:00', end_time:'13:00', notes:'' })
@@ -336,20 +338,26 @@ export function MyListings() {
       await supabase.from('listings').update({ list_price: newPrice, updated_at: new Date().toISOString() }).eq('id', selListing.id)
 
       // Log price change to activity
-      await supabase.from('audit_log').insert({
-        agent_id:   agent?.id,
-        table_name: 'listings',
-        record_id:  selListing.id,
-        action:     'updated',
-        field_name: 'list_price',
-        old_value:  String(oldPrice),
-        new_value:  String(newPrice),
-        metadata:   { description: 'Price changed from ' + fmt$(oldPrice) + ' to ' + fmt$(newPrice), reason: priceForm.reason },
-        created_at: new Date().toISOString(),
-      }).catch(() => {})
+      try {
+        await supabase.from('audit_log').insert({
+          agent_id:   agent?.id,
+          table_name: 'listings',
+          record_id:  selListing.id,
+          action:     'updated',
+          field_name: 'list_price',
+          old_value:  String(oldPrice),
+          new_value:  String(newPrice),
+          metadata:   { description: 'Price changed from ' + fmt$(oldPrice) + ' to ' + fmt$(newPrice), reason: priceForm.reason },
+          created_at: new Date().toISOString(),
+        })
+      } catch(e) { console.warn('audit_log insert failed:', e.message) }
 
       // Sync to any linked TC deal
-      const { data: tcDeal } = await supabase.from('tc_deals').select('id').eq('linked_listing_id', selListing.id).maybeSingle().catch(() => ({ data: null }))
+      let tcDeal = null
+      try {
+        const r = await supabase.from('tc_deals').select('id').eq('linked_listing_id', selListing.id).maybeSingle()
+        tcDeal = r.data
+      } catch(e) { console.warn('tc_deals lookup failed:', e.message) }
       if (tcDeal?.id) {
         await supabase.from('tc_deals').update({ list_price: newPrice, updated_at: new Date().toISOString() }).eq('id', tcDeal.id)
       }
@@ -367,7 +375,11 @@ export function MyListings() {
       setListings(p => p.map(l => l.id === listing.id ? { ...l, status: newStatus } : l))
 
       // Sync to TC deal if linked
-      const { data: tcDeal } = await supabase.from('tc_deals').select('id,tc_phase').eq('linked_listing_id', listing.id).maybeSingle().catch(() => ({ data: null }))
+      let tcDeal = null
+      try {
+        const r = await supabase.from('tc_deals').select('id,tc_phase').eq('linked_listing_id', listing.id).maybeSingle()
+        tcDeal = r.data
+      } catch(e) { console.warn('tc_deals sync lookup failed:', e.message) }
       if (tcDeal?.id) {
         const statusToPhase = { 'Active': 'active', 'Under Contract': 'under_contract', 'Sold': 'closed', 'Coming Soon': 'pre_listing' }
         const phase = statusToPhase[newStatus]

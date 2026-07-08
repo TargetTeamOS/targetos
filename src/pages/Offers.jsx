@@ -553,17 +553,19 @@ export function Offers() {
 
         // If in-house listing → save to that listing's showings/offers
         if (form.inhouse_listing_id) {
-          await supabase.from('listing_showings').insert({
-            listing_id:   form.inhouse_listing_id,
-            listing_addr: form.listing_addr,
-            agent_id:     form.buyers_agent_id || agent?.id,
-            buyer_name:   form.buyer_name,
-            showing_date: form.offer_date,
-            interest_level: 5,
-            feedback:    'Offer submitted: $' + Number(form.purchase_price).toLocaleString(),
-            notes:       'Offer for $' + Number(form.purchase_price).toLocaleString(),
-            created_at:  new Date().toISOString(),
-          }).catch(() => {})
+          try {
+            await supabase.from('listing_showings').insert({
+              listing_id:   form.inhouse_listing_id,
+              listing_addr: form.listing_addr,
+              agent_id:     form.buyers_agent_id || agent?.id,
+              buyer_name:   form.buyer_name,
+              showing_date: form.offer_date,
+              interest_level: 5,
+              feedback:    'Offer submitted: $' + Number(form.purchase_price).toLocaleString(),
+              notes:       'Offer for $' + Number(form.purchase_price).toLocaleString(),
+              created_at:  new Date().toISOString(),
+            })
+          } catch(e) { console.warn('listing_showings insert failed:', e.message) }
           toast('✅ Offer saved · Linked to listing · Buyer saved to contacts')
         } else {
           toast('✅ Offer saved')

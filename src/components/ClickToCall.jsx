@@ -248,10 +248,12 @@ export function ActiveCallBar() {
     if (logId) {
       await supabase.from('calls').update({ status:'completed', duration_sec:finalSecs, updated_at:new Date().toISOString() }).eq('id',logId).then(()=>{}).catch(()=>{})
       if (cId && finalSecs > 0) {
-        await supabase.from('activity_log').insert({
-          table_name:'contacts', record_id:cId, action:'call_outbound', agent_id:agent?.id||null,
-          metadata:JSON.stringify({ duration_sec:finalSecs, call_id:logId }), created_at:new Date().toISOString(),
-        }).catch(()=>{})
+        try {
+          await supabase.from('activity_log').insert({
+            table_name:'contacts', record_id:cId, action:'call_outbound', agent_id:agent?.id||null,
+            metadata:JSON.stringify({ duration_sec:finalSecs, call_id:logId }), created_at:new Date().toISOString(),
+          })
+        } catch(e) { console.warn('activity_log insert failed:', e.message) }
       }
     }
     toast(finalSecs>0 ? '📞 Call ended — '+fmt(finalSecs) : '📞 Call cancelled')

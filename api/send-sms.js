@@ -1,10 +1,27 @@
 // TargetOS V2 — Send SMS via Twilio
 'use strict'
+const { requireAnyAgent } = require('./_lib/phone')
+
+async function parseBody(req) {
+  if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
+  return new Promise((resolve) => {
+    let raw = ''
+    req.on('data', chunk => { raw += chunk })
+    req.on('end', () => { try { resolve(JSON.parse(raw || '{}')) } catch { resolve({}) } })
+    req.on('error', () => resolve({}))
+  })
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   if (req.method !== 'POST') return res.status(405).json({ error:'Method not allowed' })
 
-  const { to, body, contactId, agentId } = req.body || {}
+  // CRITICAL: this sends a real SMS from the business number to any
+  // number, using real Twilio credits. Had ZERO auth until July 2026.
+  const authCheck = await requireAnyAgent(req)
+  if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
+
+  const { to, body, contactId, agentId } = await parseBody(req)
   if (!to || !body) return res.status(400).json({ error:'to and body required' })
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID
