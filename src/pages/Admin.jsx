@@ -9,6 +9,10 @@ import { useAgents } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
 import { db }       from '../lib/db'
 import {
+  DEFAULT_PERMISSIONS, PERMISSION_GROUPS, PERMISSION_LABELS,
+  loadPermissionOverrides, savePermissionOverrides,
+} from '../lib/permissions'
+import {
   PageHeader, Field, Input, Select, Btn, Avatar, Modal, ModalActions,
   SectionTitle, Pill, Tabs, Toggle, Confirm, Loading
 } from '../components/UI'
