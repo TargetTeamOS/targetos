@@ -419,7 +419,7 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
   return (
     <tr
       draggable={!!onDealDragStart}
-      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDealDragStart?.(deal.id) }}
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', deal.id); onDealDragStart?.(deal.id) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{ background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', transition: 'background .08s' }}>
@@ -1761,7 +1761,7 @@ export function Production() {
             {visibleCols.map(col => (
               <div key={col.key}
                 draggable
-                onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDraggedColKey(col.key) }}
+                onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', col.key); setDraggedColKey(col.key) }}
                 onDragOver={e => e.preventDefault()}
                 onDrop={e => { e.preventDefault(); handleColDrop(col.key) }}
                 style={{ minWidth: col.width, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: col.type==='number'?'flex-end':'center', padding: '0 10px', borderRight: '1px solid #e6e9ef', height: 40, cursor: 'grab', background: draggedColKey === col.key ? '#e6f0fd' : 'transparent' }}>
