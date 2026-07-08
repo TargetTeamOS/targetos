@@ -5,11 +5,18 @@
 const twilio = require('twilio')
 const AccessToken = twilio.jwt.AccessToken
 const VoiceGrant  = AccessToken.VoiceGrant
+const { requireAnyAgent } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Content-Type', 'application/json')
   if (req.method === 'OPTIONS') return res.status(200).end()
+
+  // CRITICAL: this issues a real, valid Twilio Access Token good for
+  // outgoing + incoming calls through the business account for a full
+  // hour. Had ZERO auth until July 2026.
+  const authCheck = await requireAnyAgent(req)
+  if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
 
   const accountSid  = (process.env.TWILIO_ACCOUNT_SID || '').trim()
   const authToken   = (process.env.TWILIO_AUTH_TOKEN || '').trim()

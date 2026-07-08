@@ -355,8 +355,12 @@ export function DailyBriefing() {
     try {
       const quote = getTodaysQuote(customQuotes)
       const html  = buildEmailHTML(agent.name, data, prefs, quote, customMsg, emailStyle)
+      const { data: { session } } = await supabase.auth.getSession()
       const res   = await fetch('/api/send-email', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
         body: JSON.stringify({
           from:    'TargetOS Briefing <briefing@targetreteam.com>',
           to:      [agent.email],
@@ -378,6 +382,8 @@ export function DailyBriefing() {
     let sent = 0, failed = 0
     try {
       const quotes = customQuotes
+      const { data: { session } } = await supabase.auth.getSession()
+      const authHeaders = session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}
       for (const ag of allAgents) {
         const ap = agentPrefs[ag.id]
         if (ap && !ap.enabled) continue
@@ -405,7 +411,7 @@ export function DailyBriefing() {
           const agPrefs2 = ap?.sections ? { ...DEFAULT_PREFS, ...ap.sections } : DEFAULT_PREFS
           const html = buildEmailHTML(ag.name, agData, agPrefs2, getTodaysQuote(quotes), ap?.custom_message||'', agStyle)
           const res = await fetch('/api/send-email', {
-            method:'POST', headers:{'Content-Type':'application/json'},
+            method:'POST', headers:{'Content-Type':'application/json', ...authHeaders},
             body: JSON.stringify({ from:'TargetOS Briefing <briefing@targetreteam.com>', to:[ag.email], subject:'☀️ Daily Briefing — ' + new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:'America/New_York'}), html }),
           })
           if (res.ok) sent++; else failed++

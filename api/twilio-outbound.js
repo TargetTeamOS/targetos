@@ -9,11 +9,16 @@
 
 const querystring = require('querystring')
 
-const { getSupabase } = require('./_lib/phone')
+const { getSupabase, requireAnyAgent } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   if (req.method === 'OPTIONS') return res.status(200).end()
+
+  // CRITICAL: places/ends real outbound calls through the business's
+  // Twilio account. Had ZERO auth until July 2026.
+  const authCheck = await requireAnyAgent(req)
+  if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID
   const authToken  = process.env.TWILIO_AUTH_TOKEN

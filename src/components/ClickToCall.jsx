@@ -41,7 +41,9 @@ function useG() {
 async function ensureDevice(agent) {
   if (G.device && G.deviceReady) return G.device
   const name = (agent?.name||'agent').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,30)||'agent'
-  const res  = await fetch('/api/twilio-token?agentName='+name)
+  const { data: { session } } = await supabase.auth.getSession()
+  const authHeaders = session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}
+  const res  = await fetch('/api/twilio-token?agentName='+name, { headers: authHeaders })
   const data = await res.json()
   if (!res.ok || !data.token) throw new Error(data.error + (data.hint?' — '+data.hint:''))
 
@@ -54,7 +56,7 @@ async function ensureDevice(agent) {
   })
   device.on('tokenWillExpire', async () => {
     try {
-      const r = await fetch('/api/twilio-token?agentName='+name)
+      const r = await fetch('/api/twilio-token?agentName='+name, { headers: authHeaders })
       const d = await r.json()
       if (d.token) device.updateToken(d.token)
     } catch {}
@@ -218,8 +220,12 @@ export function ActiveCallBar() {
       }).select().single()
       G.set({ callLogId:log?.id||null })
 
+      const { data: { session } } = await supabase.auth.getSession()
       const res  = await fetch('/api/twilio-outbound', {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{
+          'Content-Type':'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
         body:JSON.stringify({ to:g.phone, contactName:g.name, callLogId:log?.id, agentId:agent?.id }),
       })
       const data = await res.json()
@@ -243,7 +249,17 @@ export function ActiveCallBar() {
     closePanel()
 
     if (dcRef)    { try { dcRef.disconnect() } catch {} }
-    if (sidToEnd) { fetch('/api/twilio-outbound', { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({callSid:sidToEnd}) }).catch(()=>{}) }
+    if (sidToEnd) {
+      const { data: { session } } = await supabase.auth.getSession()
+      fetch('/api/twilio-outbound', {
+        method:'DELETE',
+        headers:{
+          'Content-Type':'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
+        body:JSON.stringify({callSid:sidToEnd})
+      }).catch(()=>{})
+    }
 
     if (logId) {
       await supabase.from('calls').update({ status:'completed', duration_sec:finalSecs, updated_at:new Date().toISOString() }).eq('id',logId).then(()=>{}).catch(()=>{})

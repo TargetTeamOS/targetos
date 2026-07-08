@@ -156,9 +156,13 @@ Current user: ${agent?.name || 'Unknown'} (${agent?.role || 'agent'})
 
 Keep responses concise and practical. Use bullet points for lists. Be direct and helpful.`
 
+      const { data: { session } } = await supabase.auth.getSession()
       const response = await fetch('/api/ai-assistant', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
         body: JSON.stringify({
           system: systemPrompt,
           max_tokens: 1000,

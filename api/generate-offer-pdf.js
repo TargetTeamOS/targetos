@@ -5,6 +5,7 @@
 const { PDFDocument } = require('pdf-lib')
 const fs   = require('fs')
 const path = require('path')
+const { requireAnyAgent } = require('./_lib/phone')
 
 const TEMPLATE = path.join(__dirname, 'Offer_For_Sale_Form.pdf')
 
@@ -31,6 +32,9 @@ function datePart(s, p) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error:'POST only' })
+
+  const authCheck = await requireAnyAgent(req)
+  if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
 
   let data = {}
   try {

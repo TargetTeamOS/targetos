@@ -387,6 +387,20 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask,
   )
 }
 
+// Shared helper — every send-email call needs the current session's
+// access token now that the endpoint actually checks auth (July 2026).
+async function callSendEmail(payload) {
+  const { data: { session } } = await supabase.auth.getSession()
+  return fetch('/api/send-email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+    },
+    body: JSON.stringify(payload),
+  })
+}
+
 // ── MAIN ──────────────────────────────────────────────────────────
 export function TransactionCoordinator() {
   const { agent, isAdmin, canManage } = useAuth()
@@ -592,13 +606,10 @@ export function TransactionCoordinator() {
       const ag = agents.find(a => a.id === deal.agent_id)
       if (ag?.email) {
         const items = calTasks.map(t => '<li>' + t.label + ' (due in ' + t.days + ' days)</li>').join('')
-        fetch('/api/send-email', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({
-            to: ag.email,
-            subject: '📋 New tasks assigned: ' + deal.addr + ',',
-            html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p>The following tasks require your attention for <strong>' + deal.addr + '</strong>:</p><ul>' + items + '</ul><p>These have been added to your calendar. Please confirm the dates.</p><p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
-          })
+        callSendEmail({
+          to: ag.email,
+          subject: '📋 New tasks assigned: ' + deal.addr + ',',
+          html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p>The following tasks require your attention for <strong>' + deal.addr + '</strong>:</p><ul>' + items + '</ul><p>These have been added to your calendar. Please confirm the dates.</p><p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
         }).catch(() => {})
       }
     }
@@ -617,13 +628,10 @@ export function TransactionCoordinator() {
       // Email agent
       const ag = agents.find(a => a.id === deal.agent_id)
       if (ag?.email) {
-        fetch('/api/send-email', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({
-            to: ag.email,
-            subject: (pDef?.icon||'') + ' ' + deal.addr + ' moved to ' + (pDef?.label||'') + ',',
-            html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p><strong>' + deal.addr + '</strong> has moved to <strong>' + (pDef?.label||'') + '</strong>.</p><p>' + taskCount + ' new tasks have been assigned. Please check your TC Board.</p><p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
-          })
+        callSendEmail({
+          to: ag.email,
+          subject: (pDef?.icon||'') + ' ' + deal.addr + ' moved to ' + (pDef?.label||'') + ',',
+          html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p><strong>' + deal.addr + '</strong> has moved to <strong>' + (pDef?.label||'') + '</strong>.</p><p>' + taskCount + ' new tasks have been assigned. Please check your TC Board.</p><p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
         }).catch(() => {})
       }
 
@@ -645,13 +653,10 @@ export function TransactionCoordinator() {
         const deal = deals.find(d => d.id === task.deal_id)
         const ag   = agents.find(a => a.id === (task.agent_id || deal?.agent_id))
         if (ag?.email) {
-          fetch('/api/send-email', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({
-              to: ag.email,
-              subject: '✅ Task completed: ' + task.title + ',',
-              html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p>Task <strong>"' + task.title + '"</strong> for <strong>' + (deal?.addr||'your deal') + '</strong> has been completed.</p>' + (task.completion_note ? '<p>Note: ' + task.completion_note + '</p>' : '') + '<p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
-            })
+          callSendEmail({
+            to: ag.email,
+            subject: '✅ Task completed: ' + task.title + ',',
+            html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p>Task <strong>"' + task.title + '"</strong> for <strong>' + (deal?.addr||'your deal') + '</strong> has been completed.</p>' + (task.completion_note ? '<p>Note: ' + task.completion_note + '</p>' : '') + '<p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
           }).catch(() => {})
         }
       } else if (task.completion_action === 'create_next_task' && task.completion_note) {

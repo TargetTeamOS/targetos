@@ -14,12 +14,24 @@ async function parseBody(req) {
   })
 }
 
+const { requireAnyAgent } = require('./_lib/phone')
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  // CRITICAL: forwards to OpenAI/Anthropic using OUR API key, at our
+  // cost, with an attacker-controllable max_tokens. Had ZERO auth
+  // until July 2026.
+  const authCheck = await requireAnyAgent(req)
+  if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
+
   const body = await parseBody(req)
-  const { messages, system, max_tokens } = body
+  const { messages, system } = body
+  // Cap max_tokens server-side regardless of what the client sends —
+  // an authenticated agent shouldn't be able to request an
+  // arbitrarily expensive response either.
+  const max_tokens = Math.min(Number(body.max_tokens) || 1000, 2000)
   if (!messages?.length) return res.status(400).json({ error: 'messages required' })
 
   const openaiKey    = process.env.OPENAI_API_KEY
