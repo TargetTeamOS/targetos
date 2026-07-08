@@ -413,18 +413,21 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
 }
 
 // ── MONDAY.COM ROW ────────────────────────────────────────────────
-function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect, visibleCols }) {
+function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect, visibleCols, onDealDragStart }) {
   const [hover, setHover] = React.useState(false)
 
   return (
     <tr
+      draggable={!!onDealDragStart}
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDealDragStart?.(deal.id) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{ background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', transition: 'background .08s' }}>
 
-      {/* Checkbox + color bar */}
+      {/* Checkbox + color bar + drag handle */}
       <td style={{ width: 50, padding: 0, borderRight: '1px solid #e6e9ef', position: 'sticky', left: 0, background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', zIndex: 2 }}>
-        <div style={{ display: 'flex', alignItems: 'center', height: 36, paddingLeft: 8, gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', height: 36, paddingLeft: 4, gap: 4 }}>
+          <span title="Drag to change stage" style={{ cursor: 'grab', color: '#c5c7d0', fontSize: 12, opacity: hover ? 1 : 0, transition: 'opacity .1s', width: 12, flexShrink: 0, userSelect: 'none' }}>⠿</span>
           <div style={{ width: 4, height: 24, borderRadius: 2, background: '#0073ea', opacity: hover || isSelected ? 1 : 0, transition: 'opacity .1s', flexShrink: 0 }} />
           <div onClick={e => { e.stopPropagation(); onToggleSelect(deal.id) }}
             style={{ width: 16, height: 16, borderRadius: 3, border: '2px solid ' + (isSelected ? '#0073ea' : '#c5c7d0'), background: isSelected ? '#0073ea' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all .1s' }}>
@@ -462,7 +465,7 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
 
 
 // ── MONDAY.COM GROUP ─────────────────────────────────────────────
-function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename, onDealDragStart, onDropDeal, isDragOver, onDragEnterGroup, onDragLeaveGroup, onColDragStart, onColDrop }) {
+function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename, onDealDragStart, onDropDeal, isDragOver, onDragEnterGroup, onDragLeaveGroup }) {
   const [collapsed, setCollapsed] = React.useState(false)
   const [renaming,  setRenaming]  = React.useState(false)
   const [renameVal, setRenameVal] = React.useState(group.label)
@@ -473,7 +476,12 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
   const headerBg = group.color
 
   return (
-    <div style={{ marginBottom: 0 }}>
+    <div
+      onDragOver={e => { if (onDropDeal) e.preventDefault() }}
+      onDragEnter={e => { e.preventDefault(); onDragEnterGroup?.() }}
+      onDragLeave={onDragLeaveGroup}
+      onDrop={e => { e.preventDefault(); onDropDeal?.() }}
+      style={{ marginBottom: 0, outline: isDragOver ? '2px solid #0073ea' : 'none', outlineOffset: -2, transition: 'outline .1s' }}>
       {/* ── Group header row ── */}
       <div style={{ display: 'flex', alignItems: 'center', height: 40, background: '#f5f6f8', borderTop: '1px solid #e6e9ef', borderBottom: '1px solid #e6e9ef', userSelect: 'none' }}>
         {/* Checkbox */}
@@ -527,7 +535,8 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
               {deals.map(d => (
                 <DealRow key={d.id} deal={d} agents={agents} onOpen={onOpen} onQuickUpdate={onQuickUpdate}
                   isAdmin={isAdmin} isSelected={selectedIds.includes(d.id)}
-                  onToggleSelect={onToggleSelect} visibleCols={visibleCols} />
+                  onToggleSelect={onToggleSelect} visibleCols={visibleCols}
+                  onDealDragStart={onDealDragStart} />
               ))}
             </tbody>
             {/* Totals footer */}
@@ -1750,8 +1759,13 @@ export function Production() {
               <span style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.06em' }}>Item</span>
             </div>
             {visibleCols.map(col => (
-              <div key={col.key} style={{ minWidth: col.width, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: col.type==='number'?'flex-end':'center', padding: '0 10px', borderRight: '1px solid #e6e9ef', height: 40 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{col.label}</span>
+              <div key={col.key}
+                draggable
+                onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDraggedColKey(col.key) }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); handleColDrop(col.key) }}
+                style={{ minWidth: col.width, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: col.type==='number'?'flex-end':'center', padding: '0 10px', borderRight: '1px solid #e6e9ef', height: 40, cursor: 'grab', background: draggedColKey === col.key ? '#e6f0fd' : 'transparent' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>⠿ {col.label}</span>
               </div>
             ))}
             <div style={{ minWidth: 36, flexShrink: 0, borderRight: '1px solid #e6e9ef' }} />
@@ -1778,8 +1792,6 @@ export function Production() {
               isDragOver={dragOverGroupId === group.id}
               onDragEnterGroup={() => !group.yearMatch && setDragOverGroupId(group.id)}
               onDragLeaveGroup={() => setDragOverGroupId(null)}
-              onColDragStart={setDraggedColKey}
-              onColDrop={targetKey => handleColDrop(targetKey)}
             />
           ))}
           <div onClick={addGroup}
