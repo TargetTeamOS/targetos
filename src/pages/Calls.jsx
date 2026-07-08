@@ -157,6 +157,12 @@ function CallDrawer({ call, agents, onSave, onClose, onDelete, saving }) {
               <RecordingPlayer url={call.recording_url} />
             </div>
           )}
+          {!call.recording_url && call.has_recording && (
+            <div style={{ padding:'10px 12px', background:'var(--dim)', borderRadius:'8px', border:'1px dashed var(--border)', display:'flex', alignItems:'center', gap:6 }}>
+              <span style={{ fontSize:13 }}>🔒</span>
+              <span style={{ fontSize:11, color:'var(--muted)' }}>Recording available — restricted to admin/approved users</span>
+            </div>
+          )}
 
           {call.is_voicemail && (
             <div style={{ padding:'12px', background:'#FFF7ED', borderRadius:'9px', border:'1px solid #F5A623' }}>
@@ -883,10 +889,10 @@ export function Calls() {
   async function loadCalls() {
     setLoading(true)
     try {
-      let q = supabase.from('calls').select('*, agents(id,name,color)').order('called_at', { ascending: false }).limit(200)
-      if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
-      const { data } = await q
-      setCalls(data || [])
+      const { data, error } = await supabase.rpc('get_calls_list', { p_limit: 200 })
+      if (error) throw error
+      // Reshape to match what the rest of this page expects (nested agents object)
+      setCalls((data || []).map(c => ({ ...c, agents: c.agent_id ? { id: c.agent_id, name: c.agent_name, color: c.agent_color } : null })))
     } catch(e) { console.warn('calls load error:', e.message); setCalls([]) }
     finally { setLoading(false) }
   }
@@ -1034,7 +1040,11 @@ export function Calls() {
                           ) : '—'}
                         </td>
                         <td style={{ padding:'10px 12px' }}>
-                          {c.recording_url ? <span style={{ fontSize:'11px', color:'#3B82F6', fontWeight:700 }}>🎙 Play</span> : '—'}
+                          {c.recording_url
+                            ? <span style={{ fontSize:'11px', color:'#3B82F6', fontWeight:700 }}>🎙 Play</span>
+                            : c.has_recording
+                              ? <span style={{ fontSize:'11px', color:'var(--muted)' }} title="Restricted to admin/approved users">🔒 Restricted</span>
+                              : '—'}
                         </td>
                         <td style={{ padding:'10px 12px', fontSize:'11px', color:'var(--muted)', whiteSpace:'nowrap' }}>{fmtDate(c.called_at)}</td>
                       </tr>

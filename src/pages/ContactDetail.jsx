@@ -214,6 +214,12 @@ function TimelineItem({ item }) {
             <audio controls style={{ width: '100%', height: 32 }} src={item.recording_url} />
           </div>
         )}
+        {!item.recording_url && item.has_recording && (
+          <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--dim)', borderRadius: 8, border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 13 }}>🔒</span>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>Recording available — restricted to admin/approved users</span>
+          </div>
+        )}
 
         {/* Voicemail player + transcript */}
         {item.voicemail_url && (
@@ -938,6 +944,8 @@ export function ContactDetail() {
   const [relDeals,  setRelDeals]  = useState([])
   const [relTasks,  setRelTasks]  = useState([])
   const [agents,    setAgents]    = useState([])
+  const [recordingGrants, setRecordingGrants] = useState([])
+  const [grantAgentId,    setGrantAgentId]    = useState('')
   const [rightTab,  setRightTab]  = useState('deals')
   const [confirmDel,setConfirmDel]= useState(false)
   const [savingAuto,setSavingAuto]= useState(false)
@@ -950,7 +958,38 @@ export function ContactDetail() {
     loadTimeline()
     loadRelated()
     db.agents.list().then(setAgents)
+    if (isAdmin) loadRecordingGrants()
   }, [id])
+
+  async function loadRecordingGrants() {
+    try {
+      const { data } = await supabase.from('recording_access_grants')
+        .select('id, agent_id, agents(id,name,color)')
+        .eq('contact_id', id)
+      setRecordingGrants(data || [])
+    } catch(e) { console.warn('loadRecordingGrants:', e.message) }
+  }
+
+  async function grantRecordingAccess() {
+    if (!grantAgentId) return
+    try {
+      const { error } = await supabase.from('recording_access_grants').insert({
+        agent_id: grantAgentId, contact_id: id, granted_by: agent?.id,
+      })
+      if (error) throw error
+      setGrantAgentId('')
+      await loadRecordingGrants()
+      toast('✅ Recording access granted')
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+  }
+
+  async function revokeRecordingAccess(grantId) {
+    try {
+      await supabase.from('recording_access_grants').delete().eq('id', grantId)
+      await loadRecordingGrants()
+      toast('Access revoked')
+    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+  }
 
   async function loadContact() {
     setLoading(true)
@@ -967,7 +1006,7 @@ export function ContactDetail() {
     setTlLoading(true)
     try {
       const [calls, smsMessages, webActivity, logs] = await Promise.all([
-        supabase.from('calls').select('id,direction,outcome,called_at,duration_sec,notes,recording_url,voicemail_url,voicemail_transcript,from_number,to_number,agents(id,name,color)').eq('contact_id', id).order('called_at', { ascending: false }).then(r => r.data || []),
+        supabase.rpc('get_contact_calls', { p_contact_id: id }).then(r => r.data || []).catch(() => []),
         supabase.from('sms_messages').select('id,body,direction,from_number,to_number,created_at,agents(id,name,color)').eq('contact_id', id).order('created_at', { ascending: false }).limit(20).then(r => r.data || []).catch(()=>[]),
         supabase.from('audit_log').select('id,action,field_name,new_value,metadata,created_at,agents(id,name,color)').eq('record_id', id).eq('field_name', 'web_activity').order('created_at', { ascending: false }).limit(20).then(r => r.data || []).catch(()=>[]),
         supabase.from('audit_log').select('*, agents(id,name,color)').eq('record_id', id).order('created_at', { ascending: false }).limit(100).then(r => r.data || []),
@@ -1000,11 +1039,12 @@ export function ContactDetail() {
         title:       (c.direction||'Outbound') + ' call' + (c.outcome ? ' · ' + c.outcome : '') + (c.duration_sec > 0 ? ' · ' + Math.floor(c.duration_sec/60) + 'm' : ''),
         body:        c.notes || '',
         meta:        c.from_number || '',
+        has_recording: c.has_recording || false,
         recording_url: c.recording_url || null,
         voicemail_url: c.voicemail_url || null,
         voicemail_transcript: c.voicemail_transcript || null,
         duration_sec: c.duration_sec || 0,
-        agent:       c.agents,
+        agent:       c.agent_id ? { id: c.agent_id, name: c.agent_name, color: c.agent_color } : null,
         created_at:  c.called_at,
       }))
 
@@ -1453,6 +1493,34 @@ export function ContactDetail() {
                 />
               ) : (
                 <AddToTimeline contactId={id} agentId={agent?.id} onAdded={loadTimeline} />
+              )}
+
+              {activeTab === 'calls' && isAdmin && (
+                <div style={{ marginBottom: 14, padding: '10px 12px', background: 'var(--dim)', borderRadius: 10, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>🔒 Recording Access for This Contact</div>
+                  {recordingGrants.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                      {recordingGrants.map(g => (
+                        <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: g.agents?.color || '#CC2200' }} />
+                          <span style={{ flex: 1, color: 'var(--text)' }}>{g.agents?.name || 'Unknown agent'}</span>
+                          <button onClick={() => revokeRecordingAccess(g.id)}
+                            style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: 11, cursor: 'pointer', fontFamily: ff }}>Revoke</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select value={grantAgentId} onChange={e => setGrantAgentId(e.target.value)}
+                      style={{ flex: 1, padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: 12, fontFamily: ff }}>
+                      <option value="">Grant an agent access...</option>
+                      {agents.filter(a => !recordingGrants.some(g => g.agent_id === a.id)).map(a => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                    <Btn size="sm" onClick={grantRecordingAccess} disabled={!grantAgentId}>Grant</Btn>
+                  </div>
+                </div>
               )}
 
               {tlLoading && <div style={{ textAlign: 'center', padding: '20px' }}><Spinner size={20} color="var(--muted)" /></div>}

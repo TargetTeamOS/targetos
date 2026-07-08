@@ -102,12 +102,13 @@ export function Admin() {
         action:  'update_agent',
         agentId: selected.id,
         updates: {
-          name:         form.name.trim(),
-          email:        form.email.trim().toLowerCase(),
-          phone:        form.phone || null,
-          role:         form.role,
-          color:        form.color,
-          auth_user_id: selected.auth_user_id || null,
+          name:                form.name.trim(),
+          email:               form.email.trim().toLowerCase(),
+          phone:               form.phone || null,
+          role:                form.role,
+          color:               form.color,
+          can_hear_recordings: !!form.can_hear_recordings,
+          auth_user_id:        selected.auth_user_id || null,
         },
       })
       const data = await res.json().catch(() => ({}))
@@ -725,6 +726,9 @@ export function Admin() {
         </Field>
         <Field label="Phone"><Input value={form.phone??''} onChange={v=>set('phone',v)} placeholder="(845) 555-1234" type="tel" /></Field>
         <Field label="Role"><Select value={form.role} onChange={v=>set('role',v)} options={ROLES} /></Field>
+        <Field label="Call Recordings" hint="Can this agent hear call recordings for any contact? (Per-contact access can also be granted from a contact's page.)">
+          <Toggle value={!!form.can_hear_recordings} onChange={v=>set('can_hear_recordings', v)} label={form.can_hear_recordings ? 'Can hear all recordings' : 'No recording access'} />
+        </Field>
         <Field label="Avatar Color">
           <div style={{display:'flex',gap:8,flexWrap:'wrap',paddingTop:4}}>
             {COLORS.map(c => (
