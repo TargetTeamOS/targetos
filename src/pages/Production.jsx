@@ -281,8 +281,33 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   const { agent: me, isAdmin, canManage } = useAuth()
   const [editing, setEditing] = React.useState(false)
   const [val, setVal] = React.useState('')
+  const [showLinker, setShowLinker] = React.useState(false)
+  const [localContacts, setLocalContacts] = React.useState(deal._contacts || [])
+  const linkerRef = React.useRef(null)
   const ref = React.useRef(null)
   const raw = col.custom ? (deal.custom_data || {})[col.key] : deal[col.key]
+
+  React.useEffect(() => { setLocalContacts(deal._contacts || []) }, [deal._contacts])
+
+  async function refreshContacts() {
+    try {
+      const { data } = await supabase.from('deal_contacts')
+        .select('role, contacts(id, first_name, last_name)')
+        .eq('deal_id', deal.id)
+      setLocalContacts((data || []).filter(r => r.contacts).map(r => ({
+        id: r.contacts.id,
+        name: [r.contacts.first_name, r.contacts.last_name].filter(Boolean).join(' ') || 'Unnamed',
+        role: r.role,
+      })))
+    } catch(e) { console.warn('refreshContacts failed:', e.message) }
+  }
+
+  React.useEffect(() => {
+    if (!showLinker) return
+    const handler = e => { if (linkerRef.current && !linkerRef.current.contains(e.target)) setShowLinker(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showLinker])
 
   function startEdit(e) {
     e.stopPropagation()
@@ -309,14 +334,19 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   // everything, matching this app's existing role model elsewhere.
   if (col.key === '_client') {
     const canSeeClient = isAdmin || canManage || deal.agent_id === me?.id
-    const contacts = deal._contacts || []
+    const contacts = localContacts
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width, position: 'relative', overflow: 'visible' }}>
         <div style={{ ...base, justifyContent: 'flex-start', gap: 4, overflow: 'hidden' }}>
           {!canSeeClient && contacts.length > 0 && (
             <span style={{ color: '#c5c7d0', fontSize: 12 }} title="Private — another agent's deal">🔒</span>
           )}
-          {canSeeClient && contacts.length === 0 && <span style={{ color: '#c5c7d0', fontSize: 12 }}>—</span>}
+          {canSeeClient && contacts.length === 0 && (
+            <span onClick={e => { e.stopPropagation(); setShowLinker(true) }}
+              style={{ color: '#0086c0', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+              + Add
+            </span>
+          )}
           {canSeeClient && contacts.map((c, i) => (
             <span key={c.id}
               onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
@@ -325,7 +355,28 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
               {c.name}{i < contacts.length - 1 ? ',' : ''}
             </span>
           ))}
+          {canSeeClient && contacts.length > 0 && (
+            <span onClick={e => { e.stopPropagation(); setShowLinker(true) }}
+              title="Manage linked contacts"
+              style={{ color: '#8B93A1', fontSize: 12, cursor: 'pointer', marginLeft: 2, flexShrink: 0 }}>
+              ✎
+            </span>
+          )}
         </div>
+        {showLinker && (
+          <div ref={linkerRef} onClick={e => e.stopPropagation()}
+            style={{
+              position: 'absolute', top: '100%', left: 0, zIndex: 500,
+              background: 'var(--panel)', border: '1px solid var(--border)',
+              borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.2)',
+              width: 340, maxHeight: 420, overflowY: 'auto', padding: 14,
+            }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>
+              Linked Contacts
+            </div>
+            <DealContactsPanel dealId={deal.id} agentId={deal.agent_id} onChange={refreshContacts} />
+          </div>
+        )}
       </td>
     )
   }
@@ -620,7 +671,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
 // Displays linked contacts for a deal and lets agents add/remove them
 const CONTACT_ROLES = ['Client','Buyer','Seller','Co-Buyer','Co-Seller','Referral Source','Attorney','Other']
 
-function DealContactsPanel({ dealId, agentId }) {
+function DealContactsPanel({ dealId, agentId, onChange }) {
   const { toast } = useApp()
   const [linked,    setLinked]    = useState([])   // { id, role, contacts: {...} }
   const [loading,   setLoading]   = useState(true)
@@ -663,6 +714,21 @@ function DealContactsPanel({ dealId, agentId }) {
     searchTimer.current = setTimeout(() => searchContacts(q), 250)
   }
 
+  async function createAndAddContact() {
+    const trimmed = search.trim()
+    if (!trimmed) return
+    const parts = trimmed.split(' ')
+    const first_name = parts[0]
+    const last_name = parts.slice(1).join(' ') || null
+    try {
+      const { data: newContact, error } = await supabase.from('contacts')
+        .insert({ first_name, last_name, agent_id: agentId, status: 'New', created_at: new Date().toISOString() })
+        .select().single()
+      if (error) throw error
+      await addContact(newContact)
+    } catch(e) { toast('Failed to create contact: ' + e.message, '#DC2626') }
+  }
+
   async function addContact(contact) {
     if (linked.some(l => l.contact_id === contact.id)) {
       toast('Already linked', '#F5A623'); return
@@ -671,6 +737,7 @@ function DealContactsPanel({ dealId, agentId }) {
       await supabase.from('deal_contacts').insert({ deal_id: dealId, contact_id: contact.id, role: addRole })
       setSearch(''); setResults([])
       await loadLinked()
+      onChange?.()
       toast('✅ Contact linked')
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
@@ -679,6 +746,7 @@ function DealContactsPanel({ dealId, agentId }) {
     try {
       await supabase.from('deal_contacts').delete().eq('id', linkId)
       setLinked(prev => prev.filter(l => l.id !== linkId))
+      onChange?.()
       toast('Contact removed')
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
@@ -687,6 +755,7 @@ function DealContactsPanel({ dealId, agentId }) {
     try {
       await supabase.from('deal_contacts').update({ role }).eq('id', linkId)
       setLinked(prev => prev.map(l => l.id === linkId ? { ...l, role } : l))
+      onChange?.()
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
 
@@ -746,7 +815,7 @@ function DealContactsPanel({ dealId, agentId }) {
           </select>
         </div>
         {/* Search results dropdown */}
-        {(results.length > 0 || searching) && (
+        {(results.length > 0 || searching || search.trim()) && (
           <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'9px', boxShadow:'0 8px 24px rgba(0,0,0,.15)', overflow:'hidden' }}>
             {searching && <div style={{ padding:'10px 14px', fontSize:'12px', color:'var(--muted)' }}>Searching...</div>}
             {results.map(c => (
@@ -767,6 +836,16 @@ function DealContactsPanel({ dealId, agentId }) {
                 <span style={{ fontSize:'11px', color:'var(--brand)', fontWeight:700 }}>+ Add</span>
               </div>
             ))}
+            {!searching && search.trim() && (
+              <div onClick={createAndAddContact}
+                style={{ display:'flex', alignItems:'center', gap:'10px', padding:'9px 14px', cursor:'pointer', color:'var(--brand)' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
+                onMouseLeave={e => e.currentTarget.style.background = ''}
+              >
+                <span style={{ fontSize:'14px' }}>+</span>
+                <span style={{ fontSize:'13px', fontWeight:600 }}>Create "{search.trim()}" as a new contact</span>
+              </div>
+            )}
           </div>
         )}
       </div>
