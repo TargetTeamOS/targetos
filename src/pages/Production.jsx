@@ -620,7 +620,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
 
       {/* ── Rows ── */}
       {!collapsed && (
-        <div style={{ overflowX: 'auto', borderBottom: '1px solid #e6e9ef' }}>
+        <div style={{ borderBottom: '1px solid #e6e9ef' }}>
           <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', background: '#fff', borderRight: '1px solid #e6e9ef' }}>
             <tbody>
               {deals.map(d => (
