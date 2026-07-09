@@ -28,18 +28,28 @@ module.exports = async function handler(req, res) {
   const supabase = getSupabase()
   if (!supabase) return res.send(wrap(say('Directory is unavailable. Goodbye.', voice)))
 
-  // Load active agents marked for the directory, ordered consistently
-  // (by created_at) and assign extensions 101+
+  // Load active agents marked for the directory. Uses each agent's
+  // configured extension if set (Admin -> Phone Directory -> Extension);
+  // auto-assigns 101+ for anyone without one, skipping any number
+  // already taken by a configured extension.
   const { data: agents } = await supabase
     .from('agents')
-    .select('id,name,phone,role')
+    .select('id,name,phone,role,extension')
     .eq('active', true)
     .eq('in_directory', true)
     .order('created_at', { ascending: true })
     .limit(20)
 
   const agentList = (agents || []).filter(a => a.phone)
-  agentList.forEach((a, i) => { a._ext = String(101 + i) })
+  const takenExts = new Set(agentList.filter(a => a.extension).map(a => String(a.extension)))
+  let nextAuto = 101
+  agentList.forEach(a => {
+    if (a.extension) { a._ext = String(a.extension); return }
+    while (takenExts.has(String(nextAuto))) nextAuto++
+    a._ext = String(nextAuto)
+    takenExts.add(a._ext)
+    nextAuto++
+  })
 
   // ── ANNOUNCE: read all extensions ──────────────────────────────
   if (step === 'announce') {

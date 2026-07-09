@@ -100,6 +100,7 @@ export function Admin() {
   // ── Save edits to existing agent ──────────────────────────────
   async function saveAgent() {
     if (!form.name.trim() || !form.email.trim()) { toast('Name and email required','#DC2626'); return }
+    if (form.in_directory && form.extension && (form.extension < 100 || form.extension > 999)) { toast('Extension must be 3 digits (100-999)', '#DC2626'); return }
     setSaving(true)
     try {
       // Use API endpoint which uses service key (bypasses RLS)
@@ -114,6 +115,7 @@ export function Admin() {
           color:               form.color,
           can_hear_recordings: !!form.can_hear_recordings,
           in_directory:        !!form.in_directory,
+          extension:           form.in_directory ? (form.extension || null) : null,
           auth_user_id:        selected.auth_user_id || null,
         },
       })
@@ -769,6 +771,13 @@ export function Admin() {
         <Field label="Phone Directory" hint="Should this agent be reachable via the phone system's agent directory (press 3)?">
           <Toggle value={!!form.in_directory} onChange={v=>set('in_directory', v)} label={form.in_directory ? 'Listed in directory' : 'Not in directory'} />
         </Field>
+        {form.in_directory && (
+          <Field label="Extension" hint="3-digit extension callers dial to reach this agent from the directory (e.g. 101). Leave blank to auto-assign the next available one.">
+            <Input type="number" min={100} max={999} value={form.extension || ''}
+              onChange={e => set('extension', e.target.value ? parseInt(e.target.value) : null)}
+              placeholder="e.g. 101" />
+          </Field>
+        )}
         <Field label="Avatar Color">
           <div style={{display:'flex',gap:8,flexWrap:'wrap',paddingTop:4}}>
             {COLORS.map(c => (
