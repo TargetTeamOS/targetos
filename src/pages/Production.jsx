@@ -1664,7 +1664,7 @@ export function Production() {
     <div style={{ fontFamily: ff }}>
 
       {/* ── HEADER ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-.3px' }}>📊 Production Board</div>
           <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
@@ -1680,6 +1680,7 @@ export function Production() {
           </div>
         )}
 
+        <div style={{ marginBottom: -12 }}>
         <FilterBar
           searchKey="search" placeholder="🔍 Address, client, attorney..."
           filters={{ search, yearF, stageF, sideF, agentF, saleTypeF, propTypeF }}
@@ -1692,7 +1693,6 @@ export function Production() {
             if ('saleTypeF'  in next) setSaleTypeF(next.saleTypeF)
             if ('propTypeF'  in next) setPropTypeF(next.propTypeF)
           }}
-          totalCount={deals.length} filteredCount={filtered.length}
           definitions={[
             { key:'yearF',    label:'Year',      options:years.map(y=>({value:y,label:y})) },
             { key:'stageF',   label:'Stage',     options:DEAL_STAGES.map(s=>({value:s.value,label:s.label})) },
@@ -1702,6 +1702,7 @@ export function Production() {
             { key:'propTypeF',label:'Type',      options:['Single Family','Condo','New Construction','Multi Family','Duplex','Flip','Land','Commercial'].map(s=>({value:s,label:s})) },
           ]}
         />
+        </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           {/* View mode */}
@@ -1757,14 +1758,14 @@ export function Production() {
       </div>
 
       {/* ── STATS ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
         {[
           { label: 'Total Deals',    value: thisYearScope.length, color: '#3B82F6', prefix: '' },
           { label: 'Active',         value: activeArr.length,     color: '#037f4c', prefix: '' },
           { label: 'Closed GCI',     value: fmtFull$(closedGCI),      color: '#10B981', prefix: '' },
           { label: 'Pipeline GCI',   value: fmtFull$(pipelineGCI),    color: '#F5A623', prefix: '' },
         ].map(s => (
-          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '12px 14px', borderLeft: "3px solid " + (s.color) }}>
+          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '9px 14px', borderLeft: "3px solid " + (s.color) }}>
             <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)' }}>{s.value}</div>
             <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px', fontWeight: 600 }}>{s.label}</div>
           </div>
