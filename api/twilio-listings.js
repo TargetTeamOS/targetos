@@ -25,12 +25,11 @@ const PRICE_RANGES = {
 const BED_MAP = { '1':'1','2':'2','3':'3','4':'4','5':'5+' }
 
 function readListing(l, i, voice) {
-  const price = l.list_price||l.price ? '$' + Number(l.list_price||l.price).toLocaleString() : 'price not listed'
+  const price = l.list_price ? '$' + Number(l.list_price).toLocaleString() : 'price not listed'
   const addr  = [l.addr, l.city].filter(Boolean).join(', ') || 'address on file'
-  const beds  = l.beds||l.bedrooms   ? (l.beds||l.bedrooms)   + ' bedroom' : ''
-  const baths = l.baths||l.bathrooms ? (l.baths||l.bathrooms) + ' bathroom' : ''
-  const type  = l.property_type || ''
-  const desc  = [beds, baths, type].filter(Boolean).join(', ')
+  const beds  = l.beds  ? l.beds  + ' bedroom' : ''
+  const baths = l.baths ? l.baths + ' bathroom' : ''
+  const desc  = [beds, baths].filter(Boolean).join(', ')
   return say('Listing ' + (i+1) + '. ' + addr + '. ' + (desc ? desc + '. ' : '') + 'Listed at ' + price + '.', voice)
 }
 
@@ -47,7 +46,7 @@ async function runSearch(res, voice, maxRes, base, filterFn, summaryLabel) {
   if (!supabase) return res.send(wrap(say('Search is temporarily unavailable. Please call back shortly.', voice)))
 
   try {
-    let q = supabase.from('listings').select('addr,city,list_price,price,beds,bedrooms,baths,bathrooms,property_type')
+    let q = supabase.from('listings').select('addr,city,list_price,beds,baths')
       .eq('status', 'Active').eq('ivr_enabled', true)
     q = filterFn(q)
     q = q.order('list_price', { ascending: true }).limit(maxRes)
