@@ -45,6 +45,7 @@ export function Admin() {
   const [selected,  setSelected]  = useState(null)
   const [form,      setForm]      = useState(BLANK)
   const [saving,    setSaving]    = useState(false)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [showAdd,   setShowAdd]   = useState(false)
   const [addForm,   setAddForm]   = useState({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
   const [adding,    setAdding]    = useState(false)
@@ -97,6 +98,24 @@ export function Admin() {
   function openAgent(a){ setSelected(a); setForm({...BLANK,...a}) }
   function closePanel(){ setSelected(null) }
 
+  // ── Upload a headshot on behalf of any agent ────────────────────
+  async function uploadAgentPhoto(e) {
+    const file = e.target.files[0]
+    if (!file || !selected) return
+    if (file.size > 5 * 1024 * 1024) { toast('Photo must be under 5MB', '#F5A623'); return }
+    setUploadingPhoto(true)
+    try {
+      const ext  = file.name.split('.').pop()
+      const path = 'headshots/' + selected.id + '.' + ext
+      const { error } = await supabase.storage.from('agent-photos').upload(path, file, { upsert: true })
+      if (error) throw error
+      const { data } = supabase.storage.from('agent-photos').getPublicUrl(path)
+      set('photo_url', data.publicUrl + '?t=' + Date.now())
+      toast('✅ Photo uploaded — click Save Changes to apply')
+    } catch(e) { toast('Upload failed: ' + e.message, '#DC2626') }
+    finally { setUploadingPhoto(false) }
+  }
+
   // ── Save edits to existing agent ──────────────────────────────
   async function saveAgent() {
     if (!form.name.trim() || !form.email.trim()) { toast('Name and email required','#DC2626'); return }
@@ -113,6 +132,7 @@ export function Admin() {
           phone:               form.phone || null,
           role:                form.role,
           color:               form.color,
+          photo_url:           form.photo_url || null,
           can_hear_recordings: !!form.can_hear_recordings,
           in_directory:        !!form.in_directory,
           extension:           form.in_directory ? (form.extension || null) : null,
@@ -759,6 +779,25 @@ export function Admin() {
 
       {/* ── EDIT AGENT MODAL ── */}
       <Modal open={!!selected} onClose={closePanel} title={'Edit — '+(selected?.name||'')} width={460}>
+        <Field label="Photo">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <Avatar agent={{ name: form.name, color: form.color, photo_url: form.photo_url }} size={56} showHover={false} />
+            <div>
+              <input type="file" accept="image/*" id="agent-photo-upload" style={{ display: 'none' }}
+                onChange={uploadAgentPhoto} disabled={uploadingPhoto} />
+              <label htmlFor="agent-photo-upload"
+                style={{ display: 'inline-block', padding: '9px 16px', borderRadius: 8, background: 'var(--dim)', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: uploadingPhoto ? 'wait' : 'pointer', fontFamily: ff, opacity: uploadingPhoto ? 0.6 : 1 }}>
+                {uploadingPhoto ? 'Uploading…' : 'Upload Photo'}
+              </label>
+              {form.photo_url && (
+                <button onClick={() => set('photo_url', null)}
+                  style={{ marginLeft: 8, fontSize: 12, color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        </Field>
         <Field label="Full Name"><Input value={form.name} onChange={v=>set('name',v)} placeholder="Full name" /></Field>
         <Field label="Email" hint="Must match their Supabase login email">
           <Input value={form.email} onChange={v=>set('email',v)} type="email" placeholder="agent@targetreteam.com" />
