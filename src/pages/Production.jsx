@@ -343,7 +343,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
             onSave={v => onQuickUpdate(deal, 'agent_id', v, false)}
             renderValue={() => ag ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Avatar agent={ag} size={34} showHover={false} style={{ border: 'none' }} />
+                <Avatar agent={ag} size={36} showHover={false} style={{ border: 'none' }} />
                 <span style={{ fontSize: 12, color: '#323338', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 70 }}>{ag.name.split(' ')[0]}</span>
               </div>
             ) : <span style={{ color: '#c5c7d0', fontSize: 12 }}>No agent</span>}
