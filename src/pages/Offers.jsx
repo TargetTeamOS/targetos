@@ -738,85 +738,21 @@ export function Offers() {
                 </label>
               </div>
 
-              <span style={SL}>Address or MLS# — auto-fills seller name, agent &amp; company</span>
+              <span style={SL}>Address {form.off_market ? '' : '— start typing for real address suggestions'}</span>
               <div ref={mlsRef} style={{ position:'relative' }}>
                 <div style={{ display:'flex', gap:8, marginBottom:6 }}>
                   <div style={{ flex:1, position:'relative' }}>
-                    <input
-                      value={mlsSearchQ || form.listing_addr || ''}
-                      onChange={e => {
-                        setMlsSearchQ(e.target.value)
-                        set('listing_addr', e.target.value)
-                        if (!form.off_market) searchMLS(e.target.value)
-                      }}
-                      placeholder={form.off_market ? 'Enter address manually...' : 'Type address or MLS# to search MLS...'}
-                      style={{ ...S, paddingRight: mlsLoading ? 32 : 10 }}
+                    <AddressAutocomplete
+                      value={form.listing_addr || ''}
+                      onChange={v => set('listing_addr', v)}
+                      onSelect={full => set('listing_addr', full)}
+                      placeholder={form.off_market ? 'Enter address manually...' : 'Start typing an address...'}
+                      style={S}
                     />
-                    {mlsLoading && <div style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', fontSize:11 }}>⏳</div>}
                   </div>
-                  {!form.off_market && (
-                    <input value={form.mls_number||''} onChange={e=>set('mls_number',e.target.value)}
-                      placeholder="MLS #" style={{ ...S, width:100, flexShrink:0 }} />
-                  )}
+                  <input value={form.mls_number||''} onChange={e=>set('mls_number',e.target.value)}
+                    placeholder="MLS # (if known)" style={{ ...S, width:130, flexShrink:0 }} />
                 </div>
-
-                {/* MLS dropdown results */}
-                {showMlsDrop && mlsResults.length > 0 && (
-                  <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'var(--panel)', border:'1px solid var(--border)', borderRadius:10, zIndex:300, boxShadow:'0 8px 32px rgba(0,0,0,.25)', overflow:'hidden', maxHeight:300, overflowY:'auto' }}>
-                    <div style={{ padding:'6px 12px', fontSize:10, fontWeight:700, color:'var(--muted)', background:'var(--dim)', textTransform:'uppercase' }}>
-                      MLS Results — click to auto-fill form
-                    </div>
-                    {mlsResults.map((mls, i) => {
-                      const addr    = mls.address || {}
-                      const street  = [addr.streetNumber, addr.streetName, addr.unit?'#'+addr.unit:null].filter(Boolean).join(' ')
-                      const full    = [street, addr.city, addr.state].filter(Boolean).join(', ')
-                      const agFull  = [mls.agent?.firstName, mls.agent?.lastName].filter(Boolean).join(' ')
-                      const office  = mls.office?.name || mls.office?.officeName || ''
-                      return (
-                        <div key={mls.mlsId||i} onMouseDown={() => applyMLSListing(mls)}
-                          style={{ padding:'10px 12px', cursor:'pointer', borderBottom:'1px solid var(--border)' }}
-                          onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
-                          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
-                            <div style={{ flex:1, minWidth:0 }}>
-                              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{full}</div>
-                              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
-                                MLS# {mls.mlsId}
-                                {mls.listPrice ? ' · $' + Number(mls.listPrice).toLocaleString() : ''}
-                                {mls.property?.bedrooms ? ' · ' + mls.property.bedrooms + 'bd' : ''}
-                                {mls.property?.bathsFull ? ' / ' + mls.property.bathsFull + 'ba' : ''}
-                              </div>
-                              {agFull && (
-                                <div style={{ fontSize:10, color:'#3B82F6', marginTop:2, fontWeight:600 }}>
-                                  Listed by: {agFull}{office ? ' · ' + office : ''}
-                                </div>
-                              )}
-                            </div>
-                            <span style={{ fontSize:10, padding:'2px 7px', borderRadius:99, background:'rgba(16,185,129,.1)', color:'#10B981', fontWeight:700, flexShrink:0 }}>
-                              {mls.mls?.status || 'Active'}
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    <div style={{ padding:'7px 12px', fontSize:11, color:'var(--muted)', fontStyle:'italic', background:'var(--dim)' }}>
-                      Not found? Check "Off Market" and enter manually.
-                    </div>
-                  </div>
-                )}
-
-                {/* Confirmation chips after MLS selection */}
-                {form.mls_number && !showMlsDrop && (
-                  <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:4 }}>
-                    <span style={{ fontSize:10, background:'rgba(59,130,246,.1)', color:'#3B82F6', padding:'2px 8px', borderRadius:99, fontWeight:700 }}>MLS# {form.mls_number}</span>
-                    {form.sellers_agent_name && <span style={{ fontSize:10, background:'rgba(16,185,129,.1)', color:'#10B981', padding:'2px 8px', borderRadius:99, fontWeight:700 }}>Listed by: {form.sellers_agent_name}</span>}
-                    {form.seller_agent_company && <span style={{ fontSize:10, background:'var(--dim)', color:'var(--muted)', padding:'2px 8px', borderRadius:99 }}>{form.seller_agent_company}</span>}
-                    <button onClick={() => { setMlsSearchQ(''); setForm(f=>({...f,listing_addr:'',mls_number:'',sellers_agent_name:'',seller_agent_company:'',seller_name:'',is_inhouse:false})) }}
-                      style={{ fontSize:10, color:'var(--muted)', background:'none', border:'none', cursor:'pointer', fontFamily:ff }}>
-                      ✕ Clear
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1059,7 +995,13 @@ export function Offers() {
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
               <div style={{ gridColumn:'span 2' }}>
                 <span style={SL}>Property Address *</span>
-                <input value={form.listing_addr||''} onChange={e=>set('listing_addr',e.target.value)} placeholder="123 Main St..." style={S} />
+                <AddressAutocomplete
+                  value={form.listing_addr || ''}
+                  onChange={v => set('listing_addr', v)}
+                  onSelect={full => set('listing_addr', full)}
+                  placeholder="Start typing an address..."
+                  style={S}
+                />
               </div>
               <div>
                 <span style={SL}>Buyer Name *</span>
@@ -1067,7 +1009,9 @@ export function Offers() {
               </div>
               <div>
                 <span style={SL}>Seller Name</span>
-                <input value={form.seller_name||''} onChange={e=>set('seller_name',e.target.value)} placeholder="Seller name" style={S} />
+                <ContactSearch value={form.seller_name||''} onChange={v=>set('seller_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' ')})) }}
+                  placeholder="Search or enter seller..." />
               </div>
               <div>
                 <span style={SL}>Purchase Price</span>
