@@ -149,7 +149,7 @@ export function Settings() {
   async function uploadPhoto(e) {
     const file = e.target.files[0]
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) { toast('Photo must be under 5MB', '#F5A623'); return }
+    if (file.size > 15 * 1024 * 1024) { toast('Photo must be under 15MB', '#F5A623'); return }
     setUploading(true)
     try {
       const ext  = file.name.split('.').pop()

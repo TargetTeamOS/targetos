@@ -102,7 +102,7 @@ export function Admin() {
   async function uploadAgentPhoto(e) {
     const file = e.target.files[0]
     if (!file || !selected) return
-    if (file.size > 5 * 1024 * 1024) { toast('Photo must be under 5MB', '#F5A623'); return }
+    if (file.size > 15 * 1024 * 1024) { toast('Photo must be under 15MB', '#F5A623'); return }
     setUploadingPhoto(true)
     try {
       const ext  = file.name.split('.').pop()
