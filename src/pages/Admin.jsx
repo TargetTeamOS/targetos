@@ -135,6 +135,7 @@ export function Admin() {
           photo_url:           form.photo_url || null,
           can_hear_recordings: !!form.can_hear_recordings,
           in_directory:        !!form.in_directory,
+          hide_client_column:  !!form.hide_client_column,
           extension:           form.in_directory ? (form.extension || null) : null,
           auth_user_id:        selected.auth_user_id || null,
         },
@@ -809,6 +810,9 @@ export function Admin() {
         </Field>
         <Field label="Phone Directory" hint="Should this agent be reachable via the phone system's agent directory (press 3)?">
           <Toggle value={!!form.in_directory} onChange={v=>set('in_directory', v)} label={form.in_directory ? 'Listed in directory' : 'Not in directory'} />
+        </Field>
+        <Field label="Client Column" hint="Hide the Client column on the Production board for this agent entirely, even on their own deals?">
+          <Toggle value={!!form.hide_client_column} onChange={v=>set('hide_client_column', v)} label={form.hide_client_column ? 'Hidden from this agent' : 'Visible to this agent'} />
         </Field>
         {form.in_directory && (
           <Field label="Extension" hint="3-digit extension callers dial to reach this agent from the directory (e.g. 101). Leave blank to auto-assign the next available one.">

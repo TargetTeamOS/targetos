@@ -1378,12 +1378,13 @@ export function Production() {
   const activeGroups  = useMemo(() => customGroups || [...BOARD_GROUPS, ...buildYearGroups(deals)], [customGroups, deals])
   const visibleCols   = useMemo(() => {
     let cols = ALL_COLUMNS_WITH_CUSTOM.filter(c => !hiddenCols.includes(c.key))
+    if (agent?.hide_client_column) cols = cols.filter(c => c.key !== '_client')
     if (colOrder) {
       const orderMap = new Map(colOrder.map((k, i) => [k, i]))
       cols = [...cols].sort((a, b) => (orderMap.has(a.key) ? orderMap.get(a.key) : 999) - (orderMap.has(b.key) ? orderMap.get(b.key) : 999))
     }
     return cols
-  }, [ALL_COLUMNS_WITH_CUSTOM, hiddenCols, colOrder])
+  }, [ALL_COLUMNS_WITH_CUSTOM, hiddenCols, colOrder, agent?.hide_client_column])
 
   const years = []
   for (let y = new Date().getFullYear(); y >= 2015; y--) years.push(y.toString())
@@ -2050,7 +2051,7 @@ export function Production() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                {['','#','Address','Client','Agent','Production','GCI','Stage','Side','A/O Date','Exp Close','Command','Source'].map(h => (
+                {(agent?.hide_client_column ? ['','#','Address','Agent','Production','GCI','Stage','Side','A/O Date','Exp Close','Command','Source'] : ['','#','Address','Client','Agent','Production','GCI','Stage','Side','A/O Date','Exp Close','Command','Source']).map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: h === 'Production' || h === 'GCI' ? 'right' : 'left', fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap', background: 'var(--dim)' }}>
                     {h}
                   </th>
@@ -2074,7 +2075,7 @@ export function Production() {
                     <td style={{ padding: '9px 12px' }}>
                       <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>{d.addr}</div>
                     </td>
-                    <ClientLinkCell deal={d} width={170} />
+                    {!agent?.hide_client_column && <ClientLinkCell deal={d} width={170} />}
                     <td style={{ padding: '9px 12px' }}>
                       {a && <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Avatar agent={a} size={20} /><span style={{ fontSize: '11px', color: 'var(--muted)' }}>{a.name.split(' ')[0]}</span></div>}
                     </td>
