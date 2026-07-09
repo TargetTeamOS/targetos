@@ -311,7 +311,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const canSeeClient = isAdmin || canManage || deal.agent_id === me?.id
     const contacts = deal._contacts || []
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
         <div style={{ ...base, justifyContent: 'flex-start', gap: 4, overflow: 'hidden' }}>
           {!canSeeClient && contacts.length > 0 && (
             <span style={{ color: '#c5c7d0', fontSize: 12 }} title="Private — another agent's deal">🔒</span>
@@ -334,7 +334,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const ag = agents.find(a => a.id === deal.agent_id)
     const agentOptions = agents.map(a => ({ value: a.id, label: a.name, hex: a.color || '#0086c0' }))
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
         <div style={{ ...base, overflow: 'visible', gap: 6, cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
           <InlinePicker
             value={deal.agent_id}
@@ -365,7 +365,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const found = opts.find(o => o.value === raw)
     const bg = found?.hex || cellColor(col, raw) || '#c5c7d0'
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
         <div style={{ ...base, overflow: 'visible', cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
           <InlinePicker value={raw} options={opts} color={bg}
             onSave={v => onQuickUpdate(deal, col.key, v, col.custom)} />
@@ -377,7 +377,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   // Checkbox cell (custom fields)
   if (col.type === 'checkbox') {
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
         <div style={{ ...base, cursor: 'pointer' }} onClick={e => { e.stopPropagation(); onQuickUpdate(deal, col.key, !raw, col.custom) }}>
           <div style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid ' + (raw ? '#0073ea' : '#c5c7d0'), background: raw ? '#0073ea' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {raw && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
@@ -390,14 +390,14 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   // Number / currency cell
   if (col.type === 'number' || col.type === 'currency') {
     if (editing) return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
         <input ref={ref} type="number" value={val} onChange={e => setVal(e.target.value)}
           onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
           style={{ width: '100%', height: 40, padding: '0 10px', border: '2px solid #0073ea', outline: 'none', fontSize: 13, fontFamily: ff, textAlign: 'right', background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
       </td>
     )
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }} onClick={startEdit}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }} onClick={startEdit}>
         <div style={{ ...base, cursor: 'text', justifyContent: 'flex-end', color: col.key === 'gci' ? '#037f4c' : '#323338', fontWeight: raw ? 600 : 400 }}>
           {raw ? fmtFull$(parseNum(raw)) : <span style={{ color: '#c5c7d0' }}>—</span>}
         </div>
@@ -412,14 +412,14 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const overdue = days !== null && days < 0
     const urgent  = days !== null && days >= 0 && days <= 7
     if (editing) return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
         <input ref={ref} type="date" value={val} onChange={e => setVal(e.target.value)}
           onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
           style={{ width: '100%', height: 40, padding: '0 8px', border: '2px solid #0073ea', outline: 'none', fontSize: 12, fontFamily: ff, background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
       </td>
     )
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }} onClick={startEdit}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }} onClick={startEdit}>
         <div style={{ ...base, cursor: 'text', color: overdue ? '#e2445c' : urgent ? '#fdab3d' : (col.color || '#323338'), fontWeight: (overdue || urgent) ? 700 : 400 }}>
           {display || <span style={{ color: '#c5c7d0' }}>—</span>}
           {days !== null && days >= 0 && days <= 14 && (
@@ -432,14 +432,14 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
 
   // Text cell (default)
   if (editing) return (
-    <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+    <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
       <input ref={ref} value={val} onChange={e => setVal(e.target.value)}
         onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
         style={{ width: '100%', height: 40, padding: '0 10px', border: '2px solid #0073ea', outline: 'none', fontSize: 13, fontFamily: ff, background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
     </td>
   )
   return (
-    <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }} onClick={startEdit}>
+    <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }} onClick={startEdit}>
       <div style={{ ...base, cursor: 'text', color: '#323338', justifyContent: 'flex-start' }}>
         {raw || <span style={{ color: '#c5c7d0' }}>—</span>}
       </div>
@@ -478,7 +478,7 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
 
       {/* Address — sticky, always visible */}
       <td onClick={() => onOpen(deal)}
-        style={{ padding: '0 12px', height: 40, borderRight: '1px solid #e6e9ef', minWidth: 220, maxWidth: 280, position: 'sticky', left: 50, background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', zIndex: 2, cursor: 'pointer' }}>
+        style={{ padding: '0 12px', height: 40, borderRight: '1px solid #e6e9ef', width: 250, minWidth: 220, maxWidth: 280, position: 'sticky', left: 50, background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', zIndex: 2, cursor: 'pointer' }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: '#323338', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {deal.addr}
           {deal.unit && <span style={{ color: '#676879', fontWeight: 400 }}> #{deal.unit}</span>}
@@ -589,7 +589,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
                     {deals.length} item{deals.length !== 1 ? 's' : ''}
                   </td>
                   {visibleCols.map(col => (
-                    <td key={col.key} style={{ height: 32, padding: '0 10px', borderRight: '1px solid #e6e9ef', minWidth: col.width, textAlign: col.type === 'number' ? 'right' : 'center', fontSize: 12, fontWeight: 700 }}>
+                    <td key={col.key} style={{ height: 32, padding: '0 10px', borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width, textAlign: col.type === 'number' ? 'right' : 'center', fontSize: 12, fontWeight: 700 }}>
                       {col.key === 'production' ? <span style={{ color: '#323338' }}>{fmtFull$(totalProd)}</span>
                        : col.key === 'gci' ? <span style={{ color: '#037f4c' }}>{fmtFull$(totalGCI)}</span>
                        : ''}
@@ -1680,6 +1680,29 @@ export function Production() {
           </div>
         )}
 
+        <FilterBar
+          searchKey="search" placeholder="🔍 Address, client, attorney..."
+          filters={{ search, yearF, stageF, sideF, agentF, saleTypeF, propTypeF }}
+          onChange={next => {
+            if ('search'     in next) setSearch(next.search)
+            if ('yearF'      in next) setYearF(next.yearF)
+            if ('stageF'     in next) setStageF(next.stageF)
+            if ('sideF'      in next) setSideF(next.sideF)
+            if ('agentF'     in next) setAgentF(next.agentF)
+            if ('saleTypeF'  in next) setSaleTypeF(next.saleTypeF)
+            if ('propTypeF'  in next) setPropTypeF(next.propTypeF)
+          }}
+          totalCount={deals.length} filteredCount={filtered.length}
+          definitions={[
+            { key:'yearF',    label:'Year',      options:years.map(y=>({value:y,label:y})) },
+            { key:'stageF',   label:'Stage',     options:DEAL_STAGES.map(s=>({value:s.value,label:s.label})) },
+            { key:'sideF',    label:'Side',      options:DEAL_SIDES.map(s=>({value:s,label:s})) },
+            ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', options:agents.map(a=>({value:a.id,label:a.name})) }]:[]),
+            { key:'saleTypeF',label:'Sale Type', options:['On Market','Off Market','FSBO'].map(s=>({value:s,label:s})) },
+            { key:'propTypeF',label:'Type',      options:['Single Family','Condo','New Construction','Multi Family','Duplex','Flip','Land','Commercial'].map(s=>({value:s,label:s})) },
+          ]}
+        />
+
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           {/* View mode */}
           <div style={{ display: 'flex', background: 'var(--dim)', borderRadius: '8px', padding: '3px', gap: '2px' }}>
@@ -1748,31 +1771,7 @@ export function Production() {
         ))}
       </div>
 
-      {/* ── FILTERS ── */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <FilterBar
-          searchKey="search" placeholder="🔍 Address, client, attorney..."
-          filters={{ search, yearF, stageF, sideF, agentF, saleTypeF, propTypeF }}
-          onChange={next => {
-            if ('search'     in next) setSearch(next.search)
-            if ('yearF'      in next) setYearF(next.yearF)
-            if ('stageF'     in next) setStageF(next.stageF)
-            if ('sideF'      in next) setSideF(next.sideF)
-            if ('agentF'     in next) setAgentF(next.agentF)
-            if ('saleTypeF'  in next) setSaleTypeF(next.saleTypeF)
-            if ('propTypeF'  in next) setPropTypeF(next.propTypeF)
-          }}
-          totalCount={deals.length} filteredCount={filtered.length}
-          definitions={[
-            { key:'yearF',    label:'Year',      options:years.map(y=>({value:y,label:y})) },
-            { key:'stageF',   label:'Stage',     options:DEAL_STAGES.map(s=>({value:s.value,label:s.label})) },
-            { key:'sideF',    label:'Side',      options:DEAL_SIDES.map(s=>({value:s,label:s})) },
-            ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', options:agents.map(a=>({value:a.id,label:a.name})) }]:[]),
-            { key:'saleTypeF',label:'Sale Type', options:['On Market','Off Market','FSBO'].map(s=>({value:s,label:s})) },
-            { key:'propTypeF',label:'Type',      options:['Single Family','Condo','New Construction','Multi Family','Duplex','Flip','Land','Commercial'].map(s=>({value:s,label:s})) },
-          ]}
-        />
-      </div>
+
 
       {/* ── SELECTION BAR ── */}
       {selectedIds.length > 0 && (() => {
@@ -1874,7 +1873,7 @@ export function Production() {
           {/* Sticky column header — Monday.com style */}
           <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f5f6f8', borderBottom: '1px solid #c5c7d0', display: 'flex', height: 40, minWidth: 'max-content', width: '100%' }}>
             <div style={{ width: 50, flexShrink: 0, borderRight: '1px solid #e6e9ef', height: 40 }} />
-            <div style={{ minWidth: 220, maxWidth: 280, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 12px', borderRight: '1px solid #e6e9ef', background: '#f5f6f8' }}>
+            <div style={{ width: 250, minWidth: 220, maxWidth: 280, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 12px', borderRight: '1px solid #e6e9ef', background: '#f5f6f8' }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.06em' }}>Item</span>
             </div>
             {visibleCols.map(col => (
