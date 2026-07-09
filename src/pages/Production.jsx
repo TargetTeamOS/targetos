@@ -278,6 +278,7 @@ function InlinePicker({ value, options, onSave, color, renderValue }) {
 // ── MONDAY.COM CELL ──────────────────────────────────────────────
 function MondayCell({ col, deal, onQuickUpdate, agents }) {
   const navigate = useNavigate()
+  const { agent: me, isAdmin, canManage } = useAuth()
   const [editing, setEditing] = React.useState(false)
   const [val, setVal] = React.useState('')
   const ref = React.useRef(null)
@@ -302,14 +303,21 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   }
 
   // Agent cell
-  // Client cell — linked contacts, clickable to open the full record
+  // Client cell — linked contacts, clickable to open the full record.
+  // Per business rule: an agent sees client names on their OWN deals,
+  // but not on deals belonging to other agents. Admin/secretary see
+  // everything, matching this app's existing role model elsewhere.
   if (col.key === '_client') {
+    const canSeeClient = isAdmin || canManage || deal.agent_id === me?.id
     const contacts = deal._contacts || []
     return (
       <td style={{ height: 36, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
         <div style={{ ...base, justifyContent: 'flex-start', gap: 4, overflow: 'hidden' }}>
-          {contacts.length === 0 && <span style={{ color: '#c5c7d0', fontSize: 12 }}>—</span>}
-          {contacts.map((c, i) => (
+          {!canSeeClient && contacts.length > 0 && (
+            <span style={{ color: '#c5c7d0', fontSize: 12 }} title="Private — another agent's deal">🔒</span>
+          )}
+          {canSeeClient && contacts.length === 0 && <span style={{ color: '#c5c7d0', fontSize: 12 }}>—</span>}
+          {canSeeClient && contacts.map((c, i) => (
             <span key={c.id}
               onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
               title={c.role ? c.role : ''}
