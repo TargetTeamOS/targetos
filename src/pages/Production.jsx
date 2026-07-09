@@ -345,7 +345,7 @@ function ClientLinkCell({ deal, width }) {
             position: 'absolute', top: '100%', left: 0, zIndex: 500,
             background: 'var(--panel)', border: '1px solid var(--border)',
             borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.2)',
-            width: 340, maxHeight: 420, overflowY: 'auto', padding: 14,
+            width: 'min(340px, 92vw)', maxHeight: 420, overflowY: 'auto', padding: 14,
           }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>
             Linked Contacts
@@ -811,15 +811,15 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
       {/* Search to add */}
       <div style={{ marginTop:'10px', position:'relative' }}>
         <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.06em' }}>Add Contact</div>
-        <div style={{ display:'flex', gap:'6px', marginBottom:'6px' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:'6px', marginBottom:'6px' }}>
           <input
             value={search}
             onChange={onSearchChange}
             placeholder="Search by name, phone, email..."
-            style={{ flex:1, padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, outline:'none' }}
+            style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, outline:'none', boxSizing:'border-box' }}
           />
           <select value={addRole} onChange={e => setAddRole(e.target.value)}
-            style={{ padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', fontFamily:ff }}>
+            style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', fontFamily:ff, boxSizing:'border-box' }}>
             {CONTACT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
