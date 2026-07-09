@@ -72,8 +72,8 @@ const AGENT_COMM_OPTIONS   = ['Working on it', 'Done', 'Not Yet']
 // Board groups match Monday.com exactly
 // ── MONDAY.COM STYLE COLUMNS ─────────────────────────────────────
 const ALL_COLUMNS = [
-  { key:'_agent',              label:'Agent',           width:110, pin:true  },
   { key:'_client',             label:'Client',          width:170, type:'contacts' },
+  { key:'_agent',              label:'Agent',           width:110, pin:true  },
   { key:'side',                label:'Side',            width:90,  type:'select', options:['Buyer','Seller','Dual','Referral'] },
   { key:'stage',               label:'Stage',           width:150, type:'stage' },
   { key:'production',          label:'Production $',    width:120, type:'number' },
@@ -534,9 +534,6 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
           {deal.addr}
           {deal.unit && <span style={{ color: '#676879', fontWeight: 400 }}> #{deal.unit}</span>}
         </div>
-        {deal.client_name && (
-          <div style={{ fontSize: 11, color: '#676879', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 0 }}>{deal.client_name}</div>
-        )}
       </td>
 
       {/* Dynamic columns */}
