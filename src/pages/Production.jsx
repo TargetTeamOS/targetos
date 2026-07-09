@@ -1817,6 +1817,7 @@ export function Production() {
                 ))}
                 <div style={{ borderTop: '1px solid #e6e9ef', marginTop: 8, paddingTop: 8, display: 'flex', gap: 6 }}>
                   <button onClick={() => { setHiddenCols([]); persistColPrefs(undefined, []) }} style={{ flex: 1, padding: 5, borderRadius: 6, border: '1px solid #e6e9ef', background: '#fff', color: '#676879', fontSize: 11, cursor: 'pointer' }}>Show all</button>
+                  <button onClick={() => { setColOrder(null); persistColPrefs(null, undefined) }} style={{ flex: 1, padding: 5, borderRadius: 6, border: '1px solid #e6e9ef', background: '#fff', color: '#676879', fontSize: 11, cursor: 'pointer' }}>Reset order</button>
                   <button onClick={() => setShowColPicker(false)} style={{ flex: 1, padding: 5, borderRadius: 6, border: 'none', background: '#0073ea', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>Done</button>
                 </div>
                 <button onClick={() => { setShowColPicker(false); setShowAddCol(true) }}
