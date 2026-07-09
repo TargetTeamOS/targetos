@@ -1702,11 +1702,45 @@ export function Production() {
         .maybeSingle()
       if (error) throw error
       if (data) setDeals(prev => prev.map(d => d.id === deal.id ? data : d))
+
+      // Automation: Offer Accepted -> Under Contract triggers an email
+      // to the deal's agent. Board placement itself needs no extra
+      // code -- groups are derived from `stage`, so the deal moves
+      // automatically once this update lands.
+      if (field === 'stage' && deal.stage === 'Offer Accapted' && value === 'Under Contract') {
+        notifyUnderContract(deal)
+      }
     } catch(e) {
       // Revert optimistic update on failure
       setDeals(prev => prev.map(d => d.id === deal.id ? deal : d))
       toast('Update failed: ' + e.message, '#DC2626')
     }
+  }
+
+  async function notifyUnderContract(deal) {
+    try {
+      const ag = agents.find(a => a.id === deal.agent_id)
+      if (!ag?.email) return
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch('/api/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
+        body: JSON.stringify({
+          from: 'TargetOS <office@targetreteam.com>',
+          to: [ag.email],
+          subject: '📝 Now Under Contract — ' + (deal.addr || 'Deal'),
+          html: '<div style="font-family:Inter,sans-serif;padding:20px">' +
+            '<h2 style="color:#CC2200">Deal Moved to Under Contract</h2>' +
+            '<p><strong>' + (deal.addr || 'Address on file') + '</strong> just moved from Offer Accepted to Under Contract.</p>' +
+            (deal.gci ? '<p>GCI: <strong>' + fmtFull$(deal.gci) + '</strong></p>' : '') +
+            '<a href="https://app.targetreteam.com/production/' + deal.id + '" style="background:#CC2200;color:#fff;padding:10px 20px;text-decoration:none;border-radius:7px;display:inline-block;margin-top:12px">View Deal →</a>' +
+            '</div>',
+        }),
+      })
+    } catch(e) { console.warn('notifyUnderContract failed:', e.message) }
   }
 
   // ── FILTERING ──────────────────────────────────────────────────
