@@ -42,7 +42,9 @@ function readListing(l, i, voice) {
   const addr  = [l.addr, l.city].filter(Boolean).join(', ') || 'address on file'
   const beds  = l.beds  ? l.beds  + ' bedroom' : ''
   const baths = l.baths ? l.baths + ' bathroom' : ''
-  const desc  = [beds, baths].filter(Boolean).join(', ')
+  const type  = l.property_type || ''
+  const sqft  = l.sqft ? Number(l.sqft).toLocaleString() + ' square feet' : ''
+  const desc  = [beds, baths, type, sqft].filter(Boolean).join(', ')
   return say('Listing ' + (i+1) + '. ' + addr + '. ' + (desc ? desc + '. ' : '') + 'Listed at ' + price + '.', voice)
 }
 
@@ -59,7 +61,7 @@ async function runSearch(res, voice, maxRes, base, filterFn, summaryLabel) {
   if (!supabase) return res.send(wrap(say('Search is temporarily unavailable. Please call back shortly.', voice)))
 
   try {
-    let q = supabase.from('listings').select('addr,city,list_price,beds,baths')
+    let q = supabase.from('listings').select('addr,city,list_price,beds,baths,property_type,sqft,agent_id')
       .eq('status', 'Active').eq('ivr_enabled', true)
     q = filterFn(q)
     q = q.order('list_price', { ascending: true }).limit(maxRes)
@@ -80,9 +82,15 @@ async function runSearch(res, voice, maxRes, base, filterFn, summaryLabel) {
     let twiml = say('We found ' + results.length + ' exclusive listing' + (results.length > 1 ? 's' : '') + (summaryLabel ? ' ' + summaryLabel : '') + '. Here they are.', voice)
     results.forEach((l, i) => { twiml += readListing(l, i, voice) })
 
-    const followUrl = buildNextUrl('followup', base)
+    // Encode each listing's agent_id + addr so the followup step can
+    // connect the caller directly to that listing's agent, with a
+    // whisper telling the agent which listing the caller is asking
+    // about (see twilio-recording-notice.js).
+    const listingRefs = results.map(l => (l.agent_id || '') + '~' + (l.addr || '')).join('|')
+    const followUrl = buildNextUrl('followup', { ...base, listings: listingRefs })
+    const connectOptions = results.map((l, i) => 'Press ' + (i + 1) + ' to connect about listing ' + (i + 1) + '.').join(' ')
     twiml += '<Gather numDigits="1" action="' + esc(followUrl) + '" method="GET" timeout="15">' +
-      say('Press 1 to search again. Press 2 to speak with an agent. Press 9 to leave a voicemail. Press star to end the call.', voice) +
+      say(connectOptions + ' Press 6 to search again. Press 7 to speak with any agent. Press 9 to leave a voicemail. Press star to end the call.', voice) +
     '</Gather>'
     twiml += say('Thank you for calling. Goodbye.', voice)
     return res.send(wrap(twiml))
@@ -219,10 +227,38 @@ module.exports = async function handler(req, res) {
 
   // ── FOLLOWUP ────────────────────────────────────────────────────
   if (step === 'followup') {
-    if (digits === '1') return res.send(wrap('<Redirect method="GET">' + esc(buildNextUrl('intro', base)) + '</Redirect>'))
+    const listingRefs = (qp.listings || '').split('|').map(s => {
+      const [agentId, addr] = s.split('~')
+      return { agentId, addr }
+    })
+    const chosen = listingRefs[parseInt(digits) - 1]
+
+    // Digit 1-5 (whichever listings actually exist): connect to that
+    // specific listing's agent, with a whisper telling them what the
+    // call is about before they pick up.
+    if (chosen && chosen.agentId) {
+      const supabase = getSupabase()
+      try {
+        const { data: agent } = await supabase.from('agents').select('phone, name').eq('id', chosen.agentId).maybeSingle()
+        if (agent?.phone) {
+          const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=listing&addr=' + encodeURIComponent(chosen.addr || '')
+          return res.send(wrap(
+            say('Connecting you about ' + (chosen.addr || 'that listing') + '. Please hold.', voice) +
+            '<Dial callerId="+18453271778" record="record-from-answer" timeout="20">' +
+              '<Number url="' + esc(whisperUrl) + '">' + esc(agent.phone) + '</Number>' +
+            '</Dial>' +
+            say('That agent is unavailable. Please leave a message after the tone.', voice) +
+            '<Record maxLength="120" transcribe="true" transcribeCallback="' + esc(BASE_URL + '/api/twilio-voicemail') + '" />'
+          ))
+        }
+      } catch(e) { console.warn('[twilio-listings] agent lookup failed:', e.message) }
+      // Agent lookup failed or no phone on file — fall through to general agent connect below
+    }
+
+    if (digits === '6') return res.send(wrap('<Redirect method="GET">' + esc(buildNextUrl('intro', base)) + '</Redirect>'))
     if (digits === '9') return res.send(wrap(say('Please leave a message after the tone.', voice) + '<Record maxLength="120" transcribe="true" transcribeCallback="' + esc(BASE_URL + '/api/twilio-voicemail') + '" />'))
     if (digits === '*') return res.send(wrap(say('Thank you for calling Target Team. Goodbye.', voice) + '<Hangup />'))
-    // Press 2 or anything else → connect to agent
+    // Press 7 or anything else → connect to any agent
     return res.send(wrap(say('Connecting you to an agent. Please hold.', voice) + '<Redirect method="POST">' + esc(BASE_URL + '/api/twilio-inbound') + '</Redirect>'))
   }
 

@@ -83,12 +83,12 @@ module.exports = async function handler(req, res) {
     let phone = agent.phone.replace(/[^+0-9]/g, '')
     if (!phone.startsWith('+')) phone = '+1' + phone
     const firstName = agent.name.split(' ')[0]
+    const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=directory'
 
     return res.send(wrap(
       say('Connecting you to ' + firstName + '. Please hold.', voice) +
-      say('This call may be recorded for quality and training purposes.', voice) +
       '<Dial callerId="' + esc(to) + '" timeout="30" record="record-from-answer" recordingStatusCallback="' + BASE_URL + '/api/twilio-status">' +
-        '<Number statusCallback="' + BASE_URL + '/api/twilio-status" statusCallbackMethod="POST">' + esc(phone) + '</Number>' +
+        '<Number statusCallback="' + BASE_URL + '/api/twilio-status" statusCallbackMethod="POST" url="' + esc(whisperUrl) + '">' + esc(phone) + '</Number>' +
       '</Dial>' +
       say('I\'m sorry, ' + firstName + ' is unavailable. Please leave a message after the tone.', voice) +
       '<Record maxLength="120" transcribe="true" transcribeCallback="' + BASE_URL + '/api/twilio-voicemail" />'

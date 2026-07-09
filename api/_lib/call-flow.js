@@ -271,17 +271,22 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
     const TOTAL_SECONDS     = cfg.total_seconds || 60
     const maxAgents = Math.max(1, Math.floor(TOTAL_SECONDS / PER_AGENT_SECONDS))
     const huntList  = ordered.slice(0, maxAgents)
+    const isNewLead = !callData.contact?.agent_id
 
     let twiml = huntList.map(a => {
       const phone = normalizePhone(a.phone)
       const statusUrl = BASE_URL + '/api/twilio-status?agentId=' + encodeURIComponent(a.id) +
         (callData.callId ? '&callLogId=' + encodeURIComponent(callData.callId) : '')
+      // FIX (July 2026): recording notice whispered to the agent's leg
+      // via url=, not a <Say> before <Dial> (which only reaches the
+      // caller, not the agent). Also tells the agent up front if this
+      // is a new/unassigned lead, per business requirement.
+      const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=roundrobin' + (isNewLead ? '&newContact=1' : '')
       return (
-        '<Say voice="' + voice + '">This call may be recorded for quality and training purposes.</Say>' +
         '<Dial callerId="' + to + '" timeout="' + PER_AGENT_SECONDS + '" record="record-from-answer"' +
         ' recordingStatusCallback="' + BASE_URL + '/api/twilio-status">' +
         '<Number statusCallback="' + esc(statusUrl) + '" statusCallbackMethod="POST"' +
-        ' statusCallbackEvent="answered">' + esc(phone) + '</Number>' +
+        ' statusCallbackEvent="answered" url="' + esc(whisperUrl) + '">' + esc(phone) + '</Number>' +
         '</Dial>'
       )
     }).join('')
@@ -393,9 +398,14 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 
 // ── DIAL HELPER ────────────────────────────────────────────────────
 function buildDial(callerId, singlePhone, timeout, innerTwiml) {
-  const inner = innerTwiml || ('<Number>' + esc(singlePhone) + '</Number>')
+  // FIX (July 2026): the recording notice was a <Say> BEFORE <Dial>,
+  // which only reaches whoever is already on the call (the caller) --
+  // not the person being dialed, who is who actually needs to hear it
+  // for consent purposes. Whispered via the <Number> url= attribute
+  // instead, same mechanism as the outbound-call fix earlier tonight.
+  const whisperUrl = BASE_URL + '/api/twilio-recording-notice'
+  const inner = innerTwiml || ('<Number url="' + esc(whisperUrl) + '">' + esc(singlePhone) + '</Number>')
   return (
-    '<Say voice="Polly.Joanna">This call may be recorded for quality and training purposes.</Say>' +
     '<Dial callerId="' + callerId + '"' +
     ' timeout="' + timeout + '"' +
     ' record="record-from-answer"' +
