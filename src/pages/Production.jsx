@@ -17,7 +17,7 @@ import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
-import { fmt$, fmtDate, fmtDateShort, parseNum, matchSearch, getDaysUntil } from '../lib/utils'
+import { fmt$, fmtFull$, fmtDate, fmtDateShort, parseNum, matchSearch, getDaysUntil } from '../lib/utils'
 import {
   DEAL_STAGES, CTC_STAGES, DEAL_SIDES, SALE_TYPES, PROPERTY_TYPES,
   BUYER_TYPES, SALES_SOURCES, COMMAND_STATUSES, REFERRAL_AGENTS
@@ -73,7 +73,8 @@ const AGENT_COMM_OPTIONS   = ['Working on it', 'Done', 'Not Yet']
 // ── MONDAY.COM STYLE COLUMNS ─────────────────────────────────────
 const ALL_COLUMNS = [
   { key:'_agent',              label:'Agent',           width:110, pin:true  },
-  { key:'side',                label:'Side',            width:70              },
+  { key:'_client',             label:'Client',          width:170, type:'contacts' },
+  { key:'side',                label:'Side',            width:90,  type:'select', options:['Buyer','Seller','Dual','Referral'] },
   { key:'stage',               label:'Stage',           width:150, type:'stage' },
   { key:'production',          label:'Production $',    width:120, type:'number' },
   { key:'gci',                 label:'GCI $',           width:100, type:'number' },
@@ -276,6 +277,7 @@ function InlinePicker({ value, options, onSave, color, renderValue }) {
 // ── BOARD ROW ──────────────────────────────────────────────────────
 // ── MONDAY.COM CELL ──────────────────────────────────────────────
 function MondayCell({ col, deal, onQuickUpdate, agents }) {
+  const navigate = useNavigate()
   const [editing, setEditing] = React.useState(false)
   const [val, setVal] = React.useState('')
   const ref = React.useRef(null)
@@ -300,19 +302,44 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   }
 
   // Agent cell
-  if (col.key === '_agent') {
-    const ag = agents.find(a => a.id === deal.agent_id)
+  // Client cell — linked contacts, clickable to open the full record
+  if (col.key === '_client') {
+    const contacts = deal._contacts || []
     return (
       <td style={{ height: 36, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
-        <div style={{ ...base, gap: 6 }}>
-          {ag ? (
-            <>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: ag.color || '#0086c0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-                {ag.name.split(' ').map(n => n[0]).join('').slice(0,2)}
+        <div style={{ ...base, justifyContent: 'flex-start', gap: 4, overflow: 'hidden' }}>
+          {contacts.length === 0 && <span style={{ color: '#c5c7d0', fontSize: 12 }}>—</span>}
+          {contacts.map((c, i) => (
+            <span key={c.id}
+              onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
+              title={c.role ? c.role : ''}
+              style={{ fontSize: 12, color: '#0086c0', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+              {c.name}{i < contacts.length - 1 ? ',' : ''}
+            </span>
+          ))}
+        </div>
+      </td>
+    )
+  }
+
+  if (col.key === '_agent') {
+    const ag = agents.find(a => a.id === deal.agent_id)
+    const agentOptions = agents.map(a => ({ value: a.id, label: a.name, hex: a.color || '#0086c0' }))
+    return (
+      <td style={{ height: 36, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+        <div style={{ ...base, overflow: 'visible', gap: 6, cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
+          <InlinePicker
+            value={deal.agent_id}
+            options={agentOptions}
+            color={ag?.color}
+            onSave={v => onQuickUpdate(deal, 'agent_id', v, false)}
+            renderValue={() => ag ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Avatar agent={ag} size={22} showHover={false} />
+                <span style={{ fontSize: 12, color: '#323338', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 70 }}>{ag.name.split(' ')[0]}</span>
               </div>
-              <span style={{ fontSize: 12, color: '#323338', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ag.name.split(' ')[0]}</span>
-            </>
-          ) : <span style={{ color: '#c5c7d0', fontSize: 12 }}>No agent</span>}
+            ) : <span style={{ color: '#c5c7d0', fontSize: 12 }}>No agent</span>}
+          />
         </div>
       </td>
     )
@@ -331,7 +358,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const bg = found?.hex || cellColor(col, raw) || '#c5c7d0'
     return (
       <td style={{ height: 36, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
-        <div style={{ ...base, cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
+        <div style={{ ...base, overflow: 'visible', cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
           <InlinePicker value={raw} options={opts} color={bg}
             onSave={v => onQuickUpdate(deal, col.key, v, col.custom)} />
         </div>
@@ -364,7 +391,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     return (
       <td style={{ height: 36, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }} onClick={startEdit}>
         <div style={{ ...base, cursor: 'text', justifyContent: 'flex-end', color: col.key === 'gci' ? '#037f4c' : '#323338', fontWeight: raw ? 600 : 400 }}>
-          {raw ? fmt$(parseNum(raw)) : <span style={{ color: '#c5c7d0' }}>—</span>}
+          {raw ? fmtFull$(parseNum(raw)) : <span style={{ color: '#c5c7d0' }}>—</span>}
         </div>
       </td>
     )
@@ -527,8 +554,8 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
 
         {/* Totals */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 20, alignItems: 'center', paddingRight: 16, fontSize: 12, color: '#676879' }}>
-          <span>GCI: <strong style={{ color: '#037f4c' }}>{fmt$(totalGCI)}</strong></span>
-          <span>Vol: <strong style={{ color: '#323338' }}>{fmt$(totalProd)}</strong></span>
+          <span>GCI: <strong style={{ color: '#037f4c' }}>{fmtFull$(totalGCI)}</strong></span>
+          <span>Vol: <strong style={{ color: '#323338' }}>{fmtFull$(totalProd)}</strong></span>
         </div>
       </div>
 
@@ -555,8 +582,8 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
                   </td>
                   {visibleCols.map(col => (
                     <td key={col.key} style={{ height: 32, padding: '0 10px', borderRight: '1px solid #e6e9ef', minWidth: col.width, textAlign: col.type === 'number' ? 'right' : 'center', fontSize: 12, fontWeight: 700 }}>
-                      {col.key === 'production' ? <span style={{ color: '#323338' }}>{fmt$(totalProd)}</span>
-                       : col.key === 'gci' ? <span style={{ color: '#037f4c' }}>{fmt$(totalGCI)}</span>
+                      {col.key === 'production' ? <span style={{ color: '#323338' }}>{fmtFull$(totalProd)}</span>
+                       : col.key === 'gci' ? <span style={{ color: '#037f4c' }}>{fmtFull$(totalGCI)}</span>
                        : ''}
                     </td>
                   ))}
@@ -821,7 +848,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
                 <StagePill stage={form.stage} />
                 {form.side && <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>{form.side}</span>}
-                {form.gci && <span style={{ fontSize: '12px', fontWeight: 800, color: '#10B981' }}>{fmt$(form.gci)} GCI</span>}
+                {form.gci && <span style={{ fontSize: '12px', fontWeight: 800, color: '#10B981' }}>{fmtFull$(form.gci)} GCI</span>}
                 {daysToClose !== null && daysToClose >= 0 && daysToClose <= 30 && (
                   <span style={{ fontSize: '11px', fontWeight: 700, color: daysToClose <= 7 ? '#DC2626' : '#F5A623', background: (daysToClose <= 7 ? '#DC2626' : '#F5A623') + '18', padding: '1px 6px', borderRadius: '10px' }}>
                     Closes in {daysToClose}d
@@ -1018,11 +1045,11 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
                   <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '.06em' }}>Summary</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                     <div>
-                      <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)' }}>{fmt$(form.production)}</div>
+                      <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)' }}>{fmtFull$(form.production)}</div>
                       <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Volume</div>
                     </div>
                     <div>
-                      <div style={{ fontSize: '20px', fontWeight: 900, color: '#10B981' }}>{fmt$(form.gci)}</div>
+                      <div style={{ fontSize: '20px', fontWeight: 900, color: '#10B981' }}>{fmtFull$(form.gci)}</div>
                       <div style={{ fontSize: '11px', color: 'var(--muted)' }}>GCI</div>
                     </div>
                     <div>
@@ -1275,15 +1302,26 @@ export function Production() {
         toast('Showing 5,000 of ' + totalDeals.toLocaleString() + ' deals — use filters to narrow down', '#F5A623')
       }
 
-      // Fetch contact counts for all deals in one query
+      // Fetch linked contacts (names + role) for all deals in one query
       if (deals.length > 0) {
-        const { data: counts } = await supabase
+        const { data: links } = await supabase
           .from('deal_contacts')
-          .select('deal_id')
+          .select('deal_id, role, contacts(id, first_name, last_name)')
           .in('deal_id', deals.map(d => d.id))
-        const countMap = {}
-        ;(counts || []).forEach(r => { countMap[r.deal_id] = (countMap[r.deal_id] || 0) + 1 })
-        deals.forEach(d => { d._contact_count = countMap[d.id] || 0 })
+        const byDeal = {}
+        ;(links || []).forEach(r => {
+          if (!r.contacts) return
+          if (!byDeal[r.deal_id]) byDeal[r.deal_id] = []
+          byDeal[r.deal_id].push({
+            id: r.contacts.id,
+            name: [r.contacts.first_name, r.contacts.last_name].filter(Boolean).join(' ') || 'Unnamed',
+            role: r.role,
+          })
+        })
+        deals.forEach(d => {
+          d._contacts = byDeal[d.id] || []
+          d._contact_count = d._contacts.length
+        })
       }
 
       setDeals(deals)
@@ -1622,14 +1660,14 @@ export function Production() {
         <div>
           <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-.3px' }}>📊 Production Board</div>
           <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-            {filtered.length} deals · {fmt$(totalGCIAll)} GCI
+            {filtered.length} deals · {fmtFull$(totalGCIAll)} GCI
           </div>
         </div>
 
         {isTruncated && (
           <div style={{ background: 'rgba(245,166,35,.08)', border: '1px solid rgba(245,166,35,.35)', borderRadius: 8, padding: '8px 14px', fontSize: 12, color: '#8a5a00', maxWidth: 480 }}>
             <strong>⚠ Board is showing {deals.length.toLocaleString()} of {trueTotals.total_count.toLocaleString()} deals.</strong>{' '}
-            True totals (all deals): {fmt$(trueTotals.total_gci)} GCI · {fmt$(trueTotals.closed_gci)} closed · {fmt$(trueTotals.pipeline_gci)} pipeline.
+            True totals (all deals): {fmtFull$(trueTotals.total_gci)} GCI · {fmtFull$(trueTotals.closed_gci)} closed · {fmtFull$(trueTotals.pipeline_gci)} pipeline.
             Use filters to narrow the board view — the numbers above the board reflect only what's currently loaded.
           </div>
         )}
@@ -1692,8 +1730,8 @@ export function Production() {
         {[
           { label: 'Total Deals',    value: thisYearScope.length, color: '#3B82F6', prefix: '' },
           { label: 'Active',         value: activeArr.length,     color: '#037f4c', prefix: '' },
-          { label: 'Closed GCI',     value: fmt$(closedGCI),      color: '#10B981', prefix: '' },
-          { label: 'Pipeline GCI',   value: fmt$(pipelineGCI),    color: '#F5A623', prefix: '' },
+          { label: 'Closed GCI',     value: fmtFull$(closedGCI),      color: '#10B981', prefix: '' },
+          { label: 'Pipeline GCI',   value: fmtFull$(pipelineGCI),    color: '#F5A623', prefix: '' },
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '12px 14px', borderLeft: "3px solid " + (s.color) }}>
             <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)' }}>{s.value}</div>
@@ -1749,17 +1787,17 @@ export function Production() {
             <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,.15)' }} />
             {/* Production */}
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '16px', fontWeight: 900, color: '#fff' }}>{fmt$(selProd)}</div>
+              <div style={{ fontSize: '16px', fontWeight: 900, color: '#fff' }}>{fmtFull$(selProd)}</div>
               <div style={{ fontSize: '10px', color: 'rgba(255,255,255,.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Volume</div>
             </div>
             {/* GCI */}
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '16px', fontWeight: 900, color: '#10B981' }}>{fmt$(selGCI)}</div>
+              <div style={{ fontSize: '16px', fontWeight: 900, color: '#10B981' }}>{fmtFull$(selGCI)}</div>
               <div style={{ fontSize: '10px', color: 'rgba(255,255,255,.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>GCI</div>
             </div>
             {/* Avg GCI */}
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '16px', fontWeight: 900, color: '#F5A623' }}>{sel.length ? fmt$(selGCI / sel.length) : '—'}</div>
+              <div style={{ fontSize: '16px', fontWeight: 900, color: '#F5A623' }}>{sel.length ? fmtFull$(selGCI / sel.length) : '—'}</div>
               <div style={{ fontSize: '10px', color: 'rgba(255,255,255,.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Avg GCI</div>
             </div>
             {/* Divider */}
@@ -1769,7 +1807,7 @@ export function Production() {
               {Object.entries(byAgent).map(([name, gci]) => (
                 <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '20px', background: 'rgba(255,255,255,.1)' }}>
                   <span style={{ fontSize: '11px', color: 'rgba(255,255,255,.7)', fontWeight: 600 }}>{name}</span>
-                  <span style={{ fontSize: '11px', color: '#10B981', fontWeight: 800 }}>{fmt$(gci)}</span>
+                  <span style={{ fontSize: '11px', color: '#10B981', fontWeight: 800 }}>{fmtFull$(gci)}</span>
                 </div>
               ))}
             </div>
@@ -1827,7 +1865,7 @@ export function Production() {
           {/* Sticky column header — Monday.com style */}
           <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f5f6f8', borderBottom: '1px solid #c5c7d0', display: 'flex', height: 40, minWidth: 'max-content', width: '100%' }}>
             <div style={{ width: 50, flexShrink: 0, borderRight: '1px solid #e6e9ef', height: 40 }} />
-            <div style={{ minWidth: 220, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 12px', borderRight: '1px solid #e6e9ef', background: '#f5f6f8' }}>
+            <div style={{ minWidth: 220, maxWidth: 280, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 12px', borderRight: '1px solid #e6e9ef', background: '#f5f6f8' }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.06em' }}>Item</span>
             </div>
             {visibleCols.map(col => (
@@ -1909,8 +1947,8 @@ export function Production() {
                     <td style={{ padding: '9px 12px' }}>
                       {a && <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Avatar agent={a} size={20} /><span style={{ fontSize: '11px', color: 'var(--muted)' }}>{a.name.split(' ')[0]}</span></div>}
                     </td>
-                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, fontSize: '12px', whiteSpace: 'nowrap' }}>{fmt$(d.production)}</td>
-                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: '#10B981', fontSize: '13px', whiteSpace: 'nowrap' }}>{fmt$(d.gci)}</td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, fontSize: '12px', whiteSpace: 'nowrap' }}>{fmtFull$(d.production)}</td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: '#10B981', fontSize: '13px', whiteSpace: 'nowrap' }}>{fmtFull$(d.gci)}</td>
                     <td style={{ padding: '9px 12px' }}><StagePill stage={d.stage} small /></td>
                     <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)' }}>{d.side || '—'}</td>
                     <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmtDateShort(d.ao_date) || '—'}</td>
