@@ -275,17 +275,16 @@ function InlinePicker({ value, options, onSave, color, renderValue }) {
 }
 
 // ── BOARD ROW ──────────────────────────────────────────────────────
-// ── MONDAY.COM CELL ──────────────────────────────────────────────
-function MondayCell({ col, deal, onQuickUpdate, agents }) {
+// ── CLIENT LINK CELL (reusable — used by both Board and Table views) ──
+// Per business rule: an agent sees client names on their OWN deals,
+// but not on deals belonging to other agents. Admin/secretary see
+// everything, matching this app's existing role model elsewhere.
+function ClientLinkCell({ deal, width }) {
   const navigate = useNavigate()
   const { agent: me, isAdmin, canManage } = useAuth()
-  const [editing, setEditing] = React.useState(false)
-  const [val, setVal] = React.useState('')
   const [showLinker, setShowLinker] = React.useState(false)
   const [localContacts, setLocalContacts] = React.useState(deal._contacts || [])
   const linkerRef = React.useRef(null)
-  const ref = React.useRef(null)
-  const raw = col.custom ? (deal.custom_data || {})[col.key] : deal[col.key]
 
   React.useEffect(() => { setLocalContacts(deal._contacts || []) }, [deal._contacts])
 
@@ -308,6 +307,64 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showLinker])
+
+  const canSeeClient = isAdmin || canManage || deal.agent_id === me?.id
+  const contacts = localContacts
+
+  return (
+    <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width, minWidth: width, position: 'relative', overflow: 'visible' }}>
+      <div style={{ display: 'flex', alignItems: 'center', height: 40, padding: '0 10px', gap: 4, overflow: 'hidden' }}>
+        {!canSeeClient && contacts.length > 0 && (
+          <span style={{ color: '#c5c7d0', fontSize: 12 }} title="Private — another agent's deal">🔒</span>
+        )}
+        {canSeeClient && contacts.length === 0 && (
+          <span onClick={e => { e.stopPropagation(); setShowLinker(true) }}
+            style={{ color: '#0086c0', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+            + Add
+          </span>
+        )}
+        {canSeeClient && contacts.map((c, i) => (
+          <span key={c.id}
+            onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
+            title={c.role ? c.role : ''}
+            style={{ fontSize: 12, color: '#0086c0', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+            {c.name}{i < contacts.length - 1 ? ',' : ''}
+          </span>
+        ))}
+        {canSeeClient && contacts.length > 0 && (
+          <span onClick={e => { e.stopPropagation(); setShowLinker(true) }}
+            title="Manage linked contacts"
+            style={{ color: '#8B93A1', fontSize: 12, cursor: 'pointer', marginLeft: 2, flexShrink: 0 }}>
+            ✎
+          </span>
+        )}
+      </div>
+      {showLinker && (
+        <div ref={linkerRef} onClick={e => e.stopPropagation()}
+          style={{
+            position: 'absolute', top: '100%', left: 0, zIndex: 500,
+            background: 'var(--panel)', border: '1px solid var(--border)',
+            borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.2)',
+            width: 340, maxHeight: 420, overflowY: 'auto', padding: 14,
+          }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>
+            Linked Contacts
+          </div>
+          <DealContactsPanel dealId={deal.id} agentId={deal.agent_id} onChange={refreshContacts} />
+        </div>
+      )}
+    </td>
+  )
+}
+
+// ── MONDAY.COM CELL ──────────────────────────────────────────────
+function MondayCell({ col, deal, onQuickUpdate, agents }) {
+  const navigate = useNavigate()
+  const { agent: me, isAdmin, canManage } = useAuth()
+  const [editing, setEditing] = React.useState(false)
+  const [val, setVal] = React.useState('')
+  const ref = React.useRef(null)
+  const raw = col.custom ? (deal.custom_data || {})[col.key] : deal[col.key]
 
   function startEdit(e) {
     e.stopPropagation()
@@ -333,52 +390,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   // but not on deals belonging to other agents. Admin/secretary see
   // everything, matching this app's existing role model elsewhere.
   if (col.key === '_client') {
-    const canSeeClient = isAdmin || canManage || deal.agent_id === me?.id
-    const contacts = localContacts
-    return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width, position: 'relative', overflow: 'visible' }}>
-        <div style={{ ...base, justifyContent: 'flex-start', gap: 4, overflow: 'hidden' }}>
-          {!canSeeClient && contacts.length > 0 && (
-            <span style={{ color: '#c5c7d0', fontSize: 12 }} title="Private — another agent's deal">🔒</span>
-          )}
-          {canSeeClient && contacts.length === 0 && (
-            <span onClick={e => { e.stopPropagation(); setShowLinker(true) }}
-              style={{ color: '#0086c0', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
-              + Add
-            </span>
-          )}
-          {canSeeClient && contacts.map((c, i) => (
-            <span key={c.id}
-              onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
-              title={c.role ? c.role : ''}
-              style={{ fontSize: 12, color: '#0086c0', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>
-              {c.name}{i < contacts.length - 1 ? ',' : ''}
-            </span>
-          ))}
-          {canSeeClient && contacts.length > 0 && (
-            <span onClick={e => { e.stopPropagation(); setShowLinker(true) }}
-              title="Manage linked contacts"
-              style={{ color: '#8B93A1', fontSize: 12, cursor: 'pointer', marginLeft: 2, flexShrink: 0 }}>
-              ✎
-            </span>
-          )}
-        </div>
-        {showLinker && (
-          <div ref={linkerRef} onClick={e => e.stopPropagation()}
-            style={{
-              position: 'absolute', top: '100%', left: 0, zIndex: 500,
-              background: 'var(--panel)', border: '1px solid var(--border)',
-              borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.2)',
-              width: 340, maxHeight: 420, overflowY: 'auto', padding: 14,
-            }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>
-              Linked Contacts
-            </div>
-            <DealContactsPanel dealId={deal.id} agentId={deal.agent_id} onChange={refreshContacts} />
-          </div>
-        )}
-      </td>
-    )
+    return <ClientLinkCell deal={deal} width={col.width} />
   }
 
   if (col.key === '_agent') {
@@ -2004,7 +2016,7 @@ export function Production() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                {['','#','Address','Agent','Production','GCI','Stage','Side','A/O Date','Exp Close','Command','Source'].map(h => (
+                {['','#','Address','Client','Agent','Production','GCI','Stage','Side','A/O Date','Exp Close','Command','Source'].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: h === 'Production' || h === 'GCI' ? 'right' : 'left', fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap', background: 'var(--dim)' }}>
                     {h}
                   </th>
@@ -2027,8 +2039,8 @@ export function Production() {
                     <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)' }}>{i + 1}</td>
                     <td style={{ padding: '9px 12px' }}>
                       <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>{d.addr}</div>
-                      {d.client_name && <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{d.client_name}</div>}
                     </td>
+                    <ClientLinkCell deal={d} width={170} />
                     <td style={{ padding: '9px 12px' }}>
                       {a && <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Avatar agent={a} size={20} /><span style={{ fontSize: '11px', color: 'var(--muted)' }}>{a.name.split(' ')[0]}</span></div>}
                     </td>
