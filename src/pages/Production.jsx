@@ -678,7 +678,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
 
 // ── DEAL CONTACTS PANEL ──────────────────────────────────────────
 // Displays linked contacts for a deal and lets agents add/remove them
-const CONTACT_ROLES = ['Client','Buyer','Seller','Co-Buyer','Co-Seller','Referral Source','Attorney','Other']
+const CONTACT_ROLES = ['Client','Buyer','Seller','Co-Buyer','Co-Seller','Attorney','Mortgage Broker','Lender','Title Company','Referral Source','Other']
 
 function DealContactsPanel({ dealId, agentId, onChange }) {
   const { toast } = useApp()
@@ -688,6 +688,8 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
   const [results,   setResults]   = useState([])
   const [searching, setSearching] = useState(false)
   const [addRole,   setAddRole]   = useState('Client')
+  const [showNewForm, setShowNewForm] = useState(false)
+  const [newContact,  setNewContact]  = useState({ phone: '', email: '' })
   const searchTimer = useRef(null)
 
   useEffect(() => { if (dealId) loadLinked() }, [dealId])
@@ -730,11 +732,18 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
     const first_name = parts[0]
     const last_name = parts.slice(1).join(' ') || null
     try {
-      const { data: newContact, error } = await supabase.from('contacts')
-        .insert({ first_name, last_name, agent_id: agentId, status: 'New', created_at: new Date().toISOString() })
+      const { data: newC, error } = await supabase.from('contacts')
+        .insert({
+          first_name, last_name, agent_id: agentId, status: 'New',
+          phone: newContact.phone.trim() || null,
+          email: newContact.email.trim() || null,
+          created_at: new Date().toISOString(),
+        })
         .select().single()
       if (error) throw error
-      await addContact(newContact)
+      setShowNewForm(false)
+      setNewContact({ phone: '', email: '' })
+      await addContact(newC)
     } catch(e) { toast('Failed to create contact: ' + e.message, '#DC2626') }
   }
 
@@ -845,14 +854,35 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
                 <span style={{ fontSize:'11px', color:'var(--brand)', fontWeight:700 }}>+ Add</span>
               </div>
             ))}
-            {!searching && search.trim() && (
-              <div onClick={createAndAddContact}
+            {!searching && search.trim() && !showNewForm && (
+              <div onClick={() => setShowNewForm(true)}
                 style={{ display:'flex', alignItems:'center', gap:'10px', padding:'9px 14px', cursor:'pointer', color:'var(--brand)' }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
                 onMouseLeave={e => e.currentTarget.style.background = ''}
               >
                 <span style={{ fontSize:'14px' }}>+</span>
                 <span style={{ fontSize:'13px', fontWeight:600 }}>Create "{search.trim()}" as a new contact</span>
+              </div>
+            )}
+            {showNewForm && (
+              <div style={{ padding:'12px 14px', display:'flex', flexDirection:'column', gap:'8px' }}>
+                <div style={{ fontSize:'12px', fontWeight:700, color:'var(--muted)' }}>New contact: {search.trim()}</div>
+                <input value={newContact.phone} onChange={e => setNewContact(p => ({ ...p, phone: e.target.value }))}
+                  placeholder="Phone (optional)"
+                  style={{ width:'100%', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, outline:'none', boxSizing:'border-box' }} />
+                <input value={newContact.email} onChange={e => setNewContact(p => ({ ...p, email: e.target.value }))}
+                  placeholder="Email (optional)"
+                  style={{ width:'100%', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, outline:'none', boxSizing:'border-box' }} />
+                <div style={{ display:'flex', gap:'8px', marginTop:'4px' }}>
+                  <button onClick={createAndAddContact}
+                    style={{ flex:1, padding:'8px', borderRadius:'7px', border:'none', background:'var(--brand)', color:'#fff', fontSize:'13px', fontWeight:700, cursor:'pointer' }}>
+                    Create &amp; Link
+                  </button>
+                  <button onClick={() => setShowNewForm(false)}
+                    style={{ padding:'8px 12px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--panel)', color:'var(--muted)', fontSize:'13px', cursor:'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
           </div>
