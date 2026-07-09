@@ -298,7 +298,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
 
   const base = {
     display: 'flex', alignItems: 'center', justifyContent: col.type === 'number' ? 'flex-end' : 'center',
-    height: 44, padding: '0 10px', fontSize: 13, fontWeight: 500, cursor: 'default',
+    height: 40, padding: '0 10px', fontSize: 13, fontWeight: 500, cursor: 'default',
     boxSizing: 'border-box', overflow: 'hidden', position: 'relative',
   }
 
@@ -311,7 +311,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const canSeeClient = isAdmin || canManage || deal.agent_id === me?.id
     const contacts = deal._contacts || []
     return (
-      <td style={{ height: 44, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
         <div style={{ ...base, justifyContent: 'flex-start', gap: 4, overflow: 'hidden' }}>
           {!canSeeClient && contacts.length > 0 && (
             <span style={{ color: '#c5c7d0', fontSize: 12 }} title="Private — another agent's deal">🔒</span>
@@ -334,7 +334,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const ag = agents.find(a => a.id === deal.agent_id)
     const agentOptions = agents.map(a => ({ value: a.id, label: a.name, hex: a.color || '#0086c0' }))
     return (
-      <td style={{ height: 44, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
         <div style={{ ...base, overflow: 'visible', gap: 6, cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
           <InlinePicker
             value={deal.agent_id}
@@ -343,7 +343,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
             onSave={v => onQuickUpdate(deal, 'agent_id', v, false)}
             renderValue={() => ag ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Avatar agent={ag} size={30} showHover={false} style={{ border: 'none' }} />
+                <Avatar agent={ag} size={34} showHover={false} style={{ border: 'none' }} />
                 <span style={{ fontSize: 12, color: '#323338', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 70 }}>{ag.name.split(' ')[0]}</span>
               </div>
             ) : <span style={{ color: '#c5c7d0', fontSize: 12 }}>No agent</span>}
@@ -365,7 +365,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const found = opts.find(o => o.value === raw)
     const bg = found?.hex || cellColor(col, raw) || '#c5c7d0'
     return (
-      <td style={{ height: 44, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
         <div style={{ ...base, overflow: 'visible', cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
           <InlinePicker value={raw} options={opts} color={bg}
             onSave={v => onQuickUpdate(deal, col.key, v, col.custom)} />
@@ -377,7 +377,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   // Checkbox cell (custom fields)
   if (col.type === 'checkbox') {
     return (
-      <td style={{ height: 44, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
         <div style={{ ...base, cursor: 'pointer' }} onClick={e => { e.stopPropagation(); onQuickUpdate(deal, col.key, !raw, col.custom) }}>
           <div style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid ' + (raw ? '#0073ea' : '#c5c7d0'), background: raw ? '#0073ea' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {raw && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
@@ -390,14 +390,14 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   // Number / currency cell
   if (col.type === 'number' || col.type === 'currency') {
     if (editing) return (
-      <td style={{ height: 44, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
         <input ref={ref} type="number" value={val} onChange={e => setVal(e.target.value)}
           onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
-          style={{ width: '100%', height: 44, padding: '0 10px', border: '2px solid #0073ea', outline: 'none', fontSize: 13, fontFamily: ff, textAlign: 'right', background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
+          style={{ width: '100%', height: 40, padding: '0 10px', border: '2px solid #0073ea', outline: 'none', fontSize: 13, fontFamily: ff, textAlign: 'right', background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
       </td>
     )
     return (
-      <td style={{ height: 44, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }} onClick={startEdit}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }} onClick={startEdit}>
         <div style={{ ...base, cursor: 'text', justifyContent: 'flex-end', color: col.key === 'gci' ? '#037f4c' : '#323338', fontWeight: raw ? 600 : 400 }}>
           {raw ? fmtFull$(parseNum(raw)) : <span style={{ color: '#c5c7d0' }}>—</span>}
         </div>
@@ -412,14 +412,14 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const overdue = days !== null && days < 0
     const urgent  = days !== null && days >= 0 && days <= 7
     if (editing) return (
-      <td style={{ height: 44, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
         <input ref={ref} type="date" value={val} onChange={e => setVal(e.target.value)}
           onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
-          style={{ width: '100%', height: 44, padding: '0 8px', border: '2px solid #0073ea', outline: 'none', fontSize: 12, fontFamily: ff, background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
+          style={{ width: '100%', height: 40, padding: '0 8px', border: '2px solid #0073ea', outline: 'none', fontSize: 12, fontFamily: ff, background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
       </td>
     )
     return (
-      <td style={{ height: 44, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }} onClick={startEdit}>
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }} onClick={startEdit}>
         <div style={{ ...base, cursor: 'text', color: overdue ? '#e2445c' : urgent ? '#fdab3d' : (col.color || '#323338'), fontWeight: (overdue || urgent) ? 700 : 400 }}>
           {display || <span style={{ color: '#c5c7d0' }}>—</span>}
           {days !== null && days >= 0 && days <= 14 && (
@@ -432,14 +432,14 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
 
   // Text cell (default)
   if (editing) return (
-    <td style={{ height: 44, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
+    <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }}>
       <input ref={ref} value={val} onChange={e => setVal(e.target.value)}
         onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
-        style={{ width: '100%', height: 44, padding: '0 10px', border: '2px solid #0073ea', outline: 'none', fontSize: 13, fontFamily: ff, background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
+        style={{ width: '100%', height: 40, padding: '0 10px', border: '2px solid #0073ea', outline: 'none', fontSize: 13, fontFamily: ff, background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
     </td>
   )
   return (
-    <td style={{ height: 44, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }} onClick={startEdit}>
+    <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', minWidth: col.width }} onClick={startEdit}>
       <div style={{ ...base, cursor: 'text', color: '#323338', justifyContent: 'flex-start' }}>
         {raw || <span style={{ color: '#c5c7d0' }}>—</span>}
       </div>
@@ -462,11 +462,11 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
       onDrop={e => { e.preventDefault(); e.stopPropagation(); setDragOverRow(false); onDealDropOnRow?.(deal) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', borderTop: dragOverRow ? '2px solid #0073ea' : '2px solid transparent', transition: 'background .08s' }}>
+      style={{ background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', borderTop: dragOverRow ? '2px solid #0073ea' : '2px solid transparent', borderBottom: '1px solid #e6e9ef', transition: 'background .08s' }}>
 
       {/* Checkbox + color bar + drag handle */}
       <td style={{ width: 50, padding: 0, borderRight: '1px solid #e6e9ef', position: 'sticky', left: 0, background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', zIndex: 2 }}>
-        <div style={{ display: 'flex', alignItems: 'center', height: 44, paddingLeft: 4, gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', height: 40, paddingLeft: 4, gap: 4 }}>
           <span title="Drag to change stage" style={{ cursor: 'grab', color: '#c5c7d0', fontSize: 12, opacity: hover ? 1 : 0, transition: 'opacity .1s', width: 12, flexShrink: 0, userSelect: 'none' }}>⠿</span>
           <div style={{ width: 4, height: 24, borderRadius: 2, background: '#0073ea', opacity: hover || isSelected ? 1 : 0, transition: 'opacity .1s', flexShrink: 0 }} />
           <div onClick={e => { e.stopPropagation(); onToggleSelect(deal.id) }}
@@ -478,7 +478,7 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
 
       {/* Address — sticky, always visible */}
       <td onClick={() => onOpen(deal)}
-        style={{ padding: '0 12px', height: 44, borderRight: '1px solid #e6e9ef', minWidth: 220, maxWidth: 280, position: 'sticky', left: 50, background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', zIndex: 2, cursor: 'pointer' }}>
+        style={{ padding: '0 12px', height: 40, borderRight: '1px solid #e6e9ef', minWidth: 220, maxWidth: 280, position: 'sticky', left: 50, background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', zIndex: 2, cursor: 'pointer' }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: '#323338', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {deal.addr}
           {deal.unit && <span style={{ color: '#676879', fontWeight: 400 }}> #{deal.unit}</span>}
@@ -495,7 +495,7 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
 
       {/* Open icon */}
       <td style={{ width: 36, padding: 0, borderRight: '1px solid #e6e9ef' }} onClick={() => onOpen(deal)}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 44, cursor: 'pointer', opacity: hover ? 1 : 0, transition: 'opacity .1s', color: '#676879', fontSize: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 40, cursor: 'pointer', opacity: hover ? 1 : 0, transition: 'opacity .1s', color: '#676879', fontSize: 14 }}>
           ↗
         </div>
       </td>
@@ -603,7 +603,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
 
           {/* Add item row */}
           <div onClick={() => onAddDeal && onAddDeal(group)}
-            style={{ display: 'flex', alignItems: 'center', height: 44, paddingLeft: 74, cursor: 'pointer', borderTop: '1px solid #e6e9ef', background: '#fff', gap: 6, color: '#676879', fontSize: 13 }}
+            style={{ display: 'flex', alignItems: 'center', height: 40, paddingLeft: 74, cursor: 'pointer', borderTop: '1px solid #e6e9ef', background: '#fff', gap: 6, color: '#676879', fontSize: 13 }}
             onMouseEnter={e => e.currentTarget.style.background = '#f5f6f8'}
             onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
             <span style={{ fontSize: 16, fontWeight: 700, color: headerBg }}>+</span>
@@ -1734,7 +1734,7 @@ export function Production() {
       </div>
 
       {/* ── STATS ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid var(--border)' }}>
         {[
           { label: 'Total Deals',    value: thisYearScope.length, color: '#3B82F6', prefix: '' },
           { label: 'Active',         value: activeArr.length,     color: '#037f4c', prefix: '' },
@@ -1749,26 +1749,27 @@ export function Production() {
       </div>
 
       {/* ── FILTERS ── */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
         <FilterBar
-          search={search} onSearch={setSearch} searchPlaceholder="🔍 Address, client, attorney..."
-          values={{ yearF, stageF, sideF, agentF, saleTypeF, propTypeF }}
-          onChange={(k,v) => {
-            if (k==='yearF')     setYearF(v)
-            if (k==='stageF')    setStageF(v)
-            if (k==='sideF')     setSideF(v)
-            if (k==='agentF')    setAgentF(v)
-            if (k==='saleTypeF') setSaleTypeF(v)
-            if (k==='propTypeF') setPropTypeF(v)
+          searchKey="search" placeholder="🔍 Address, client, attorney..."
+          filters={{ search, yearF, stageF, sideF, agentF, saleTypeF, propTypeF }}
+          onChange={next => {
+            if ('search'     in next) setSearch(next.search)
+            if ('yearF'      in next) setYearF(next.yearF)
+            if ('stageF'     in next) setStageF(next.stageF)
+            if ('sideF'      in next) setSideF(next.sideF)
+            if ('agentF'     in next) setAgentF(next.agentF)
+            if ('saleTypeF'  in next) setSaleTypeF(next.saleTypeF)
+            if ('propTypeF'  in next) setPropTypeF(next.propTypeF)
           }}
-          total={deals.length} filtered={filtered.length}
-          filters={[
-            { key:'yearF',    label:'Year',      type:'select', options:years.map(y=>({value:y,label:y})),                           placeholder:'Year' },
-            { key:'stageF',   label:'Stage',     type:'select', options:DEAL_STAGES.map(s=>({value:s.value,label:s.label})),          placeholder:'Stage' },
-            { key:'sideF',    label:'Side',      type:'select', options:DEAL_SIDES.map(s=>({value:s,label:s})),                       placeholder:'Side' },
-            ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', type:'select', options:agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent' }]:[]),
-            { key:'saleTypeF',label:'Sale Type', type:'select', options:['On Market','Off Market','FSBO'].map(s=>({value:s,label:s})), placeholder:'Sale Type', secondary:true },
-            { key:'propTypeF',label:'Type',      type:'select', options:['Single Family','Condo','New Construction','Multi Family','Duplex','Flip','Land','Commercial'].map(s=>({value:s,label:s})), placeholder:'Prop Type', secondary:true },
+          totalCount={deals.length} filteredCount={filtered.length}
+          definitions={[
+            { key:'yearF',    label:'Year',      options:years.map(y=>({value:y,label:y})) },
+            { key:'stageF',   label:'Stage',     options:DEAL_STAGES.map(s=>({value:s.value,label:s.label})) },
+            { key:'sideF',    label:'Side',      options:DEAL_SIDES.map(s=>({value:s,label:s})) },
+            ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', options:agents.map(a=>({value:a.id,label:a.name})) }]:[]),
+            { key:'saleTypeF',label:'Sale Type', options:['On Market','Off Market','FSBO'].map(s=>({value:s,label:s})) },
+            { key:'propTypeF',label:'Type',      options:['Single Family','Condo','New Construction','Multi Family','Duplex','Flip','Land','Commercial'].map(s=>({value:s,label:s})) },
           ]}
         />
       </div>
