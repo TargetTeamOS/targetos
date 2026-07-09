@@ -752,29 +752,32 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
       toast('Already linked', '#F5A623'); return
     }
     try {
-      await supabase.from('deal_contacts').insert({ deal_id: dealId, contact_id: contact.id, role: addRole })
+      const { error } = await supabase.from('deal_contacts').insert({ deal_id: dealId, contact_id: contact.id, role: addRole })
+      if (error) throw error
       setSearch(''); setResults([])
       await loadLinked()
       onChange?.()
       toast('✅ Contact linked')
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    } catch(e) { toast('Failed to link contact: ' + e.message, '#DC2626') }
   }
 
   async function removeContact(linkId) {
     try {
-      await supabase.from('deal_contacts').delete().eq('id', linkId)
+      const { error } = await supabase.from('deal_contacts').delete().eq('id', linkId)
+      if (error) throw error
       setLinked(prev => prev.filter(l => l.id !== linkId))
       onChange?.()
       toast('Contact removed')
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    } catch(e) { toast('Failed to remove: ' + e.message, '#DC2626') }
   }
 
   async function updateRole(linkId, role) {
     try {
-      await supabase.from('deal_contacts').update({ role }).eq('id', linkId)
+      const { error } = await supabase.from('deal_contacts').update({ role }).eq('id', linkId)
+      if (error) throw error
       setLinked(prev => prev.map(l => l.id === linkId ? { ...l, role } : l))
       onChange?.()
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    } catch(e) { toast('Failed to update role: ' + e.message, '#DC2626') }
   }
 
   const STATUS_COLORS = { Hot:'#DC2626', Warm:'#F5A623', Cold:'#3B82F6', Active:'#10B981', New:'#8B5CF6' }
