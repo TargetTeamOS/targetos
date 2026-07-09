@@ -54,7 +54,7 @@ module.exports = async function handler(req, res) {
 
     const actionUrl = BASE + '?step=connect&voice=' + encodeURIComponent(voice) + '&to=' + encodeURIComponent(to)
     return res.send(wrap(
-      '<Gather numDigits="3" action="' + actionUrl + '" method="POST" timeout="15">' +
+      '<Gather numDigits="3" action="' + esc(actionUrl) + '" method="POST" timeout="15">' +
         say('Our directory. ' + listText + '. Press 0 to return to the main menu.', voice) +
       '</Gather>' +
       say('We did not receive your selection. Goodbye.', voice)
@@ -73,7 +73,7 @@ module.exports = async function handler(req, res) {
       // Invalid extension — replay directory
       const retryUrl = BASE + '?step=announce&voice=' + encodeURIComponent(voice) + '&to=' + encodeURIComponent(to)
       return res.send(wrap(
-        '<Gather numDigits="3" action="' + BASE + '?step=connect&voice=' + encodeURIComponent(voice) + '&to=' + encodeURIComponent(to) + '" method="POST" timeout="12">' +
+        '<Gather numDigits="3" action="' + esc(BASE + '?step=connect&voice=' + encodeURIComponent(voice) + '&to=' + encodeURIComponent(to)) + '" method="POST" timeout="12">' +
           say('Extension ' + digits + ' was not found. ' + agentList.map(a => 'For ' + a.name.split(' ')[0] + ', press ' + a._ext).join('. ') + '.', voice) +
         '</Gather>' +
         say('Goodbye.', voice)

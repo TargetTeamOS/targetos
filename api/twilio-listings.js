@@ -5,7 +5,7 @@
 'use strict'
 const querystring = require('querystring')
 
-const { getSupabase, say, wrap, BASE_URL, logTwilioValidation } = require('./_lib/phone')
+const { getSupabase, say, wrap, esc, BASE_URL, logTwilioValidation } = require('./_lib/phone')
 
 const BASE = BASE_URL + '/api/twilio-listings'
 
@@ -86,7 +86,7 @@ module.exports = async function handler(req, res) {
     const nextUrl = buildNextUrl('area', base)
     return res.send(wrap(
       say(intro, voice) +
-      '<Gather numDigits="1" action="' + nextUrl + '" method="POST" timeout="12">' +
+      '<Gather numDigits="1" action="' + esc(nextUrl) + '" method="POST" timeout="12">' +
         say('Search by area. Press 1 for Monsey. Press 2 for Suffern. Press 3 for Spring Valley. Press 4 for New City. Press 5 for Nanuet. Press 6 for Airmont. Press 7 for Wesley Hills. Press 8 for Pomona. Press 9 for Chestnut Ridge. Press 0 to search all areas.', voice) +
       '</Gather>' +
       say('We did not receive your input. Goodbye.', voice)
@@ -98,14 +98,14 @@ module.exports = async function handler(req, res) {
     const area = AREAS[digits]
     if (!area) {
       return res.send(wrap(
-        '<Gather numDigits="1" action="' + buildNextUrl('area', base) + '" method="POST" timeout="10">' +
+        '<Gather numDigits="1" action="' + esc(buildNextUrl('area', base)) + '" method="POST" timeout="10">' +
           say('Press 1 through 9 for an area, or 0 for all areas.', voice) +
         '</Gather>' + say('Goodbye.', voice)
       ))
     }
     const nextUrl = buildNextUrl('price', { ...base, area: digits })
     return res.send(wrap(
-      '<Gather numDigits="1" action="' + nextUrl + '" method="POST" timeout="12">' +
+      '<Gather numDigits="1" action="' + esc(nextUrl) + '" method="POST" timeout="12">' +
         say('You selected ' + area.label + '. Now select a price range. Press 1 for under 500 thousand. Press 2 for 500 to 750 thousand. Press 3 for 750 thousand to 1 million. Press 4 for 1 to 1.5 million. Press 5 for 1.5 to 2 million. Press 6 for over 2 million. Press 0 for any price.', voice) +
       '</Gather>' + say('Goodbye.', voice)
     ))
@@ -116,14 +116,14 @@ module.exports = async function handler(req, res) {
     const range = PRICE_RANGES[digits]
     if (!range) {
       return res.send(wrap(
-        '<Gather numDigits="1" action="' + buildNextUrl('price', { ...base, area: areaKey }) + '" method="POST" timeout="10">' +
+        '<Gather numDigits="1" action="' + esc(buildNextUrl('price', { ...base, area: areaKey })) + '" method="POST" timeout="10">' +
           say('Press 1 through 6 for a price range, or 0 for any price.', voice) +
         '</Gather>' + say('Goodbye.', voice)
       ))
     }
     const nextUrl = buildNextUrl('beds', { ...base, area: areaKey, price: digits })
     return res.send(wrap(
-      '<Gather numDigits="1" action="' + nextUrl + '" method="POST" timeout="12">' +
+      '<Gather numDigits="1" action="' + esc(nextUrl) + '" method="POST" timeout="12">' +
         say('You selected ' + range.label + '. Now press a number for bedrooms. 1 for 1 bedroom. 2 for 2. 3 for 3. 4 for 4. 5 for 5 or more. Press 0 for any.', voice) +
       '</Gather>' + say('Goodbye.', voice)
     ))
@@ -133,14 +133,14 @@ module.exports = async function handler(req, res) {
   if (step === 'beds') {
     if (!BED_MAP[digits]) {
       return res.send(wrap(
-        '<Gather numDigits="1" action="' + buildNextUrl('beds', { ...base, area: areaKey, price: priceKey }) + '" method="POST" timeout="10">' +
+        '<Gather numDigits="1" action="' + esc(buildNextUrl('beds', { ...base, area: areaKey, price: priceKey })) + '" method="POST" timeout="10">' +
           say('Press 1 through 5 for bedrooms, or 0 for any.', voice) +
         '</Gather>' + say('Goodbye.', voice)
       ))
     }
     const nextUrl = buildNextUrl('baths', { ...base, area: areaKey, price: priceKey, beds: digits })
     return res.send(wrap(
-      '<Gather numDigits="1" action="' + nextUrl + '" method="POST" timeout="12">' +
+      '<Gather numDigits="1" action="' + esc(nextUrl) + '" method="POST" timeout="12">' +
         say('Press 1 for 1 bathroom. 2 for 2. 3 for 3 or more. Press 0 to skip.', voice) +
       '</Gather>' + say('Goodbye.', voice)
     ))
@@ -150,14 +150,14 @@ module.exports = async function handler(req, res) {
   if (step === 'baths') {
     if (!BATH_MAP[digits]) {
       return res.send(wrap(
-        '<Gather numDigits="1" action="' + buildNextUrl('baths', { ...base, area: areaKey, price: priceKey, beds: bedsKey }) + '" method="POST" timeout="10">' +
+        '<Gather numDigits="1" action="' + esc(buildNextUrl('baths', { ...base, area: areaKey, price: priceKey, beds: bedsKey })) + '" method="POST" timeout="10">' +
           say('Press 1, 2, 3, or 0 to skip.', voice) +
         '</Gather>' + say('Goodbye.', voice)
       ))
     }
     const nextUrl = buildNextUrl('type', { ...base, area: areaKey, price: priceKey, beds: bedsKey, baths: digits })
     return res.send(wrap(
-      '<Gather numDigits="1" action="' + nextUrl + '" method="POST" timeout="12">' +
+      '<Gather numDigits="1" action="' + esc(nextUrl) + '" method="POST" timeout="12">' +
         say('Press 1 for Single Family. 2 for Condo. 3 for Townhouse. 4 for Multi Family. Press 0 for all types.', voice) +
       '</Gather>' + say('Goodbye.', voice)
     ))
@@ -167,7 +167,7 @@ module.exports = async function handler(req, res) {
   if (step === 'type') {
     if (!TYPE_MAP[digits]) {
       return res.send(wrap(
-        '<Gather numDigits="1" action="' + buildNextUrl('type', { ...base, area: areaKey, price: priceKey, beds: bedsKey, baths: bathsKey }) + '" method="POST" timeout="10">' +
+        '<Gather numDigits="1" action="' + esc(buildNextUrl('type', { ...base, area: areaKey, price: priceKey, beds: bedsKey, baths: bathsKey })) + '" method="POST" timeout="10">' +
           say('Press 1 Single Family, 2 Condo, 3 Townhouse, 4 Multi Family, or 0 for all.', voice) +
         '</Gather>' + say('Goodbye.', voice)
       ))
@@ -223,7 +223,7 @@ module.exports = async function handler(req, res) {
         const restartUrl = buildNextUrl('intro', base)
         return res.send(wrap(
           say('We found no available listings' + (summary ? ' matching ' + summary : '') + '. ', voice) +
-          '<Gather numDigits="1" action="' + restartUrl + '" method="GET" timeout="10">' +
+          '<Gather numDigits="1" action="' + esc(restartUrl) + '" method="GET" timeout="10">' +
             say('Press 1 to search again with different filters. Press 2 to speak with an agent.', voice) +
           '</Gather>' +
           say('Thank you for calling. Goodbye.', voice)
@@ -234,7 +234,7 @@ module.exports = async function handler(req, res) {
       results.forEach((l, i) => { twiml += readListing(l, i, voice) })
 
       const followUrl = buildNextUrl('followup', base)
-      twiml += '<Gather numDigits="1" action="' + followUrl + '" method="GET" timeout="15">' +
+      twiml += '<Gather numDigits="1" action="' + esc(followUrl) + '" method="GET" timeout="15">' +
         say('Press 1 to search again. Press 2 to speak with an agent. Press 9 to leave a voicemail. Press star to end the call.', voice) +
       '</Gather>'
       twiml += say('Thank you for calling. Goodbye.', voice)
