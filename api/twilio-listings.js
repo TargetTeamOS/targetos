@@ -24,6 +24,19 @@ const PRICE_RANGES = {
 
 const BED_MAP = { '1':'1','2':'2','3':'3','4':'4','5':'5+' }
 
+// City data lives inside the free-text addr field (e.g. "...Spring
+// Valley, NY 10977"), not reliably in a separate city column -- most
+// existing listings have city=NULL. Matching against this known list
+// of local areas, rather than trying to regex-parse city out of addr
+// (which has too many inconsistent formats: sometimes comma-separated,
+// sometimes not; "NY" vs "New York"; unit numbers interspersed).
+const KNOWN_AREAS = [
+  'Monsey', 'Suffern', 'Spring Valley', 'New City', 'Nanuet', 'Airmont',
+  'Wesley Hills', 'Pomona', 'Chestnut Ridge', 'Haverstraw', 'Congers',
+  'Stony Point', 'Swan Lake', 'Monticello', 'Mountain Dale', 'Sloatsburg',
+  'Tappan', 'Nyack', 'Valley Cottage', 'West Nyack', 'Orangeburg', 'Pearl River',
+]
+
 function readListing(l, i, voice) {
   const price = l.list_price ? '$' + Number(l.list_price).toLocaleString() : 'price not listed'
   const addr  = [l.addr, l.city].filter(Boolean).join(', ') || 'address on file'
@@ -113,12 +126,17 @@ module.exports = async function handler(req, res) {
   // ── METHOD CHOICE ─────────────────────────────────────────────────
   if (step === 'method') {
     if (digits === '1') {
-      // Build the area list dynamically from real, currently-featured listings
+      // Build the area list from real addr text, matched against known
+      // local areas (see KNOWN_AREAS comment -- city column is mostly
+      // NULL in real data).
       const supabase = getSupabase()
       if (!supabase) return res.send(wrap(say('Search is temporarily unavailable. Please call back shortly.', voice)))
-      const { data: rows } = await supabase.from('listings').select('city')
+      const { data: rows } = await supabase.from('listings').select('addr')
         .eq('status', 'Active').eq('ivr_enabled', true)
-      const cities = [...new Set((rows || []).map(r => r.city).filter(Boolean))].slice(0, 9)
+      const addrs = (rows || []).map(r => (r.addr || '').toLowerCase())
+      const cities = KNOWN_AREAS.filter(area =>
+        addrs.some(a => a.includes(area.toLowerCase()))
+      ).slice(0, 9)
 
       if (!cities.length) {
         return res.send(wrap(
@@ -169,7 +187,7 @@ module.exports = async function handler(req, res) {
         '</Gather>' + say('Goodbye.', voice)
       ))
     }
-    return runSearch(res, voice, maxRes, base, q => q.ilike('city', '%' + city + '%'), 'in ' + city)
+    return runSearch(res, voice, maxRes, base, q => q.ilike('addr', '%' + city + '%'), 'in ' + city)
   }
 
   // ── PRICE → SEARCH ─────────────────────────────────────────────────
