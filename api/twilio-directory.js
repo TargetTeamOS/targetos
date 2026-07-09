@@ -48,8 +48,7 @@ module.exports = async function handler(req, res) {
     }
 
     const listText = agentList.map(a => {
-      const firstName = a.name.split(' ')[0]
-      return 'For ' + firstName + ', press ' + a._ext
+      return 'For ' + a.name + ', press ' + a._ext
     }).join('. ')
 
     const actionUrl = BASE + '?step=connect&voice=' + encodeURIComponent(voice) + '&to=' + encodeURIComponent(to)
@@ -74,7 +73,7 @@ module.exports = async function handler(req, res) {
       const retryUrl = BASE + '?step=announce&voice=' + encodeURIComponent(voice) + '&to=' + encodeURIComponent(to)
       return res.send(wrap(
         '<Gather numDigits="3" action="' + esc(BASE + '?step=connect&voice=' + encodeURIComponent(voice) + '&to=' + encodeURIComponent(to)) + '" method="POST" timeout="12">' +
-          say('Extension ' + digits + ' was not found. ' + agentList.map(a => 'For ' + a.name.split(' ')[0] + ', press ' + a._ext).join('. ') + '.', voice) +
+          say('Extension ' + digits + ' was not found. ' + agentList.map(a => 'For ' + a.name + ', press ' + a._ext).join('. ') + '.', voice) +
         '</Gather>' +
         say('Goodbye.', voice)
       ))
@@ -82,15 +81,15 @@ module.exports = async function handler(req, res) {
 
     let phone = agent.phone.replace(/[^+0-9]/g, '')
     if (!phone.startsWith('+')) phone = '+1' + phone
-    const firstName = agent.name.split(' ')[0]
+    const fullName = agent.name
     const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=directory'
 
     return res.send(wrap(
-      say('Connecting you to ' + firstName + '. Please hold.', voice) +
+      say('Connecting you to ' + fullName + '. Please hold.', voice) +
       '<Dial callerId="' + esc(to) + '" timeout="30" record="record-from-answer" recordingStatusCallback="' + BASE_URL + '/api/twilio-status">' +
         '<Number statusCallback="' + BASE_URL + '/api/twilio-status" statusCallbackMethod="POST" url="' + esc(whisperUrl) + '">' + esc(phone) + '</Number>' +
       '</Dial>' +
-      say('I\'m sorry, ' + firstName + ' is unavailable. Please leave a message after the tone.', voice) +
+      say('I\'m sorry, ' + fullName + ' is unavailable. Please leave a message after the tone.', voice) +
       '<Record maxLength="120" transcribe="true" transcribeCallback="' + BASE_URL + '/api/twilio-voicemail" />'
     ))
   }
