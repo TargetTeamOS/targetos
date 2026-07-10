@@ -13,13 +13,37 @@ const { getSupabase, say, wrap, esc, BASE_URL, logTwilioValidation } = require('
 
 const BASE = BASE_URL + '/api/twilio-listings'
 
-const PRICE_RANGES = {
+const DEFAULT_INTRO = 'Welcome to our exclusive listings search. Search by area, price, bedrooms, and bathrooms.'
+const DEFAULT_PRICE_RANGES = {
   '1': { min:0,       max:499999,   label:'under 500 thousand'        },
   '2': { min:500000,  max:749999,   label:'500 to 750 thousand'       },
   '3': { min:750000,  max:999999,   label:'750 thousand to 1 million' },
   '4': { min:1000000, max:1499999,  label:'1 to 1.5 million'          },
   '5': { min:1500000, max:1999999,  label:'1.5 to 2 million'          },
   '6': { min:2000000, max:99999999, label:'over 2 million'            },
+}
+
+// Admin-customizable via Calls & SMS -> Listings Search Settings.
+// Falls back to the defaults above if the settings table/row doesn't
+// exist yet, or the query fails for any reason -- customization is a
+// nice-to-have, never something that should be able to break the
+// live phone search.
+async function loadListingsSettings() {
+  try {
+    const supabase = getSupabase()
+    if (!supabase) return { intro: DEFAULT_INTRO, priceRanges: DEFAULT_PRICE_RANGES }
+    const { data } = await supabase.from('listings_ivr_settings').select('*').eq('id', 1).maybeSingle()
+    if (!data) return { intro: DEFAULT_INTRO, priceRanges: DEFAULT_PRICE_RANGES }
+    const priceRanges = {}
+    ;(data.price_ranges || []).forEach((r, i) => { priceRanges[String(i + 1)] = r })
+    return {
+      intro: data.intro_text || DEFAULT_INTRO,
+      priceRanges: Object.keys(priceRanges).length ? priceRanges : DEFAULT_PRICE_RANGES,
+    }
+  } catch(e) {
+    console.warn('[twilio-listings] loadListingsSettings failed, using defaults:', e.message)
+    return { intro: DEFAULT_INTRO, priceRanges: DEFAULT_PRICE_RANGES }
+  }
 }
 
 const BED_MAP = { '1':'1','2':'2','3':'3','4':'4','5':'5+' }
@@ -120,7 +144,8 @@ module.exports = async function handler(req, res) {
 
   // ── INTRO — choose ONE search method ─────────────────────────────
   if (step === 'intro') {
-    const intro = qp.intro ? decodeURIComponent(qp.intro) : 'Welcome to our exclusive listings search.'
+    const settings = await loadListingsSettings()
+    const intro = qp.intro ? decodeURIComponent(qp.intro) : settings.intro
     const nextUrl = buildNextUrl('method', base)
     return res.send(wrap(
       say(intro, voice) +
@@ -161,10 +186,12 @@ module.exports = async function handler(req, res) {
       ))
     }
     if (digits === '2') {
+      const settings = await loadListingsSettings()
       const nextUrl = buildNextUrl('price', base)
+      const optionsText = Object.entries(settings.priceRanges).map(([k, r]) => 'Press ' + k + ' for ' + r.label + '.').join(' ')
       return res.send(wrap(
         '<Gather numDigits="1" action="' + esc(nextUrl) + '" method="POST" timeout="12">' +
-          say('Choose a price range. Press 1 for under 500 thousand. Press 2 for 500 to 750 thousand. Press 3 for 750 thousand to 1 million. Press 4 for 1 to 1.5 million. Press 5 for 1.5 to 2 million. Press 6 for over 2 million.', voice) +
+          say('Choose a price range. ' + optionsText, voice) +
         '</Gather>' + say('Goodbye.', voice)
       ))
     }
@@ -200,7 +227,8 @@ module.exports = async function handler(req, res) {
 
   // ── PRICE → SEARCH ─────────────────────────────────────────────────
   if (step === 'price') {
-    const range = PRICE_RANGES[digits]
+    const settings = await loadListingsSettings()
+    const range = settings.priceRanges[digits]
     if (!range) {
       return res.send(wrap(
         '<Gather numDigits="1" action="' + esc(buildNextUrl('price', base)) + '" method="POST" timeout="10">' +

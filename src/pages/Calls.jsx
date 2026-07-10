@@ -30,6 +30,7 @@ const TABS_MAIN = [
   { id: 'extensions', label: '📞 Extensions' },
   { id: 'ivr',        label: '🎛 IVR Menu' },
   { id: 'flow',       label: '🔀 Call Flows' },
+  { id: 'listings',   label: '🏡 Listings Search' },
   { id: 'routing',    label: '⚙️ Routing Rules' },
   { id: 'settings',   label: '🔌 Twilio Setup' },
 ]
@@ -399,6 +400,70 @@ function ExtensionManager({ agents }) {
 }
 
 // ── IVR BUILDER ──────────────────────────────────────────────
+// ── LISTINGS SEARCH SETTINGS ────────────────────────────────────
+function ListingsSearchSettings() {
+  const { toast } = useApp()
+  const [settings, setSettings] = useState(null)
+  const [loading,  setLoading]  = useState(true)
+  const [saving,   setSaving]   = useState(false)
+
+  useEffect(() => {
+    supabase.from('listings_ivr_settings').select('*').eq('id', 1).maybeSingle()
+      .then(({ data }) => {
+        setSettings(data || { intro_text: '', price_ranges: [] })
+        setLoading(false)
+      })
+      .catch(() => { setSettings({ intro_text: '', price_ranges: [] }); setLoading(false) })
+  }, [])
+
+  function setRange(i, key, value) {
+    setSettings(s => ({ ...s, price_ranges: s.price_ranges.map((r, idx) => idx === i ? { ...r, [key]: value } : r) }))
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      await supabase.from('listings_ivr_settings').upsert({ id: 1, ...settings, updated_at: new Date().toISOString() })
+      toast('✅ Listings search settings saved')
+    } catch(e) {
+      toast('Failed to save — run listings_ivr_settings.sql in Supabase first', '#DC2626')
+    } finally { setSaving(false) }
+  }
+
+  if (loading) return <Loading />
+
+  return (
+    <div style={{ maxWidth: '700px' }}>
+      <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'20px', marginBottom: 16 }}>
+        <div style={{ fontSize:'13px', fontWeight:800, color:'var(--text)', marginBottom:'10px' }}>Intro Message</div>
+        <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'8px' }}>What callers hear right after pressing 5 for exclusive listings.</div>
+        <textarea value={settings.intro_text || ''} onChange={e => setSettings(s => ({ ...s, intro_text: e.target.value }))}
+          rows={3}
+          style={{ width:'100%', padding:'10px 12px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:'inherit', resize:'vertical' }} />
+      </div>
+
+      <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'20px' }}>
+        <div style={{ fontSize:'13px', fontWeight:800, color:'var(--text)', marginBottom:'6px' }}>Price Ranges (Press 2 → Price Search)</div>
+        <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'12px' }}>What callers press 1-6 for, and the $ range each searches. The label is exactly what gets spoken.</div>
+        {(settings.price_ranges || []).map((r, i) => (
+          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+            <span style={{ fontSize:12, fontWeight:700, color:'var(--muted)', width:16 }}>{i+1}</span>
+            <input type="number" value={r.min} onChange={e => setRange(i, 'min', parseInt(e.target.value)||0)}
+              placeholder="Min $" style={{ width:100, padding:'6px 8px', borderRadius:6, border:'1px solid var(--border)', fontSize:12 }} />
+            <span style={{ color:'var(--muted)' }}>–</span>
+            <input type="number" value={r.max} onChange={e => setRange(i, 'max', parseInt(e.target.value)||0)}
+              placeholder="Max $" style={{ width:100, padding:'6px 8px', borderRadius:6, border:'1px solid var(--border)', fontSize:12 }} />
+            <input value={r.label} onChange={e => setRange(i, 'label', e.target.value)}
+              placeholder="Spoken label" style={{ flex:1, padding:'6px 8px', borderRadius:6, border:'1px solid var(--border)', fontSize:12 }} />
+          </div>
+        ))}
+      </div>
+
+      <Btn onClick={save} disabled={saving} style={{ marginTop: 16 }}>{saving ? 'Saving…' : 'Save Settings'}</Btn>
+    </div>
+  )
+}
+
 function IVRBuilder() {
   const navigate = useNavigate()
   return (
@@ -1120,6 +1185,7 @@ export function Calls() {
       {tab === 'ivr'        && <IVRBuilder agents={agents} />}
       {tab === 'routing'    && <RoutingRules agents={agents} />}
       {tab === 'flow'       && <CallFlowEmbed />}
+      {tab === 'listings'   && <ListingsSearchSettings />}
       {tab === 'settings'   && <TwilioSettings />}
 
       {/* Call Detail Drawer */}
