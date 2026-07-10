@@ -531,7 +531,7 @@ export function Signs() {
 
   // ── FILTERS ──────────────────────────────────────────────────────
   const filtered = signs.filter(s => {
-    if (search && !matchSearch(s.addr, search) && !matchSearch(s.lower_rider, search) && !matchSearch(s.upper_rider, search)) return false
+    if (search && !matchSearch(s, search, ['addr', 'lower_rider', 'upper_rider'])) return false
     if (agentFilter && s.agent_id !== agentFilter) return false
     if (groupFilter === 'on_property') return s.order_status === 'On Property'
     if (groupFilter === 'order_sent')  return s.order_status === 'Order Sent In'

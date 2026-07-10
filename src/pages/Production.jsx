@@ -1792,7 +1792,7 @@ export function Production() {
     if (sideF     && d.side          !== sideF)     return false
     if (saleTypeF && d.sale_type     !== saleTypeF) return false
     if (propTypeF && d.property_type !== propTypeF) return false
-    if (search && !matchSearch(d.addr + ' ' + (d.client_name || '') + ' ' + (d.atty_name || ''), search)) return false
+    if (search && !matchSearch(d, search, ['addr', 'client_name', 'atty_name'])) return false
     if (yearF) {
       const year = d.ao_date?.slice(0, 4) || d.close_date?.slice(0, 4) || d.created_at?.slice(0, 4)
       if (year !== yearF) return false
