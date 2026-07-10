@@ -75,7 +75,7 @@ export function Layout({ children }) {
     <>
     <div style={{ display: 'flex', height: '100vh', fontFamily: ff }}>
       {/* SIDEBAR */}
-      <aside style={{ width: W, minWidth: W, background: 'var(--sidebar)', display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0, transition: 'width .2s', overflow: 'hidden', flexShrink: 0 }}>
+      <aside className="app-sidebar" style={{ width: W, minWidth: W, background: 'var(--sidebar)', display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0, transition: 'width .2s', overflow: 'hidden', flexShrink: 0 }}>
 
         {/* Logo */}
         <div style={{ padding: collapsed ? '18px 0' : '18px 16px', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between', borderBottom: '1px solid rgba(255,255,255,.08)', flexShrink: 0 }}>
@@ -174,7 +174,7 @@ export function Layout({ children }) {
       </aside>
 
       {/* MAIN CONTENT */}
-      <main style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
+      <main className="app-main" style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '28px 28px' }}>
           {children}
         </div>

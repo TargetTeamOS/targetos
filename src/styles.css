@@ -209,3 +209,13 @@ body { margin: 0; background: var(--bg); color: var(--text) }
 input[type=date], input[type=time], input[type=number] { color-scheme: light }
 
 @keyframes ping{0%{transform:scale(1);opacity:.4}70%{transform:scale(2.2);opacity:0}100%{transform:scale(2.2);opacity:0}}
+
+/* Global print rules — every page's print/PDF export should show
+   only the page's own content, never the sidebar/app shell around it.
+   Individual pages can still add their own .no-print elements for
+   page-specific controls (buttons, pickers) that shouldn't print. */
+@media print {
+  .app-sidebar { display: none !important; }
+  .app-main { overflow: visible !important; height: auto !important; }
+  .no-print { display: none !important; }
+}

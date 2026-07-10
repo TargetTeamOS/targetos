@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase'
 import { fmt$ } from '../lib/utils'
 import { PageHeader, Btn, Loading, Empty } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
+import html2canvas from 'html2canvas'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const NAVY = '#1B2B4B'
@@ -37,6 +38,7 @@ function splitHighlights(notes) {
 
 function ListingCard({ listing, tag }) {
   const highlights = splitHighlights(listing.notes)
+  const photo = (listing.photos || [])[0]
   return (
     <div style={{ background: '#fff', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
       {/* Banner */}
@@ -49,8 +51,8 @@ function ListingCard({ listing, tag }) {
 
       {/* Photo */}
       <div style={{ position: 'relative', height: 210, background: '#e2e8f0', overflow: 'hidden' }}>
-        {listing.photo_url
-          ? <img src={listing.photo_url} alt={listing.addr} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        {photo
+          ? <img src={photo} alt={listing.addr} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13, fontFamily: ff }}>No photo</div>}
         {listing.is_new_listing && (
           <div style={{ position: 'absolute', top: 10, left: 10, background: RED, color: '#fff', padding: '4px 10px', fontSize: 11, fontWeight: 800, fontFamily: ff }}>NEW LISTING</div>
@@ -92,6 +94,60 @@ function ListingCard({ listing, tag }) {
   )
 }
 
+function FlyerContent({ selectedListings }) {
+  if (selectedListings.length === 0) return null
+  return (
+    <div id="weekly-ad-flyer" style={{ background: '#f0f1f3', padding: 32, maxWidth: 900, margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: 30, fontWeight: 900, color: NAVY, fontFamily: ff, letterSpacing: '.02em' }}>
+            T<span style={{ color: RED }}>A</span>RGET
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: RED, letterSpacing: '.15em', marginTop: -4 }}>TEAM</div>
+          <div style={{ fontSize: 10, color: '#64748b', fontFamily: ff }}>Of Keller William Valley Realty</div>
+        </div>
+        <div style={{ textAlign: 'right', borderTop: '2px solid ' + RED, borderBottom: '2px solid ' + RED, padding: '4px 0' }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, direction: 'rtl', fontFamily: 'serif' }}>
+            פאר אלע אייערע ריעל עסטעיט
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, direction: 'rtl', fontFamily: 'serif' }}>
+            מאנסי און די אומגעגנט!
+          </div>
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+        {selectedListings.map(l => <ListingCard key={l.id} listing={l} tag={l.tag} />)}
+      </div>
+
+      {/* Footer */}
+      <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 14, color: NAVY, fontFamily: ff, marginBottom: 14 }}>
+        BUY, SELL, INVEST WITH THE BEST <span style={{ color: RED }}>- MANY MORE PROJECTS AVAILABLE!</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ fontSize: 16, fontWeight: 900, color: NAVY, fontFamily: ff, lineHeight: 1.1 }}>
+          YOUR<br/><span style={{ color: RED }}>DREAM</span><br/>TEAM
+        </div>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          {TEAM_ROSTER.map(m => (
+            <div key={m.name} style={{ fontSize: 11, fontWeight: 700, color: NAVY, fontFamily: ff, textAlign: 'center' }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#cbd5e1', margin: '0 auto 4px' }} />
+              {m.name} {m.nickname && <span style={{ fontStyle: 'italic', fontWeight: 400 }}>"{m.nickname}"</span>}<br/>{m.last}
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'right', fontFamily: ff }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b' }}>CALL · TEXT · WHATSAPP</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: RED }}>845.424.1014</div>
+          <div style={{ fontSize: 11, color: '#64748b' }}>office@targetreteam.com</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function WeeklyAd() {
   const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
@@ -101,6 +157,8 @@ export function WeeklyAd() {
   const [listings, setListings] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
   const [markers, setMarkers] = useState({}) // per-listing: { tag, is_new_listing, open_house_text }
+  const [exporting, setExporting] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   useEffect(() => {
     supabase.from('listings').select('*, agents(id,name)').eq('status', 'Active')
@@ -131,6 +189,24 @@ export function WeeklyAd() {
     window.print()
   }
 
+  async function exportJPEG() {
+    const el = document.getElementById('weekly-ad-flyer')
+    if (!el) return
+    setExporting(true)
+    try {
+      const canvas = await html2canvas(el, { scale: 3, backgroundColor: '#f0f1f3', useCORS: true })
+      const url = canvas.toDataURL('image/jpeg', 0.95)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'weekly-ad-' + new Date().toISOString().slice(0,10) + '.jpg'
+      a.click()
+    } catch(e) {
+      toast('Export failed: ' + e.message, '#DC2626')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   if (loading) return <Loading />
 
   return (
@@ -142,6 +218,8 @@ export function WeeklyAd() {
           actions={
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <LastVisited page="weekly-ad" />
+              <Btn variant="secondary" onClick={() => setPreviewOpen(true)} disabled={selectedListings.length === 0}>🔍 Full Preview</Btn>
+              <Btn variant="secondary" onClick={exportJPEG} disabled={selectedListings.length === 0 || exporting}>{exporting ? 'Exporting…' : '⬇ Download HD JPEG'}</Btn>
               <Btn onClick={handlePrint} disabled={selectedListings.length === 0}>🖨 Print / Save as PDF</Btn>
             </div>
           }
@@ -184,63 +262,19 @@ export function WeeklyAd() {
       </div>
 
       {/* ── THE ACTUAL FLYER (this is what prints) ── */}
-      {selectedListings.length > 0 && (
-        <div id="weekly-ad-flyer" style={{ background: '#f0f1f3', padding: 32, maxWidth: 900, margin: '0 auto' }}>
-          {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-            <div>
-              <div style={{ fontSize: 30, fontWeight: 900, color: NAVY, fontFamily: ff, letterSpacing: '.02em' }}>
-                T<span style={{ color: RED }}>A</span>RGET
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: RED, letterSpacing: '.15em', marginTop: -4 }}>TEAM</div>
-              <div style={{ fontSize: 10, color: '#64748b', fontFamily: ff }}>Of Keller William Valley Realty</div>
-            </div>
-            <div style={{ textAlign: 'right', borderTop: '2px solid ' + RED, borderBottom: '2px solid ' + RED, padding: '4px 0' }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, direction: 'rtl', fontFamily: 'serif' }}>
-                פאר אלע אייערע ריעל עסטעיט
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, direction: 'rtl', fontFamily: 'serif' }}>
-                מאנסי און די אומגעגנט!
-              </div>
-            </div>
-          </div>
+      <FlyerContent selectedListings={selectedListings} />
 
-          {/* Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
-            {selectedListings.map(l => <ListingCard key={l.id} listing={l} tag={l.tag} />)}
-          </div>
-
-          {/* Footer */}
-          <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 14, color: NAVY, fontFamily: ff, marginBottom: 14 }}>
-            BUY, SELL, INVEST WITH THE BEST <span style={{ color: RED }}>- MANY MORE PROJECTS AVAILABLE!</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ fontSize: 16, fontWeight: 900, color: NAVY, fontFamily: ff, lineHeight: 1.1 }}>
-              YOUR<br/><span style={{ color: RED }}>DREAM</span><br/>TEAM
-            </div>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              {TEAM_ROSTER.map(m => (
-                <div key={m.name} style={{ fontSize: 11, fontWeight: 700, color: NAVY, fontFamily: ff, textAlign: 'center' }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#cbd5e1', margin: '0 auto 4px' }} />
-                  {m.name} {m.nickname && <span style={{ fontStyle: 'italic', fontWeight: 400 }}>"{m.nickname}"</span>}<br/>{m.last}
-                </div>
-              ))}
-            </div>
-            <div style={{ textAlign: 'right', fontFamily: ff }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b' }}>CALL · TEXT · WHATSAPP</div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: RED }}>845.424.1014</div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>office@targetreteam.com</div>
-            </div>
+      {previewOpen && (
+        <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 1000, overflowY: 'auto', padding: '40px 20px' }}>
+          <button onClick={() => setPreviewOpen(false)}
+            style={{ position: 'fixed', top: 20, right: 20, width: 40, height: 40, borderRadius: '50%', border: 'none', background: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', zIndex: 1001 }}>
+            ✕
+          </button>
+          <div style={{ maxWidth: 900, margin: '0 auto' }}>
+            <FlyerContent selectedListings={selectedListings} />
           </div>
         </div>
       )}
-
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          #weekly-ad-flyer { max-width: 100% !important; }
-        }
-      `}</style>
     </div>
   )
 }
