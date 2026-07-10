@@ -673,6 +673,12 @@ export function Contacts() {
               </Field>
             </div>
 
+            <DuplicateDetector
+              phone={form.phone}
+              email={form.email}
+              currentId={selected?.id || null}
+              onIgnore={() => {}}
+            />
             <Field label="Address">
               <AddressAutocomplete value={form.address||''} onChange={v => set('address', v)} placeholder="123 Main St, Monsey NY" />
             </Field>

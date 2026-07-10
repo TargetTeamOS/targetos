@@ -21,7 +21,14 @@ export function DuplicateDetector({ phone, email, currentId = null, onMerge, onI
     const timer = setTimeout(async () => {
       try {
         const conditions = []
-        if (cleanPhone.length >= 10) conditions.push('phone.ilike.%'+cleanPhone+'%')
+        if (cleanPhone.length >= 10) {
+          // Same bug as lookupContact in api/_lib/phone.js: contacts
+          // are stored formatted like "(845) 424-1014", so searching
+          // only the raw digit string can never match.
+          const area = cleanPhone.slice(0,3), mid = cleanPhone.slice(3,6), last = cleanPhone.slice(6)
+          ;[cleanPhone, '(' + area + ') ' + mid + '-' + last, area + '-' + mid + '-' + last, area + '.' + mid + '.' + last, area + ' ' + mid + ' ' + last]
+            .forEach(v => conditions.push('phone.ilike.%' + v + '%'))
+        }
         if (cleanEmail.includes('@'))  conditions.push('email.ilike.'+cleanEmail)
         if (!conditions.length) { setDupes([]); return }
 

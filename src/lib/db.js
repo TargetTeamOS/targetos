@@ -188,8 +188,15 @@ contacts: {
     if (data.phone && !force) {
       const d10 = String(data.phone).replace(/\D/g, '').slice(-10)
       if (d10.length === 10) {
+        // Same bug as lookupContact in api/_lib/phone.js: contacts are
+        // stored formatted like "(845) 424-1014", so searching only
+        // the raw digit string can never match. Check every format
+        // variant a phone might actually be stored in.
+        const area = d10.slice(0,3), mid = d10.slice(3,6), last = d10.slice(6)
+        const variants = [d10, '(' + area + ') ' + mid + '-' + last, area + '-' + mid + '-' + last, area + '.' + mid + '.' + last, area + ' ' + mid + ' ' + last]
+        const orClause = variants.map(v => 'phone.ilike.%' + v + '%').join(',')
         const { data: existing } = await supabase.from('contacts')
-          .select('id, first_name, last_name, phone, agent_id').ilike('phone', '%' + d10 + '%').limit(1).maybeSingle()
+          .select('id, first_name, last_name, phone, agent_id').or(orClause).limit(1).maybeSingle()
         if (existing) {
           const err = new Error('A contact with this phone number already exists: ' + (existing.first_name||'') + ' ' + (existing.last_name||''))
           err.existingContact = existing

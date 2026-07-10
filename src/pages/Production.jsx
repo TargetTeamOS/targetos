@@ -741,8 +741,14 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
       if (phone) {
         const d10 = phone.replace(/\D/g, '').slice(-10)
         if (d10.length === 10) {
+          // Same bug as lookupContact in api/_lib/phone.js: contacts
+          // are stored formatted like "(845) 424-1014", so searching
+          // only the raw digit string can never match.
+          const area = d10.slice(0,3), mid = d10.slice(3,6), last = d10.slice(6)
+          const variants = [d10, '(' + area + ') ' + mid + '-' + last, area + '-' + mid + '-' + last, area + '.' + mid + '.' + last, area + ' ' + mid + ' ' + last]
+          const orClause = variants.map(v => 'phone.ilike.%' + v + '%').join(',')
           const { data: existing } = await supabase.from('contacts')
-            .select('id, first_name, last_name').ilike('phone', '%' + d10 + '%').limit(1).maybeSingle()
+            .select('id, first_name, last_name').or(orClause).limit(1).maybeSingle()
           if (existing) {
             toast('Already exists as ' + (existing.first_name||'') + ' ' + (existing.last_name||'') + ' — linking to that contact instead', '#F5A623')
             setShowNewForm(false); setNewContact({ phone:'', email:'' })

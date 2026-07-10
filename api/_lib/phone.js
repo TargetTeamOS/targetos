@@ -226,10 +226,28 @@ async function lookupContact(supabase, fromNumber) {
   try {
     const d10 = fromNumber.replace(/\D/g, '').slice(-10)
     if (d10.length < 10) return null
+    // CRITICAL: contacts are stored formatted as "(845) 424-1014" (see
+    // formatPhone below), but ilike does a literal substring match --
+    // searching for the raw digit string "8454241014" can NEVER match
+    // "(845) 424-1014" since the punctuation breaks up the contiguous
+    // digits. This was silently causing a brand new duplicate contact
+    // to be created on every single inbound call, forever, since the
+    // lookup could never find what a previous call had just created.
+    // Search every format variant a phone number might actually be
+    // stored in, not just the one that happens to never match.
+    const area = d10.slice(0,3), mid = d10.slice(3,6), last = d10.slice(6)
+    const variants = [
+      d10,                                  // 8454241014
+      '(' + area + ') ' + mid + '-' + last, // (845) 424-1014
+      area + '-' + mid + '-' + last,        // 845-424-1014
+      area + '.' + mid + '.' + last,        // 845.424.1014
+      area + ' ' + mid + ' ' + last,        // 845 424 1014
+    ]
+    const orClause = variants.map(v => 'phone.ilike.%' + v + '%').join(',')
     const { data } = await supabase
       .from('contacts')
       .select('id, first_name, last_name, phone, agent_id, status, type')
-      .or('phone.ilike.%' + d10 + '%')
+      .or(orClause)
       .limit(1).maybeSingle()
     return data || null
   } catch(e) {
