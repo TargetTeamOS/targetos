@@ -22,6 +22,7 @@ import { Listings }      from './pages/Listings'
 import { Tasks }         from './pages/Tasks'
 import { Calendar }      from './pages/Calendar'
 import { Offers }        from './pages/Offers'
+import { WeeklyAd }      from './pages/WeeklyAd'
 import { Gifts }         from './pages/Gifts'
 import { AIAssistant } from './components/AIAssistant'
 import { CallFlow } from './pages/CallFlow'
@@ -139,6 +140,7 @@ function AppShell() {
           <Route path="/calendar"            element={<Calendar />} />
           <Route path="/calendar/:id"        element={<Calendar />} />
           <Route path="/offers"              element={<Offers />} />
+          <Route path="/weekly-ad"           element={<WeeklyAd />} />
           <Route path="/offers/:id"          element={<Offers />} />
           <Route path="/gifts"               element={<Gifts />} />
           <Route path="/gifts/:id"           element={<Gifts />} />
