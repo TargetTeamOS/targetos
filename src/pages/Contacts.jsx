@@ -26,6 +26,7 @@ import {
   SearchInput, Avatar, ModalActions, Loading, Empty, Tabs, SectionTitle,
   Card, Confirm, Divider
 } from '../components/UI'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -200,6 +201,7 @@ export function Contacts() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('contacts')
   const { toast } = useApp()
 
   // Paginated loading — 100 at a time, load more on scroll
@@ -423,6 +425,7 @@ export function Contacts() {
         sub={filtered.length + ' contacts'}
         actions={
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <LastVisited page="contacts" />
             <ImportExport
               table="contacts"
               data={filtered}

@@ -23,6 +23,8 @@ import {
   BUYER_TYPES, SALES_SOURCES, COMMAND_STATUSES, REFERRAL_AGENTS
 } from '../lib/constants'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
+import { logRecordChange } from '../lib/recordActivity'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { FileAttachments } from '../components/FileAttachments'
 import { RecordActivity } from '../pages/ActivityLog'
 import { ClickToCall } from '../components/ClickToCall'
@@ -1311,6 +1313,7 @@ export function Production() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('production')
   const { toast } = useApp()
   const { agents } = useAgents()
 
@@ -1669,19 +1672,10 @@ export function Production() {
   }
 
   async function logDealChange(deal, field, oldValue, newValue) {
-    try {
-      await supabase.from('audit_log').insert({
-        agent_id:   agent?.id || null,
-        table_name: 'deals',
-        record_id:  deal.id,
-        action:     'updated',
-        field_name: DEAL_FIELD_LABELS[field] || field,
-        old_value:  oldValue != null ? String(oldValue) : null,
-        new_value:  newValue != null ? String(newValue) : null,
-        metadata:   { description: (deal.addr || 'Deal') + ' — ' + (DEAL_FIELD_LABELS[field] || field) + ' changed' },
-        created_at: new Date().toISOString(),
-      })
-    } catch(e) { console.warn('logDealChange failed:', e.message) }
+    logRecordChange({
+      tableName: 'deals', recordId: deal.id, agentId: agent?.id,
+      field, oldValue, newValue, recordName: deal.addr,
+    })
   }
 
   async function quickUpdate(deal, field, value, isCustom) {
@@ -1886,6 +1880,7 @@ export function Production() {
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <LastVisited page="production" />
           {/* View mode */}
           <div style={{ display: 'flex', background: 'var(--dim)', borderRadius: '8px', padding: '3px', gap: '2px' }}>
             {/* Column picker */}

@@ -138,7 +138,7 @@ export function useOffers(filters = {}) {
     ...base,
     offers: base.data,
     add:    (data) => db.offers.create(data),
-    update: (id, data) => db.offers.update(id, data),
+    update: (id, data, actingAgentId) => db.offers.update(id, data, actingAgentId),
     remove: (id) => db.offers.delete(id),
   }
 }

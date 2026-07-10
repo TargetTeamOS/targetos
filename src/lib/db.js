@@ -100,11 +100,18 @@ async function logDiff(agentId, tableName, recordId, before, after, recordLabel)
 
   if (changes.length === 0) return
 
-  // Log each changed field as a separate audit entry
+  // Log each changed field as a separate audit entry. Includes BOTH
+  // direct columns (field_name/old_value/new_value -- what
+  // RecordActivity in ActivityLog.jsx reads) and nested metadata
+  // (what RecordActivityFeed.jsx reads), so this works regardless of
+  // which display component a given page uses.
   for (const { key, oldVal, newVal } of changes) {
     await log(agentId, tableName, recordId,
       key === 'status' ? 'status_changed' : 'updated',
       {
+        field_name: fieldLabel(key),
+        old_value:  oldVal,
+        new_value:  newVal,
         metadata: {
           field:       key,
           field_label: fieldLabel(key),
@@ -186,14 +193,18 @@ contacts: {
     fireTrigger('newContact', result)
     return result
   },
-  async update(id, data) {
+  async update(id, data, actingAgentId) {
     // Fetch before state for diff
     const before = await run(supabase.from('contacts').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('contacts').update({ ...stripVirtual(data),
       last_activity: new Date().toISOString(),
       updated_at:    new Date().toISOString(),
     }).eq('id', id).select().single())
-    const agentId = data.agent_id || before?.agent_id || null
+    // Attribute the log entry to whoever ACTUALLY made this edit, not
+    // whoever the contact happens to be assigned to -- those are
+    // often different people (e.g. a secretary or another agent
+    // editing someone else's contact).
+    const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     const label = (result.first_name || '') + ' ' + (result.last_name || '')
     await logDiff(agentId, 'contacts', id, before, result, label.trim())
     fireTrigger('contactUpdated', result, data)
@@ -228,10 +239,10 @@ deals: {
     fireTrigger('dealCreated', result)
     return result
   },
-  async update(id, data) {
+  async update(id, data, actingAgentId) {
     const before = await run(supabase.from('deals').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('deals').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
-    const agentId = data.agent_id || before?.agent_id || null
+    const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'deals', id, before, result, result.addr || 'Deal')
     fireTrigger('dealUpdated', result, data)
     return result
@@ -261,10 +272,10 @@ listings: {
     })
     return result
   },
-  async update(id, data) {
+  async update(id, data, actingAgentId) {
     const before = await run(supabase.from('listings').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('listings').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
-    const agentId = data.agent_id || before?.agent_id || null
+    const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'listings', id, before, result, result.addr || 'Listing')
     fireTrigger('listingUpdated', result, data)
     return result
@@ -327,10 +338,10 @@ offers: {
     })
     return result
   },
-  async update(id, data) {
+  async update(id, data, actingAgentId) {
     const before = await run(supabase.from('offers').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('offers').update(data).eq('id', id).select().single())
-    const agentId = data.agent_id || before?.agent_id || null
+    const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'offers', id, before, result, result.listing_addr || 'Offer')
     return result
   },

@@ -15,6 +15,7 @@
 // - Stats: total offers, accepted, per-client, conversion rate
 
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -203,6 +204,7 @@ export function Offers() {
   const navigate  = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('offers')
   const { toast } = useApp()
 
   // Agents only see their own offers
@@ -544,7 +546,7 @@ export function Offers() {
       }
 
       if (selected) {
-        const updated = await update(selected.id, payload)
+        const updated = await update(selected.id, payload, agent?.id)
         setSelected(updated)
         toast('✅ Offer saved')
       } else {
@@ -635,7 +637,8 @@ export function Offers() {
             {totalOffers} total · {totalAO} accepted · {fmt$(totalVol)} volume
           </div>
         </div>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <LastVisited page="offers" />
           <div style={{ display:'flex', background:'var(--dim)', borderRadius:8, padding:2, gap:2 }}>
             {[['agents','👥 By Agent'],['table','📋 Table']].map(([v,l])=>(
               <button key={v} onClick={()=>setView(v)}

@@ -22,6 +22,8 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
+import { logRecordChange } from '../lib/recordActivity'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -205,6 +207,7 @@ function ListingCard({ listing, showings, openHouses, onLogShowing, onScheduleOH
 
 export function MyListings() {
   const { agent, isAdmin } = useAuth()
+  usePageView('listings')
   const { toast } = useApp()
   const navigate  = useNavigate()
 
@@ -379,6 +382,7 @@ export function MyListings() {
     try {
       await supabase.from('listings').update({ ivr_enabled: next, updated_at: new Date().toISOString() }).eq('id', listing.id)
       setListings(p => p.map(l => l.id === listing.id ? { ...l, ivr_enabled: next } : l))
+      logRecordChange({ tableName:'listings', recordId:listing.id, agentId:agent?.id, field:'ivr_enabled', oldValue:listing.ivr_enabled, newValue:next, recordName:listing.addr })
       toast(next ? '📞 Featured on phone system' : 'Removed from phone system')
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
@@ -387,6 +391,7 @@ export function MyListings() {
     try {
       await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listing.id)
       setListings(p => p.map(l => l.id === listing.id ? { ...l, status: newStatus } : l))
+      logRecordChange({ tableName:'listings', recordId:listing.id, agentId:agent?.id, field:'status', oldValue:listing.status, newValue:newStatus, recordName:listing.addr })
 
       // Sync to TC deal if linked
       let tcDeal = null
@@ -422,7 +427,8 @@ export function MyListings() {
         title="My Listings"
         sub="Your active listings — showings, open houses, price changes"
         actions={
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <LastVisited page="listings" />
             <Btn variant="secondary" onClick={() => navigate('/listings')}>All Listings</Btn>
             <Btn onClick={() => navigate('/listings/new')}>+ New Listing</Btn>
           </div>
