@@ -11,6 +11,7 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate } from '../lib/utils'
 import { Loading, Avatar } from '../components/UI'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -422,6 +423,7 @@ function GoalsTab({ agents, year, goals, setGoals, agentStats, contacts, savingG
 // ═════════════════════════════════════════════════════════════════
 export function AgentPerformance() {
   const { agent: me, isAdmin, canManage } = useAuth()
+  usePageView('performance')
   const { toast } = useApp()
 
   const [deals,     setDeals]     = useState([])
@@ -432,23 +434,35 @@ export function AgentPerformance() {
   const [goals,     setGoals]     = useState({})       // agentId_year -> { deals, gci, production, leads }
   const [savingGoal,setSavingGoal]= useState(null)
   const [contacts,  setContacts]  = useState([])
+  const [offers,    setOffers]    = useState([])
+  const [listings,  setListings]  = useState([])
+  const [calls,     setCalls]     = useState([])
+  const [tasks,     setTasks]     = useState([])
 
   useEffect(() => { load() }, [year])
 
   async function load() {
     setLoading(true)
     try {
-      const [dealsRes, agentsRes] = await Promise.all([
+      const [dealsRes, agentsRes, offersRes, listingsRes, callsRes, tasksRes] = await Promise.all([
         supabase.from('deals')
           .select('id, addr, agent_id, stage, side, production, gci, ao_date, close_date, expected_close_date, created_at')
           .order('ao_date', { ascending: false })
           .range(0, 2999), // 3000 max — enough for years of data
         supabase.from('agents').select('id, name, color, role').eq('active', true).order('name'),
+        supabase.from('offers').select('agent_id, status'),
+        supabase.from('listings').select('agent_id, status'),
+        supabase.from('calls').select('agent_id, outcome'),
+        supabase.from('tasks').select('agent_id, status, due_date'),
       ])
       if (dealsRes.error) throw dealsRes.error
       if (agentsRes.error) throw agentsRes.error
       setDeals(dealsRes.data || [])
       setAgents(agentsRes.data || [])
+      setOffers(offersRes.data || [])
+      setListings(listingsRes.data || [])
+      setCalls(callsRes.data || [])
+      setTasks(tasksRes.data || [])
 
       // Load goals for this year
       try {
@@ -518,6 +532,7 @@ export function AgentPerformance() {
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display:'flex', gap:10, alignItems:'center' }}>
+          <LastVisited page="performance" />
           <select value={year} onChange={e => setYear(e.target.value)}
             style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: 13, fontFamily: ff }}>
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
@@ -527,7 +542,7 @@ export function AgentPerformance() {
 
       {/* Tabs */}
       <div style={{ display:'flex', borderBottom:'2px solid var(--border)', marginBottom:20, gap:0 }}>
-        {[['leaderboard','📈 Leaderboard'],['goals','🎯 Goals']].map(([id, label]) => {
+        {[['leaderboard','📈 Leaderboard'],['goals','🎯 Goals'],['overview','🔍 Full Picture']].map(([id, label]) => {
           const active = activeTab === id
           return (
             <button key={id} onClick={() => setActiveTab(id)}
@@ -594,6 +609,114 @@ export function AgentPerformance() {
           me={me}
         />
       )}
+
+      {activeTab === 'overview' && (
+        <FullPictureTab agents={agents} deals={deals} offers={offers} listings={listings} calls={calls} contacts={contacts} tasks={tasks} />
+      )}
+    </div>
+  )
+}
+
+// ── FULL PICTURE TAB ──────────────────────────────────────────────
+// Cross-feature rollup: deals, offers, listings, calls, contacts, and
+// tasks in one sortable table, not just the deals-focused view the
+// other tabs already covered.
+const OVERVIEW_METRICS = [
+  { key: 'deals',        label: 'Deals',        align: 'right' },
+  { key: 'activeDeals',  label: 'Active',       align: 'right' },
+  { key: 'closedGCI',    label: 'Closed GCI',   align: 'right', money: true },
+  { key: 'pipelineGCI',  label: 'Pipeline GCI', align: 'right', money: true },
+  { key: 'offers',       label: 'Offers',       align: 'right' },
+  { key: 'offerConv',    label: 'Offer Conv%',  align: 'right', pct: true },
+  { key: 'listings',     label: 'Listings',     align: 'right' },
+  { key: 'calls',        label: 'Calls',        align: 'right' },
+  { key: 'callsAnswered',label: 'Answered',     align: 'right' },
+  { key: 'contacts',     label: 'Contacts',     align: 'right' },
+  { key: 'hotLeads',     label: 'Hot/Warm',     align: 'right' },
+  { key: 'tasksDone',    label: 'Tasks Done',   align: 'right' },
+  { key: 'tasksOverdue', label: 'Overdue',      align: 'right' },
+]
+
+function FullPictureTab({ agents, deals, offers, listings, calls, contacts, tasks }) {
+  const [sortKey, setSortKey] = useState('closedGCI')
+  const [sortDir, setSortDir] = useState('desc')
+
+  const rows = React.useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    return agents.map(a => {
+      const aDeals    = deals.filter(d => d.agent_id === a.id)
+      const aOffers   = offers.filter(o => o.agent_id === a.id)
+      const aListings = listings.filter(l => l.agent_id === a.id)
+      const aCalls    = calls.filter(c => c.agent_id === a.id)
+      const aContacts = contacts.filter(c => c.agent_id === a.id)
+      const aTasks    = tasks.filter(t => t.agent_id === a.id)
+
+      const closedGCI   = aDeals.filter(d => d.stage === 'Closed').reduce((s,d) => s + (parseFloat(d.gci)||0), 0)
+      const activeDeals = aDeals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
+      const pipelineGCI = activeDeals.reduce((s,d) => s + (parseFloat(d.gci)||0), 0)
+      const offersAccepted = aOffers.filter(o => ['AO','Accepted','Closed'].includes(o.status)).length
+
+      return {
+        agent: a,
+        deals: aDeals.length,
+        activeDeals: activeDeals.length,
+        closedGCI, pipelineGCI,
+        offers: aOffers.length,
+        offerConv: aOffers.length ? Math.round(offersAccepted / aOffers.length * 100) : 0,
+        listings: aListings.filter(l => l.status === 'Active').length,
+        calls: aCalls.length,
+        callsAnswered: aCalls.filter(c => c.outcome === 'Connected').length,
+        contacts: aContacts.length,
+        hotLeads: aContacts.filter(c => ['Hot','Warm'].includes(c.status)).length,
+        tasksDone: aTasks.filter(t => t.status === 'done' || t.status === 'completed').length,
+        tasksOverdue: aTasks.filter(t => t.due_date && t.due_date < today && !['done','completed'].includes(t.status)).length,
+      }
+    })
+  }, [agents, deals, offers, listings, calls, contacts, tasks])
+
+  const sorted = React.useMemo(() => {
+    const arr = [...rows]
+    arr.sort((a, b) => (sortDir === 'desc' ? b[sortKey] - a[sortKey] : a[sortKey] - b[sortKey]))
+    return arr
+  }, [rows, sortKey, sortDir])
+
+  function sortBy(key) {
+    if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
+    else { setSortKey(key); setSortDir('desc') }
+  }
+
+  return (
+    <div style={{ overflowX: 'auto', background: 'var(--panel)', borderRadius: 12, border: '1px solid var(--border)' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1100 }}>
+        <thead>
+          <tr style={{ borderBottom: '2px solid var(--border)' }}>
+            <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', background: 'var(--dim)', position: 'sticky', left: 0 }}>Agent</th>
+            {OVERVIEW_METRICS.map(m => (
+              <th key={m.key} onClick={() => sortBy(m.key)}
+                style={{ padding: '10px 12px', textAlign: m.align, fontSize: 10, fontWeight: 700, color: sortKey===m.key?'var(--brand)':'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', background: 'var(--dim)', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                {m.label}{sortKey===m.key ? (sortDir==='desc'?' ▼':' ▲') : ''}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(r => (
+            <tr key={r.agent.id} style={{ borderBottom: '1px solid var(--border)' }}>
+              <td style={{ padding: '10px 14px', position: 'sticky', left: 0, background: 'var(--panel)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Avatar agent={r.agent} size={26} showHover={false} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>{r.agent.name}</span>
+                </div>
+              </td>
+              {OVERVIEW_METRICS.map(m => (
+                <td key={m.key} style={{ padding: '10px 12px', textAlign: m.align, fontSize: 13, color: 'var(--text)', fontWeight: m.key===sortKey?700:400 }}>
+                  {m.money ? fmt$(r[m.key]) : m.pct ? r[m.key] + '%' : r[m.key]}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
