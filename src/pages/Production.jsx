@@ -1661,6 +1661,29 @@ export function Production() {
     }
   }
 
+  const DEAL_FIELD_LABELS = {
+    stage:'Stage', side:'Side', sale_type:'Sale Type', property_type:'Property Type',
+    production:'Production', gci:'GCI', agent_id:'Agent', command:'Command',
+    ao_date:'A/O Date', contract_date:'Contract Date', expected_close_date:'Expected Close',
+    close_date:'Close Date', deal_status:'Deal Status', notes:'Notes',
+  }
+
+  async function logDealChange(deal, field, oldValue, newValue) {
+    try {
+      await supabase.from('audit_log').insert({
+        agent_id:   agent?.id || null,
+        table_name: 'deals',
+        record_id:  deal.id,
+        action:     'updated',
+        field_name: DEAL_FIELD_LABELS[field] || field,
+        old_value:  oldValue != null ? String(oldValue) : null,
+        new_value:  newValue != null ? String(newValue) : null,
+        metadata:   { description: (deal.addr || 'Deal') + ' — ' + (DEAL_FIELD_LABELS[field] || field) + ' changed' },
+        created_at: new Date().toISOString(),
+      })
+    } catch(e) { console.warn('logDealChange failed:', e.message) }
+  }
+
   async function quickUpdate(deal, field, value, isCustom) {
     const today = new Date().toISOString().slice(0, 10)
 
@@ -1675,6 +1698,7 @@ export function Production() {
           .select('*, agents(id,name,color)').maybeSingle()
         if (error) throw error
         if (data) setDeals(prev => prev.map(d => d.id === deal.id ? data : d))
+        logDealChange(deal, field, (deal.custom_data || {})[field], value)
       } catch(e) {
         setDeals(prev => prev.map(d => d.id === deal.id ? deal : d))
         toast('Update failed: ' + e.message, '#DC2626')
@@ -1702,6 +1726,7 @@ export function Production() {
         .maybeSingle()
       if (error) throw error
       if (data) setDeals(prev => prev.map(d => d.id === deal.id ? data : d))
+      logDealChange(deal, field, deal[field], value)
 
       // Automation: Offer Accepted -> Under Contract triggers an email
       // to the deal's agent. Board placement itself needs no extra
