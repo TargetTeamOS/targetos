@@ -586,6 +586,32 @@ export function Offers() {
     finally { setConfirmDel(false) }
   }
 
+  // Leaderboards for the Reports section — counts by name across all
+  // offers. Simple frequency count, not a fuzzy match to deals: the
+  // per-agent conversion rate (offers that reached AO status) already
+  // exists in AgentStatsCard, which is a much more reliable signal
+  // than trying to match an offer to a deal by address.
+  const topAttorneys = useMemo(() => {
+    const counts = {}
+    offers.forEach(o => {
+      ;[o.purchaser_attorney_name, o.seller_attorney_name].forEach(name => {
+        if (!name?.trim()) return
+        counts[name] = (counts[name] || 0) + 1
+      })
+    })
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  }, [offers])
+
+  const topSellerAgents = useMemo(() => {
+    const counts = {}
+    offers.forEach(o => {
+      const name = o.sellers_agent_name?.trim()
+      if (!name) return
+      counts[name] = (counts[name] || 0) + 1
+    })
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  }, [offers])
+
   const filtered = offers.filter(o => {
     if (statusF && o.status !== statusF) return false
     if (agentF === 'none' && o.agent_id) return false
@@ -654,6 +680,26 @@ export function Offers() {
                     isActive={agentF===ag.id} />
                 ))}
               </div>
+
+              {/* Leaderboards */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:24 }}>
+                {[
+                  { title: '⚖️ Most Active Attorneys', data: topAttorneys },
+                  { title: '🏠 Most Frequent Seller\'s Agents', data: topSellerAgents },
+                ].map(board => (
+                  <div key={board.title} style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', padding:16 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', marginBottom:10 }}>{board.title}</div>
+                    {board.data.length === 0 && <div style={{ fontSize:12, color:'var(--muted)' }}>No data yet.</div>}
+                    {board.data.map(([name, count], i) => (
+                      <div key={name} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 0', borderBottom: i < board.data.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        <span style={{ fontSize:12, color:'var(--text)', fontWeight:600 }}>{i+1}. {name}</span>
+                        <span style={{ fontSize:11, color:'var(--muted)', fontWeight:700, background:'var(--dim)', padding:'2px 8px', borderRadius:10 }}>{count} offer{count!==1?'s':''}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
               {filtered.length > 0 && (
                 <div>
                   <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:10 }}>
