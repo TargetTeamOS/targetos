@@ -8,12 +8,16 @@ import React, { useState } from 'react'
 import { PageHeader, Tabs } from '../components/UI'
 import { SocialCards } from './SocialCards'
 import { WeeklyAd } from './WeeklyAd'
+import { MarketUpdateCard } from './MarketUpdateCard'
+import { TestimonialCard } from './TestimonialCard'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 const TABS = [
   { id: 'social', label: '📱 Social Cards' },
   { id: 'weekly',  label: '📰 Weekly Ad' },
+  { id: 'market',  label: '📊 Market Update' },
+  { id: 'testimonial', label: '💬 Testimonial' },
 ]
 
 export function Marketing() {
@@ -37,6 +41,8 @@ export function Marketing() {
 
       {tab === 'social' && <SocialCards />}
       {tab === 'weekly'  && <WeeklyAd />}
+      {tab === 'market'  && <MarketUpdateCard />}
+      {tab === 'testimonial' && <TestimonialCard />}
     </div>
   )
 }
