@@ -23,6 +23,14 @@ const DEFAULT_PRICE_RANGES = {
   '6': { min:2000000, max:99999999, label:'over 2 million'            },
 }
 
+const DEFAULT_AREAS = [
+  'Monsey', 'Suffern', 'Spring Valley', 'New City', 'Nanuet', 'Airmont',
+  'Wesley Hills', 'Pomona', 'Chestnut Ridge', 'Haverstraw', 'Congers',
+  'Stony Point', 'Swan Lake', 'Monticello', 'Mountain Dale', 'Sloatsburg',
+  'Tappan', 'Nyack', 'Valley Cottage', 'West Nyack', 'Orangeburg', 'Pearl River',
+]
+const DEFAULT_BED_MAP = { '1':'1','2':'2','3':'3','4':'4','5':'5+' }
+
 // Admin-customizable via Calls & SMS -> Listings Search Settings.
 // Falls back to the defaults above if the settings table/row doesn't
 // exist yet, or the query fails for any reason -- customization is a
@@ -31,35 +39,32 @@ const DEFAULT_PRICE_RANGES = {
 async function loadListingsSettings() {
   try {
     const supabase = getSupabase()
-    if (!supabase) return { intro: DEFAULT_INTRO, priceRanges: DEFAULT_PRICE_RANGES }
+    if (!supabase) return { intro: DEFAULT_INTRO, priceRanges: DEFAULT_PRICE_RANGES, areas: DEFAULT_AREAS, bedMap: DEFAULT_BED_MAP }
     const { data } = await supabase.from('listings_ivr_settings').select('*').eq('id', 1).maybeSingle()
-    if (!data) return { intro: DEFAULT_INTRO, priceRanges: DEFAULT_PRICE_RANGES }
+    if (!data) return { intro: DEFAULT_INTRO, priceRanges: DEFAULT_PRICE_RANGES, areas: DEFAULT_AREAS, bedMap: DEFAULT_BED_MAP }
     const priceRanges = {}
     ;(data.price_ranges || []).forEach((r, i) => { priceRanges[String(i + 1)] = r })
+    const bedMap = {}
+    ;(data.bed_options || []).forEach(b => { bedMap[b.digit] = b.label })
     return {
       intro: data.intro_text || DEFAULT_INTRO,
       priceRanges: Object.keys(priceRanges).length ? priceRanges : DEFAULT_PRICE_RANGES,
+      areas: (data.areas && data.areas.length) ? data.areas : DEFAULT_AREAS,
+      bedMap: Object.keys(bedMap).length ? bedMap : DEFAULT_BED_MAP,
     }
   } catch(e) {
     console.warn('[twilio-listings] loadListingsSettings failed, using defaults:', e.message)
-    return { intro: DEFAULT_INTRO, priceRanges: DEFAULT_PRICE_RANGES }
+    return { intro: DEFAULT_INTRO, priceRanges: DEFAULT_PRICE_RANGES, areas: DEFAULT_AREAS, bedMap: DEFAULT_BED_MAP }
   }
 }
 
-const BED_MAP = { '1':'1','2':'2','3':'3','4':'4','5':'5+' }
-
 // City data lives inside the free-text addr field (e.g. "...Spring
 // Valley, NY 10977"), not reliably in a separate city column -- most
-// existing listings have city=NULL. Matching against this known list
-// of local areas, rather than trying to regex-parse city out of addr
-// (which has too many inconsistent formats: sometimes comma-separated,
-// sometimes not; "NY" vs "New York"; unit numbers interspersed).
-const KNOWN_AREAS = [
-  'Monsey', 'Suffern', 'Spring Valley', 'New City', 'Nanuet', 'Airmont',
-  'Wesley Hills', 'Pomona', 'Chestnut Ridge', 'Haverstraw', 'Congers',
-  'Stony Point', 'Swan Lake', 'Monticello', 'Mountain Dale', 'Sloatsburg',
-  'Tappan', 'Nyack', 'Valley Cottage', 'West Nyack', 'Orangeburg', 'Pearl River',
-]
+// existing listings have city=NULL. Matching against a known list
+// of local areas (customizable, see DEFAULT_AREAS), rather than
+// trying to regex-parse city out of addr (which has too many
+// inconsistent formats: sometimes comma-separated, sometimes not;
+// "NY" vs "New York"; unit numbers interspersed).
 
 function readListing(l, i, voice) {
   const price = l.list_price ? '$' + Number(l.list_price).toLocaleString() : 'price not listed'
@@ -159,15 +164,16 @@ module.exports = async function handler(req, res) {
   // ── METHOD CHOICE ─────────────────────────────────────────────────
   if (step === 'method') {
     if (digits === '1') {
-      // Build the area list from real addr text, matched against known
-      // local areas (see KNOWN_AREAS comment -- city column is mostly
-      // NULL in real data).
+      // Build the area list from real addr text, matched against
+      // admin-customizable local areas (city column is mostly NULL
+      // in real data).
       const supabase = getSupabase()
       if (!supabase) return res.send(wrap(say('Search is temporarily unavailable. Please call back shortly.', voice)))
+      const settings = await loadListingsSettings()
       const { data: rows } = await supabase.from('listings').select('addr')
         .eq('status', 'Active').eq('ivr_enabled', true)
       const addrs = (rows || []).map(r => (r.addr || '').toLowerCase())
-      const cities = KNOWN_AREAS.filter(area =>
+      const cities = settings.areas.filter(area =>
         addrs.some(a => a.includes(area.toLowerCase()))
       ).slice(0, 9)
 
@@ -196,10 +202,12 @@ module.exports = async function handler(req, res) {
       ))
     }
     if (digits === '3') {
+      const settings = await loadListingsSettings()
       const nextUrl = buildNextUrl('beds', base)
+      const bedOptionsText = Object.entries(settings.bedMap).map(([k, label]) => k + ' for ' + label).join('. ')
       return res.send(wrap(
         '<Gather numDigits="1" action="' + esc(nextUrl) + '" method="POST" timeout="12">' +
-          say('Choose a bedroom count. Press 1 for 1 bedroom. 2 for 2. 3 for 3. 4 for 4. 5 for 5 or more.', voice) +
+          say('Choose a bedroom count. Press ' + bedOptionsText + '.', voice) +
         '</Gather>' + say('Goodbye.', voice)
       ))
     }
@@ -241,7 +249,8 @@ module.exports = async function handler(req, res) {
 
   // ── BEDROOMS → SEARCH ──────────────────────────────────────────────
   if (step === 'beds') {
-    const beds = BED_MAP[digits]
+    const settings = await loadListingsSettings()
+    const beds = settings.bedMap[digits]
     if (!beds) {
       return res.send(wrap(
         '<Gather numDigits="1" action="' + esc(buildNextUrl('beds', base)) + '" method="POST" timeout="10">' +

@@ -409,15 +409,53 @@ function ListingsSearchSettings() {
 
   useEffect(() => {
     supabase.from('listings_ivr_settings').select('*').eq('id', 1).maybeSingle()
-      .then(({ data }) => {
-        setSettings(data || { intro_text: '', price_ranges: [] })
+      .then(({ data, error }) => {
+        if (error) {
+          toast('Could not load settings: ' + error.message + ' — run listings_ivr_settings.sql in Supabase', '#DC2626')
+          setSettings({ intro_text: '', price_ranges: [] })
+        } else if (!data) {
+          toast('Settings row not found — run listings_ivr_settings.sql in Supabase', '#F5A623')
+          setSettings({ intro_text: '', price_ranges: [] })
+        } else {
+          setSettings(data)
+        }
         setLoading(false)
       })
-      .catch(() => { setSettings({ intro_text: '', price_ranges: [] }); setLoading(false) })
+      .catch(e => {
+        toast('Could not load settings: ' + e.message, '#DC2626')
+        setSettings({ intro_text: '', price_ranges: [] })
+        setLoading(false)
+      })
   }, [])
 
   function setRange(i, key, value) {
     setSettings(s => ({ ...s, price_ranges: s.price_ranges.map((r, idx) => idx === i ? { ...r, [key]: value } : r) }))
+  }
+  function addRange() {
+    setSettings(s => ({ ...s, price_ranges: [...(s.price_ranges||[]), { min:0, max:0, label:'' }] }))
+  }
+  function removeRange(i) {
+    setSettings(s => ({ ...s, price_ranges: s.price_ranges.filter((_, idx) => idx !== i) }))
+  }
+
+  function setArea(i, value) {
+    setSettings(s => ({ ...s, areas: s.areas.map((a, idx) => idx === i ? value : a) }))
+  }
+  function addArea() {
+    setSettings(s => ({ ...s, areas: [...(s.areas||[]), ''] }))
+  }
+  function removeArea(i) {
+    setSettings(s => ({ ...s, areas: s.areas.filter((_, idx) => idx !== i) }))
+  }
+
+  function setBedOption(i, key, value) {
+    setSettings(s => ({ ...s, bed_options: s.bed_options.map((b, idx) => idx === i ? { ...b, [key]: value } : b) }))
+  }
+  function addBedOption() {
+    setSettings(s => ({ ...s, bed_options: [...(s.bed_options||[]), { digit:'', label:'' }] }))
+  }
+  function removeBedOption(i) {
+    setSettings(s => ({ ...s, bed_options: s.bed_options.filter((_, idx) => idx !== i) }))
   }
 
   async function save() {
@@ -442,9 +480,9 @@ function ListingsSearchSettings() {
           style={{ width:'100%', padding:'10px 12px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:'inherit', resize:'vertical' }} />
       </div>
 
-      <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'20px' }}>
+      <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'20px', marginBottom: 16 }}>
         <div style={{ fontSize:'13px', fontWeight:800, color:'var(--text)', marginBottom:'6px' }}>Price Ranges (Press 2 → Price Search)</div>
-        <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'12px' }}>What callers press 1-6 for, and the $ range each searches. The label is exactly what gets spoken.</div>
+        <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'12px' }}>What callers press for, and the $ range each searches. The label is exactly what gets spoken.</div>
         {(settings.price_ranges || []).map((r, i) => (
           <div key={i} style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
             <span style={{ fontSize:12, fontWeight:700, color:'var(--muted)', width:16 }}>{i+1}</span>
@@ -455,8 +493,41 @@ function ListingsSearchSettings() {
               placeholder="Max $" style={{ width:100, padding:'6px 8px', borderRadius:6, border:'1px solid var(--border)', fontSize:12 }} />
             <input value={r.label} onChange={e => setRange(i, 'label', e.target.value)}
               placeholder="Spoken label" style={{ flex:1, padding:'6px 8px', borderRadius:6, border:'1px solid var(--border)', fontSize:12 }} />
+            <button onClick={() => removeRange(i)} style={{ color:'#DC2626', background:'none', border:'none', cursor:'pointer', fontSize:14 }}>✕</button>
           </div>
         ))}
+        <button onClick={addRange} style={{ fontSize:12, color:'var(--brand)', background:'none', border:'none', cursor:'pointer', fontWeight:700, marginTop:4 }}>+ Add price range</button>
+      </div>
+
+      <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'20px', marginBottom: 16 }}>
+        <div style={{ fontSize:'13px', fontWeight:800, color:'var(--text)', marginBottom:'6px' }}>Areas (Press 1 → Area Search)</div>
+        <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'12px' }}>Local area names to match against listing addresses. Only areas that actually have active listings get offered on a given call.</div>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+          {(settings.areas || []).map((a, i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:4, background:'var(--dim)', borderRadius:6, padding:'4px 4px 4px 10px' }}>
+              <input value={a} onChange={e => setArea(i, e.target.value)}
+                style={{ width:110, padding:'4px 6px', borderRadius:4, border:'1px solid var(--border)', fontSize:12, background:'var(--panel)' }} />
+              <button onClick={() => removeArea(i)} style={{ color:'#DC2626', background:'none', border:'none', cursor:'pointer', fontSize:13 }}>✕</button>
+            </div>
+          ))}
+        </div>
+        <button onClick={addArea} style={{ fontSize:12, color:'var(--brand)', background:'none', border:'none', cursor:'pointer', fontWeight:700, marginTop:10 }}>+ Add area</button>
+      </div>
+
+      <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'20px' }}>
+        <div style={{ fontSize:'13px', fontWeight:800, color:'var(--text)', marginBottom:'6px' }}>Bedroom Options (Press 3 → Bedroom Search)</div>
+        <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'12px' }}>Which digit maps to which bedroom count/label.</div>
+        {(settings.bed_options || []).map((b, i) => (
+          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+            <input value={b.digit} onChange={e => setBedOption(i, 'digit', e.target.value)}
+              placeholder="Digit" style={{ width:50, padding:'6px 8px', borderRadius:6, border:'1px solid var(--border)', fontSize:12 }} maxLength={1} />
+            <span style={{ color:'var(--muted)' }}>→</span>
+            <input value={b.label} onChange={e => setBedOption(i, 'label', e.target.value)}
+              placeholder="Label (e.g. 5+)" style={{ flex:1, padding:'6px 8px', borderRadius:6, border:'1px solid var(--border)', fontSize:12 }} />
+            <button onClick={() => removeBedOption(i)} style={{ color:'#DC2626', background:'none', border:'none', cursor:'pointer', fontSize:14 }}>✕</button>
+          </div>
+        ))}
+        <button onClick={addBedOption} style={{ fontSize:12, color:'var(--brand)', background:'none', border:'none', cursor:'pointer', fontWeight:700, marginTop:4 }}>+ Add bedroom option</button>
       </div>
 
       <Btn onClick={save} disabled={saving} style={{ marginTop: 16 }}>{saving ? 'Saving…' : 'Save Settings'}</Btn>
