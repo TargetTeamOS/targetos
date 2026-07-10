@@ -178,7 +178,25 @@ contacts: {
   async get(id) {
     return run(supabase.from('contacts').select('*, agents(id,name,color)').eq('id', id).single())
   },
-  async create(data) {
+  async create(data, force) {
+    // Duplicate-phone check: if a contact with this phone already
+    // exists, don't silently create a second record for the same
+    // person -- but don't silently merge either, since two different
+    // people can legitimately share one phone (e.g. a couple). Throw
+    // a special error carrying the existing contact so the UI can ask
+    // "already exists as X -- use that one, or create anyway?"
+    if (data.phone && !force) {
+      const d10 = String(data.phone).replace(/\D/g, '').slice(-10)
+      if (d10.length === 10) {
+        const { data: existing } = await supabase.from('contacts')
+          .select('id, first_name, last_name, phone, agent_id').ilike('phone', '%' + d10 + '%').limit(1).maybeSingle()
+        if (existing) {
+          const err = new Error('A contact with this phone number already exists: ' + (existing.first_name||'') + ' ' + (existing.last_name||''))
+          err.existingContact = existing
+          throw err
+        }
+      }
+    }
     const result = await run(supabase.from('contacts').insert({ ...stripVirtual(data),
       last_activity: new Date().toISOString(),
       created_at:    new Date().toISOString(),

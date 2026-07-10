@@ -20,7 +20,7 @@ import { ScoreBadge }       from '../lib/leadScoring.jsx'
 import { RecordActivityFeed as RecordActivity } from '../components/RecordActivityFeed'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { fmt$, fmtDate, fmtPhone, initials, matchSearch } from '../lib/utils'
-import { CONTACT_STATUSES, CONTACT_SOURCES } from '../lib/constants'
+import { CONTACT_TYPES, CONTACT_STATUSES, CONTACT_SOURCES } from '../lib/constants'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Tabs, SectionTitle,
@@ -367,7 +367,13 @@ export function Contacts() {
         navigate('/contacts/' + created.id)
       }
     } catch(e) {
-      toast('Save failed: ' + e.message, '#DC2626')
+      if (e.existingContact) {
+        toast('Already exists as ' + (e.existingContact.first_name||'') + ' ' + (e.existingContact.last_name||'') + ' — opening that contact', '#F5A623')
+        closePanel()
+        navigate('/contacts/' + e.existingContact.id)
+      } else {
+        toast('Save failed: ' + e.message, '#DC2626')
+      }
     } finally { setSaving(false) }
   }
 
@@ -684,6 +690,9 @@ export function Contacts() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Type" hint="Attorneys, brokers, and other non-client contacts always ring the round-robin, never a specific assigned agent.">
+                <Select value={form.type || 'Client'} onChange={v => set('type', v)} options={CONTACT_TYPES} />
+              </Field>
               <Field label="Status">
                 <Select value={form.status} onChange={v => set('status', v)} options={CONTACT_STATUSES} />
               </Field>

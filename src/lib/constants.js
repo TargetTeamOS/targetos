@@ -166,6 +166,8 @@ export const LISTING_PROPERTY_TYPES = [
 export const LISTING_DEAL_TYPES = ['MLS', 'Off Market']
 
 // ── CONTACT STATUSES ─────────────────────────────────────────────
+export const CONTACT_TYPES = ['Client', 'Attorney', 'Mortgage Broker', 'Title Company', 'Vendor', 'Other']
+
 export const CONTACT_STATUSES = [
   { value: 'New',              label: 'New',              color: '#0EA5E9' },
   { value: 'Hot',              label: 'Hot',              color: '#DC2626' },

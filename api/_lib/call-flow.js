@@ -128,7 +128,14 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
   // ── ASSIGNED AGENT ────────────────────────────────────────────
   if (node.type === 'assigned') {
     let phone = null
-    if (callData.contact?.agent_id && supabase) {
+    // Only Clients ring their specifically assigned agent directly.
+    // Attorneys, mortgage brokers, and other deal collaborators aren't
+    // "assigned" to one agent the way a client is -- per business
+    // rule, they always go through the round-robin pool instead, even
+    // if they happen to have an agent_id on file from being linked to
+    // a specific deal.
+    const isClient = !callData.contact?.type || callData.contact.type === 'Client'
+    if (callData.contact?.agent_id && isClient && supabase) {
       try {
         const { data: ag } = await supabase.from('agents')
           .select('phone').eq('id', callData.contact.agent_id).maybeSingle()

@@ -734,6 +734,23 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
     const first_name = parts[0]
     const last_name = parts.slice(1).join(' ') || null
     try {
+      // Duplicate-phone check, same as db.contacts.create() -- don't
+      // silently create a second record for someone who already
+      // exists, link to the existing one instead.
+      const phone = newContact.phone.trim()
+      if (phone) {
+        const d10 = phone.replace(/\D/g, '').slice(-10)
+        if (d10.length === 10) {
+          const { data: existing } = await supabase.from('contacts')
+            .select('id, first_name, last_name').ilike('phone', '%' + d10 + '%').limit(1).maybeSingle()
+          if (existing) {
+            toast('Already exists as ' + (existing.first_name||'') + ' ' + (existing.last_name||'') + ' — linking to that contact instead', '#F5A623')
+            setShowNewForm(false); setNewContact({ phone:'', email:'' })
+            await addContact(existing)
+            return
+          }
+        }
+      }
       const { data: newC, error } = await supabase.from('contacts')
         .insert({
           first_name, last_name, agent_id: agentId, status: 'New',

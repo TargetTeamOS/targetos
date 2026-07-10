@@ -228,7 +228,7 @@ async function lookupContact(supabase, fromNumber) {
     if (d10.length < 10) return null
     const { data } = await supabase
       .from('contacts')
-      .select('id, first_name, last_name, phone, agent_id, status')
+      .select('id, first_name, last_name, phone, agent_id, status, type')
       .or('phone.ilike.%' + d10 + '%')
       .limit(1).maybeSingle()
     return data || null
