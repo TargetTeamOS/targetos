@@ -236,23 +236,33 @@ module.exports = async function handler(req, res) {
     // Digit 1-5 (whichever listings actually exist): connect to that
     // specific listing's agent, with a whisper telling them what the
     // call is about before they pick up.
-    if (chosen && chosen.agentId) {
-      const supabase = getSupabase()
-      try {
-        const { data: agent } = await supabase.from('agents').select('phone, name').eq('id', chosen.agentId).maybeSingle()
-        if (agent?.phone) {
-          const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=listing&addr=' + encodeURIComponent(chosen.addr || '')
-          return res.send(wrap(
-            say('Connecting you about ' + (chosen.addr || 'that listing') + '. Please hold.', voice) +
-            '<Dial callerId="+18453271778" record="record-from-answer" timeout="20">' +
-              '<Number url="' + esc(whisperUrl) + '">' + esc(agent.phone) + '</Number>' +
-            '</Dial>' +
-            say('That agent is unavailable. Please leave a message after the tone.', voice) +
-            '<Record maxLength="120" transcribe="true" transcribeCallback="' + esc(BASE_URL + '/api/twilio-voicemail') + '" />'
-          ))
-        }
-      } catch(e) { console.warn('[twilio-listings] agent lookup failed:', e.message) }
-      // Agent lookup failed or no phone on file — fall through to general agent connect below
+    if (chosen) {
+      if (chosen.agentId) {
+        const supabase = getSupabase()
+        try {
+          const { data: agent } = await supabase.from('agents').select('phone, name').eq('id', chosen.agentId).maybeSingle()
+          if (agent?.phone) {
+            const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=listing&addr=' + encodeURIComponent(chosen.addr || '')
+            return res.send(wrap(
+              say('Connecting you about ' + (chosen.addr || 'that listing') + '. Please hold.', voice) +
+              '<Dial callerId="+18453271778" record="record-from-answer" timeout="20">' +
+                '<Number url="' + esc(whisperUrl) + '">' + esc(agent.phone) + '</Number>' +
+              '</Dial>' +
+              say('That agent is unavailable. Please leave a message after the tone.', voice) +
+              '<Record maxLength="120" transcribe="true" transcribeCallback="' + esc(BASE_URL + '/api/twilio-voicemail') + '" />'
+            ))
+          }
+        } catch(e) { console.warn('[twilio-listings] agent lookup failed:', e.message) }
+      }
+      // Reaches here if: no agentId on this listing at all, the agent
+      // lookup failed, or that agent has no phone on file. Say so
+      // explicitly instead of silently falling through to the general
+      // agent-connect path below, which felt like an unexplained loop
+      // back to the start of the call.
+      return res.send(wrap(
+        say('That listing does not have a specific agent assigned right now. Connecting you with our team instead. Please hold.', voice) +
+        '<Redirect method="POST">' + esc(BASE_URL + '/api/twilio-inbound') + '</Redirect>'
+      ))
     }
 
     if (digits === '6') return res.send(wrap('<Redirect method="GET">' + esc(buildNextUrl('intro', base)) + '</Redirect>'))
