@@ -382,7 +382,7 @@ export function Offers() {
       if (!form.buyer_name?.trim()) return
       try {
         const [first, ...rest] = form.buyer_name.trim().split(' ')
-        const { data } = await supabase.from('contacts').insert({
+        const { data, error } = await supabase.from('contacts').insert({
           first_name: first, last_name: rest.join(' '),
           phone: form.buyer_phone || null,
           email: form.buyer_email || null,
@@ -390,11 +390,12 @@ export function Offers() {
           status: 'Active', source: 'Offer', type: 'Buyer',
           created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         }).select().single()
+        if (error) throw error
         if (data) {
           set('buyer_contact_id', data.id)
           toast('✅ Buyer saved to Contacts')
         }
-      } catch(e) { console.warn('save buyer:', e.message) }
+      } catch(e) { toast('Failed to save buyer contact: ' + e.message, '#DC2626') }
     } else {
       setForm(f => ({
         ...f,

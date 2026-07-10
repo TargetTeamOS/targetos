@@ -317,10 +317,12 @@ function SmartCards({ listings, deals }) {
       }
       const exist = templates.find(t => t.name === tplName.trim())
       if (exist) {
-        await supabase.from('card_templates').update(row).eq('id', exist.id)
+        const { error } = await supabase.from('card_templates').update(row).eq('id', exist.id)
+        if (error) throw error
         setTemplates(prev => prev.map(t => t.id === exist.id ? {...t,...row} : t))
       } else {
-        const { data } = await supabase.from('card_templates').insert(row).select().single()
+        const { data, error } = await supabase.from('card_templates').insert(row).select().single()
+        if (error) throw error
         if (data) setTemplates(prev => [data, ...prev])
       }
       toast('✅ Template "' + tplName + '" saved')

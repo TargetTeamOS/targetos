@@ -1093,13 +1093,15 @@ export function Calls() {
     try {
       if (callForm.id) {
         const { agents: _ca, ...cleanCall } = callForm
-        const { data } = await supabase.from('calls').update({ ...cleanCall, updated_at: new Date().toISOString() }).eq('id', callForm.id).select('*, agents(id,name,color)').single()
+        const { data, error } = await supabase.from('calls').update({ ...cleanCall, updated_at: new Date().toISOString() }).eq('id', callForm.id).select('*, agents(id,name,color)').single()
+        if (error) throw error
         setCalls(prev => prev.map(c => c.id === callForm.id ? data : c))
         setSelected(data)
         toast('✅ Call saved')
       } else {
         const { agents: _ca2, id: _cid, ...cleanCallIns } = callForm
-        const { data } = await supabase.from('calls').insert({ ...cleanCallIns, agent_id: callForm.agent_id || agent?.id, called_at: new Date().toISOString() }).select('*, agents(id,name,color)').single()
+        const { data, error } = await supabase.from('calls').insert({ ...cleanCallIns, agent_id: callForm.agent_id || agent?.id, called_at: new Date().toISOString() }).select('*, agents(id,name,color)').single()
+        if (error) throw error
         setCalls(prev => [data, ...prev])
         setShowAdd(false)
         setContactPrefill(null)

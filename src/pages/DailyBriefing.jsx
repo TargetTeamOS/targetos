@@ -427,7 +427,8 @@ export function DailyBriefing() {
     if (!newQuote.text.trim()) { toast('Enter quote text', '#F5A623'); return }
     setAddingQuote(true)
     try {
-      const { data: q } = await supabase.from('briefing_quotes').insert({ text:newQuote.text.trim(), author:newQuote.author.trim()||'Unknown', added_by:agent?.id, created_at:new Date().toISOString() }).select().single()
+      const { data: q, error } = await supabase.from('briefing_quotes').insert({ text:newQuote.text.trim(), author:newQuote.author.trim()||'Unknown', added_by:agent?.id, created_at:new Date().toISOString() }).select().single()
+      if (error) throw error
       setCustomQuotes(prev => [q,...prev])
       setNewQuote({ text:'', author:'' })
       toast('✅ Quote added')
