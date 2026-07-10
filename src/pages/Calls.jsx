@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmtDate, fmtPhone } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { FilterBar } from '../components/FilterBar'
 import { useAgents } from '../lib/hooks'
 
@@ -899,6 +900,7 @@ function TwilioSettings() {
 // ════════════════════════════════════════════════════════════════
 export function Calls() {
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('calls')
   const { toast } = useApp()
   const { agents } = useAgents()
   const location = useLocation()
@@ -1005,6 +1007,9 @@ export function Calls() {
         </div>
         {tab === 'log' && (
           <Btn style={{ marginLeft:'auto' }} onClick={() => { setForm({ direction:'Outbound', agent_id: agent?.id }); setShowAdd(true) }}>+ Log Call</Btn>
+        )}
+        {tab === 'log' && (
+          <LastVisited page="calls" />
         )}
         {tab === 'log' && (
           <button onClick={loadCalls} style={{ padding:'7px 12px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', fontSize:'12px', cursor:'pointer', fontFamily:ff }}>↻ Refresh</button>

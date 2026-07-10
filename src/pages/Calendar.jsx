@@ -13,6 +13,7 @@ import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   ModalActions, Loading, Empty, Confirm, Tabs, Avatar
 } from '../components/UI'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -29,6 +30,7 @@ export function Calendar() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('calendar')
   const { toast } = useApp()
 
   const now = new Date()
@@ -115,7 +117,8 @@ export function Calendar() {
         title="Calendar"
         sub={events.length + ' events in ' + MONTHS[month] + ' ' + year}
         actions={
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <LastVisited page="calendar" />
             <Tabs tabs={[{id:'month',label:'Month'},{id:'list',label:'List'}]} active={view} onChange={setView} />
             <Btn onClick={() => { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); navigate('/calendar/new') }}>+ Add Event</Btn>
           </div>

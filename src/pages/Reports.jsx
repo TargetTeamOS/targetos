@@ -8,6 +8,7 @@ import { useAuth }  from '../context/AuthContext'
 import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { PageHeader, Tabs, Loading, Empty, Btn } from '../components/UI'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -85,6 +86,7 @@ function Funnel({ stages }) {
 
 export function Reports() {
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('reports')
   const [tab,    setTab]    = useState('overview')
   const [deals,  setDeals]  = useState([])
   const [contacts, setContacts] = useState([])
@@ -200,6 +202,7 @@ export function Reports() {
       <PageHeader title="Reports" sub="Performance analytics and insights"
         actions={
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <LastVisited page="reports" />
             {(isAdmin||canManage) && (
               <select value={agentFilter} onChange={e=>setAgentFilter(e.target.value)}
                 style={{ padding:'6px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff }}>

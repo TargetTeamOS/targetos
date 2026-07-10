@@ -16,6 +16,7 @@ import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { useAgents } from '../lib/hooks'
 import { FilterBar } from '../components/FilterBar'
 import { ImportExport } from '../components/ImportExport'
@@ -506,6 +507,7 @@ export function Listings() {
   const navigate    = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('listings')
   const { toast }   = useApp()
   const { agents }  = useAgents()
 
@@ -699,7 +701,8 @@ export function Listings() {
             {active} active · {uc} under contract · {ivrCount} on phone IVR · {fmt$(totalVol)} active volume
           </div>
         </div>
-        <div style={{ marginLeft:'auto', display:'flex', gap:8, flexWrap:'wrap' }}>
+        <div style={{ marginLeft:'auto', display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <LastVisited page="listings" />
           <button onClick={() => setShowRoute(true)}
             style={{ padding:'7px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
             🗺 Route Planner

@@ -13,6 +13,7 @@ import { db } from '../lib/db'
 import { fmtDate, fmtPhone } from '../lib/utils'
 import { OH_INTEREST_LEVELS } from '../lib/constants'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Confirm,
@@ -28,6 +29,7 @@ export function OpenHouse() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('openhouse')
   const { toast } = useApp()
 
   const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
@@ -135,7 +137,7 @@ export function OpenHouse() {
       <PageHeader
         title="Open Houses"
         sub={(openHouses.length) + " open houses"}
-        actions={<Btn onClick={() => { setForm({ ...BLANK_OH, agent_id: agent?.id }); setShowOHForm(true); navigate('/openhouse/new') }}>+ Add Open House</Btn>}
+        actions={<div style={{display:'flex',gap:8,alignItems:'center'}}><LastVisited page="openhouse" /><Btn onClick={() => { setForm({ ...BLANK_OH, agent_id: agent?.id }); setShowOHForm(true); navigate('/openhouse/new') }}>+ Add Open House</Btn></div>}
       />
 
       {loading && <Loading />}

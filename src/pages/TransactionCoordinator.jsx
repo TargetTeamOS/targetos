@@ -20,6 +20,7 @@ import { supabase }   from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { phaseToStage, phaseToStatus } from '../lib/tcPhaseMap'
 import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -404,6 +405,7 @@ async function callSendEmail(payload) {
 // ── MAIN ──────────────────────────────────────────────────────────
 export function TransactionCoordinator() {
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('tc')
   const { toast } = useApp()
   const navigate  = useNavigate()
 
@@ -781,7 +783,8 @@ export function TransactionCoordinator() {
         title="🎯 TC Board"
         sub="One board — every deal from listing prep to post-close"
         actions={
-          <div style={{ display:'flex', gap:8 }}>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <LastVisited page="tc" />
             <Btn variant="secondary" onClick={() => navigate('/calendar')}>📅 Calendar</Btn>
             <Btn onClick={() => { setDealForm({...DEAL_BLANK}); setShowAddDeal(true) }}>+ New Deal</Btn>
           </div>

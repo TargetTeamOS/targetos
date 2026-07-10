@@ -31,7 +31,6 @@ const NAV = [
   { id: 'listings',      label: 'All Listings',   icon: '🔍', roles: ['admin','secretary','agent'] },
   { id: 'openhouse',     label: 'Open House',     icon: '🚪', roles: ['admin','secretary','agent'] },
   { id: 'offers',        label: 'Offers',         icon: '📝', roles: ['admin','secretary','agent'] },
-  { id: 'performance',   label: 'Agent Performance', icon: '📊', roles: ['admin','secretary'] },
 
   // ── COMMUNICATION ─────────────────────────────────────────────────
   { id: 'calls',         label: 'Calls & SMS',    icon: '📞', roles: ['admin','secretary','agent'] },

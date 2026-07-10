@@ -32,6 +32,7 @@ import {
 } from '../lib/utils'
 import { DEAL_STAGES } from '../lib/constants'
 import { Avatar, Pill, Btn, Loading, Spinner, Field, Input, Confirm } from '../components/UI'
+import { usePageView } from '../components/PageViewTracking'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -1674,6 +1675,7 @@ function WidgetManager({ widgets, role, onSave, onClose, onAddCustom }) {
 export function Dashboard() {
   const navigate  = useNavigate()
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('dashboard')
   const { toast } = useApp()
   const year = new Date().getFullYear().toString()
 

@@ -12,6 +12,7 @@ import { useTasks, useAgents } from '../lib/hooks'
 import { fmtDate, today, isOverdue, isDueToday, isDueSoon } from '../lib/utils'
 import { TASK_PRIORITIES, TASK_STATUSES } from '../lib/constants'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Tabs,
@@ -38,6 +39,7 @@ export function Tasks() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage } = useAuth()
+  usePageView('tasks')
   const { toast } = useApp()
 
   const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
@@ -235,7 +237,7 @@ export function Tasks() {
       <PageHeader
         title="Tasks"
         sub={filtered.filter(t => t.status !== 'done').length + ' open · ' + done.length + ' done'}
-        actions={<Btn onClick={openAdd}>+ Add Task</Btn>}
+        actions={<div style={{display:'flex',gap:8,alignItems:'center'}}><LastVisited page="tasks" /><Btn onClick={openAdd}>+ Add Task</Btn></div>}
       />
 
       {/* Filters */}
