@@ -75,9 +75,13 @@ module.exports = async function handler(req, res) {
 
   if (supabase && from) {
     try {
-      // Look up agent by phone number
-      var fromNorm = from.replace(/[^+0-9]/g, '')
-      var agentRes = await supabase.from('agents').select('id, name').ilike('phone', '%' + fromNorm.slice(-10) + '%').maybeSingle()
+      // Look up agent by phone number -- searches every format variant
+      // (raw digits alone can never match a punctuated stored value)
+      var { phoneVariants } = require('./_lib/phone')
+      var variants = phoneVariants(from)
+      var agentRes = variants.length
+        ? await supabase.from('agents').select('id, name').or(variants.map(function(v){ return 'phone.ilike.%' + v + '%' }).join(',')).maybeSingle()
+        : { data: null }
       var agentId = agentRes.data ? agentRes.data.id : null
 
       if (agentId) {

@@ -221,28 +221,30 @@ async function loadFlow(supabase) {
 }
 
 // ── CONTACT LOOKUP ────────────────────────────────────────────────
+// Builds every format variant a phone number might actually be stored
+// in ("(845) 424-1014", "845-424-1014", raw digits, etc.) -- ilike
+// does a literal substring match, so searching only raw digits can
+// never match a punctuated stored value. Shared by lookupContact
+// below and anywhere else that needs to match a phone against a
+// column that might be stored in any of these formats.
+function phoneVariants(fromNumber) {
+  const d10 = String(fromNumber || '').replace(/\D/g, '').slice(-10)
+  if (d10.length < 10) return []
+  const area = d10.slice(0,3), mid = d10.slice(3,6), last = d10.slice(6)
+  return [
+    d10,
+    '(' + area + ') ' + mid + '-' + last,
+    area + '-' + mid + '-' + last,
+    area + '.' + mid + '.' + last,
+    area + ' ' + mid + ' ' + last,
+  ]
+}
+
 async function lookupContact(supabase, fromNumber) {
   if (!fromNumber) return null
   try {
-    const d10 = fromNumber.replace(/\D/g, '').slice(-10)
-    if (d10.length < 10) return null
-    // CRITICAL: contacts are stored formatted as "(845) 424-1014" (see
-    // formatPhone below), but ilike does a literal substring match --
-    // searching for the raw digit string "8454241014" can NEVER match
-    // "(845) 424-1014" since the punctuation breaks up the contiguous
-    // digits. This was silently causing a brand new duplicate contact
-    // to be created on every single inbound call, forever, since the
-    // lookup could never find what a previous call had just created.
-    // Search every format variant a phone number might actually be
-    // stored in, not just the one that happens to never match.
-    const area = d10.slice(0,3), mid = d10.slice(3,6), last = d10.slice(6)
-    const variants = [
-      d10,                                  // 8454241014
-      '(' + area + ') ' + mid + '-' + last, // (845) 424-1014
-      area + '-' + mid + '-' + last,        // 845-424-1014
-      area + '.' + mid + '.' + last,        // 845.424.1014
-      area + ' ' + mid + ' ' + last,        // 845 424 1014
-    ]
+    const variants = phoneVariants(fromNumber)
+    if (!variants.length) return null
     const orClause = variants.map(v => 'phone.ilike.%' + v + '%').join(',')
     const { data } = await supabase
       .from('contacts')
@@ -379,7 +381,7 @@ module.exports = {
   // Security
   validateTwilioSignature, logTwilioValidation, requireAdminOrSecretary, requireAdmin, requireAnyAgent,
   // Phone
-  normalizePhone, formatPhone,
+  normalizePhone, formatPhone, phoneVariants,
   // Business logic
   isBusinessHours, loadFlow, lookupContact, transcribeAudio,
   // Constants

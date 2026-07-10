@@ -36,8 +36,12 @@ module.exports = async function handler(req, res) {
       transcript_language: transcriptLang,
       outcome: 'Voicemail',
     }).eq('id', call.id)
-    const clean = (From||'').replace(/\D/g,'').slice(-10)
-    const { data: contact } = await supabase.from('contacts').select('id,first_name,last_name,agent_id').or(`phone.ilike.%${clean}%`).maybeSingle()
+    // Reuse lookupContact (searches every phone format variant) --
+    // the previous raw-digit-only query could never match the
+    // punctuated storage format, so voicemails never linked to the
+    // right contact/agent.
+    const { lookupContact } = require('./_lib/phone')
+    const contact = await lookupContact(supabase, From || '')
     await supabase.from('voicemails').insert({ call_id:(call&&call.id)||null, agent_id:(contact&&contact.agent_id)||null, from_number:From||null, contact_id:(contact&&contact.id)||null, contact_name:contact?[contact.first_name,contact.last_name].filter(Boolean).join(' '):null, recording_url:fullRecordingUrl, transcript:transcriptText, duration_sec:parseInt(RecordingDuration)||0, is_read:false, created_at:new Date().toISOString() })
   } catch(err) { console.error('voicemail error:', err.message) }
   return res.status(200).json({ ok: true })

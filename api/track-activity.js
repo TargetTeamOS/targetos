@@ -6,7 +6,7 @@
 // when a lead is browsing listings or returning to the site.
 'use strict'
 
-const { getSupabase } = require('./_lib/phone')
+const { getSupabase, phoneVariants } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -34,10 +34,17 @@ module.exports = async function handler(req, res) {
     let contact = null
     if (email || phone) {
       let q = sb.from('contacts').select('id,agent_id')
+      let skip = false
       if (email) q = q.eq('email', email)
-      else       q = q.ilike('phone', '%' + phone.replace(/\D/g,'').slice(-10) + '%')
-      const { data } = await q.maybeSingle()
-      contact = data
+      else {
+        const variants = phoneVariants(phone)
+        if (!variants.length) skip = true
+        else q = q.or(variants.map(v => 'phone.ilike.%' + v + '%').join(','))
+      }
+      if (!skip) {
+        const { data } = await q.maybeSingle()
+        contact = data
+      }
     }
 
     // Log the activity

@@ -22,9 +22,11 @@ module.exports = async function handler(req, res) {
       const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
       if (url && key) {
         const sb = createClient(url, key)
-        // Find contact by phone number
-        const clean = from.replace(/\D/g,'').slice(-10)
-        const { data: contact } = await sb.from('contacts').select('id').or('phone.ilike.%'+clean+'%').maybeSingle()
+        // Find contact by phone number -- reuse lookupContact (fixed
+        // to search every phone format variant), not a raw-digit-only
+        // query that can never match the punctuated storage format.
+        const { lookupContact } = require('./_lib/phone')
+        const contact = await lookupContact(sb, from)
         // Store message
         await sb.from('sms_messages').insert({
           twilio_sid:   body.SmsSid || body.MessageSid || '',
