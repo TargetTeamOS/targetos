@@ -1820,13 +1820,28 @@ export function Production() {
       }
       return true
     }).sort((a, b) => {
-      // Manual drag-order first; deals never manually positioned keep
-      // their original relative order, sorted after any positioned ones
+      // Manual drag-order always wins if the agent has explicitly
+      // repositioned a deal. Otherwise, sort by whichever date field
+      // is actually relevant to that deal's current stage -- oldest
+      // first, so a newly-entered deal naturally lands at the bottom
+      // of its group, exactly where you'd look for "what just came in."
       const ap = a.board_position, bp = b.board_position
-      if (ap == null && bp == null) return 0
-      if (ap == null) return 1
-      if (bp == null) return -1
-      return ap - bp
+      if (ap != null && bp != null) return ap - bp
+      if (ap != null) return -1
+      if (bp != null) return 1
+
+      const dateFor = (d) => {
+        if (['Negotiations', 'Offer Accapted'].includes(d.stage)) return d.ao_date
+        if (['Under Shtar', 'Under Contract'].includes(d.stage)) return d.contract_date
+        if (d.stage === 'Closed') return d.close_date
+        // Deal Fell Through or anything else: best available date
+        return d.close_date || d.contract_date || d.ao_date || d.created_at
+      }
+      const da = dateFor(a), db = dateFor(b)
+      if (!da && !db) return 0
+      if (!da) return -1  // no date yet -- keep near the top, not lost at the bottom
+      if (!db) return 1
+      return da < db ? -1 : da > db ? 1 : 0
     }),
   })), [activeGroups, filtered])
   const visibleGroups = groupedDeals.filter(g => g.custom ? true : g.yearMatch ? true : g.deals.length > 0 || ['active','under_shtar','under_contract'].includes(g.id))
