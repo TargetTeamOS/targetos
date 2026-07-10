@@ -75,13 +75,14 @@ module.exports = async function handler(req, res) {
   let finalContact = contact
   if (!contact && from.replace(/\D/g,'').length >= 10) {
     try {
-      const { data: nc } = await sb.from('contacts').insert({
+      const { data: nc, error: ncErr } = await sb.from('contacts').insert({
         first_name: 'Unknown', last_name: 'Caller',
         phone: formatPhone(from), source: 'Inbound Call',
         status: 'New', created_at: new Date().toISOString(),
         notes: 'Auto-created from inbound call on ' + new Date().toLocaleDateString('en-US'),
         updated_at: new Date().toISOString(),
       }).select().single()
+      if (ncErr) console.warn('[inbound] create contact error:', ncErr.message)
       finalContact = nc
     } catch(e) { console.warn('[inbound] create contact:', e.message) }
   }
@@ -89,7 +90,7 @@ module.exports = async function handler(req, res) {
   // 3. Log call
   let callId = null
   try {
-    const { data: cr } = await sb.from('calls').insert({
+    const { data: cr, error: crErr } = await sb.from('calls').insert({
       twilio_call_sid: callSid,
       from_number: from, to_number: to,
       direction: 'Inbound', status: 'in-progress',
@@ -100,6 +101,7 @@ module.exports = async function handler(req, res) {
         : formatPhone(from),
       called_at: new Date().toISOString(),
     }).select('id').single()
+    if (crErr) console.warn('[inbound] log call error:', crErr.message)
     callId = cr?.id
   } catch(e) { console.warn('[inbound] log call:', e.message) }
 
