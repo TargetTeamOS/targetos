@@ -83,7 +83,7 @@ export function OpenHouse() {
     setSaving(true)
     try {
       if (selected) {
-        const updated = await update(selected.id, form)
+        const updated = await update(selected.id, form, agent?.id)
         setSelected(updated)
         toast('✅ Open house saved')
       } else {
@@ -184,6 +184,8 @@ export function OpenHouse() {
             <Input value={form.end_time} onChange={v => set('end_time', v)} type="time" />
           </Field>
         </div>
+
+        {selected?.id && <RecordActivityFeed table="open_houses" recordId={selected.id} compact />}
 
         <ModalActions>
           <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>

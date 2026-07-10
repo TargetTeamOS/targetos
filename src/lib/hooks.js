@@ -126,7 +126,7 @@ export function useGifts(filters = {}) {
     ...base,
     gifts: base.data,
     add:    (data) => db.gifts.create(data),
-    update: (id, data) => db.gifts.update(id, data),
+    update: (id, data, actingAgentId) => db.gifts.update(id, data, actingAgentId),
     remove: (id) => db.gifts.delete(id),
   }
 }
@@ -162,8 +162,8 @@ export function useTasks(filters = {}) {
     ...base,
     tasks: base.data,
     add:      (data) => db.tasks.create(data),
-    update:   (id, data) => db.tasks.update(id, data),
-    complete: (id) => db.tasks.complete(id),
+    update:   (id, data, actingAgentId) => db.tasks.update(id, data, actingAgentId),
+    complete: (id, agentId) => db.tasks.complete(id, agentId),
     remove:   (id) => db.tasks.delete(id),
   }
 }
@@ -199,7 +199,7 @@ export function useOpenHouses(filters = {}) {
     ...base,
     openHouses: base.data,
     add:    (data) => db.openHouses.create(data),
-    update: (id, data) => db.openHouses.update(id, data),
+    update: (id, data, actingAgentId) => db.openHouses.update(id, data, actingAgentId),
     remove: (id) => db.openHouses.delete(id),
   }
 }
@@ -223,7 +223,7 @@ export function useSigns(filters = {}) {
     ...base,
     signs: base.data,
     add:    (data) => db.signs.create(data),
-    update: (id, data) => db.signs.update(id, data),
+    update: (id, data, actingAgentId) => db.signs.update(id, data, actingAgentId),
     remove: (id) => db.signs.delete(id),
   }
 }
@@ -235,7 +235,7 @@ export function useListingPrep(filters = {}) {
     ...base,
     preps: base.data,
     add:    (data) => db.listingPrep.create(data),
-    update: (id, data) => db.listingPrep.update(id, data),
+    update: (id, data, actingAgentId) => db.listingPrep.update(id, data, actingAgentId),
     remove: (id) => db.listingPrep.delete(id),
   }
 }

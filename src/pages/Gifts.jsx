@@ -74,7 +74,7 @@ export function Gifts() {
     setSaving(true)
     try {
       if (selected) {
-        const updated = await update(selected.id, form)
+        const updated = await update(selected.id, form, agent?.id)
         setSelected(updated)
         toast('✅ Gift saved')
       } else {
@@ -208,6 +208,7 @@ export function Gifts() {
         <Field label="Notes">
           <Input value={form.notes} onChange={v => set('notes', v)} placeholder="Notes..." />
         </Field>
+        {selected?.id && <RecordActivityFeed table="gifts" recordId={selected.id} compact />}
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>}
           <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>

@@ -71,7 +71,7 @@ export function ListingPrep() {
     setSaving(true)
     try {
       if (selected) {
-        const updated = await update(selected.id, form)
+        const updated = await update(selected.id, form, agent?.id)
         setSelected(updated)
         toast('✅ Prep saved')
       } else {
@@ -158,6 +158,8 @@ export function ListingPrep() {
         <Field label="Notes">
           <Textarea value={form.notes} onChange={v => set('notes', v)} placeholder="Prep notes..." rows={3} />
         </Field>
+
+        {selected?.id && <RecordActivityFeed table="listing_prep" recordId={selected.id} compact />}
 
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>}

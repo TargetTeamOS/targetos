@@ -724,7 +724,7 @@ export function Contacts() {
           <FileAttachments tableName="contacts" recordId={selected.id} />
         )}
         {selected && tab === 'activity' && (
-          <RecordActivity recordType="contacts" recordId={selected.id} />
+          <RecordActivity table="contacts" recordId={selected.id} />
         )}
 
         <ModalActions>

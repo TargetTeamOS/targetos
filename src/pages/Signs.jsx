@@ -378,6 +378,7 @@ function SignModal({ sign, agents, onSave, onClose, saving }) {
               style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, resize: 'vertical', boxSizing: 'border-box' }} />
           </div>
         </div>
+        {f.id && <div style={{ padding: '0 18px' }}><RecordActivityFeed table="signs" recordId={f.id} compact /></div>}
         <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
           <Btn onClick={() => onSave(f)} loading={saving}>Save Sign</Btn>
@@ -552,7 +553,7 @@ export function Signs() {
     setSaving(true)
     try {
       if (data.id) {
-        await db.signs.update(data.id, data)
+        await db.signs.update(data.id, data, agent?.id)
         setSigns(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s))
         toast('✅ Sign updated')
       } else {

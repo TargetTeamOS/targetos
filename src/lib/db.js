@@ -330,10 +330,10 @@ gifts: {
     })
     return result
   },
-  async update(id, data) {
+  async update(id, data, actingAgentId) {
     const before = await run(supabase.from('gifts').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('gifts').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
-    const agentId = data.agent_id || before?.agent_id || null
+    const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'gifts', id, before, result, result.client_name || 'Gift')
     return result
   },
@@ -429,10 +429,10 @@ tasks: {
     fireTrigger('taskCreated', result)
     return result
   },
-  async update(id, data) {
+  async update(id, data, actingAgentId) {
     const before = await run(supabase.from('tasks').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('tasks').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
-    const agentId = data.agent_id || before?.agent_id || null
+    const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'tasks', id, before, result, result.title || 'Task')
     return result
   },
@@ -561,10 +561,10 @@ openHouses: {
     fireTrigger('openHouseCreated', result)
     return result
   },
-  async update(id, data) {
+  async update(id, data, actingAgentId) {
     const before = await run(supabase.from('open_houses').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('open_houses').update(data).eq('id', id).select().single())
-    await logDiff(data.agent_id || before?.agent_id, 'open_houses', id, before, result, result.listing_addr || 'Open House')
+    await logDiff(actingAgentId || data.agent_id || before?.agent_id, 'open_houses', id, before, result, result.listing_addr || 'Open House')
     return result
   },
   async delete(id, agentId) {
@@ -630,10 +630,10 @@ signs: {
     })
     return result
   },
-  async update(id, data) {
+  async update(id, data, actingAgentId) {
     const before = await run(supabase.from('signs').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('signs').update(data).eq('id', id).select().single())
-    await logDiff(data.agent_id || before?.agent_id, 'signs', id, before, result, result.addr || 'Sign')
+    await logDiff(actingAgentId || data.agent_id || before?.agent_id, 'signs', id, before, result, result.addr || 'Sign')
     return result
   },
   async delete(id, agentId) {
@@ -659,10 +659,10 @@ listingPrep: {
     })
     return result
   },
-  async update(id, data) {
+  async update(id, data, actingAgentId) {
     const before = await run(supabase.from('listing_prep').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('listing_prep').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
-    await logDiff(data.agent_id || before?.agent_id, 'listing_prep', id, before, result, result.listing_addr || 'Listing Prep')
+    await logDiff(actingAgentId || data.agent_id || before?.agent_id, 'listing_prep', id, before, result, result.listing_addr || 'Listing Prep')
     return result
   },
   async delete(id, agentId) {

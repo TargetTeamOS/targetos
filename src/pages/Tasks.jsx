@@ -93,7 +93,7 @@ export function Tasks() {
     setSaving(true)
     try {
       if (selected) {
-        const updated = await update(selected.id, form)
+        const updated = await update(selected.id, form, agent?.id)
         setSelected(updated)
         toast('✅ Task saved')
       } else {
@@ -125,7 +125,7 @@ export function Tasks() {
   async function markDone(task, e) {
     e.stopPropagation()
     try {
-      await complete(task.id)
+      await complete(task.id, agent?.id)
       toast('✅ Task completed')
       if (selected?.id === task.id) closePanel()
     } catch(e) {
@@ -341,6 +341,8 @@ export function Tasks() {
             </div>
           )}
         </div>
+
+        {selected?.id && <RecordActivityFeed table="tasks" recordId={selected.id} compact />}
 
         <ModalActions>
           {selected && (
