@@ -138,18 +138,18 @@ function TagInput({ label, values = [], options, onChange }) {
 }
 
 // ── SECTION HEADER ────────────────────────────────────────────────
-function Section({ title, icon, children, collapsible = true }) {
-  const [open, setOpen] = useState(true)
+function Section({ title, icon, children, collapsible = true, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{ marginBottom: '2px' }}>
+    <div>
       <div onClick={() => collapsible && setOpen(o => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: 'var(--dim)', cursor: collapsible ? 'pointer' : 'default', userSelect: 'none', borderRadius: open ? '8px 8px 0 0' : '8px' }}>
-        <span style={{ fontSize: '13px' }}>{icon}</span>
-        <span style={{ flex: 1, fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{title}</span>
+        style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 14px', background: 'var(--dim)', cursor: collapsible ? 'pointer' : 'default', userSelect: 'none', borderRadius: open ? '10px 10px 0 0' : '10px' }}>
+        <span style={{ fontSize: '14px' }}>{icon}</span>
+        <span style={{ flex: 1, fontSize: '11px', fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{title}</span>
         {collapsible && <span style={{ fontSize: '11px', color: 'var(--muted)', transition: 'transform .2s', transform: open ? 'rotate(0)' : 'rotate(-90deg)' }}>▾</span>}
       </div>
       {open && (
-        <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: '12px 14px' }}>
+        <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 10px 10px', padding: '14px 14px 16px' }}>
           {children}
         </div>
       )}
@@ -1146,21 +1146,8 @@ export function ContactDetail() {
   async function saveField(field, value) {
     if (!contact) return
     try {
-      const prev = contact[field]
-      const updated = await db.contacts.update(id, { [field]: value })
+      const updated = await db.contacts.update(id, { [field]: value }, agent?.id)
       setContact(c => ({ ...c, [field]: value, ...updated }))
-      // Activity lock: log every field change to timeline
-      await supabase.from('audit_log').insert({
-        agent_id:   contact.agent_id || agent?.id,
-        table_name: 'contacts',
-        record_id:  id,
-        action:     'updated',
-        field_name: field,
-        old_value:  prev !== null && prev !== undefined ? String(prev).slice(0, 200) : null,
-        new_value:  value !== null && value !== undefined ? String(value).slice(0, 200) : null,
-        metadata:   { description: (field.replace(/_/g,' ')) + " updated" },
-        created_at: new Date().toISOString(),
-      })
       loadTimeline()
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
   }
@@ -1168,7 +1155,7 @@ export function ContactDetail() {
   async function saveFields(fields) {
     if (!contact) return
     try {
-      const updated = await db.contacts.update(id, fields)
+      const updated = await db.contacts.update(id, fields, agent?.id)
       setContact(prev => ({ ...prev, ...fields, ...updated }))
       toast('✅ Saved')
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
@@ -1177,7 +1164,7 @@ export function ContactDetail() {
   // ── STATUS QUICK UPDATE ───────────────────────────────────────
   async function quickStatus(s) {
     try {
-      const updated = await db.contacts.update(id, { status: s })
+      const updated = await db.contacts.update(id, { status: s }, agent?.id)
       setContact(prev => ({ ...prev, status: s }))
       toast("✅ Status → " + (s))
       loadTimeline()
@@ -1291,7 +1278,7 @@ export function ContactDetail() {
         {/* ══════════════════════════════════════════════════════
             LEFT PANEL
         ══════════════════════════════════════════════════════ */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
           {/* CONTACT INFO */}
           <Section title="Contact Info" icon="👤" collapsible={false}>
@@ -1338,7 +1325,7 @@ export function ContactDetail() {
           </Section>
 
           {/* BUYER CRITERIA */}
-          <Section title="Buyer Criteria" icon="🏡">
+          <Section title="Buyer Criteria" icon="🏡" defaultOpen={!!(f.buyer_type || f.budget_min || f.budget_max || (f.property_types||[]).length || (f.locations||[]).length)}>
             <InlineField label="Buyer Type" value={f.buyer_type} onChange={v => saveField('buyer_type', v)}
               options={['Developer','Investor','Home Owner','First Time Buyer','Vacation/Summer Home']} placeholder="Type of buyer" />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -1370,7 +1357,7 @@ export function ContactDetail() {
           </Section>
 
           {/* SELLER INFO */}
-          <Section title="Seller Info" icon="🏠">
+          <Section title="Seller Info" icon="🏠" defaultOpen={!!(f.property_addr || f.asking_price || f.reason_selling)}>
             <InlineField label="Property Address" value={f.property_addr} onChange={v => saveField('property_addr', v)} placeholder="Property they're selling" />
             <InlineField label="Asking Price" value={f.asking_price} onChange={v => saveField('asking_price', parseNum(v))} type="number" prefix="$" placeholder="Their asking price" />
             <InlineField label="Reason for Selling" value={f.reason_selling} onChange={v => saveField('reason_selling', v)} multiline placeholder="Why are they selling?" />
