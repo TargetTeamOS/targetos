@@ -4,6 +4,7 @@
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react'
 import { lsGet, lsSet } from '../lib/utils'
+import { supabase } from '../lib/supabase'
 
 const AppContext = createContext(null)
 
@@ -110,6 +111,40 @@ export function AppProvider({ children }) {
   // Apply custom on first load
   useEffect(() => { applyCustom(state.custom) }, [])
 
+  // Load shared org branding (logo, org name/subtitle) from the
+  // database on mount -- these are business-wide settings, not
+  // per-browser preferences, so they override whatever localStorage
+  // has once the real values arrive. Falls back to whatever's
+  // already in state (localStorage/defaults) if the table doesn't
+  // exist yet or the query fails.
+  useEffect(() => {
+    supabase.from('org_settings').select('*').eq('id', 1).maybeSingle()
+      .then(({ data }) => {
+        if (!data) return
+        dispatch({ type: 'SET_CUSTOM', custom: {
+          logoUrl:     data.logo_url ?? '',
+          orgName:     data.org_name || 'Target Team',
+          orgSubtitle: data.org_subtitle || 'KW Valley Realty',
+        }})
+      })
+      .catch(() => { /* table may not exist yet — keep local defaults */ })
+  }, [])
+
+  // Saves logo/org name/subtitle to the shared database table so
+  // every team member sees the same branding, not just whoever set it
+  // on their own browser. Also updates local state immediately so the
+  // change is visible without a reload.
+  const setOrgSettings = useCallback(async (fields) => {
+    dispatch({ type: 'SET_CUSTOM', custom: fields })
+    try {
+      const payload = { id: 1, updated_at: new Date().toISOString() }
+      if ('logoUrl'     in fields) payload.logo_url     = fields.logoUrl
+      if ('orgName'     in fields) payload.org_name     = fields.orgName
+      if ('orgSubtitle' in fields) payload.org_subtitle = fields.orgSubtitle
+      await supabase.from('org_settings').upsert(payload)
+    } catch(e) { console.warn('setOrgSettings failed:', e.message) }
+  }, [])
+
   const setTheme          = useCallback((t) => dispatch({ type: 'SET_THEME', theme: t }), [])
   const setSidebarCollapsed = useCallback((v) => dispatch({ type: 'SET_COLLAPSED', collapsed: v }), [])
   const setCustom         = useCallback((c) => dispatch({ type: 'SET_CUSTOM', custom: c }), [])
@@ -123,7 +158,7 @@ export function AppProvider({ children }) {
   const toast = useCallback((msg, color) => showToast(msg, color), [showToast])
 
   return (
-    <AppContext.Provider value={{ state, setTheme, setSidebarCollapsed, setCustom, resetCustom, showToast, toast }}>
+    <AppContext.Provider value={{ state, setTheme, setSidebarCollapsed, setCustom, setOrgSettings, resetCustom, showToast, toast }}>
       {children}
     </AppContext.Provider>
   )

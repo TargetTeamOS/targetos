@@ -71,15 +71,21 @@ const DEFAULT_CONTENT = {
 function useWebContent() {
   const [content, setContent] = useState(DEFAULT_CONTENT)
   useEffect(() => {
-    supabase.from('website_content').select('section,content')
-      .then(({ data }) => {
-        if (!data?.length) return
-        const merged = { ...DEFAULT_CONTENT }
-        data.forEach(row => {
-          merged[row.section] = { ...DEFAULT_CONTENT[row.section], ...row.content }
-        })
-        setContent(merged)
-      }).catch(err => console.warn('[PublicSite]', err.message))
+    Promise.all([
+      supabase.from('website_content').select('section,content'),
+      supabase.from('org_settings').select('logo_url').eq('id', 1).maybeSingle(),
+    ]).then(([webRes, orgRes]) => {
+      const merged = { ...DEFAULT_CONTENT }
+      ;(webRes.data || []).forEach(row => {
+        merged[row.section] = { ...DEFAULT_CONTENT[row.section], ...row.content }
+      })
+      // Shared logo image (same one used in the CRM) takes priority
+      // over the text-based logoText fallback, when set.
+      if (orgRes.data?.logo_url) {
+        merged.settings = { ...merged.settings, logoUrl: orgRes.data.logo_url }
+      }
+      setContent(merged)
+    }).catch(err => console.warn('[PublicSite]', err.message))
   }, [])
   return content
 }
@@ -126,14 +132,20 @@ function PublicNav({ s, active }) {
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', height: 64 }}>
         {/* Logo */}
         <Link to="/public/home" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', marginRight: 40 }}>
-          <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: '-.5px', lineHeight: 1 }}>
-            {(s?.settings?.logoText || 'TARGET TEAM').split('').map((ch, i) => (
-              <span key={i} style={{ color: ['A','E'].includes(ch) ? accent : '#fff' }}>{ch}</span>
-            ))}
-          </div>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,.4)', letterSpacing: '.15em', textTransform: 'uppercase', marginTop: 1 }}>
-            {s?.settings?.tagline || 'Of KW Valley Realty'}
-          </div>
+          {s?.settings?.logoUrl ? (
+            <img src={s.settings.logoUrl} alt={s?.settings?.logoText || 'Logo'} style={{ height: 38, maxWidth: 180, objectFit: 'contain' }} />
+          ) : (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: '-.5px', lineHeight: 1 }}>
+                {(s?.settings?.logoText || 'TARGET TEAM').split('').map((ch, i) => (
+                  <span key={i} style={{ color: ['A','E'].includes(ch) ? accent : '#fff' }}>{ch}</span>
+                ))}
+              </div>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,.4)', letterSpacing: '.15em', textTransform: 'uppercase', marginTop: 1 }}>
+                {s?.settings?.tagline || 'Of KW Valley Realty'}
+              </div>
+            </>
+          )}
         </Link>
 
         {/* Desktop links */}
@@ -167,11 +179,15 @@ function PublicFooter({ s }) {
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 32, marginBottom: 32 }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 6 }}>
-              {(s?.settings?.logoText || 'TARGET TEAM').split('').map((ch, i) => (
-                <span key={i} style={{ color: ['A','E'].includes(ch) ? accent : '#fff' }}>{ch}</span>
-              ))}
-            </div>
+            {s?.settings?.logoUrl ? (
+              <img src={s.settings.logoUrl} alt={s?.settings?.logoText || 'Logo'} style={{ height: 36, maxWidth: 170, objectFit: 'contain', marginBottom: 8 }} />
+            ) : (
+              <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 6 }}>
+                {(s?.settings?.logoText || 'TARGET TEAM').split('').map((ch, i) => (
+                  <span key={i} style={{ color: ['A','E'].includes(ch) ? accent : '#fff' }}>{ch}</span>
+                ))}
+              </div>
+            )}
             <div style={{ fontSize: 12, lineHeight: 1.7 }}>{s?.settings?.tagline || 'Of Keller Williams Valley Realty'}</div>
             <div style={{ marginTop: 12, fontSize: 13, color: '#fff' }}>{s?.settings?.phone}</div>
             <div style={{ fontSize: 12 }}>{s?.settings?.email}</div>

@@ -38,7 +38,7 @@ const BLANK  = { name:'', email:'', phone:'', color:'#CC2200', role:'agent', act
 
 export function Admin() {
   const { agent: me, isAdmin } = useAuth()
-  const { toast, setCustom, resetCustom, state, setTheme } = useApp()
+  const { toast, setCustom, setOrgSettings, resetCustom, state, setTheme } = useApp()
   const { agents, loading, refetch } = useAgents()
 
   const [tab,       setTab]       = useState('team')
@@ -46,6 +46,7 @@ export function Admin() {
   const [form,      setForm]      = useState(BLANK)
   const [saving,    setSaving]    = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   const [showAdd,   setShowAdd]   = useState(false)
   const [addForm,   setAddForm]   = useState({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
   const [adding,    setAdding]    = useState(false)
@@ -114,6 +115,24 @@ export function Admin() {
       toast('✅ Photo uploaded — click Save Changes to apply')
     } catch(e) { toast('Upload failed: ' + e.message, '#DC2626') }
     finally { setUploadingPhoto(false) }
+  }
+
+  // ── Upload shared org logo ──────────────────────────────────────
+  async function uploadOrgLogo(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (file.size > 15 * 1024 * 1024) { toast('Logo must be under 15MB', '#F5A623'); return }
+    setUploadingLogo(true)
+    try {
+      const ext  = file.name.split('.').pop()
+      const path = 'branding/org-logo.' + ext
+      const { error } = await supabase.storage.from('targetos-files').upload(path, file, { upsert: true })
+      if (error) throw error
+      const { data } = supabase.storage.from('targetos-files').getPublicUrl(path)
+      await setOrgSettings({ logoUrl: data.publicUrl + '?t=' + Date.now() })
+      toast('✅ Logo updated for the whole team')
+    } catch(e) { toast('Upload failed: ' + e.message, '#DC2626') }
+    finally { setUploadingLogo(false) }
   }
 
   // ── Save edits to existing agent ──────────────────────────────
@@ -544,31 +563,43 @@ export function Admin() {
 
           {/* Organization */}
           <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:20,marginBottom:14}}>
-            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:14}}>Organization Branding</div>
+            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:4}}>Organization Branding</div>
+            <div style={{fontSize:11,color:'var(--muted)',marginBottom:14}}>Shared for the whole team — everyone sees the same logo and name, not just you.</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
               <div>
                 <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Team Name</div>
-                <input value={custom.orgName||''} onChange={e => setCustom({orgName: e.target.value})}
+                <input value={custom.orgName||''} onChange={e => setOrgSettings({orgName: e.target.value})}
                   placeholder="Target Team"
                   style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff,boxSizing:'border-box'}}/>
               </div>
               <div>
                 <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Subtitle / Brokerage</div>
-                <input value={custom.orgSubtitle||''} onChange={e => setCustom({orgSubtitle: e.target.value})}
+                <input value={custom.orgSubtitle||''} onChange={e => setOrgSettings({orgSubtitle: e.target.value})}
                   placeholder="KW Valley Realty"
                   style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff,boxSizing:'border-box'}}/>
               </div>
             </div>
             <div style={{marginTop:12}}>
-              <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Logo URL (optional)</div>
-              <input value={custom.logoUrl||''} onChange={e => setCustom({logoUrl: e.target.value})}
-                placeholder="https://yourdomain.com/logo.png"
-                style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--inp)',color:'var(--text)',fontSize:13,fontFamily:ff,boxSizing:'border-box'}}/>
-              {custom.logoUrl && (
-                <img src={custom.logoUrl} alt="Logo preview"
-                  style={{marginTop:8,height:40,borderRadius:6,border:'1px solid var(--border)'}}
-                  onError={e => { e.target.style.display='none' }}/>
-              )}
+              <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Logo</div>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                {custom.logoUrl && (
+                  <img src={custom.logoUrl} alt="Logo preview"
+                    style={{height:44,maxWidth:160,objectFit:'contain',borderRadius:6,border:'1px solid var(--border)',padding:4,background:'#fff'}}
+                    onError={e => { e.target.style.display='none' }}/>
+                )}
+                <input type="file" accept="image/*" id="org-logo-upload" style={{ display:'none' }}
+                  onChange={uploadOrgLogo} disabled={uploadingLogo} />
+                <label htmlFor="org-logo-upload"
+                  style={{ display:'inline-block', padding:'8px 14px', borderRadius:8, background:'var(--dim)', color:'var(--text)', fontSize:13, fontWeight:600, cursor: uploadingLogo?'wait':'pointer', fontFamily:ff, opacity: uploadingLogo?0.6:1 }}>
+                  {uploadingLogo ? 'Uploading…' : (custom.logoUrl ? 'Replace Logo' : 'Upload Logo')}
+                </label>
+                {custom.logoUrl && (
+                  <button onClick={() => setOrgSettings({logoUrl: ''})}
+                    style={{ fontSize:12, color:'#DC2626', background:'none', border:'none', cursor:'pointer' }}>
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
