@@ -40,15 +40,13 @@ const NAV = [
   { id: 'segments',      label: 'Segments',       icon: '🎯', roles: ['admin','secretary'] },
   { id: 'gifts',         label: 'Gifts',          icon: '🎁', roles: ['admin','secretary'] },
   { id: 'signs',         label: 'Signs',          icon: '🪧', roles: ['admin','secretary'] },
-  { id: 'social-cards',  label: 'Social Cards',   icon: '📱', roles: ['admin','secretary','agent'] },
-  { id: 'weekly-ad',     label: 'Weekly Ad',      icon: '📰', roles: ['admin','secretary','agent'] },
+  { id: 'marketing',     label: 'Marketing',      icon: '🎨', roles: ['admin','secretary','agent'] },
   { id: 'mortgage',      label: 'Calculator',     icon: '🏦', roles: ['admin','secretary','agent'] },
   { id: 'briefing',      label: 'Daily Briefing', icon: '☀️',  roles: ['admin','secretary','agent'] },
   { id: 'announcements', label: 'Announcements',  icon: '📣', roles: ['admin','secretary','agent'] },
 
   // ── ADMIN ─────────────────────────────────────────────────────────
   { id: 'automations',   label: 'Automations',    icon: '⚡', roles: ['admin'] },
-  { id: 'call-flow',     label: 'Call Flows',     icon: '🔀', roles: ['admin'] },
   { id: 'website',       label: 'Website',        icon: '🌐', roles: ['admin'] },
   { id: 'activitylog',   label: 'Activity Log',   icon: '📋', roles: ['admin'] },
   { id: 'custom-fields', label: 'Custom Fields',  icon: '🔲', roles: ['admin'] },
