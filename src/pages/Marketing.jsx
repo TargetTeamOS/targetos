@@ -10,6 +10,7 @@ import { SocialCards } from './SocialCards'
 import { WeeklyAd } from './WeeklyAd'
 import { MarketUpdateCard } from './MarketUpdateCard'
 import { TestimonialCard } from './TestimonialCard'
+import { usePageView, LastVisited } from '../components/PageViewTracking'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -22,10 +23,11 @@ const TABS = [
 
 export function Marketing() {
   const [tab, setTab] = useState('social')
+  usePageView('marketing')
 
   return (
     <div style={{ fontFamily: ff }}>
-      <div style={{ display:'flex', borderBottom:'2px solid var(--border)', marginBottom:20, gap:0 }}>
+      <div style={{ display:'flex', alignItems:'center', borderBottom:'2px solid var(--border)', marginBottom:20, gap:0 }}>
         {TABS.map(t => {
           const active = tab === t.id
           return (
@@ -37,6 +39,7 @@ export function Marketing() {
             </button>
           )
         })}
+        <div style={{ marginLeft:'auto', paddingBottom:6 }}><LastVisited page="marketing" /></div>
       </div>
 
       {tab === 'social' && <SocialCards />}
