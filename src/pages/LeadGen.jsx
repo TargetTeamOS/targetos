@@ -1,9 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
-import { Card, CardHeader, Btn, Grid2, StatCard, Grid4 } from '../components/UI'
-import { AGENTS } from '../lib/constants'
+import { Card, CardHeader, Btn, Grid2, StatCard, Grid4, Loading } from '../components/UI'
 
 const ACTS = [
   {key:'calls',  label:'Calls Made',    color:'#0EA5E9', goal:25},
@@ -13,12 +12,42 @@ const ACTS = [
   {key:'leads',  label:'New Leads',     color:'#D97706', goal:5},
 ]
 
+const DEFAULT_GOALS = {calls:25,doors:10,emails:30,texts:25,leads:5}
+const today = () => new Date().toISOString().split('T')[0]
+
 export function LeadGen() {
   const { toast } = useApp()
+  const { agent } = useAuth()
+  const [loading, setLoading] = useState(true)
   const [activity, setActivity] = useState({calls:0,doors:0,emails:0,texts:0,leads:0})
-  const [goals, setGoals] = useState({calls:25,doors:10,emails:30,texts:25,leads:5})
+  const [goals, setGoals] = useState(DEFAULT_GOALS)
   const [editGoals, setEditGoals] = useState(false)
   const [tempGoals, setTempGoals] = useState({...goals})
+
+  // Load today's real activity + this agent's saved goals -- previously
+  // both reset to zero/defaults on every reload despite bump() writing
+  // to the database, since nothing ever read it back.
+  useEffect(() => {
+    if (!agent?.id) return
+    const savedGoals = localStorage.getItem('leadGenGoals_' + agent.id)
+    if (savedGoals) {
+      try { setGoals(JSON.parse(savedGoals)) } catch {}
+    }
+    supabase.from('lead_gen').select('*').eq('activity_date', today()).eq('agent_id', agent.id).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setActivity({
+            calls:  data.calls_made  || 0,
+            doors:  data.doors_made  || 0,
+            emails: data.emails_made || 0,
+            texts:  data.texts_made  || 0,
+            leads:  data.leads_made  || 0,
+          })
+        }
+        setLoading(false)
+      })
+      .catch(e => { console.warn('lead_gen load:', e.message); setLoading(false) })
+  }, [agent?.id])
 
   async function bump(key) {
     const newVal = (activity[key]||0) + 1
@@ -26,14 +55,37 @@ export function LeadGen() {
     toast('+1 ' + key)
     try {
       const { error: lgError } = await supabase.from('lead_gen').upsert({
-        activity_date: new Date().toISOString().split('T')[0],
+        activity_date: today(),
+        agent_id: agent?.id,
         [key+'_made']: newVal
-      },{onConflict:'activity_date'})
+      },{onConflict:'activity_date,agent_id'})
       if (lgError) console.warn('lead_gen upsert:', lgError.message)
     } catch(e) { console.warn('lead_gen error:', e.message) }
   }
 
+  function saveGoals(newGoals) {
+    setGoals(newGoals)
+    if (agent?.id) localStorage.setItem('leadGenGoals_' + agent.id, JSON.stringify(newGoals))
+  }
+
+  const [teamToday, setTeamToday] = useState([])
+
+  useEffect(() => {
+    supabase.from('lead_gen').select('*, agents(id,name,color)').eq('activity_date', today())
+      .then(({ data }) => {
+        const rows = (data || []).filter(r => r.agents).map(r => {
+          const act = { calls: r.calls_made||0, doors: r.doors_made||0, emails: r.emails_made||0, texts: r.texts_made||0, leads: r.leads_made||0 }
+          const pct = Math.round(ACTS.reduce((s,a) => s + Math.min(act[a.key]/DEFAULT_GOALS[a.key]*100, 100), 0) / ACTS.length)
+          return { name: r.agents.name, color: r.agents.color || '#94A3B8', pct }
+        }).sort((a,b) => b.pct - a.pct)
+        setTeamToday(rows)
+      })
+      .catch(e => console.warn('lead_gen team load:', e.message))
+  }, [])
+
   const totalPct = Math.round(ACTS.reduce((s,a)=>s+Math.min(activity[a.key]/goals[a.key]*100,100),0)/ACTS.length)
+
+  if (loading) return <Loading />
 
   return (
     <div>
@@ -95,17 +147,20 @@ export function LeadGen() {
       {/* Team leaderboard */}
       <Card>
         <CardHeader>Team Today</CardHeader>
-        {[['Lazer F.','LF','#CC2200',88],['Yanky L.','YL','#10B981',80],['Mendy','MJ','#0EA5E9',72],['Isaac L.','IL','#D97706',48],['Gitty F.','GF','#7C3AED',32],['Joel R.','JR','#E8650A',28],['Eli H.','EH','#14B8A6',22],['Avraham W.','AW','#8B5CF6',18]].map((a,i)=>(
-          <div key={a[0]} style={{display:'flex',alignItems:'center',gap:'10px',padding:'10px 16px',borderBottom:'1px solid var(--border)'}}>
+        {teamToday.length === 0 && (
+          <div style={{ padding: '20px 16px', fontSize: 12, color: 'var(--muted)' }}>No team activity logged yet today.</div>
+        )}
+        {teamToday.map((a,i)=>(
+          <div key={a.name} style={{display:'flex',alignItems:'center',gap:'10px',padding:'10px 16px',borderBottom:'1px solid var(--border)'}}>
             <div style={{color:'var(--muted)',fontSize:'11px',fontWeight:700,width:'16px'}}>{i+1}</div>
-            <div style={{width:28,height:28,borderRadius:'8px',background:a[2],display:'flex',alignItems:'center',justifyContent:'center',fontSize:'10px',fontWeight:800,color:'#fff',flexShrink:0}}>{a[1]}</div>
+            <div style={{width:28,height:28,borderRadius:'8px',background:a.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'10px',fontWeight:800,color:'#fff',flexShrink:0}}>{a.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}</div>
             <div style={{flex:1}}>
-              <div style={{fontSize:'12px',fontWeight:600,marginBottom:'4px'}}>{a[0]}</div>
+              <div style={{fontSize:'12px',fontWeight:600,marginBottom:'4px'}}>{a.name}</div>
               <div style={{background:'var(--dim)',borderRadius:'99px',height:5}}>
-                <div style={{background:a[2],borderRadius:'99px',height:5,width:a[3]+'%',transition:'width .5s'}}/>
+                <div style={{background:a.color,borderRadius:'99px',height:5,width:a.pct+'%',transition:'width .5s'}}/>
               </div>
             </div>
-            <div style={{color:a[2],fontSize:'12px',fontWeight:700}}>{a[3]}%</div>
+            <div style={{color:a.color,fontSize:'12px',fontWeight:700}}>{a.pct}%</div>
           </div>
         ))}
       </Card>
@@ -126,7 +181,7 @@ export function LeadGen() {
             ))}
             <div style={{display:'flex',gap:'8px',justifyContent:'flex-end',marginTop:'8px'}}>
               <Btn variant="ghost" onClick={()=>setEditGoals(false)}>Cancel</Btn>
-              <Btn onClick={()=>{setGoals({...tempGoals});setEditGoals(false);toast('Goals updated!')}}>Save Goals</Btn>
+              <Btn onClick={()=>{saveGoals({...tempGoals});setEditGoals(false);toast('Goals updated!')}}>Save Goals</Btn>
             </div>
           </div>
         </div>
