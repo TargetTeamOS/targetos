@@ -12,10 +12,11 @@
 // directory" — so they're not going in blind.
 'use strict'
 const querystring = require('querystring')
-const { esc } = require('./_lib/phone')
+const { esc, logTwilioValidation } = require('./_lib/phone')
 
 module.exports = function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
+  logTwilioValidation(req, {}, 'twilio-recording-notice')
 
   const rawUrl = req.url || ''
   const qp = querystring.parse(rawUrl.includes('?') ? rawUrl.split('?')[1] : '')
