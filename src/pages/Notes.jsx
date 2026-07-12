@@ -46,6 +46,10 @@ async function saveNote(agentId, body, noteType, linkedTable, linkedId) {
   })
 }
 
+async function deleteNote(id) {
+  return supabase.from('audit_log').delete().eq('id', id)
+}
+
 export function Notes() {
   const navigate = useNavigate()
   const { agent, isAdmin } = useAuth()
@@ -58,6 +62,7 @@ export function Notes() {
   const [search,  setSearch]  = useState('')
   const [saving,  setSaving]  = useState(false)
   const [filterType, setFilterType] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -79,6 +84,15 @@ export function Notes() {
     } catch(e) {
       toast('Failed: ' + e.message, '#DC2626')
     } finally { setSaving(false) }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await deleteNote(id)
+      setNotes(prev => prev.filter(n => n.id !== id))
+      toast('Note deleted')
+    } catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+    finally { setConfirmDeleteId(null) }
   }
 
   const filtered = notes.filter(n => {
@@ -130,11 +144,25 @@ export function Notes() {
                 <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '8px' }}>{fmtDateTime(n.created_at)}</span>
               </div>
               <Pill label={typeLabel(n.field_name)} color={typeColor(n.field_name)} />
+              {isAdmin && (
+                <button onClick={() => setConfirmDeleteId(n.id)}
+                  style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:14, padding:'2px 4px' }}
+                  title="Delete note (admin only)">
+                  🗑
+                </button>
+              )}
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{n.new_value}</div>
           </div>
         ))}
       </div>
+
+      <Confirm
+        open={!!confirmDeleteId}
+        message="Delete this note? This cannot be undone."
+        onConfirm={() => handleDelete(confirmDeleteId)}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   )
 }
