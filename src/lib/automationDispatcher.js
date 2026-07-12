@@ -67,12 +67,24 @@ export async function dispatch(triggerType, record, previousRecord = null) {
 
 // ── BUILD TRIGGER DATA FROM RECORD ───────────────────────────────
 function buildTriggerData(triggerType, record, prev) {
+  // Only set the id field matching what record actually IS -- previously
+  // contact_id/deal_id/task_id/listing_id were ALL set to record.id
+  // regardless of trigger type. For a deal-triggered automation,
+  // contact_id held the deal's id, so any action checking
+  // "if (triggerData.contact_id)" (update_contact_status, add_tag,
+  // remove_tag) would silently try to update a contact using the
+  // deal's id -- matching zero rows, no error, nothing happens.
+  const isContactTrigger = ['new_contact','new_buyer','contact_status_change','contact_assigned','contact_source_added','pre_approval_received','no_activity'].includes(triggerType)
+  const isDealTrigger     = ['deal_created','deal_stage_change','offer_accepted','deal_closed','deal_under_contract','deal_fell_through','closing_soon'].includes(triggerType)
+  const isTaskTrigger     = ['task_created','task_completed','task_overdue'].includes(triggerType)
+  const isListingTrigger  = ['listing_status_change'].includes(triggerType)
+
   return {
     // Common
     agent_id:     record.agent_id,
     agent_name:   record.agents?.name || '',
     // Contact
-    contact_id:   record.id,
+    contact_id:   isContactTrigger ? record.id : (record.contact_id || null),
     first_name:   record.first_name || '',
     last_name:    record.last_name  || '',
     contact_name: [record.first_name, record.last_name].filter(Boolean).join(' '),
@@ -81,7 +93,7 @@ function buildTriggerData(triggerType, record, prev) {
     status:       record.status || '',
     source:       record.source || '',
     // Deal
-    deal_id:      record.id,
+    deal_id:      isDealTrigger ? record.id : null,
     addr:         record.addr || '',
     stage:        record.stage || '',
     prev_stage:   prev?.stage || '',
@@ -89,12 +101,12 @@ function buildTriggerData(triggerType, record, prev) {
     production:   record.production || 0,
     close_date:   record.expected_close_date || record.close_date || '',
     // Task
-    task_id:      record.id,
+    task_id:      isTaskTrigger ? record.id : null,
     title:        record.title || '',
     priority:     record.priority || '',
     due_date:     record.due_date || '',
     // Listing
-    listing_id:   record.id,
+    listing_id:   isListingTrigger ? record.id : null,
     list_price:   record.list_price || 0,
     listing_addr: record.addr || '',
     // Meta
