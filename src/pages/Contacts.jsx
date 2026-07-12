@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { FileAttachments } from '../components/FileAttachments'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { ClickToCall, HeaderCallButton } from '../components/ClickToCall'
@@ -27,6 +27,7 @@ import {
   Card, Confirm, Divider
 } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
+import { applySegmentCondition } from '../lib/segments'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -200,9 +201,34 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
 export function Contacts() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
+  const location = useLocation()
   const { agent, isAdmin, canManage } = useAuth()
   usePageView('contacts')
   const { toast } = useApp()
+
+  // Segment filter -- when navigated here as /contacts?segment=X, load
+  // that segment's saved conditions and apply them. This was
+  // previously completely non-functional: clicking a segment on the
+  // Segments page navigated here with the id in the URL, but nothing
+  // ever read it, so every segment just showed the full unfiltered list.
+  const [activeSegment, setActiveSegment] = useState(null)
+  const [segmentContactIds, setSegmentContactIds] = useState(null) // null = no segment active
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const segId = params.get('segment')
+    if (!segId) { setActiveSegment(null); setSegmentContactIds(null); return }
+    supabase.from('contact_segments').select('*').eq('id', segId).maybeSingle()
+      .then(async ({ data: seg }) => {
+        if (!seg) return
+        setActiveSegment(seg)
+        let q = supabase.from('contacts').select('id')
+        ;(seg.conditions || []).forEach(c => { q = applySegmentCondition(q, c) })
+        const { data: rows } = await q
+        setSegmentContactIds((rows || []).map(r => r.id))
+      })
+      .catch(e => console.warn('segment load:', e.message))
+  }, [location.search])
 
   // Paginated loading — 100 at a time, load more on scroll
   const [contacts,    setContacts]    = useState([])
@@ -390,6 +416,7 @@ export function Contacts() {
   // ── FILTER ────────────────────────────────────────────────────
   const filtered = React.useMemo(() => {
     let result = contacts.filter(c => {
+      if (segmentContactIds && !segmentContactIds.includes(c.id)) return false
       if (statusF && c.status    !== statusF) return false
       if (agentF  && c.agent_id  !== agentF)  return false
       if (sourceF && c.source    !== sourceF) return false
@@ -426,9 +453,20 @@ export function Contacts() {
 
   return (
     <div style={{ fontFamily: ff }}>
+      {activeSegment && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:(activeSegment.color||'#3B82F6')+'12', border:'1px solid '+(activeSegment.color||'#3B82F6')+'44', borderRadius:10, marginBottom:14 }}>
+          <span style={{ fontSize:16 }}>{activeSegment.icon||'👥'}</span>
+          <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>Segment: {activeSegment.name}</span>
+          <span style={{ fontSize:12, color:'var(--muted)' }}>{segmentContactIds?.length ?? '...'} matching contacts</span>
+          <button onClick={() => navigate('/contacts')}
+            style={{ marginLeft:'auto', fontSize:12, color:'var(--muted)', background:'none', border:'none', cursor:'pointer' }}>
+            ✕ Clear segment
+          </button>
+        </div>
+      )}
       <PageHeader
         title="Contacts"
-        sub={filtered.length + ' contacts'}
+        sub={filtered.length + ' contacts' + (activeSegment ? ' (in segment)' : '')}
         actions={
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
             <LastVisited page="contacts" />
