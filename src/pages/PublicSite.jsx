@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { db } from '../lib/db'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 
 const MLS_USER = import.meta.env.VITE_SIMPLYRETS_USER || 'simplyrets'
@@ -614,9 +615,11 @@ export function PublicListingDetail() {
 
   async function submitInquiry() {
     setSent(true)
-    // Save to Supabase contacts
+    // Save to Supabase contacts -- db.contacts.create() checks for an
+    // existing contact by phone first (a public inquiry form is
+    // exactly the kind of place someone submits more than once).
     try {
-      await supabase.from('contacts').insert({
+      await db.contacts.create({
         first_name: form.name.split(' ')[0] || '',
         last_name:  form.name.split(' ').slice(1).join(' ') || '',
         email:      form.email,
@@ -626,7 +629,21 @@ export function PublicListingDetail() {
         notes:      'Inquiry about ' + street + ': ' + form.message,
         created_at: new Date().toISOString(),
       })
-    } catch(err) { console.warn('[PublicSite]', err.message) }
+    } catch(err) {
+      if (err.existingContact) {
+        // Already exists -- append this inquiry to their notes rather
+        // than silently dropping it or creating a duplicate.
+        try {
+          const note = 'Inquiry about ' + street + ': ' + form.message
+          const prevNotes = err.existingContact.notes || ''
+          await db.contacts.update(err.existingContact.id, {
+            notes: prevNotes ? prevNotes + '\n\n' + note : note,
+          })
+        } catch(e2) { console.warn('[PublicSite] append inquiry note:', e2.message) }
+      } else {
+        console.warn('[PublicSite]', err.message)
+      }
+    }
   }
 
   return (
@@ -876,7 +893,7 @@ export function PublicContact() {
 
   async function submit() {
     try {
-      await supabase.from('contacts').insert({
+      await db.contacts.create({
         first_name: form.name.split(' ')[0] || '',
         last_name:  form.name.split(' ').slice(1).join(' ') || '',
         email:      form.email,
@@ -886,7 +903,19 @@ export function PublicContact() {
         notes:      'Looking to: ' + form.type + '\n\n' + form.message,
         created_at: new Date().toISOString(),
       })
-    } catch(err) { console.warn('[PublicSite]', err.message) }
+    } catch(err) {
+      if (err.existingContact) {
+        try {
+          const note = 'Looking to: ' + form.type + '\n\n' + form.message
+          const prevNotes = err.existingContact.notes || ''
+          await db.contacts.update(err.existingContact.id, {
+            notes: prevNotes ? prevNotes + '\n\n' + note : note,
+          })
+        } catch(e2) { console.warn('[PublicSite] append contact-form note:', e2.message) }
+      } else {
+        console.warn('[PublicSite]', err.message)
+      }
+    }
     setSent(true)
   }
 

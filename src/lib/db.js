@@ -196,7 +196,7 @@ contacts: {
         const variants = [d10, '(' + area + ') ' + mid + '-' + last, area + '-' + mid + '-' + last, area + '.' + mid + '.' + last, area + ' ' + mid + ' ' + last]
         const orClause = variants.map(v => 'phone.ilike.%' + v + '%').join(',')
         const { data: existing } = await supabase.from('contacts')
-          .select('id, first_name, last_name, phone, agent_id').or(orClause).limit(1).maybeSingle()
+          .select('id, first_name, last_name, phone, agent_id, notes').or(orClause).limit(1).maybeSingle()
         if (existing) {
           const err = new Error('A contact with this phone number already exists: ' + (existing.first_name||'') + ' ' + (existing.last_name||''))
           err.existingContact = existing

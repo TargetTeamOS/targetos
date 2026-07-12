@@ -21,6 +21,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp }  from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import { db } from '../lib/db'
 import { useOffers, useAgents } from '../lib/hooks'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { OFFER_STATUSES } from '../lib/constants'
@@ -382,20 +383,26 @@ export function Offers() {
       if (!form.buyer_name?.trim()) return
       try {
         const [first, ...rest] = form.buyer_name.trim().split(' ')
-        const { data, error } = await supabase.from('contacts').insert({
+        const data = await db.contacts.create({
           first_name: first, last_name: rest.join(' '),
           phone: form.buyer_phone || null,
           email: form.buyer_email || null,
           address: form.buyer_address || null,
           status: 'Active', source: 'Offer', type: 'Buyer',
           created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        }).select().single()
-        if (error) throw error
+        })
         if (data) {
           set('buyer_contact_id', data.id)
           toast('✅ Buyer saved to Contacts')
         }
-      } catch(e) { toast('Failed to save buyer contact: ' + e.message, '#DC2626') }
+      } catch(e) {
+        if (e.existingContact) {
+          toast('Already exists as ' + (e.existingContact.first_name||'') + ' ' + (e.existingContact.last_name||'') + ' — linking to that contact', '#F5A623')
+          set('buyer_contact_id', e.existingContact.id)
+        } else {
+          toast('Failed to save buyer contact: ' + e.message, '#DC2626')
+        }
+      }
     } else {
       setForm(f => ({
         ...f,
