@@ -504,37 +504,50 @@ export function TransactionCoordinator() {
   async function syncToAllBoards(deal, updates) {
     const synced = []
     try {
-      await supabase.from('tc_deals').update({ ...updates, updated_at:new Date().toISOString() }).eq('id', deal.id)
+      const r0 = await supabase.from('tc_deals').update({ ...updates, updated_at:new Date().toISOString() }).eq('id', deal.id)
+      if (r0.error) throw r0.error
 
       if (updates.list_price !== undefined && deal.linked_listing_id) {
-        await supabase.from('listings').update({ list_price:updates.list_price, updated_at:new Date().toISOString() }).eq('id', deal.linked_listing_id)
+        const r = await supabase.from('listings').update({ list_price:updates.list_price, updated_at:new Date().toISOString() }).eq('id', deal.linked_listing_id)
+        if (r.error) throw r.error
         synced.push('Listings')
       }
       if (updates.sale_price !== undefined && deal.linked_deal_id) {
-        await supabase.from('deals').update({ sale_price:updates.sale_price, updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
+        const r = await supabase.from('deals').update({ sale_price:updates.sale_price, updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
+        if (r.error) throw r.error
         synced.push('Production')
       }
       if (updates.ao_date !== undefined && deal.linked_deal_id) {
-        await supabase.from('deals').update({ ao_date:updates.ao_date, updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
+        const r = await supabase.from('deals').update({ ao_date:updates.ao_date, updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
+        if (r.error) throw r.error
         if (!synced.includes('Production')) synced.push('Production')
       }
       if (updates.close_date !== undefined && deal.linked_deal_id) {
-        await supabase.from('deals').update({ close_date:updates.close_date, updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
+        const r = await supabase.from('deals').update({ close_date:updates.close_date, updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
+        if (r.error) throw r.error
         if (!synced.includes('Production')) synced.push('Production')
       }
       if (updates.tc_phase !== undefined) {
         if (deal.linked_deal_id) {
-          await supabase.from('deals').update({ stage:phaseToStage[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
+          const r = await supabase.from('deals').update({ stage:phaseToStage[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
+          if (r.error) throw r.error
           if (!synced.includes('Production')) synced.push('Production')
         }
         if (deal.linked_listing_id) {
-          await supabase.from('listings').update({ status:phaseToStatus[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_listing_id)
+          const r = await supabase.from('listings').update({ status:phaseToStatus[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_listing_id)
+          if (r.error) throw r.error
           if (!synced.includes('Listings')) synced.push('Listings')
         }
       }
       if (updates.agent_id !== undefined) {
-        if (deal.linked_deal_id)    await supabase.from('deals').update({ agent_id:updates.agent_id }).eq('id', deal.linked_deal_id)
-        if (deal.linked_listing_id) await supabase.from('listings').update({ agent_id:updates.agent_id }).eq('id', deal.linked_listing_id)
+        if (deal.linked_deal_id) {
+          const r = await supabase.from('deals').update({ agent_id:updates.agent_id }).eq('id', deal.linked_deal_id)
+          if (r.error) throw r.error
+        }
+        if (deal.linked_listing_id) {
+          const r = await supabase.from('listings').update({ agent_id:updates.agent_id }).eq('id', deal.linked_listing_id)
+          if (r.error) throw r.error
+        }
         synced.push('All boards')
       }
     } catch(e) {
@@ -645,9 +658,10 @@ export function TransactionCoordinator() {
   async function checkTask(task) {
     if (task.status === 'done') return
     try {
-      await supabase.from('tc_tasks').update({
+      const { error } = await supabase.from('tc_tasks').update({
         status:'done', completed_at:new Date().toISOString(), updated_at:new Date().toISOString()
       }).eq('id', task.id)
+      if (error) throw error
       setTasks(p => p.map(t => t.id===task.id ? {...t, status:'done'} : t))
 
       // Completion action
@@ -662,13 +676,14 @@ export function TransactionCoordinator() {
           }).catch(() => {})
         }
       } else if (task.completion_action === 'create_next_task' && task.completion_note) {
-        await supabase.from('tc_tasks').insert({
+        const { error: nextErr } = await supabase.from('tc_tasks').insert({
           deal_id:    task.deal_id,
           title:      task.completion_note,
           priority:   'high', status:'pending',
           agent_id:   task.agent_id, phase:task.phase,
           created_at: new Date().toISOString(), updated_at:new Date().toISOString(),
         })
+        if (nextErr) throw nextErr
         loadAll()
       }
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
@@ -680,21 +695,23 @@ export function TransactionCoordinator() {
     try {
       if (selTask) {
         // Edit existing
-        await supabase.from('tc_tasks').update({
+        const { error: e1 } = await supabase.from('tc_tasks').update({
           ...taskForm, updated_at:new Date().toISOString()
         }).eq('id', selTask.id)
+        if (e1) throw e1
         if (taskForm.needs_calendar && taskForm.due_date) {
-          await supabase.from('calendar_events').insert({
+          const { error: e2 } = await supabase.from('calendar_events').insert({
             agent_id:   taskForm.agent_id || selDeal?.agent_id,
             title:      taskForm.title + ' — ' + selDeal?.addr,
             start_date: taskForm.due_date, start_time:'10:00', type:'task',
             created_at: new Date().toISOString(),
           })
+          if (e2) throw e2
         }
         toast('✅ Task updated')
       } else {
         // Add new
-        await supabase.from('tc_tasks').insert({
+        const { error: e3 } = await supabase.from('tc_tasks').insert({
           deal_id:    selDeal.id,
           agent_id:   taskForm.agent_id || selDeal.agent_id,
           phase:      selDeal.tc_phase,
@@ -703,13 +720,15 @@ export function TransactionCoordinator() {
           updated_at: new Date().toISOString(),
           ...taskForm,
         })
+        if (e3) throw e3
         if (taskForm.needs_calendar && taskForm.due_date) {
-          await supabase.from('calendar_events').insert({
+          const { error: e4 } = await supabase.from('calendar_events').insert({
             agent_id:   taskForm.agent_id || selDeal.agent_id,
             title:      taskForm.title + ' — ' + selDeal.addr,
             start_date: taskForm.due_date, start_time:'10:00', type:'task',
             created_at: new Date().toISOString(),
           })
+          if (e4) throw e4
         }
         toast('✅ Task added' + (taskForm.needs_calendar && taskForm.due_date ? ' · Calendar event created' : ''))
       }
