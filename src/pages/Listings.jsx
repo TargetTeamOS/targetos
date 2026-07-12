@@ -16,6 +16,7 @@ import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
+import { CustomFieldsSection } from '../components/CustomFieldsSection'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { useAgents } from '../lib/hooks'
 import { FilterBar } from '../components/FilterBar'
@@ -265,6 +266,7 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
               <Lbl c="Notes"/>
               <textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)} placeholder="Listing notes..." rows={4}
                 style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff, resize:'vertical', boxSizing:'border-box' }}/>
+              <CustomFieldsSection entity="listings" customData={form.custom_data} onChange={(k,v) => set('custom_data', { ...(form.custom_data||{}), [k]: v })} />
             </div>
           )}
 

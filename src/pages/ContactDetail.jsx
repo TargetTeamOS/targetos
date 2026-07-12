@@ -23,6 +23,7 @@ import { CONTACT_STATUSES, CONTACT_SOURCES, PROPERTY_TYPES, LOCAL_CITIES } from 
 import { FileAttachments } from '../components/FileAttachments'
 import { uploadFile, listFiles, deleteFile, fmtFileSize, fileIcon } from '../lib/storage'
 import { Avatar, Pill, Btn, Loading, Confirm, Field, Spinner } from '../components/UI'
+import { CustomFieldsSection } from '../components/CustomFieldsSection'
 import { BuyerInterest } from '../components/BuyerInterest'
 import { EmailCompose }  from '../components/EmailCompose'
 
@@ -1161,6 +1162,15 @@ export function ContactDetail() {
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
   }
 
+  async function saveCustomField(key, value) {
+    if (!contact) return
+    const newCustomData = { ...(contact.custom_data || {}), [key]: value }
+    try {
+      const updated = await db.contacts.update(id, { custom_data: newCustomData }, agent?.id)
+      setContact(c => ({ ...c, custom_data: newCustomData, ...updated }))
+    } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
+  }
+
   // ── STATUS QUICK UPDATE ───────────────────────────────────────
   async function quickStatus(s) {
     try {
@@ -1476,6 +1486,8 @@ export function ContactDetail() {
           <Section title="Tags" icon="🏷">
             <TagInput label="" values={f.tags || []} onChange={v => saveField('tags', v)} />
           </Section>
+
+          <CustomFieldsSection entity="contacts" customData={f.custom_data} onChange={saveCustomField} />
 
           {/* DANGER */}
           <div style={{ background: 'var(--panel)', borderRadius: '8px', border: '1px solid #FECACA', padding: '12px 14px' }}>
