@@ -16,6 +16,7 @@
 'use strict'
 const { getSupabase } = require('./_lib/phone')
 const { getTodaysQuote, buildEmailHTML, isDueToday, isOverdue, getDaysUntil, DEFAULT_PREFS, DEFAULT_STYLE } = require('./_lib/briefing')
+const { notifyAgent } = require('./_lib/notify')
 
 async function gatherAgentData(supabase, agentId) {
   const today   = new Date().toISOString().slice(0, 10)
@@ -97,6 +98,11 @@ module.exports = async function handler(req, res) {
         })
         if (!emailRes.ok) throw new Error('Resend API error: ' + emailRes.status)
         sent++
+        notifyAgent(supabase, agentRow.id, 'dailyBriefing', {
+          title: 'Daily briefing ready',
+          body: 'Your briefing for today has been sent to your email',
+          link: '/daily-briefing', type: 'briefing',
+        })
       } catch(e) {
         failed++
         errors.push(agentRow.name + ': ' + e.message)

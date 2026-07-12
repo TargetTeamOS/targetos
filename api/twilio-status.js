@@ -1,6 +1,7 @@
 'use strict'
 const querystring = require('querystring')
 const { getSupabase, logTwilioValidation, transcribeAudio } = require('./_lib/phone')
+const { notifyAgent } = require('./_lib/notify')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 const OUTCOME = { completed:'Connected', busy:'No Answer', 'no-answer':'No Answer', failed:'No Answer', canceled:'No Answer' }
 
@@ -110,12 +111,22 @@ module.exports = async function handler(req, res) {
       }
 
       if (Object.keys(upd).length > 0) {
+        let updatedCall = null
         if (callLogId) {
           // Most reliable — match by our own internal record ID
-          await supabase.from('calls').update(upd).eq('id', callLogId)
+          const { data } = await supabase.from('calls').update(upd).eq('id', callLogId).select('agent_id, contact_name, from_number').maybeSingle()
+          updatedCall = data
         } else if (CallSid) {
           // Fallback — match by Twilio's call SID
-          await supabase.from('calls').update(upd).eq('twilio_call_sid', CallSid)
+          const { data } = await supabase.from('calls').update(upd).eq('twilio_call_sid', CallSid).select('agent_id, contact_name, from_number').maybeSingle()
+          updatedCall = data
+        }
+        if (upd.outcome === 'No Answer' && updatedCall?.agent_id) {
+          notifyAgent(supabase, updatedCall.agent_id, 'callMissed', {
+            title: 'Missed call',
+            body: (updatedCall.contact_name || updatedCall.from_number || 'Someone') + ' called and no one answered',
+            link: '/calls', type: 'call',
+          })
         }
       }
     }

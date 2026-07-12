@@ -6,6 +6,7 @@
 'use strict'
 
 const { getSupabase } = require('./_lib/phone')
+const { notifyAgent, loadAgentNotificationPrefs } = require('./_lib/notify')
 
 module.exports = async function handler(req, res) {
   // Vercel automatically sends 'Authorization: Bearer <CRON_SECRET>' when
@@ -123,6 +124,30 @@ module.exports = async function handler(req, res) {
       const overdue = group.tasks.filter(t => t.due_date < today)
       const dueToday = group.tasks.filter(t => t.due_date === today)
       const dueTomorrow = group.tasks.filter(t => t.due_date === tomorrow)
+
+      // In-app bell notifications, each gated by its own preference --
+      // separate from the email below, which is opt-in and previously
+      // ignored entirely (every agent got emailed regardless of their
+      // emailOnTaskDue setting, which defaults to OFF).
+      if (dueToday.length > 0) {
+        notifyAgent(sb, agentId, 'taskDue', {
+          title: dueToday.length + ' task' + (dueToday.length>1?'s':'') + ' due today',
+          body: dueToday.map(t => t.title).slice(0,3).join(', '),
+          link: '/tasks', type: 'task',
+        })
+      }
+      if (overdue.length > 0) {
+        notifyAgent(sb, agentId, 'taskOverdue', {
+          title: overdue.length + ' overdue task' + (overdue.length>1?'s':''),
+          body: overdue.map(t => t.title).slice(0,3).join(', '),
+          link: '/tasks', type: 'task',
+        })
+      }
+
+      // Email is opt-in (emailOnTaskDue defaults to false) -- check
+      // before sending, instead of emailing every agent unconditionally.
+      const notifPrefs = await loadAgentNotificationPrefs(sb, agentId)
+      if (!notifPrefs.emailOnTaskDue) continue
 
       const taskRows = group.tasks.map(t => {
         const isOverdue  = t.due_date < today

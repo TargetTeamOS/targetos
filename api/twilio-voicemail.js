@@ -1,6 +1,7 @@
 'use strict'
 const querystring = require('querystring')
 const { getSupabase, logTwilioValidation, transcribeAudio } = require('./_lib/phone')
+const { notifyAgent } = require('./_lib/notify')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
@@ -42,7 +43,15 @@ module.exports = async function handler(req, res) {
     // right contact/agent.
     const { lookupContact } = require('./_lib/phone')
     const contact = await lookupContact(supabase, From || '')
-    await supabase.from('voicemails').insert({ call_id:(call&&call.id)||null, agent_id:(contact&&contact.agent_id)||null, from_number:From||null, contact_id:(contact&&contact.id)||null, contact_name:contact?[contact.first_name,contact.last_name].filter(Boolean).join(' '):null, recording_url:fullRecordingUrl, transcript:transcriptText, duration_sec:parseInt(RecordingDuration)||0, is_read:false, created_at:new Date().toISOString() })
+    const agentId = (contact && contact.agent_id) || null
+    await supabase.from('voicemails').insert({ call_id:(call&&call.id)||null, agent_id:agentId, from_number:From||null, contact_id:(contact&&contact.id)||null, contact_name:contact?[contact.first_name,contact.last_name].filter(Boolean).join(' '):null, recording_url:fullRecordingUrl, transcript:transcriptText, duration_sec:parseInt(RecordingDuration)||0, is_read:false, created_at:new Date().toISOString() })
+    if (agentId) {
+      notifyAgent(supabase, agentId, 'voicemail', {
+        title: 'New voicemail',
+        body: (contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') : From) + ' left a voicemail',
+        link: '/calls', type: 'voicemail',
+      })
+    }
   } catch(err) { console.error('voicemail error:', err.message) }
   return res.status(200).json({ ok: true })
 }

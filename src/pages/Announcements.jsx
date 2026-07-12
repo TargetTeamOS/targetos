@@ -8,6 +8,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { useAnnouncements } from '../lib/hooks'
+import { supabase } from '../lib/supabase'
+import { notifyAgent } from '../lib/notify'
 import { fmtDateTime } from '../lib/utils'
 import { ANNOUNCEMENT_TYPES } from '../lib/constants'
 import {
@@ -55,9 +57,16 @@ export function Announcements() {
         setSelected(updated)
         toast('✅ Saved')
       } else {
-        await add({ ...form, agent_id: agent?.id })
+        const created = await add({ ...form, agent_id: agent?.id })
         toast('✅ Announcement posted')
         closePanel()
+        // Notify every other active agent, per their own preference
+        supabase.from('agents').select('id').eq('active', true).neq('id', agent?.id || '')
+          .then(({ data }) => {
+            (data || []).forEach(a => notifyAgent(a.id, 'newAnnouncement', {
+              title: 'New announcement', body: form.title, link: '/announcements', type: 'announcement',
+            }))
+          }).catch(() => {})
       }
     } catch(e) {
       toast('Save failed: ' + e.message, '#DC2626')

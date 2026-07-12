@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabase } from './supabase'
+import { notifyAgent, notifyAgentEmail } from './notify'
 
 // Fire automation trigger safely
 async function fireTrigger(name, ...args) {
@@ -216,6 +217,11 @@ contacts: {
       }
     })
     fireTrigger('newContact', result)
+    if (data.agent_id) {
+      const name = (result.first_name || '') + ' ' + (result.last_name || '')
+      notifyAgent(data.agent_id, 'newLead', { title: 'New lead assigned', body: name.trim() + ' was assigned to you', link: '/contacts/' + result.id + '/detail', type: 'lead' })
+      notifyAgentEmail(data.agent_id, 'emailOnNewLead', { subject: '👤 New lead: ' + name.trim(), html: '<p>' + name.trim() + ' was just assigned to you.</p><p><a href="https://app.targetreteam.com/contacts/' + result.id + '/detail">View contact</a></p>' })
+    }
     return result
   },
   async update(id, data, actingAgentId) {
@@ -233,6 +239,11 @@ contacts: {
     const label = (result.first_name || '') + ' ' + (result.last_name || '')
     await logDiff(agentId, 'contacts', id, before, result, label.trim())
     fireTrigger('contactUpdated', result, data)
+    // Reassignment to a new agent -- notify them, same as a brand new lead
+    if (data.agent_id && before && data.agent_id !== before.agent_id) {
+      notifyAgent(data.agent_id, 'newLead', { title: 'Lead reassigned to you', body: label.trim() + ' was reassigned to you', link: '/contacts/' + id + '/detail', type: 'lead' })
+      notifyAgentEmail(data.agent_id, 'emailOnNewLead', { subject: '👤 Lead reassigned: ' + label.trim(), html: '<p>' + label.trim() + ' was just reassigned to you.</p><p><a href="https://app.targetreteam.com/contacts/' + id + '/detail">View contact</a></p>' })
+    }
     return result
   },
   async delete(id, agentId) {

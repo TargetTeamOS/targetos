@@ -24,6 +24,7 @@ import {
 } from '../lib/constants'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { logRecordChange } from '../lib/recordActivity'
+import { notifyAgent } from '../lib/notify'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { FileAttachments } from '../components/FileAttachments'
 import { RecordActivity } from '../pages/ActivityLog'
@@ -1699,6 +1700,16 @@ export function Production() {
       tableName: 'deals', recordId: deal.id, agentId: agent?.id,
       field, oldValue, newValue, recordName: deal.addr,
     })
+    // Notify the deal's assigned agent (not necessarily whoever made
+    // the change) that the stage moved, per their notification prefs.
+    if (field === 'stage' && deal.agent_id) {
+      notifyAgent(deal.agent_id, 'dealStageChange', {
+        title: 'Deal stage changed',
+        body: (deal.addr || 'A deal') + ' moved to ' + newValue,
+        link: '/production/' + deal.id,
+        type: 'deal',
+      })
+    }
   }
 
   async function quickUpdate(deal, field, value, isCustom) {
