@@ -344,7 +344,10 @@ function ShowingsTab({ listing, showings, agents, onAdd, onRefresh }) {
 
   async function saveShowing() {
     if (!form.showing_date) { toast('Date required', '#DC2626'); return }
-    try { await supabase.from('showings').insert({ ...form, listing_id: listing.id, created_at: new Date().toISOString() }) }
+    try {
+      const { error } = await supabase.from('showings').insert({ ...form, listing_id: listing.id, created_at: new Date().toISOString() })
+      if (error) throw error
+    }
     catch(e) { toast('Could not save showing: ' + e.message, '#DC2626'); return }
     setAdding(false)
     setForm({ showing_date:'', showing_time:'', agent_id:'', contact_name:'', contact_phone:'', notes:'' })
@@ -353,7 +356,10 @@ function ShowingsTab({ listing, showings, agents, onAdd, onRefresh }) {
   }
 
   async function deleteShowing(id) {
-    try { await supabase.from('showings').delete().eq('id', id) } catch(e) {}
+    try {
+      const { error } = await supabase.from('showings').delete().eq('id', id)
+      if (error) throw error
+    } catch(e) { toast('Could not delete showing: ' + e.message, '#DC2626'); return }
     onRefresh()
     toast('Showing deleted')
   }

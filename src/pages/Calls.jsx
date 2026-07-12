@@ -278,14 +278,20 @@ function ExtensionManager({ agents }) {
   }
 
   async function toggleActive(ext) {
-    try { await supabase.from('phone_extensions').update({ active: !ext.active }).eq('id', ext.id) } catch(e) {}
-    setExtensions(prev => prev.map(e => e.id === ext.id ? { ...e, active: !e.active } : e))
+    try {
+      const { error } = await supabase.from('phone_extensions').update({ active: !ext.active }).eq('id', ext.id)
+      if (error) throw error
+      setExtensions(prev => prev.map(e => e.id === ext.id ? { ...e, active: !e.active } : e))
+    } catch(e) { toast('Failed to update: ' + e.message, '#DC2626') }
   }
 
   async function remove(id) {
-    try { await supabase.from('phone_extensions').delete().eq('id', id) } catch(e) {}
-    setExtensions(prev => prev.filter(e => e.id !== id))
-    toast('Extension deleted')
+    try {
+      const { error } = await supabase.from('phone_extensions').delete().eq('id', id)
+      if (error) throw error
+      setExtensions(prev => prev.filter(e => e.id !== id))
+      toast('Extension deleted')
+    } catch(e) { toast('Failed to delete: ' + e.message, '#DC2626') }
   }
 
   const BLANK_EXT = { number:'', label:'', agent_id:'', forward_to:'', active:true, voicemail_greeting:'', order_index: extensions.length }
@@ -595,14 +601,20 @@ function RoutingRules({ agents }) {
   }
 
   async function toggle(rule) {
-    try { await supabase.from('phone_routing').update({ is_active: !rule.is_active }).eq('id', rule.id) } catch(e) {}
-    setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r))
+    try {
+      const { error } = await supabase.from('phone_routing').update({ is_active: !rule.is_active }).eq('id', rule.id)
+      if (error) throw error
+      setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r))
+    } catch(e) { toast('Failed to update: ' + e.message, '#DC2626') }
   }
 
   async function remove(id) {
-    try { await supabase.from('phone_routing').delete().eq('id', id) } catch(e) {}
-    setRules(prev => prev.filter(r => r.id !== id))
-    toast('Rule deleted')
+    try {
+      const { error } = await supabase.from('phone_routing').delete().eq('id', id)
+      if (error) throw error
+      setRules(prev => prev.filter(r => r.id !== id))
+      toast('Rule deleted')
+    } catch(e) { toast('Failed to delete: ' + e.message, '#DC2626') }
   }
 
   const BLANK_RULE = { name:'', rule_type:'contact_match', is_active:true, priority: rules.length, config:{} }
@@ -739,14 +751,20 @@ function VoicemailInbox() {
   }, [])
 
   async function markRead(id) {
-    try { await supabase.from('voicemails').update({ is_read: true }).eq('id', id) } catch(e) {}
-    setVms(prev => prev.map(v => v.id === id ? { ...v, is_read: true } : v))
+    try {
+      const { error } = await supabase.from('voicemails').update({ is_read: true }).eq('id', id)
+      if (error) throw error
+      setVms(prev => prev.map(v => v.id === id ? { ...v, is_read: true } : v))
+    } catch(e) { console.warn('markRead failed:', e.message) }
   }
 
   async function deleteVM(id) {
-    try { await supabase.from('voicemails').delete().eq('id', id) } catch(e) {}
-    setVms(prev => prev.filter(v => v.id !== id))
-    toast('Voicemail deleted')
+    try {
+      const { error } = await supabase.from('voicemails').delete().eq('id', id)
+      if (error) throw error
+      setVms(prev => prev.filter(v => v.id !== id))
+      toast('Voicemail deleted')
+    } catch(e) { toast('Failed to delete: ' + e.message, '#DC2626') }
   }
 
   const unread = vms.filter(v => !v.is_read).length
@@ -1114,11 +1132,14 @@ export function Calls() {
 
   async function deleteCall() {
     if (!selected) return
-    try { await supabase.from('calls').delete().eq('id', selected.id) } catch(e) {}
-    setCalls(prev => prev.filter(c => c.id !== selected.id))
-    setSelected(null)
-    setConfirmDel(false)
-    toast('Call deleted')
+    try {
+      const { error } = await supabase.from('calls').delete().eq('id', selected.id)
+      if (error) throw error
+      setCalls(prev => prev.filter(c => c.id !== selected.id))
+      setSelected(null)
+      setConfirmDel(false)
+      toast('Call deleted')
+    } catch(e) { toast('Failed to delete: ' + e.message, '#DC2626') }
   }
 
   const filtered = calls.filter(c => {

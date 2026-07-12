@@ -483,7 +483,7 @@ export function AgentPerformance() {
         const cMap = {}
         ;(contactData || []).forEach(c => { cMap[c.agent_id] = (cMap[c.agent_id] || 0) + 1 })
         setContacts(cMap)
-      } catch(e) {}
+      } catch(e) { console.warn('Failed to load contact counts:', e.message) }
     } catch(e) {
       toast('Failed to load: ' + e.message, '#DC2626')
     } finally { setLoading(false) }

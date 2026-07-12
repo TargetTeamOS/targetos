@@ -599,7 +599,7 @@ export function TransactionCoordinator() {
         type:       'task',
         notes:      'Auto-created by TC Board',
         created_at: new Date().toISOString(),
-      }) } catch(e) {}
+      }) } catch(e) { console.warn('TC calendar sync failed:', e.message) }
     }
 
     // Email agent about calendar tasks (photography, inspections etc.)
