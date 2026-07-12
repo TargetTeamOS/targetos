@@ -503,6 +503,7 @@ export function TransactionCoordinator() {
   // Sync ANY field change to all linked boards
   async function syncToAllBoards(deal, updates) {
     const synced = []
+    let failed = false
     try {
       const r0 = await supabase.from('tc_deals').update({ ...updates, updated_at:new Date().toISOString() }).eq('id', deal.id)
       if (r0.error) throw r0.error
@@ -553,8 +554,9 @@ export function TransactionCoordinator() {
     } catch(e) {
       console.warn('sync error:', e.message)
       toast('Some changes may not have synced to other boards — please verify Listings/Production.', '#DC2626')
+      failed = true
     }
-    return synced
+    return { synced, failed }
   }
 
   async function createDeal() {
@@ -637,7 +639,7 @@ export function TransactionCoordinator() {
     const calCount = PHASE_TASKS[newPhase]?.filter(t=>t.cal).length || 0
     if (!window.confirm('Move "' + deal.addr + '" to ' + (pDef?.label||'') + '?\n\n• ' + taskCount + ' tasks will be auto-generated' + (calCount>0 ? '\n• ' + calCount + ' calendar events will be created' : '') + '\n• All linked boards will be updated automatically')) return
     try {
-      const synced = await syncToAllBoards(deal, { tc_phase:newPhase })
+      const { synced, failed } = await syncToAllBoards(deal, { tc_phase:newPhase })
       await generatePhaseTasks({ ...deal, tc_phase:newPhase }, newPhase)
 
       // Email agent
@@ -650,7 +652,7 @@ export function TransactionCoordinator() {
         }).catch(() => {})
       }
 
-      toast('✅ Phase → ' + (pDef?.label||'') + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
+      if (!failed) toast('✅ Phase → ' + (pDef?.label||'') + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
       loadAll()
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
@@ -744,8 +746,8 @@ export function TransactionCoordinator() {
     if (!dealForm.agent_id)    { toast('Agent required', '#DC2626'); return }
     setSaving(true)
     try {
-      const synced = await syncToAllBoards(selDeal, dealPayload(dealForm))
-      toast('✅ Deal saved' + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
+      const { synced, failed } = await syncToAllBoards(selDeal, dealPayload(dealForm))
+      if (!failed) toast('✅ Deal saved' + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
       setShowEditDeal(false); loadAll()
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
     finally { setSaving(false) }
