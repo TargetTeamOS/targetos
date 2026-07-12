@@ -238,7 +238,7 @@ contacts: {
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     const label = (result.first_name || '') + ' ' + (result.last_name || '')
     await logDiff(agentId, 'contacts', id, before, result, label.trim())
-    fireTrigger('contactUpdated', result, data)
+    fireTrigger('contactUpdated', result, before)
     // Reassignment to a new agent -- notify them, same as a brand new lead
     if (data.agent_id && before && data.agent_id !== before.agent_id) {
       notifyAgent(data.agent_id, 'newLead', { title: 'Lead reassigned to you', body: label.trim() + ' was reassigned to you', link: '/contacts/' + id + '/detail', type: 'lead' })
@@ -280,7 +280,7 @@ deals: {
     const result = await run(supabase.from('deals').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'deals', id, before, result, result.addr || 'Deal')
-    fireTrigger('dealUpdated', result, data)
+    fireTrigger('dealUpdated', result, before)
     return result
   },
   async delete(id, agentId) {
@@ -445,6 +445,7 @@ tasks: {
     const result = await run(supabase.from('tasks').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'tasks', id, before, result, result.title || 'Task')
+    fireTrigger('taskUpdated', result, before)
     return result
   },
   async complete(id, agentId) {
@@ -477,7 +478,7 @@ tasks: {
       } catch(e) { console.warn('recurring task creation:', e.message) }
     }
 
-    fireTrigger('taskUpdated', result, { status: 'done' })
+    fireTrigger('taskUpdated', result, { status: 'pending' })
     return result
   },
   async delete(id, agentId) {
