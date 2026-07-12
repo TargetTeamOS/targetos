@@ -335,9 +335,13 @@ async function executeAction(action, context, triggerData, agents) {
         + '<a href="https://app.targetreteam.com" style="background:#CC2200;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700">Open TargetOS</a>'
         + '<div style="margin-top:10px;font-size:11px;color:#94A3B8">Target Team · KW Valley Realty</div>'
         + '</div></div></body></html>'
+      const { data: { session } } = await supabase.auth.getSession()
       const emailRes = await fetch('/api/send-email', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
         body: JSON.stringify({ from: 'TargetOS <office@targetreteam.com>', to: [toEmail], subject: emailSubject, html, reply_to: 'yanky@targetreteam.com' }),
       })
       const emailResult = await emailRes.json()

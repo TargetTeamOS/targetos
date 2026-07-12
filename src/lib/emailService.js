@@ -3,16 +3,25 @@
 // All calls go through /api/send-email to avoid CORS issues
 // From: office@targetreteam.com
 // ═══════════════════════════════════════════════════════════════
+import { supabase } from './supabase'
 
 const FROM_EMAIL = 'TargetOS <office@targetreteam.com>'
 const REPLY_TO   = 'yanky@targetreteam.com'
 
 // ── CORE SEND FUNCTION ────────────────────────────────────────
+// CRITICAL: /api/send-email requires a valid agent session
+// (requireAnyAgent) -- every call here MUST include the current
+// session's access token, or every single email silently fails
+// with an auth error before it ever reaches Resend.
 export async function sendEmail({ to, subject, html, text, replyTo }) {
   try {
+    const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch('/api/send-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+      },
       body: JSON.stringify({
         from:     FROM_EMAIL,
         to:       Array.isArray(to) ? to : [to],
