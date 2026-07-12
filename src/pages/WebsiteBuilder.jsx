@@ -105,9 +105,11 @@ export function WebsiteBuilder() {
       // Check if exists
       const { data: existing } = await supabase.from('website_content').select('id').eq('section', section).maybeSingle()
       if (existing?.id) {
-        await supabase.from('website_content').update({ content: data, updated_at: new Date().toISOString() }).eq('id', existing.id)
+        const { error } = await supabase.from('website_content').update({ content: data, updated_at: new Date().toISOString() }).eq('id', existing.id)
+        if (error) throw error
       } else {
-        await supabase.from('website_content').insert({ section, content: data, updated_at: new Date().toISOString() })
+        const { error } = await supabase.from('website_content').insert({ section, content: data, updated_at: new Date().toISOString() })
+        if (error) throw error
       }
       setSaved(p => ({ ...p, [section]: true }))
       toast('✅ ' + section + ' saved')

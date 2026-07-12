@@ -93,9 +93,11 @@ export function Segments() {
     setSaving(true)
     try {
       if (form.id) {
-        await supabase.from('contact_segments').update({ ...form, updated_at:new Date().toISOString() }).eq('id', form.id)
+        const { error } = await supabase.from('contact_segments').update({ ...form, updated_at:new Date().toISOString() }).eq('id', form.id)
+        if (error) throw error
       } else {
-        await supabase.from('contact_segments').insert({ ...form, agent_id:agent?.id, created_at:new Date().toISOString(), updated_at:new Date().toISOString() })
+        const { error } = await supabase.from('contact_segments').insert({ ...form, agent_id:agent?.id, created_at:new Date().toISOString(), updated_at:new Date().toISOString() })
+        if (error) throw error
       }
       toast('✅ Segment saved')
       setShowAdd(false); setForm(BLANK_SEGMENT)

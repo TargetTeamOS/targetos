@@ -622,11 +622,13 @@ export function Listings() {
     try {
       if (selected) {
         const { showings_count: _sc, agents: _la, ...cleanListing } = form
-        await supabase.from('listings').update({ ...cleanListing, updated_at: new Date().toISOString() }).eq('id', selected.id)
+        const { error } = await supabase.from('listings').update({ ...cleanListing, updated_at: new Date().toISOString() }).eq('id', selected.id)
+        if (error) throw error
         toast('✅ Listing saved')
       } else {
         const { showings_count: _sc2, agents: _la2, id: _li2, ...cleanListingIns } = form
-        await supabase.from('listings').insert({ ...cleanListingIns, agent_id: form.agent_id||agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        const { error } = await supabase.from('listings').insert({ ...cleanListingIns, agent_id: form.agent_id||agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        if (error) throw error
         toast('✅ Listing added')
       }
       setSelected(null)

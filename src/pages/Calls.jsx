@@ -265,10 +265,12 @@ function ExtensionManager({ agents }) {
     try {
       if (form.id) {
         const { agents: _ea, ...cleanExt } = form
-        await supabase.from('phone_extensions').update(cleanExt).eq('id', form.id)
+        const { error } = await supabase.from('phone_extensions').update(cleanExt).eq('id', form.id)
+        if (error) throw error
       } else {
         const { id: _eid, agents: _ea2, ...cleanExtIns } = form
-        await supabase.from('phone_extensions').insert(cleanExtIns)
+        const { error } = await supabase.from('phone_extensions').insert(cleanExtIns)
+        if (error) throw error
       }
       await load()
       setEditExt(null)
@@ -587,10 +589,12 @@ function RoutingRules({ agents }) {
     try {
       if (form.id) {
         const { ...cleanRoute } = form
-        await supabase.from('phone_routing').update(cleanRoute).eq('id', form.id)
+        const { error } = await supabase.from('phone_routing').update(cleanRoute).eq('id', form.id)
+        if (error) throw error
       } else {
         const { id: _rid, ...cleanRouteIns } = form
-        await supabase.from('phone_routing').insert(cleanRouteIns)
+        const { error } = await supabase.from('phone_routing').insert(cleanRouteIns)
+        if (error) throw error
       }
       const { data } = await supabase.from('phone_routing').select('*').order('priority')
       setRules(data || [])

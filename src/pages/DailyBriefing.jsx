@@ -339,9 +339,11 @@ export function DailyBriefing() {
       }
 
       if (existingPref?.id) {
-        await supabase.from('briefing_prefs').update(prefData).eq('id', existingPref.id)
+        const { error } = await supabase.from('briefing_prefs').update(prefData).eq('id', existingPref.id)
+        if (error) throw error
       } else {
-        await supabase.from('briefing_prefs').insert(prefData)
+        const { error } = await supabase.from('briefing_prefs').insert(prefData)
+        if (error) throw error
       }
       toast('✅ Preferences saved')
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }

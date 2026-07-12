@@ -134,10 +134,12 @@ export function Email() {
     setSavingTpl(true)
     try {
       if (editTpl?.id) {
-        await supabase.from('email_templates').update({ ...tplForm, updated_at: new Date().toISOString() }).eq('id', editTpl.id)
+        const { error } = await supabase.from('email_templates').update({ ...tplForm, updated_at: new Date().toISOString() }).eq('id', editTpl.id)
+        if (error) throw error
         toast('✅ Template updated')
       } else {
-        await supabase.from('email_templates').insert({ ...tplForm, agent_id: agent?.id, created_at: new Date().toISOString() })
+        const { error } = await supabase.from('email_templates').insert({ ...tplForm, agent_id: agent?.id, created_at: new Date().toISOString() })
+        if (error) throw error
         toast('✅ Template saved')
       }
       setEditTpl(null)
