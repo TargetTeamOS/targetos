@@ -150,7 +150,7 @@ export function useTransactions(filters = {}) {
     ...base,
     transactions: base.data,
     add:    (data) => db.transactions.create(data),
-    update: (id, data) => db.transactions.update(id, data),
+    update: (id, data, actingAgentId) => db.transactions.update(id, data, actingAgentId),
     remove: (id) => db.transactions.delete(id),
   }
 }
@@ -175,7 +175,7 @@ export function useCalls(filters = {}) {
     ...base,
     calls: base.data,
     add:    (data) => db.calls.create(data),
-    update: (id, data) => db.calls.update(id, data),
+    update: (id, data, actingAgentId) => db.calls.update(id, data, actingAgentId),
     remove: (id) => db.calls.delete(id),
   }
 }
@@ -187,7 +187,7 @@ export function useCalendar(filters = {}) {
     ...base,
     events: base.data,
     add:    (data) => db.calendar.create(data),
-    update: (id, data) => db.calendar.update(id, data),
+    update: (id, data, actingAgentId) => db.calendar.update(id, data, actingAgentId),
     remove: (id) => db.calendar.delete(id),
   }
 }
@@ -211,7 +211,7 @@ export function useAnnouncements() {
     ...base,
     announcements: base.data,
     add:    (data) => db.announcements.create(data),
-    update: (id, data) => db.announcements.update(id, data),
+    update: (id, data, actingAgentId) => db.announcements.update(id, data, actingAgentId),
     remove: (id) => db.announcements.delete(id),
   }
 }

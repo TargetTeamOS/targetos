@@ -51,7 +51,7 @@ export function Announcements() {
     setSaving(true)
     try {
       if (selected) {
-        const updated = await update(selected.id, form)
+        const updated = await update(selected.id, form, agent?.id)
         setSelected(updated)
         toast('✅ Saved')
       } else {
