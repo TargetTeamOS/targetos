@@ -79,7 +79,7 @@ export function useAgents() {
   return {
     ...base,
     agents: base.data,
-    update: (id, data) => db.agents.update(id, data),
+    update: (id, data, actingAgentId) => db.agents.update(id, data, actingAgentId),
   }
 }
 
@@ -90,7 +90,7 @@ export function useContacts(filters = {}) {
     ...base,
     contacts: base.data,
     add:    (data) => db.contacts.create(data),
-    update: (id, data) => db.contacts.update(id, data),
+    update: (id, data, actingAgentId) => db.contacts.update(id, data, actingAgentId),
     remove: (id) => db.contacts.delete(id),
   }
 }
@@ -102,7 +102,7 @@ export function useDeals(filters = {}) {
     ...base,
     deals: base.data,
     add:    (data) => db.deals.create(data),
-    update: (id, data) => db.deals.update(id, data),
+    update: (id, data, actingAgentId) => db.deals.update(id, data, actingAgentId),
     remove: (id) => db.deals.delete(id),
   }
 }
@@ -114,7 +114,7 @@ export function useListings(filters = {}) {
     ...base,
     listings: base.data,
     add:    (data) => db.listings.create(data),
-    update: (id, data) => db.listings.update(id, data),
+    update: (id, data, actingAgentId) => db.listings.update(id, data, actingAgentId),
     remove: (id) => db.listings.delete(id),
   }
 }

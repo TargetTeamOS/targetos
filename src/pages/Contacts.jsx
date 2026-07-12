@@ -313,7 +313,7 @@ export function Contacts() {
     try {
       if (selected) {
         const payload = { ...form, agent_id: form.agent_id || selected.agent_id || agent?.id }
-        const updated = await update(selected.id, payload)
+        const updated = await update(selected.id, payload, agent?.id)
         setSelected(updated)
         toast('✅ Contact saved')
       } else {

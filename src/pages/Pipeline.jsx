@@ -26,7 +26,7 @@ export function Pipeline() {
 
   async function moveDeal(dealId, newStage) {
     try {
-      await update(dealId, { stage: newStage })
+      await update(dealId, { stage: newStage }, agent?.id)
       toast("✅ Moved to " + (newStage))
     } catch(e) {
       toast('Failed: ' + e.message, '#DC2626')
