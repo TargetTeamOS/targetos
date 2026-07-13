@@ -226,7 +226,8 @@ export function Tasks() {
   async function bulkComplete() {
     if (!selectedIds.length) return
     try {
-      await supabase.from('tasks').update({ status: 'done', updated_at: new Date().toISOString() }).in('id', selectedIds)
+      const { error } = await supabase.from('tasks').update({ status: 'done', updated_at: new Date().toISOString() }).in('id', selectedIds)
+      if (error) throw error
       setSelectedIds([])
       toast("✅ Marked " + (selectedIds.length) + " tasks as done")
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }

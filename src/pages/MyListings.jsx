@@ -343,7 +343,8 @@ export function MyListings() {
       const oldPrice = selListing.list_price
 
       // Update listing
-      await supabase.from('listings').update({ list_price: newPrice, updated_at: new Date().toISOString() }).eq('id', selListing.id)
+      const { error: priceErr } = await supabase.from('listings').update({ list_price: newPrice, updated_at: new Date().toISOString() }).eq('id', selListing.id)
+      if (priceErr) throw priceErr
 
       // Log price change to activity
       try {
@@ -380,7 +381,8 @@ export function MyListings() {
   async function toggleIvr(listing) {
     const next = !listing.ivr_enabled
     try {
-      await supabase.from('listings').update({ ivr_enabled: next, updated_at: new Date().toISOString() }).eq('id', listing.id)
+      const { error } = await supabase.from('listings').update({ ivr_enabled: next, updated_at: new Date().toISOString() }).eq('id', listing.id)
+      if (error) throw error
       setListings(p => p.map(l => l.id === listing.id ? { ...l, ivr_enabled: next } : l))
       logRecordChange({ tableName:'listings', recordId:listing.id, agentId:agent?.id, field:'ivr_enabled', oldValue:listing.ivr_enabled, newValue:next, recordName:listing.addr })
       toast(next ? '📞 Featured on phone system' : 'Removed from phone system')
@@ -389,7 +391,8 @@ export function MyListings() {
 
   async function updateStatus(listing, newStatus) {
     try {
-      await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listing.id)
+      const { error } = await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listing.id)
+      if (error) throw error
       setListings(p => p.map(l => l.id === listing.id ? { ...l, status: newStatus } : l))
       logRecordChange({ tableName:'listings', recordId:listing.id, agentId:agent?.id, field:'status', oldValue:listing.status, newValue:newStatus, recordName:listing.addr })
 

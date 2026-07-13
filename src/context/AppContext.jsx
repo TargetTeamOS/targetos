@@ -141,8 +141,15 @@ export function AppProvider({ children }) {
       if ('logoUrl'     in fields) payload.logo_url     = fields.logoUrl
       if ('orgName'     in fields) payload.org_name     = fields.orgName
       if ('orgSubtitle' in fields) payload.org_subtitle = fields.orgSubtitle
-      await supabase.from('org_settings').upsert(payload)
-    } catch(e) { console.warn('setOrgSettings failed:', e.message) }
+      const { error } = await supabase.from('org_settings').upsert(payload)
+      if (error) throw error
+    } catch(e) {
+      console.warn('setOrgSettings failed:', e.message)
+      // This looked like it worked locally (optimistic update above),
+      // but didn't actually save for the rest of the team -- surface
+      // this rather than letting it look silently successful.
+      showToast?.('Failed to save for the whole team: ' + e.message, '#DC2626')
+    }
   }, [])
 
   const setTheme          = useCallback((t) => dispatch({ type: 'SET_THEME', theme: t }), [])

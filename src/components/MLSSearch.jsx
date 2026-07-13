@@ -301,7 +301,7 @@ export function MLSSearch({ agents, onImported }) {
       const { data } = await supabase.from('contacts').select('id,first_name,last_name,phone').eq('agent_id', agent?.id).order('first_name').limit(200)
       setContacts(data || [])
       setLoadedCons(true)
-    } catch(e) {}
+    } catch(e) { console.warn('loadContacts failed:', e.message) }
   }
 
   async function search(pg = 0) {

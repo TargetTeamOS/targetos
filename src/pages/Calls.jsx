@@ -469,7 +469,8 @@ function ListingsSearchSettings() {
   async function save() {
     setSaving(true)
     try {
-      await supabase.from('listings_ivr_settings').upsert({ id: 1, ...settings, updated_at: new Date().toISOString() })
+      const { error } = await supabase.from('listings_ivr_settings').upsert({ id: 1, ...settings, updated_at: new Date().toISOString() })
+      if (error) throw error
       toast('✅ Listings search settings saved')
     } catch(e) {
       toast('Failed to save — run listings_ivr_settings.sql in Supabase first', '#DC2626')
@@ -862,16 +863,20 @@ function CallFlowEmbed() {
   }
 
   async function toggleActive(flow) {
-    await supabase.from('phone_ivr').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000')
-    if (!flow.is_active) {
-      await supabase.from('phone_ivr').update({ is_active: true }).eq('id', flow.id)
-      setActive(flow.id)
-      toast('✅ Flow activated — now handling inbound calls')
-    } else {
-      setActive(null)
-      toast('Flow deactivated')
-    }
-    load()
+    try {
+      const { error: e1 } = await supabase.from('phone_ivr').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000')
+      if (e1) throw e1
+      if (!flow.is_active) {
+        const { error: e2 } = await supabase.from('phone_ivr').update({ is_active: true }).eq('id', flow.id)
+        if (e2) throw e2
+        setActive(flow.id)
+        toast('✅ Flow activated — now handling inbound calls')
+      } else {
+        setActive(null)
+        toast('Flow deactivated')
+      }
+      load()
+    } catch(e) { toast('Failed to update active flow — inbound calls may be misconfigured, please verify: ' + e.message, '#DC2626') }
   }
 
   async function deleteFlow(id) {
