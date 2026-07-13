@@ -425,7 +425,7 @@ export function CallFlow() {
         if (error) throw error
       } else {
         const {data:ex}=await supabase.from('phone_ivr').select('id').limit(1).maybeSingle()
-        if (ex?.id) { await supabase.from('phone_ivr').update(payload).eq('id',ex.id); setSavedId(ex.id) }
+        if (ex?.id) { const {error}=await supabase.from('phone_ivr').update(payload).eq('id',ex.id); if (error) throw error; setSavedId(ex.id) }
         else { const {data:ins,error}=await supabase.from('phone_ivr').insert({...payload,voicemail_extension:'9',created_at:new Date().toISOString()}).select().single(); if (error) throw error; if (ins) setSavedId(ins.id) }
       }
       setDbStatus('ok'); setDirty(false); toast('✅ Flow saved — '+flowName)
