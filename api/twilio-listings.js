@@ -320,7 +320,7 @@ module.exports = async function handler(req, res) {
         try {
           const { data: agent } = await supabase.from('agents').select('phone, name').eq('id', chosen.agentId).maybeSingle()
           if (agent?.phone) {
-            await logCallEvent(getSupabase(), callData.callSid, 'routed_to_assigned_agent', 'Assigned agent: ' + (agent.name || chosen.agentId))
+            await logCallEvent(getSupabase(), callData.callSid, 'routed_to_assigned_agent', 'Assigned agent: ' + (agent.name || chosen.agentId) + ' — dialing ' + agent.phone)
             const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=listing&addr=' + encodeURIComponent(chosen.addr || '')
             return res.send(wrap(
               say('Connecting you about ' + (chosen.addr || 'that listing') + '. Please hold.', voice) +
