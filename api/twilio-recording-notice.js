@@ -27,7 +27,9 @@ module.exports = function handler(req, res) {
   } else if (qp.context === 'directory') {
     contextMsg = 'Incoming call. The caller was looking to reach you specifically from our directory. '
   } else if (qp.context === 'roundrobin' && qp.newContact === '1') {
-    contextMsg = 'Incoming call from a new lead. '
+    contextMsg = 'Incoming call from a new lead. This is a general inquiry, not directed at anyone specifically. '
+  } else if (qp.context === 'roundrobin') {
+    contextMsg = 'Incoming call. This is a general inquiry, not directed at anyone specifically. '
   }
 
   res.send(

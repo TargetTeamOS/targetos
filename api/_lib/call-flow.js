@@ -6,7 +6,7 @@
 const {
   wrap, say, pause, play, voicemailTwiml, hangup, redirect, esc,
   normalizePhone, isBusinessHours, HOLD_MUSIC, BASE_URL, DEFAULT_VOICE,
-  loadFlow,
+  loadFlow, logCallEvent, getSupabase,
 } = require('./phone')
 const { buildDefaultNodes, buildDefaultEdges } = require('./default-flow')
 
@@ -282,6 +282,8 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 
     if (agentsData.length === 0) {
       console.warn('[walkFlow] roundrobin: no phones for agent_ids:', ids)
+      await logCallEvent(supabase, callData.callSid, 'voicemail_fallback',
+        'Round-robin configured with ' + ids.length + ' agent(s) [' + ids.join(',') + '], but none have a usable phone number on file')
       const rest = await follow('noanswer')
       if (rest) return rest
       return voicemailTwiml(
@@ -321,6 +323,7 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
     const TOTAL_SECONDS     = cfg.total_seconds || 60
     const maxAgents = Math.max(1, Math.floor(TOTAL_SECONDS / PER_AGENT_SECONDS))
     const huntList  = ordered.slice(0, maxAgents)
+    await logCallEvent(supabase, callData.callSid, 'roundrobin_dialing', 'Ringing ' + huntList.length + ' agent(s) in order: ' + huntList.map(a=>a.id).join(', '))
     const isNewLead = !callData.contact?.agent_id
 
     let twiml = huntList.map(a => {

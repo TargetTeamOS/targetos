@@ -9,7 +9,7 @@
 'use strict'
 const querystring = require('querystring')
 
-const { getSupabase, say, wrap, esc, BASE_URL, logTwilioValidation } = require('./_lib/phone')
+const { getSupabase, say, wrap, esc, BASE_URL, logTwilioValidation, logCallEvent } = require('./_lib/phone')
 const { walkFlow, ensureFlow } = require('./_lib/call-flow')
 
 // Connects the caller directly to the round-robin agent pool, by
@@ -27,11 +27,17 @@ async function connectToAnyAgent(res, voice, callData, prefixMessage) {
     const { nodes, edges } = await ensureFlow(sb)
     const rrNode = nodes.find(n => n.type === 'roundrobin')
     if (rrNode) {
+      const agentIds = rrNode.config?.agent_ids || []
+      await logCallEvent(sb, callData.callSid, 'roundrobin_dial_attempt', agentIds.length + ' agent(s) configured in round-robin pool')
       const twiml = await walkFlow(nodes, edges, rrNode.id, callData, sb, 0)
       return res.send(wrap(prefix + twiml))
     }
     console.warn('[twilio-listings] no roundrobin node in saved flow, falling back to voicemail')
-  } catch(e) { console.warn('[twilio-listings] connectToAnyAgent failed:', e.message) }
+    await logCallEvent(sb, callData.callSid, 'voicemail_fallback', 'Saved call flow has no round-robin node at all')
+  } catch(e) {
+    console.warn('[twilio-listings] connectToAnyAgent failed:', e.message)
+    await logCallEvent(sb, callData.callSid, 'voicemail_fallback', 'Error: ' + e.message)
+  }
   // Genuine fallback if the flow has no roundrobin node at all (not
   // the everyday case, but must never leave the caller with nothing)
   return res.send(wrap(
@@ -195,6 +201,7 @@ module.exports = async function handler(req, res) {
   // ── METHOD CHOICE ─────────────────────────────────────────────────
   if (step === 'method') {
     if (digits === '1') {
+      await logCallEvent(getSupabase(), callData.callSid, 'method_selected', 'Search by area')
       // Build the area list from real addr text, matched against
       // admin-customizable local areas (city column is mostly NULL
       // in real data).
@@ -220,6 +227,7 @@ module.exports = async function handler(req, res) {
       ))
     }
     if (digits === '2') {
+      await logCallEvent(getSupabase(), callData.callSid, 'method_selected', 'Search by price')
       const settings = await loadListingsSettings()
       const nextUrl = buildNextUrl('price', base)
       const optionsText = Object.entries(settings.priceRanges).map(([k, r]) => 'Press ' + k + ' for ' + r.label + '.').join(' ')
@@ -230,6 +238,7 @@ module.exports = async function handler(req, res) {
       ))
     }
     if (digits === '3') {
+      await logCallEvent(getSupabase(), callData.callSid, 'method_selected', 'Search by bedroom count')
       const settings = await loadListingsSettings()
       const nextUrl = buildNextUrl('beds', base)
       const bedOptionsText = Object.entries(settings.bedMap).map(([k, label]) => k + ' for ' + label).join('. ')
@@ -258,6 +267,7 @@ module.exports = async function handler(req, res) {
         '</Gather>' + say('Goodbye.', voice)
       ))
     }
+    await logCallEvent(getSupabase(), callData.callSid, 'area_selected', city)
     return runSearch(res, voice, maxRes, base, q => q.ilike('addr', '%' + city + '%'), 'in ' + city)
   }
 
@@ -272,6 +282,7 @@ module.exports = async function handler(req, res) {
         '</Gather>' + say('Goodbye.', voice)
       ))
     }
+    await logCallEvent(getSupabase(), callData.callSid, 'price_selected', range.label)
     return runSearch(res, voice, maxRes, base, q => q.gte('list_price', range.min).lte('list_price', range.max), range.label)
   }
 
@@ -286,6 +297,7 @@ module.exports = async function handler(req, res) {
         '</Gather>' + say('Goodbye.', voice)
       ))
     }
+    await logCallEvent(getSupabase(), callData.callSid, 'beds_selected', beds + ' bedrooms')
     const filterFn = beds === '5+' ? (q => q.gte('beds', 5)) : (q => q.eq('beds', parseInt(beds)))
     return runSearch(res, voice, maxRes, base, filterFn, 'with ' + beds + ' bedrooms')
   }
@@ -302,11 +314,13 @@ module.exports = async function handler(req, res) {
     // specific listing's agent, with a whisper telling them what the
     // call is about before they pick up.
     if (chosen) {
+      await logCallEvent(getSupabase(), callData.callSid, 'listing_selected', chosen.addr || '(address unknown)')
       if (chosen.agentId) {
         const supabase = getSupabase()
         try {
           const { data: agent } = await supabase.from('agents').select('phone, name').eq('id', chosen.agentId).maybeSingle()
           if (agent?.phone) {
+            await logCallEvent(getSupabase(), callData.callSid, 'routed_to_assigned_agent', 'Assigned agent: ' + (agent.name || chosen.agentId))
             const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=listing&addr=' + encodeURIComponent(chosen.addr || '')
             return res.send(wrap(
               say('Connecting you about ' + (chosen.addr || 'that listing') + '. Please hold.', voice) +
@@ -317,13 +331,20 @@ module.exports = async function handler(req, res) {
               '<Record maxLength="120" transcribe="true" transcribeCallback="' + esc(BASE_URL + '/api/twilio-voicemail') + '" />'
             ))
           }
-        } catch(e) { console.warn('[twilio-listings] agent lookup failed:', e.message) }
+          await logCallEvent(getSupabase(), callData.callSid, 'assigned_agent_lookup_failed', 'Agent id ' + chosen.agentId + ' has no phone number on file')
+        } catch(e) {
+          console.warn('[twilio-listings] agent lookup failed:', e.message)
+          await logCallEvent(getSupabase(), callData.callSid, 'assigned_agent_lookup_failed', e.message)
+        }
+      } else {
+        await logCallEvent(getSupabase(), callData.callSid, 'no_agent_assigned', 'Listing has no agent_id set: ' + (chosen.addr || ''))
       }
       // Reaches here if: no agentId on this listing at all, the agent
       // lookup failed, or that agent has no phone on file. Say so
       // explicitly instead of silently falling through to the general
       // agent-connect path below, which felt like an unexplained loop
       // back to the start of the call.
+      await logCallEvent(getSupabase(), callData.callSid, 'routed_to_roundrobin', 'Falling back to round-robin pool')
       return connectToAnyAgent(res, voice, callData,
         'That listing does not have a specific agent assigned right now. Connecting you with our team instead. Please hold.')
     }

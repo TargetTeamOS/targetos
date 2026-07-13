@@ -371,6 +371,20 @@ async function transcribeAudio(recordingUrl) {
   }
 }
 
+// Logs a step/selection during an inbound call -- e.g. "caller pressed
+// 2 for price search" or "routed to assigned agent: John Smith".
+// Fire-and-forget: never blocks or crashes the call itself if logging
+// fails, since a missing log entry is far less bad than a dropped call.
+async function logCallEvent(supabase, callSid, step, detail, callId) {
+  if (!supabase || !callSid) return
+  try {
+    await supabase.from('call_events').insert({
+      call_sid: callSid, call_id: callId || null, step, detail: detail || null,
+      created_at: new Date().toISOString(),
+    })
+  } catch(e) { console.warn('[phone] logCallEvent failed:', e.message) }
+}
+
 module.exports = {
   // TwiML
   wrap, say, pause, play, vmRecord, voicemailTwiml, hangup, redirect, esc,
@@ -383,7 +397,7 @@ module.exports = {
   // Phone
   normalizePhone, formatPhone, phoneVariants,
   // Business logic
-  isBusinessHours, loadFlow, lookupContact, transcribeAudio,
+  isBusinessHours, loadFlow, lookupContact, transcribeAudio, logCallEvent,
   // Constants
   BASE_URL, TWILIO_NUMBER, DEFAULT_VOICE, HOLD_MUSIC,
 }
