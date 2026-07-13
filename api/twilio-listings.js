@@ -324,7 +324,7 @@ module.exports = async function handler(req, res) {
             const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=listing&addr=' + encodeURIComponent(chosen.addr || '')
             return res.send(wrap(
               say('Connecting you about ' + (chosen.addr || 'that listing') + '. Please hold.', voice) +
-              '<Dial callerId="+18453271778" record="record-from-answer" timeout="20">' +
+              '<Dial callerId="' + esc(callData.from || callData.to) + '" record="record-from-answer" timeout="20">' +
                 '<Number url="' + esc(whisperUrl) + '">' + esc(agent.phone) + '</Number>' +
               '</Dial>' +
               say('That agent is unavailable. Please leave a message after the tone.', voice) +

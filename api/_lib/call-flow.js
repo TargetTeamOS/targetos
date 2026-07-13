@@ -68,6 +68,14 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
   const cfg   = node.config || {}
   const voice = cfg.voice   || DEFAULT_VOICE
   const to    = esc(callData.to || '')
+  // The number an agent's phone should show as caller ID -- must be
+  // the ACTUAL CALLER's number, not the office's own line. Every
+  // dial path in this file previously used `to` (the office's own
+  // number that was dialed) here, meaning every single call -- no
+  // matter which agent, listing, or routing path -- showed the SAME
+  // office number to whichever agent's phone rang, instead of who
+  // was actually calling.
+  const from  = esc(callData.from || '') || to
 
   // Helper: find next node via edge port and continue walking
   async function follow(port) {
@@ -188,7 +196,7 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 
     let twiml = ''
     if (phone) {
-      twiml += buildDial(to, phone, cfg.timeout || 30)
+      twiml += buildDial(from, phone, cfg.timeout || 30)
     }
 
     // notfound port fires when: no agent assigned, agent has no phone,
@@ -218,7 +226,7 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
       } catch(e) { console.warn('[walkFlow] dial lookup:', e.message) }
     }
 
-    let twiml = target ? buildDial(to, null, cfg.timeout || 30, target) : ''
+    let twiml = target ? buildDial(from, null, cfg.timeout || 30, target) : ''
     const rest = await follow('noanswer')
     if (rest) return twiml + rest
     return twiml + voicemailTwiml('That person is unavailable. Please leave a message.', voice)
@@ -251,7 +259,7 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
     }
 
     const numbers = phones.map(p => '<Number>' + esc(p) + '</Number>').join('')
-    let twiml = buildDial(to, null, cfg.timeout || 30, numbers)
+    let twiml = buildDial(from, null, cfg.timeout || 30, numbers)
     const rest = await follow('noanswer')
     if (rest) return twiml + rest
     return twiml + voicemailTwiml(
@@ -336,7 +344,7 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
       // is a new/unassigned lead, per business requirement.
       const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=roundrobin' + (isNewLead ? '&newContact=1' : '')
       return (
-        '<Dial callerId="' + to + '" timeout="' + PER_AGENT_SECONDS + '" record="record-from-answer"' +
+        '<Dial callerId="' + from + '" timeout="' + PER_AGENT_SECONDS + '" record="record-from-answer"' +
         ' recordingStatusCallback="' + BASE_URL + '/api/twilio-status">' +
         '<Number statusCallback="' + esc(statusUrl) + '" statusCallbackMethod="POST"' +
         ' statusCallbackEvent="answered" url="' + esc(whisperUrl) + '">' + esc(phone) + '</Number>' +
