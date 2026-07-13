@@ -6,7 +6,50 @@
 const {
   wrap, say, pause, play, voicemailTwiml, hangup, redirect, esc,
   normalizePhone, isBusinessHours, HOLD_MUSIC, BASE_URL, DEFAULT_VOICE,
+  loadFlow,
 } = require('./phone')
+const { buildDefaultNodes, buildDefaultEdges } = require('./default-flow')
+
+// Loads the saved call flow, auto-creating and saving the default flow
+// if none exists yet. Moved here (shared) rather than living only in
+// twilio-inbound.js, so any endpoint that needs to walk the flow --
+// not just the main inbound handler -- can reuse the exact same logic
+// instead of restarting the whole flow from its very first node.
+async function ensureFlow(sb) {
+  let { nodes, edges } = await loadFlow(sb)
+  if (nodes.length > 0) return { nodes, edges }
+
+  console.info('[call-flow] No flow found — auto-saving default Target Team flow')
+  try {
+    const { data: agents } = await sb.from('agents')
+      .select('id,phone').eq('active', true).order('created_at', { ascending: true })
+    const agentIds = (agents || []).filter(a => a.phone).map(a => a.id)
+
+    const nodesWithAgents = buildDefaultNodes(agentIds)
+    const defaultEdges = buildDefaultEdges()
+
+    const payload = {
+      name:       'Target Team — Main Call Flow',
+      flow_nodes: JSON.stringify(nodesWithAgents),
+      flow_edges: JSON.stringify(defaultEdges),
+      is_active:  true,
+      updated_at: new Date().toISOString(),
+    }
+
+    const { data: existing } = await sb.from('phone_ivr').select('id').limit(1).maybeSingle()
+    if (existing?.id) {
+      await sb.from('phone_ivr').update(payload).eq('id', existing.id)
+    } else {
+      await sb.from('phone_ivr').insert({ ...payload, voicemail_extension: '9', created_at: new Date().toISOString() })
+    }
+
+    console.info('[call-flow] Default flow saved with', agentIds.length, 'agents in roundrobin')
+    return { nodes: nodesWithAgents, edges: defaultEdges }
+  } catch(e) {
+    console.error('[call-flow] ensureFlow save failed:', e.message)
+    return { nodes: buildDefaultNodes([]), edges: buildDefaultEdges() }
+  }
+}
 
 async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
   // Safety: prevent infinite loops
@@ -424,4 +467,4 @@ function buildDial(callerId, singlePhone, timeout, innerTwiml) {
 
 // Backward compat exports
 const vmXml = voicemailTwiml
-module.exports = { walkFlow, wrap, say, vmXml, voicemailTwiml }
+module.exports = { walkFlow, ensureFlow, wrap, say, vmXml, voicemailTwiml }

@@ -10,6 +10,36 @@
 const querystring = require('querystring')
 
 const { getSupabase, say, wrap, esc, BASE_URL, logTwilioValidation } = require('./_lib/phone')
+const { walkFlow, ensureFlow } = require('./_lib/call-flow')
+
+// Connects the caller directly to the round-robin agent pool, by
+// jumping straight to the roundrobin node in the saved flow -- rather
+// than redirecting to /api/twilio-inbound, which restarts the ENTIRE
+// call flow from its very first node (the main greeting/menu). That
+// redirect said "Connecting you with our team" but the caller would
+// just hear the whole intro again, never actually reaching an agent --
+// which is exactly what felt like "looping back to the beginning."
+async function connectToAnyAgent(res, voice, callData, prefixMessage) {
+  const sb = getSupabase()
+  if (!sb) return res.send(wrap(say('Connection error. Please call back.', voice)))
+  const prefix = prefixMessage ? say(prefixMessage, voice) : ''
+  try {
+    const { nodes, edges } = await ensureFlow(sb)
+    const rrNode = nodes.find(n => n.type === 'roundrobin')
+    if (rrNode) {
+      const twiml = await walkFlow(nodes, edges, rrNode.id, callData, sb, 0)
+      return res.send(wrap(prefix + twiml))
+    }
+    console.warn('[twilio-listings] no roundrobin node in saved flow, falling back to voicemail')
+  } catch(e) { console.warn('[twilio-listings] connectToAnyAgent failed:', e.message) }
+  // Genuine fallback if the flow has no roundrobin node at all (not
+  // the everyday case, but must never leave the caller with nothing)
+  return res.send(wrap(
+    prefix +
+    say('Please leave a message after the tone.', voice) +
+    '<Record maxLength="120" transcribe="true" transcribeCallback="' + esc(BASE_URL + '/api/twilio-voicemail') + '" />'
+  ))
+}
 
 const BASE = BASE_URL + '/api/twilio-listings'
 
@@ -146,6 +176,7 @@ module.exports = async function handler(req, res) {
   const voice  = qp.voice || 'Polly.Joanna'
   const maxRes = parseInt(qp.max||'5')||5
   const base   = { voice, max: maxRes }
+  const callData = { from: body.From||'', to: body.To||'', callSid: body.CallSid||'', callId: null, contact: null, isRepeat: false }
 
   // ── INTRO — choose ONE search method ─────────────────────────────
   if (step === 'intro') {
@@ -178,10 +209,7 @@ module.exports = async function handler(req, res) {
       ).slice(0, 9)
 
       if (!cities.length) {
-        return res.send(wrap(
-          say('No areas are currently available to search. Connecting you to an agent. Please hold.', voice) +
-          '<Redirect method="POST">' + esc(BASE_URL + '/api/twilio-inbound') + '</Redirect>'
-        ))
+        return connectToAnyAgent(res, voice, callData, 'No areas are currently available to search. Connecting you to an agent. Please hold.')
       }
       const nextUrl = buildNextUrl('area', { ...base, cities: cities.join('|') })
       const optionsText = cities.map((c, i) => 'Press ' + (i + 1) + ' for ' + c + '.').join(' ')
@@ -296,17 +324,15 @@ module.exports = async function handler(req, res) {
       // explicitly instead of silently falling through to the general
       // agent-connect path below, which felt like an unexplained loop
       // back to the start of the call.
-      return res.send(wrap(
-        say('That listing does not have a specific agent assigned right now. Connecting you with our team instead. Please hold.', voice) +
-        '<Redirect method="POST">' + esc(BASE_URL + '/api/twilio-inbound') + '</Redirect>'
-      ))
+      return connectToAnyAgent(res, voice, callData,
+        'That listing does not have a specific agent assigned right now. Connecting you with our team instead. Please hold.')
     }
 
     if (digits === '6') return res.send(wrap('<Redirect method="GET">' + esc(buildNextUrl('intro', base)) + '</Redirect>'))
     if (digits === '9') return res.send(wrap(say('Please leave a message after the tone.', voice) + '<Record maxLength="120" transcribe="true" transcribeCallback="' + esc(BASE_URL + '/api/twilio-voicemail') + '" />'))
     if (digits === '*') return res.send(wrap(say('Thank you for calling Target Team. Goodbye.', voice) + '<Hangup />'))
     // Press 7 or anything else → connect to any agent
-    return res.send(wrap(say('Connecting you to an agent. Please hold.', voice) + '<Redirect method="POST">' + esc(BASE_URL + '/api/twilio-inbound') + '</Redirect>'))
+    return connectToAnyAgent(res, voice, callData, 'Connecting you to an agent. Please hold.')
   }
 
   return res.send(wrap(say('Thank you for calling. Goodbye.', voice) + '<Hangup />'))

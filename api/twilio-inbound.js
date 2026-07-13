@@ -4,55 +4,10 @@
 
 const {
   wrap, say, voicemailTwiml, getSupabase,
-  parseBody, formatPhone, loadFlow, lookupContact,
+  parseBody, formatPhone, lookupContact,
   logTwilioValidation,
 } = require('./_lib/phone')
-const { walkFlow } = require('./_lib/call-flow')
-const { buildDefaultNodes, buildDefaultEdges } = require('./_lib/default-flow')
-
-async function ensureFlow(sb) {
-  let { nodes, edges } = await loadFlow(sb)
-  if (nodes.length > 0) return { nodes, edges }
-
-  // No flow saved — auto-save the default now
-  console.info('[inbound] No flow found — auto-saving default Target Team flow')
-  try {
-    // Get agent IDs to populate ringall
-    const { data: agents } = await sb.from('agents')
-      .select('id,phone').eq('active', true).order('created_at', { ascending: true })
-    const agentIds = (agents || []).filter(a => a.phone).map(a => a.id)
-
-    // Inject real agent IDs into roundrobin node
-    const nodesWithAgents = buildDefaultNodes(agentIds)
-    const edges = buildDefaultEdges()
-
-    const payload = {
-      name:       'Target Team — Main Call Flow',
-      flow_nodes: JSON.stringify(nodesWithAgents),
-      flow_edges: JSON.stringify(edges),
-      is_active:  true,
-      updated_at: new Date().toISOString(),
-    }
-
-    // Check if a row exists
-    const { data: existing } = await sb.from('phone_ivr')
-      .select('id').limit(1).maybeSingle()
-
-    if (existing?.id) {
-      await sb.from('phone_ivr').update(payload).eq('id', existing.id)
-    } else {
-      await sb.from('phone_ivr').insert({
-        ...payload, voicemail_extension: '9', created_at: new Date().toISOString()
-      })
-    }
-
-    console.info('[inbound] Default flow saved with', agentIds.length, 'agents in roundrobin')
-    return { nodes: nodesWithAgents, edges: edges }
-  } catch(e) {
-    console.error('[inbound] ensureFlow save failed:', e.message)
-    return { nodes: buildDefaultNodes([]), edges: buildDefaultEdges() }
-  }
-}
+const { walkFlow, ensureFlow } = require('./_lib/call-flow')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
