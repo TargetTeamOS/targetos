@@ -354,7 +354,7 @@ export function Contacts() {
         
         // Create task to fill in missing info
         try {
-          await supabase.from('tasks').insert({
+          const { error: taskErr } = await supabase.from('tasks').insert({
             agent_id:   assignedAgentId,
             created_by: agent?.id,
             contact_id: created.id,
@@ -365,6 +365,7 @@ export function Contacts() {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
+          if (taskErr) throw taskErr
         } catch(e) { console.warn('Task create failed:', e.message) }
 
         // Send email to assigned agent

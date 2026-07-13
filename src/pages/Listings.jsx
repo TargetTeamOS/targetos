@@ -601,19 +601,20 @@ export function Listings() {
       // Name → agent_id map
       const NAME_MAP = { 'Eli Hoffman':'Eli Hoffman', 'Mendy Jankovits':'Mendy Jankovits', 'Isaac Leibowitz':'Isaac Leibowitz', 'Avraham Weinberger':'Avraham Weinberger', 'Joel Rottenstein':'Joel Rottenstein', 'Lazer Farkas':'Lazer Farkas' }
 
-      let inserted = 0, skipped = 0
+      let inserted = 0, skipped = 0, failed = 0
       for (const ml of mondayListings) {
         const { data: existing } = await supabase.from('listings').select('id').ilike('addr', ml.addr.slice(0,20)+'%').maybeSingle()
         if (existing) { skipped++; continue }
         const ag = agents.find(a => a.name.includes(ml.agent_name?.split(' ')[0] || '') || ml.agent_name?.includes(a.name.split(' ')[0] || ''))
-        await supabase.from('listings').insert({
+        const { error } = await supabase.from('listings').insert({
           ...ml, agent_id: ag?.id || null,
           created_at: new Date().toISOString(), updated_at: new Date().toISOString()
         })
+        if (error) { failed++; console.warn('Sync insert failed for', ml.addr, error.message); continue }
         inserted++
       }
       await load()
-      toast(`✅ Synced — ${inserted} new, ${skipped} already existed`)
+      toast(`✅ Synced — ${inserted} new, ${skipped} already existed` + (failed ? `, ${failed} failed` : ''))
     } catch(e) { toast('Sync failed: ' + e.message, '#DC2626') }
     finally { setSyncing(false) }
   }
