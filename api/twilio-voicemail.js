@@ -1,6 +1,6 @@
 'use strict'
 const querystring = require('querystring')
-const { getSupabase, logTwilioValidation, transcribeAudio } = require('./_lib/phone')
+const { getSupabase, checkTwilioSignature, transcribeAudio } = require('./_lib/phone')
 const { notifyAgent } = require('./_lib/notify')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 module.exports = async function handler(req, res) {
@@ -8,7 +8,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).json({ ok: true })
   let body = {}
   try { body = querystring.parse(await getRawBody(req)) } catch(e) { body = req.body || {} }
-  logTwilioValidation(req, body, 'twilio-voicemail')
+  if (!checkTwilioSignature(req, res, body, 'twilio-voicemail')) return
   const { CallSid, RecordingUrl, RecordingDuration, From } = body
   try {
     const supabase = getSupabase()

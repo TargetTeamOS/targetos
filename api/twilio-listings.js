@@ -9,7 +9,7 @@
 'use strict'
 const querystring = require('querystring')
 
-const { getSupabase, say, wrap, esc, BASE_URL, logTwilioValidation, logCallEvent } = require('./_lib/phone')
+const { getSupabase, say, wrap, esc, BASE_URL, checkTwilioSignature, logCallEvent } = require('./_lib/phone')
 const { walkFlow, ensureFlow } = require('./_lib/call-flow')
 
 // Connects the caller directly to the round-robin agent pool, by
@@ -173,7 +173,7 @@ module.exports = async function handler(req, res) {
     const raw = await new Promise((ok,err)=>{ let d=''; req.on('data',c=>d+=c); req.on('end',()=>ok(d)); req.on('error',err) })
     body = querystring.parse(raw)
   } catch(e) { body = req.body||{} }
-  logTwilioValidation(req, body, 'twilio-listings')
+  if (!checkTwilioSignature(req, res, body, 'twilio-listings')) return
 
   const rawUrl = req.url||''
   const qp     = querystring.parse(rawUrl.includes('?') ? rawUrl.split('?')[1] : '')

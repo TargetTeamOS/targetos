@@ -147,7 +147,7 @@ function AppShell() {
           <Route path="/offers/:id"          element={<Offers />} />
           <Route path="/gifts"               element={<Gifts />} />
           <Route path="/gifts/:id"           element={<Gifts />} />
-          <Route path="/call-flow" element={<CallFlow />} />
+          <Route path="/call-flow" element={<RequirePermission perm="calls.flow_edit"><CallFlow /></RequirePermission>} />
           <Route path="/calls"               element={<Calls />} />
           <Route path="/calls/:id"           element={<Calls />} />
           <Route path="/openhouse"           element={<OpenHouse />} />
@@ -194,6 +194,16 @@ function AppShell() {
       <LocationAwareTools />
     </>
   )
+}
+
+// ── PERMISSION ROUTE GUARD ───────────────────────────────────────
+// Wraps a route element; redirects home if the current agent's role
+// (or an admin override from Admin → Permissions) denies the permission.
+function RequirePermission({ perm, children }) {
+  const { can, loading } = useAuth()
+  if (loading) return null
+  if (!can(perm)) return <Navigate to="/" replace />
+  return children
 }
 
 // ── COMMAND PALETTE ──────────────────────────────────────────────

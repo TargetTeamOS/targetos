@@ -7,13 +7,25 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
+import { buildPermissionChecker, loadPermissionOverrides } from '../lib/permissions'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user,    setUser]    = useState(null)
-  const [agent,   setAgent]   = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [user,      setUser]      = useState(null)
+  const [agent,     setAgent]     = useState(null)
+  const [loading,   setLoading]   = useState(true)
+  const [overrides, setOverrides] = useState({})
+
+  // Load admin-configured permission overrides once the agent is known.
+  // Until they load, the checker falls back to role defaults, so there's
+  // never a window where permissions are simply "off".
+  useEffect(() => {
+    if (!agent) return
+    let alive = true
+    loadPermissionOverrides().then(o => { if (alive) setOverrides(o || {}) }).catch(() => {})
+    return () => { alive = false }
+  }, [agent?.id])
 
   async function loadAgent(supabaseUser) {
     if (!supabaseUser) { setAgent(null); return }
@@ -62,8 +74,19 @@ export function AuthProvider({ children }) {
   const isSecretary = agent?.role === 'secretary'
   const canManage   = isAdmin || isSecretary
 
+  // Permission checker: can('contacts.delete') → boolean.
+  // No agent loaded yet → everything is denied.
+  const can = React.useMemo(() => {
+    if (!agent?.role) return () => false
+    return buildPermissionChecker(agent.role, overrides)
+  }, [agent?.role, overrides])
+
+  async function refreshPermissions() {
+    try { setOverrides(await loadPermissionOverrides() || {}) } catch {}
+  }
+
   return (
-    <AuthContext.Provider value={{ user, agent, loading, signIn, signOut, refreshAgent, isAdmin, isSecretary, canManage }}>
+    <AuthContext.Provider value={{ user, agent, loading, signIn, signOut, refreshAgent, isAdmin, isSecretary, canManage, can, refreshPermissions }}>
       {children}
     </AuthContext.Provider>
   )

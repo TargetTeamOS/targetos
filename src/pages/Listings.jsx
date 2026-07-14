@@ -514,7 +514,7 @@ function RoutePlanner({ listings, onClose }) {
 export function Listings() {
   const navigate    = useNavigate()
   const { id: urlId } = useParams()
-  const { agent, isAdmin, canManage } = useAuth()
+  const { agent, isAdmin, canManage, can } = useAuth()
   usePageView('listings')
   const { toast }   = useApp()
   const { agents }  = useAgents()
@@ -638,6 +638,7 @@ export function Listings() {
   }
 
   async function deleteListing() {
+    if (!can('listings.delete')) { toast("You don't have permission to delete listings", '#DC2626'); return }
     try { await supabase.from('listings').delete().eq('id', selected.id) }
     catch(e) { toast('Delete failed: ' + e.message, '#DC2626'); setConfirmDel(false); return }
     setSelected(null)

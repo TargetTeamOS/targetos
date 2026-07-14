@@ -4,7 +4,7 @@
 'use strict'
 const querystring = require('querystring')
 
-const { getSupabase, say, wrap, esc, BASE_URL, logTwilioValidation } = require('./_lib/phone')
+const { getSupabase, say, wrap, esc, BASE_URL, checkTwilioSignature } = require('./_lib/phone')
 
 const BASE = BASE_URL + '/api/twilio-directory'
 
@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
     const raw = await new Promise((ok,err) => { let d=''; req.on('data',c=>d+=c); req.on('end',()=>ok(d)); req.on('error',err) })
     body = querystring.parse(raw)
   } catch(e) { body = req.body || {} }
-  logTwilioValidation(req, body, 'twilio-directory')
+  if (!checkTwilioSignature(req, res, body, 'twilio-directory')) return
 
   const rawUrl = req.url || ''
   const qp     = querystring.parse(rawUrl.includes('?') ? rawUrl.split('?')[1] : '')

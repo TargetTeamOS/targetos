@@ -19,6 +19,7 @@ import { useApp }     from '../context/AppContext'
 import { supabase }   from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { phaseToStage, phaseToStatus } from '../lib/tcPhaseMap'
+import TCSyncHealth from '../components/TCSyncHealth'
 import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 
@@ -806,6 +807,7 @@ export function TransactionCoordinator() {
         actions={
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             <LastVisited page="tc" />
+            <TCSyncHealth agents={agents} onFixed={loadAll} />
             <Btn variant="secondary" onClick={() => navigate('/calendar')}>📅 Calendar</Btn>
             <Btn onClick={() => { setDealForm({...DEAL_BLANK}); setShowAddDeal(true) }}>+ New Deal</Btn>
           </div>

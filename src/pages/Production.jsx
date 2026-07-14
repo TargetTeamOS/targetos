@@ -284,7 +284,7 @@ function InlinePicker({ value, options, onSave, color, renderValue }) {
 // everything, matching this app's existing role model elsewhere.
 function ClientLinkCell({ deal, width }) {
   const navigate = useNavigate()
-  const { agent: me, isAdmin, canManage } = useAuth()
+  const { agent: me, isAdmin, canManage, can } = useAuth()
   const [showLinker, setShowLinker] = React.useState(false)
   const [localContacts, setLocalContacts] = React.useState(deal._contacts || [])
   const linkerRef = React.useRef(null)
@@ -363,7 +363,7 @@ function ClientLinkCell({ deal, width }) {
 // ── MONDAY.COM CELL ──────────────────────────────────────────────
 function MondayCell({ col, deal, onQuickUpdate, agents }) {
   const navigate = useNavigate()
-  const { agent: me, isAdmin, canManage } = useAuth()
+  const { agent: me, isAdmin, canManage, can } = useAuth()
   const [editing, setEditing] = React.useState(false)
   const [val, setVal] = React.useState('')
   const ref = React.useRef(null)
@@ -1534,6 +1534,7 @@ export function Production() {
 
   async function deleteDeal() {
     if (!selected?.id) return
+    if (!can('deals.delete')) { toast("You don't have permission to delete deals", '#DC2626'); return }
     try {
       await supabase.from('deals').delete().eq('id', selected.id)
       setDeals(prev => prev.filter(d => d.id !== selected.id))
@@ -1544,6 +1545,7 @@ export function Production() {
 
   async function bulkDelete() {
     if (!selectedIds.length) return
+    if (!can('deals.delete')) { toast("You don't have permission to delete deals", '#DC2626'); return }
     if (!window.confirm('Delete ' + selectedIds.length + ' deal' + (selectedIds.length !== 1 ? 's' : '') + '? This cannot be undone.')) return
     setBulkDeleting(true)
     try {

@@ -3,7 +3,7 @@
 'use strict'
 
 module.exports = function handler(req, res) {
-  try { require('./_lib/phone').logTwilioValidation(req, {}, 'twilio-outbound-twiml') } catch(e) {}
+  if (!require('./_lib/phone').checkTwilioSignature(req, res, {}, 'twilio-outbound-twiml')) return
   const name      = req.query?.name || 'your contact'
   const callLogId = req.query?.callLogId || ''
   const to        = (req.query?.to || '').replace(/[^+0-9]/g, '')

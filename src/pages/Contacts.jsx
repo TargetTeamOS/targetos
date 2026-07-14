@@ -202,7 +202,7 @@ export function Contacts() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
   const location = useLocation()
-  const { agent, isAdmin, canManage } = useAuth()
+  const { agent, isAdmin, canManage, can } = useAuth()
   usePageView('contacts')
   const { toast } = useApp()
 
@@ -281,7 +281,7 @@ export function Contacts() {
 
   async function add(data)          { const r = await db.contacts.create(data); await refetch(); return r }
   async function update(id, data)   { const r = await db.contacts.update(id, data, agent?.id); await refetch(); return r }
-  async function remove(id)         { await db.contacts.delete(id); await refetch() }
+  async function remove(id)         { if (!can('contacts.delete')) { toast("You don't have permission to delete contacts", '#DC2626'); return } await db.contacts.delete(id); await refetch() }
   const [dateRange,   setDateRange]   = useState({})
   const [sortKey,     setSortKey]     = useState('created_at')
   const [sortDir,     setSortDir]     = useState('desc')
@@ -441,6 +441,7 @@ export function Contacts() {
   const statusColor = (s) => CONTACT_STATUSES.find(x => x.value === s)?.color || '#94A3B8'
 
   async function bulkDelete() {
+    if (!can('contacts.delete')) { toast("You don't have permission to delete contacts", '#DC2626'); return }
     if (!selectedIds.length) return
     if (!window.confirm('Delete ' + selectedIds.length + ' contact' + (selectedIds.length !== 1 ? 's' : '') + '? This cannot be undone.')) return
     setBulkDel(true)

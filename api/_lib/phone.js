@@ -146,11 +146,54 @@ function validateTwilioSignature(req, params) {
 
 // Convenience wrapper for Phase 1 — call this, ignore the return value,
 // just watch the logs. Never blocks anything.
+// (Kept for back-compat; all call sites now use checkTwilioSignature below.)
 function logTwilioValidation(req, params, endpointName) {
   const result = validateTwilioSignature(req, params)
   if (result === false) {
     console.warn('[TWILIO-SIG] FAILED validation for ' + (endpointName || req.url) + ' — would be blocked once Phase 2 is enabled. From: ' + (req.headers['x-forwarded-for'] || 'unknown'))
   }
+}
+
+// ── PHASE 2: ENFORCEMENT WITH KILL-SWITCH ─────────────────────────
+// checkTwilioSignature(req, res, params, endpointName) → boolean
+//
+// Behavior is controlled by the TWILIO_SIG_ENFORCE env var (Vercel →
+// Settings → Environment Variables):
+//   - unset / anything but 'true'  → LOG-ONLY (identical to Phase 1).
+//     Failed validations are logged but never blocked.
+//   - 'true'                       → BLOCKING. A request whose
+//     signature definitively FAILS validation gets a 403 and the
+//     handler must stop (the caller checks the return value).
+//
+// KILL-SWITCH: if enforcement ever blocks legitimate Twilio traffic,
+// set TWILIO_SIG_ENFORCE to 'false' in Vercel and redeploy env (no
+// code change needed) — behavior instantly reverts to log-only.
+//
+// SAFETY: null results (missing auth token, validation library error)
+// NEVER block — we only block on a definitive signature mismatch.
+// Fail-open on uncertainty, fail-closed only on proven forgery.
+//
+// Usage in a handler:
+//   if (!checkTwilioSignature(req, res, body, 'twilio-inbound')) return
+function checkTwilioSignature(req, res, params, endpointName) {
+  const result = validateTwilioSignature(req, params)
+  if (result !== false) return true   // pass, or unknown → allow
+
+  const from = req.headers['x-forwarded-for'] || 'unknown'
+  const enforce = String(process.env.TWILIO_SIG_ENFORCE || '').toLowerCase() === 'true'
+
+  if (enforce) {
+    console.warn('[TWILIO-SIG] BLOCKED forged/invalid request to ' + (endpointName || req.url) + ' from: ' + from)
+    try {
+      res.statusCode = 403
+      res.setHeader('Content-Type', 'text/plain')
+      res.end('Forbidden')
+    } catch (e) { /* response may already be committed */ }
+    return false
+  }
+
+  console.warn('[TWILIO-SIG] FAILED validation for ' + (endpointName || req.url) + ' from: ' + from + ' — allowed (log-only mode; set TWILIO_SIG_ENFORCE=true in Vercel to block)')
+  return true
 }
 
 // ── PHONE NORMALIZATION ───────────────────────────────────────────
@@ -393,7 +436,7 @@ module.exports = {
   // HTTP
   parseBody, parseQS,
   // Security
-  validateTwilioSignature, logTwilioValidation, requireAdminOrSecretary, requireAdmin, requireAnyAgent,
+  validateTwilioSignature, logTwilioValidation, checkTwilioSignature, requireAdminOrSecretary, requireAdmin, requireAnyAgent,
   // Phone
   normalizePhone, formatPhone, phoneVariants,
   // Business logic
