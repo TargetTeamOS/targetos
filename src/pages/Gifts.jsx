@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
+import ContactPicker from '../components/ContactPicker'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -169,6 +170,14 @@ export function Gifts() {
 
       <Modal open={!!(selected || (urlId === 'new'))} onClose={closePanel} title={selected ? "Gift — " + (selected.client_name) : 'New Gift'} width={540}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <Field label="Link from Contacts board" hint="Search or add — fills the fields below and keeps the gift tied to the contact">
+            <ContactPicker placeholder="Search contacts…" onSelect={c => {
+              set('contact_id', c.id)
+              set('client_name', ((c.first_name||'') + ' ' + (c.last_name||'')).trim())
+              if (c.phone)   set('phone',   c.phone)
+              if (c.address) set('address', c.address)
+            }} />
+          </Field>
           <Field label="Client Name" required>
             <Input value={form.client_name} onChange={v => set('client_name', v)} placeholder="John Smith" />
           </Field>
@@ -176,7 +185,13 @@ export function Gifts() {
             <Input value={form.phone} onChange={v => set('phone', v)} placeholder="(845) 555-1234" type="tel" />
           </Field>
           <Field label="Address">
-            <AddressAutocomplete value={form.address||''} onChange={v => set('address', v)} placeholder="123 Main St, Monsey NY" />
+            <AddressAutocomplete value={form.address||''} onChange={v => set('address', v)}
+              onSelect={s => {
+                set('address', s.street || s.full)
+                if (s.unit)  set('unit',  s.unit)
+                if (s.city && typeof form.city !== 'undefined') set('city', s.city)
+              }}
+              placeholder="123 Main St, Monsey NY" />
           </Field>
           <Field label="Unit">
             <Input value={form.unit} onChange={v => set('unit', v)} placeholder="Apt 2B" />

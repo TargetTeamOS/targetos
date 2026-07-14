@@ -132,7 +132,7 @@ export function ListingPrep() {
 
       <Modal open={!!(selected || urlId === 'new')} onClose={closePanel} title={selected?.listing_addr || 'New Listing Prep'} width={500}>
         <Field label="Listing Address" required>
-          <AddressAutocomplete value={form.listing_addr||''} onChange={v => set('listing_addr', v)} placeholder="123 Main St, Monsey NY" />
+          <AddressAutocomplete value={form.listing_addr||''} onChange={v => set('listing_addr', v)} onSelect={s => set('listing_addr', s.full || s.street)} placeholder="123 Main St, Monsey NY" />
         </Field>
 
         {(isAdmin || canManage) && (

@@ -34,6 +34,7 @@ import { ImportExport } from '../components/ImportExport'
 import { loadFieldDefs, saveFieldDefs, getFieldsForEntity, labelToKey, FIELD_TYPES, invalidateFieldCache } from '../lib/customFields'
 import { CustomFieldRenderer } from '../components/CustomFieldRenderer'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
+import { BoardLinks } from '../components/BoardLinks'
 import { useAgents } from '../lib/hooks'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
@@ -1086,9 +1087,11 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
             <div>
               <Grid2>
                 <Field label="Address" required>
+                {form.id && <BoardLinks dealId={form.id} />}
                 <AddressAutocomplete value={form.addr??''} onChange={v=>set('addr',v)}
                   onSelect={s=>{
                     set('addr', s.street||s.full)
+                    if(s.unit)  set('unit', s.unit)
                     if(s.city)  set('city', s.city)
                     if(s.state) set('state', s.state)
                     if(s.zip)   set('zip', s.zip)

@@ -803,7 +803,7 @@ export function Offers() {
                     <AddressAutocomplete
                       value={form.listing_addr || ''}
                       onChange={v => set('listing_addr', v)}
-                      onSelect={full => set('listing_addr', full)}
+                      onSelect={s => set('listing_addr', s.full || s.street || '')}
                       placeholder={form.off_market ? 'Enter address manually...' : 'Start typing an address...'}
                       style={S}
                     />
@@ -1056,7 +1056,7 @@ export function Offers() {
                 <AddressAutocomplete
                   value={form.listing_addr || ''}
                   onChange={v => set('listing_addr', v)}
-                  onSelect={full => set('listing_addr', full)}
+                  onSelect={s => set('listing_addr', s.full || s.street || '')}
                   placeholder="Start typing an address..."
                   style={S}
                 />

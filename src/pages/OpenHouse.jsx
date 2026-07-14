@@ -172,7 +172,7 @@ export function OpenHouse() {
         {/* OH Info */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
           <Field label="Address">
-            <AddressAutocomplete value={form.listing_addr||''} onChange={v => set('listing_addr', v)} placeholder="123 Main St, Monsey NY" />
+            <AddressAutocomplete value={form.listing_addr||''} onChange={v => set('listing_addr', v)} onSelect={s => set('listing_addr', s.full || s.street)} placeholder="123 Main St, Monsey NY" />
           </Field>
           <Field label="Date">
             <Input value={form.date} onChange={v => set('date', v)} type="date" />
@@ -247,7 +247,7 @@ export function OpenHouse() {
       {/* Add OH Modal */}
       <Modal open={showOHForm && !selected} onClose={() => { setShowOHForm(false); navigate('/openhouse') }} title="New Open House" width={460}>
         <Field label="Address" required>
-          <AddressAutocomplete value={form.listing_addr||''} onChange={v => set('listing_addr', v)} placeholder="123 Main St, Monsey NY" />
+          <AddressAutocomplete value={form.listing_addr||''} onChange={v => set('listing_addr', v)} onSelect={s => set('listing_addr', s.full || s.street)} placeholder="123 Main St, Monsey NY" />
         </Field>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <Field label="Date">

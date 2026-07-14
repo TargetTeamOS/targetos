@@ -139,6 +139,7 @@ export function AddressAutocomplete({
 
         const streetNum  = get('street_number')
         const streetName = get('route')
+        const unit       = get('subpremise')
         const city       = get('locality', 'sublocality', 'neighborhood')
         const state      = getS('administrative_area_level_1')
         const zip        = get('postal_code')
@@ -147,7 +148,7 @@ export function AddressAutocomplete({
         const street     = [streetNum, streetName].filter(Boolean).join(' ') || el.value
 
         onChange && onChange(street)
-        onSelect && onSelect({ full: place.formatted_address, street, city, state, zip, lat, lng })
+        onSelect && onSelect({ full: place.formatted_address, street, unit, city, state, zip, lat, lng })
       })
     })
 

@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase'
 import { notifyAgent } from '../lib/notify'
 import { Btn } from './UI'
 import ContactPicker, { contactName } from './ContactPicker'
+import { ClickToCall } from './ClickToCall'
 
 const inp = { width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, background: 'var(--bg)', color: 'var(--text)' }
 const sectionTitle = { fontWeight: 700, fontSize: 13, color: 'var(--text)', margin: '14px 0 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
@@ -61,6 +62,9 @@ export function PeoplePanel({ dealId, agentId, roles = [], toast }) {
                 <div style={{ fontWeight: 600 }}>{c ? contactName(c) : '…'}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c ? [c.email, c.phone].filter(Boolean).join(' · ') : ''}</div>
               </div>
+              {c?.phone && <ClickToCall phone={c.phone} contactName={contactName(c)} contactId={c.id} />}
+              {c?.email && <a href={'mailto:' + c.email} title={'Email ' + contactName(c)}
+                              style={{ textDecoration: 'none', fontSize: 15 }}>✉️</a>}
               <button onClick={() => remove(r.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>✕</button>
             </div>
           )
@@ -273,6 +277,8 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
             <div style={{ fontWeight: 600 }}>{contactName(photographer)}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{[photographer.email, photographer.phone].filter(Boolean).join(' · ')}</div>
           </div>
+          {photographer.phone && <ClickToCall phone={photographer.phone} contactName={contactName(photographer)} contactId={photographer.id} />}
+          {photographer.email && <a href={'mailto:' + photographer.email} style={{ textDecoration: 'none', fontSize: 15 }}>✉️</a>}
           <button onClick={() => { setPhotographer(null); patch({ photographer_contact_id: null }) }}
                   style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>✕</button>
         </div>

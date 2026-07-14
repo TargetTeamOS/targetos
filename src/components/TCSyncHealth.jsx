@@ -44,7 +44,7 @@ export default function TCSyncHealth({ agents = [], onFixed }) {
     try {
       const { data: tcDeals, error: e1 } = await supabase
         .from('tc_deals')
-        .select('id, address, tc_phase, sale_price, list_price, ao_date, close_date, agent_id, linked_deal_id, linked_listing_id')
+        .select('id, addr, tc_phase, sale_price, list_price, ao_date, close_date, agent_id, linked_deal_id, linked_listing_id')
         .range(0, 999)
       if (e1) throw e1
 
@@ -64,7 +64,7 @@ export default function TCSyncHealth({ agents = [], onFixed }) {
       const found = []
 
       for (const tc of tcDeals) {
-        const label = tc.address || ('TC deal ' + tc.id)
+        const label = tc.addr || ('TC deal ' + tc.id)
 
         // ── Linked deal checks ──
         if (tc.linked_deal_id) {

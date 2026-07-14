@@ -720,7 +720,14 @@ export function Contacts() {
               onIgnore={() => {}}
             />
             <Field label="Address">
-              <AddressAutocomplete value={form.address||''} onChange={v => set('address', v)} placeholder="123 Main St, Monsey NY" />
+              <AddressAutocomplete value={form.address||''} onChange={v => set('address', v)}
+                onSelect={s => {
+                  set('address', (s.street || s.full) + (s.unit ? ' #' + s.unit : ''))
+                  if (s.city)  set('city',  s.city)
+                  if (s.state) set('state', s.state)
+                  if (s.zip)   set('zip',   s.zip)
+                }}
+                placeholder="123 Main St, Monsey NY" />
             </Field>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>

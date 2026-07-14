@@ -25,6 +25,8 @@ const PHASE_TASKS = DEFAULT_PHASE_TASKS
 import TCSyncHealth from '../components/TCSyncHealth'
 import TCMorningSummary from '../components/TCMorningSummary'
 import { PeoplePanel, DocumentsPanel, PhotographyPanel } from '../components/TCDealPanels'
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
+import { BoardLinks } from '../components/BoardLinks'
 import { DEFAULT_TC_SETTINGS } from '../lib/tcSettings'
 import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
@@ -463,6 +465,14 @@ export function TransactionCoordinator() {
       const r0 = await supabase.from('tc_deals').update({ ...updates, updated_at:new Date().toISOString() }).eq('id', deal.id)
       if (r0.error) throw r0.error
 
+      // Keep the Production↔Listings hard link in sync: whenever a TC
+      // deal knows both sides, make sure deals.listing_id points at
+      // the listing (best-effort — never fails the whole sync).
+      if (deal.linked_deal_id && deal.linked_listing_id) {
+        supabase.from('deals').update({ listing_id: deal.linked_listing_id }).eq('id', deal.linked_deal_id)
+          .then(() => {}, () => {})
+      }
+
       if (updates.list_price !== undefined && deal.linked_listing_id) {
         const r = await supabase.from('listings').update({ list_price:updates.list_price, updated_at:new Date().toISOString() }).eq('id', deal.linked_listing_id)
         if (r.error) throw r.error
@@ -851,7 +861,9 @@ export function TransactionCoordinator() {
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
           <div style={{ gridColumn:'span 2' }}>
             <span style={SL}>Property Address *</span>
-            <input value={dealForm.addr} onChange={e=>setDealForm(p=>({...p,addr:e.target.value}))} placeholder="123 Main St, Monsey NY" style={S} />
+            <AddressAutocomplete value={dealForm.addr||''} onChange={v=>setDealForm(p=>({...p,addr:v}))}
+              onSelect={s=>setDealForm(p=>({...p, addr:(s.street||s.full)+(s.unit?' #'+s.unit:'')}))}
+              placeholder="123 Main St, Monsey NY" style={S} />
           </div>
           <div>
             <span style={SL}>Side *</span>
@@ -935,7 +947,8 @@ export function TransactionCoordinator() {
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
           <div style={{ gridColumn:'span 2' }}>
             <span style={SL}>Address</span>
-            <input value={dealForm.addr} onChange={e=>setDealForm(p=>({...p,addr:e.target.value}))} style={S} />
+            <AddressAutocomplete value={dealForm.addr||''} onChange={v=>setDealForm(p=>({...p,addr:v}))}
+              onSelect={s=>setDealForm(p=>({...p, addr:(s.street||s.full)+(s.unit?' #'+s.unit:'')}))} style={S} />
           </div>
           <div>
             <span style={SL}>Side</span>
@@ -1002,6 +1015,7 @@ export function TransactionCoordinator() {
 
         {selDeal?.id && (
           <div style={{ marginTop:14, borderTop:'1px solid var(--border)', paddingTop:4 }}>
+            <BoardLinks tcDealId={selDeal.id} listingId={selDeal.linked_listing_id} dealId={selDeal.linked_deal_id} />
             <PeoplePanel dealId={selDeal.id} agentId={selDeal.agent_id}
                          roles={(tcCfg || DEFAULT_TC_SETTINGS).participant_roles} toast={toast} />
             <DocumentsPanel dealId={selDeal.id}

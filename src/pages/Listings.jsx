@@ -22,6 +22,7 @@ import { useAgents } from '../lib/hooks'
 import { FilterBar } from '../components/FilterBar'
 import { ImportExport } from '../components/ImportExport'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
+import { BoardLinks } from '../components/BoardLinks'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { MLSSearch } from '../components/MLSSearch'
 
@@ -202,6 +203,7 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
             <div>
               <div style={{ marginBottom:10 }}>
                 <Lbl c="Address"/>
+                {form.id && <BoardLinks listingId={form.id} />}
                 <AddressAutocomplete value={form.addr||''} onChange={v=>set('addr',v)}
                 onSelect={s=>{
                   set('addr', s.street||s.full)
@@ -626,6 +628,27 @@ export function Listings() {
         const { error } = await supabase.from('listings').update({ ...cleanListing, updated_at: new Date().toISOString() }).eq('id', selected.id)
         if (error) throw error
         toast('✅ Listing saved')
+
+        // ── AUTO-INTAKE TO TC BOARD ──
+        // The moment a listing flips to Under Contract, it lands on
+        // the secretary's TC Board automatically (once — never
+        // duplicates if a TC deal is already linked).
+        const wentUC = ['Under Contract', 'Accepted offer'].includes(form.status) && selected.status !== form.status
+        if (wentUC) {
+          try {
+            const { data: existing } = await supabase.from('tc_deals').select('id').eq('linked_listing_id', selected.id).limit(1).maybeSingle()
+            if (!existing) {
+              const { error: e2 } = await supabase.from('tc_deals').insert({
+                addr: form.addr, agent_id: form.agent_id || agent?.id || null,
+                tc_phase: 'under_contract', list_price: form.list_price || null,
+                linked_listing_id: selected.id,
+                notes: 'Auto-created when listing went ' + form.status,
+                created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+              })
+              if (!e2) toast('📋 Sent to TC Board — under contract tasks will be generated there')
+            }
+          } catch (e) { console.warn('TC auto-intake skipped:', e.message) }
+        }
       } else {
         const { showings_count: _sc2, agents: _la2, id: _li2, ...cleanListingIns } = form
         const { error } = await supabase.from('listings').insert({ ...cleanListingIns, agent_id: form.agent_id||agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
