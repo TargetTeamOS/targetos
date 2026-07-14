@@ -196,7 +196,13 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 
     let twiml = ''
     if (phone) {
-      twiml += buildDial(from, phone, cfg.timeout || 30)
+      // Whisper the agent that this is THEIR contact calling back,
+      // by name, before the call connects.
+      const cname = [callData.contact?.first_name, callData.contact?.last_name].filter(Boolean).join(' ')
+      await logCallEvent(supabase, callData.callSid, 'routed_to_assigned_agent',
+        'Repeat contact' + (cname ? ' ' + cname : '') + ' routed to their assigned agent')
+      twiml += buildDial(from, phone, cfg.timeout || 30, null,
+        'context=assigned' + (cname ? '&name=' + encodeURIComponent(cname) : ''))
     }
 
     // notfound port fires when: no agent assigned, agent has no phone,
@@ -458,13 +464,16 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
 }
 
 // ── DIAL HELPER ────────────────────────────────────────────────────
-function buildDial(callerId, singlePhone, timeout, innerTwiml) {
+// whisperQs: optional extra query string for the recording-notice
+// whisper (e.g. 'context=assigned&name=John%20Smith') so the agent
+// hears WHO is calling and why before the legs connect.
+function buildDial(callerId, singlePhone, timeout, innerTwiml, whisperQs) {
   // FIX (July 2026): the recording notice was a <Say> BEFORE <Dial>,
   // which only reaches whoever is already on the call (the caller) --
   // not the person being dialed, who is who actually needs to hear it
   // for consent purposes. Whispered via the <Number> url= attribute
   // instead, same mechanism as the outbound-call fix earlier tonight.
-  const whisperUrl = BASE_URL + '/api/twilio-recording-notice'
+  const whisperUrl = BASE_URL + '/api/twilio-recording-notice' + (whisperQs ? '?' + whisperQs : '')
   const inner = innerTwiml || ('<Number url="' + esc(whisperUrl) + '">' + esc(singlePhone) + '</Number>')
   return (
     '<Dial callerId="' + callerId + '"' +

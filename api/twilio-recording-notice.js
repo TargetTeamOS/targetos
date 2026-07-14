@@ -22,7 +22,9 @@ module.exports = function handler(req, res) {
   const qp = querystring.parse(rawUrl.includes('?') ? rawUrl.split('?')[1] : '')
 
   let contextMsg = ''
-  if (qp.context === 'listing' && qp.addr) {
+  if (qp.context === 'assigned') {
+    contextMsg = 'Incoming call from your contact' + (qp.name ? ' ' + qp.name : '') + ', calling the main line. '
+  } else if (qp.context === 'listing' && qp.addr) {
     contextMsg = 'Incoming call. The caller is interested in the listing at ' + qp.addr + '. '
   } else if (qp.context === 'directory') {
     contextMsg = 'Incoming call. The caller was looking to reach you specifically from our directory. '

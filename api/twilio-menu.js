@@ -4,7 +4,7 @@
 const {
   wrap, say, voicemailTwiml, hangup, esc,
   getSupabase, parseBody, parseQS, loadFlow, lookupContact, BASE_URL,
-  checkTwilioSignature,
+  checkTwilioSignature, logCallEvent,
 } = require('./_lib/phone')
 const { walkFlow } = require('./_lib/call-flow')
 
@@ -86,6 +86,11 @@ module.exports = async function handler(req, res) {
       voicemailTwiml()
     ))
   }
+
+  // Log the caller's menu choice so the full IVR journey (visible on
+  // the Calls page and contact page) starts with what they pressed.
+  await logCallEvent(sb, body.CallSid || '', 'menu_selected',
+    'Pressed ' + chosen.key + ' — ' + (chosen.label || 'option ' + chosen.key))
 
   // Load contact and continue walking flow
   const contact  = await lookupContact(sb, from)

@@ -14,6 +14,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import { CallJourney } from '../components/CallJourney'
 import { db } from '../lib/db'
 import {
   fmtDate, fmtDateTime, fmtPhone, fmt$, initials,
@@ -604,6 +605,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
   const [agreements,   setAgreements]  = React.useState([])
   const [appts,       setAppts]        = React.useState([])
   const [calls,       setCalls]        = React.useState([])
+  const [expandedCallId, setExpandedCallId] = React.useState(null)
   const [gifts,       setGifts]        = React.useState([])
   const [autoPlans,   setAutoPlans]   = React.useState([])
 
@@ -611,7 +613,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
     if (!contactId) return
     // Load related data
     supabase.from('calendar_events').select('id,title,start_date,start_time,type').eq('contact_id', contactId).order('start_date').limit(10).then(r => setAppts(r.data || []))
-    supabase.from('calls').select('id,contact_name,direction,outcome,called_at,notes').eq('contact_id', contactId).order('called_at', { ascending: false }).limit(10).then(r => setCalls(r.data || []))
+    supabase.from('calls').select('id,contact_name,direction,outcome,called_at,notes,twilio_call_sid').eq('contact_id', contactId).order('called_at', { ascending: false }).limit(10).then(r => setCalls(r.data || []))
     supabase.from('gifts').select('id,client_name,status,description').eq('contact_id', contactId).order('created_at', { ascending: false }).limit(10).then(r => setGifts(r.data || []))
     // Agreements stored as tags/notes for now
     const tags = f.tags || []
@@ -820,6 +822,14 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
             </div>
             {c.outcome && <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px' }}>{c.outcome}</div>}
             {c.notes  && <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px', fontStyle:'italic' }}>{c.notes.slice(0,60)}{c.notes.length>60?'…':''}</div>}
+            {c.twilio_call_sid && (
+              expandedCallId === c.id
+                ? <CallJourney callSid={c.twilio_call_sid} />
+                : <button onClick={() => setExpandedCallId(c.id)}
+                    style={{ border:'none', background:'none', padding:0, marginTop:2, fontSize:'11px', color:'var(--brand)', cursor:'pointer' }}>
+                    View phone journey ▸
+                  </button>
+            )}
           </div>
         ))}
         <AddBtn onClick={() => navigate('/calls/new')} label="+ Log Call" />

@@ -144,9 +144,6 @@ async function runSearch(res, voice, maxRes, base, filterFn, summaryLabel) {
       ))
     }
 
-    let twiml = say('We found ' + results.length + ' exclusive listing' + (results.length > 1 ? 's' : '') + (summaryLabel ? ' ' + summaryLabel : '') + '. Here they are.', voice)
-    results.forEach((l, i) => { twiml += readListing(l, i, voice) })
-
     // Encode each listing's agent_id + addr so the followup step can
     // connect the caller directly to that listing's agent, with a
     // whisper telling the agent which listing the caller is asking
@@ -154,8 +151,16 @@ async function runSearch(res, voice, maxRes, base, filterFn, summaryLabel) {
     const listingRefs = results.map(l => (l.agent_id || '') + '~' + (l.addr || '')).join('|')
     const followUrl = buildNextUrl('followup', { ...base, listings: listingRefs })
     const connectOptions = results.map((l, i) => 'Press ' + (i + 1) + ' to connect about listing ' + (i + 1) + '.').join(' ')
-    twiml += '<Gather numDigits="1" action="' + esc(followUrl) + '" method="GET" timeout="15">' +
-      say(connectOptions + ' Press 6 to search again. Press 7 to speak with any agent. Press 9 to leave a voicemail. Press star to end the call.', voice) +
+
+    // BARGE-IN (July 2026): the entire readout lives INSIDE one
+    // <Gather>, so the caller can press a listing number the moment
+    // they hear the one they want -- no waiting through the full list.
+    // Digits mean the same thing at any point: 1-5 select a listing,
+    // 6 search again, 7 any agent, 9 voicemail, * end call.
+    let twiml = '<Gather numDigits="1" action="' + esc(followUrl) + '" method="GET" timeout="15">' +
+      say('We found ' + results.length + ' exclusive listing' + (results.length > 1 ? 's' : '') + (summaryLabel ? ' ' + summaryLabel : '') + '. You can press a listing number at any time to be connected. Here they are.', voice)
+    results.forEach((l, i) => { twiml += readListing(l, i, voice) })
+    twiml += say(connectOptions + ' Press 6 to search again. Press 7 to speak with any agent. Press 9 to leave a voicemail. Press star to end the call.', voice) +
     '</Gather>'
     twiml += say('Thank you for calling. Goodbye.', voice)
     return res.send(wrap(twiml))
