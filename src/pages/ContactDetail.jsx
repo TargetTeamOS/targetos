@@ -53,7 +53,6 @@ const FOLLOWUP_TEMPLATES = [
 // ── INLINE EDIT FIELD ─────────────────────────────────────────────
 function InlineField({ label, value, onChange, type = 'text', options = null, placeholder = '—', multiline = false, prefix = null }) {
   const [editing, setEditing]   = useState(false)
-  const [composeOpen, setComposeOpen] = useState(false)
   const [draft,   setDraft]     = useState(value)
   const ref = useRef(null)
 
@@ -597,6 +596,7 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
 }
 
 function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, onRefreshTimeline }) {
+  const [composeOpen, setComposeOpen] = React.useState(false)
   const { toast } = useApp()
   const [rightTab,      setRightTab]     = React.useState('deals')
   const [addingTask,    setAddingTask]   = React.useState(false)
