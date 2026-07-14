@@ -183,6 +183,10 @@ module.exports = async function handler(req, res) {
   const maxRes = parseInt(qp.max||'5')||5
   const base   = { voice, max: maxRes }
   const callData = { from: body.From||'', to: body.To||'', callSid: body.CallSid||'', callId: null, contact: null, isRepeat: false }
+  // Unconditional diagnostic: log every single hit to this endpoint,
+  // no matter the step or outcome, so it's possible to see exactly
+  // which steps a real call actually reached without guessing.
+  await logCallEvent(getSupabase(), callData.callSid, 'listings_step_' + step, 'digits=' + JSON.stringify(digits) + ' callSid=' + callData.callSid)
 
   // ── INTRO — choose ONE search method ─────────────────────────────
   if (step === 'intro') {
