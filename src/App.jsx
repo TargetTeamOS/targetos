@@ -49,6 +49,7 @@ import { Mortgage }      from './pages/Mortgage'
 import { WebsiteBuilder } from './pages/WebsiteBuilder'
 import { PublicHome, PublicListings, PublicListingDetail, PublicAbout, PublicContact } from './pages/PublicSite'
 import { Route as RoutePage } from './pages/Route'
+import TCSettings from './pages/TCSettings'
 import { CustomFields }          from './pages/CustomFields'
 import { TransactionCoordinator } from './pages/TransactionCoordinator'
 import { MyListings }            from './pages/MyListings'
@@ -181,6 +182,7 @@ function AppShell() {
           <Route path="/segments"           element={<Segments />} />
           <Route path="/custom-fields"      element={<CustomFields />} />
           <Route path="/tc"                 element={<TransactionCoordinator />} />
+          <Route path="/tc-settings"        element={<RequirePermission perm="admin.customize"><TCSettings /></RequirePermission>} />
           <Route path="/my-listings"          element={<MyListings />} />
           <Route path="/reports"            element={<Reports />} />
           {/* Catch-all redirect */}

@@ -19,7 +19,13 @@ import { useApp }     from '../context/AppContext'
 import { supabase }   from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { phaseToStage, phaseToStatus } from '../lib/tcPhaseMap'
+import { DEFAULT_PHASE_TASKS, loadTcSettings } from '../lib/tcSettings'
+
+const PHASE_TASKS = DEFAULT_PHASE_TASKS
 import TCSyncHealth from '../components/TCSyncHealth'
+import TCMorningSummary from '../components/TCMorningSummary'
+import { PeoplePanel, DocumentsPanel, PhotographyPanel } from '../components/TCDealPanels'
+import { DEFAULT_TC_SETTINGS } from '../lib/tcSettings'
 import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 
@@ -35,62 +41,6 @@ const PHASES = [
 ]
 
 // ── TASK TEMPLATES PER PHASE ──────────────────────────────────────
-const PHASE_TASKS = {
-  pre_listing: [
-    { key:'sign_listing_agreement', label:'Get listing agreement signed',        priority:'urgent', days:0  },
-    { key:'schedule_photography',   label:'Schedule photography',                priority:'urgent', days:2,  cal:true, notify_agent:true },
-    { key:'order_sign',             label:'Order yard sign',                     priority:'high',   days:3  },
-    { key:'prepare_disclosures',    label:'Prepare disclosure documents',        priority:'high',   days:3  },
-    { key:'floor_plan',             label:'Arrange floor plan / measurements',   priority:'normal', days:4  },
-    { key:'mls_description',        label:'Prepare MLS listing description',     priority:'high',   days:5  },
-    { key:'create_brochure',        label:'Create property brochure',            priority:'normal', days:5  },
-    { key:'social_media_ads',       label:'Create social media ads',             priority:'high',   days:6  },
-    { key:'install_lockbox',        label:'Install lockbox',                     priority:'high',   days:6  },
-    { key:'showing_instructions',   label:'Set up showing instructions',         priority:'high',   days:6  },
-    { key:'review_before_live',     label:'Final review before going live',      priority:'urgent', days:7  },
-  ],
-  active: [
-    { key:'confirm_mls_live',       label:'Confirm listing is live on MLS',      priority:'urgent', days:0  },
-    { key:'confirm_ads_running',    label:'Confirm ads are running',             priority:'high',   days:1  },
-    { key:'schedule_open_house',    label:'Schedule first open house',           priority:'high',   days:3,  cal:true, notify_agent:true },
-    { key:'followup_showings',      label:'Follow up with showing agents',       priority:'normal', days:7  },
-    { key:'price_review',           label:'Price review with agent (2 weeks)',   priority:'normal', days:14, notify_agent:true },
-  ],
-  offer: [
-    { key:'get_offer_signed',       label:'Get accepted offer signed by all parties', priority:'urgent', days:0 },
-    { key:'notify_attorney',        label:'Notify attorney / title company',     priority:'urgent', days:0  },
-    { key:'confirm_deposit',        label:'Confirm binder deposit received',     priority:'urgent', days:1  },
-    { key:'confirm_buyer_attorney', label:'Confirm buyer attorney info',         priority:'high',   days:2  },
-    { key:'confirm_seller_attorney',label:'Confirm seller attorney info',        priority:'high',   days:2  },
-    { key:'send_contract_all',      label:'Send signed contract to all parties', priority:'urgent', days:2  },
-    { key:'open_title_order',       label:'Open title / escrow order',          priority:'high',   days:3  },
-  ],
-  under_contract: [
-    { key:'schedule_inspection',    label:'Schedule home inspection',            priority:'urgent', days:2,  cal:true, notify_agent:true },
-    { key:'confirm_mortgage_app',   label:'Confirm buyer mortgage application',  priority:'urgent', days:3  },
-    { key:'inspection_results',     label:'Follow up on inspection results',     priority:'urgent', days:7  },
-    { key:'appraisal_ordered',      label:'Confirm appraisal ordered',          priority:'high',   days:7  },
-    { key:'followup_mortgage',      label:'Follow up with mortgage broker',      priority:'high',   days:10, notify_agent:true },
-    { key:'appraisal_result',       label:'Follow up on appraisal result',      priority:'high',   days:21 },
-    { key:'conditional_approval',   label:'Confirm conditional loan approval',   priority:'urgent', days:25 },
-    { key:'clear_to_close',         label:'Get clear to close confirmation',     priority:'urgent', days:30 },
-    { key:'confirm_closing_date',   label:'Confirm closing date & time',        priority:'urgent', days:30, cal:true, notify_agent:true },
-    { key:'schedule_walkthrough',   label:'Schedule final walkthrough',          priority:'high',   days:32, cal:true },
-    { key:'prepare_closing_docs',   label:'Prepare closing documents',          priority:'urgent', days:33 },
-    { key:'wire_instructions',      label:'Send wire instructions to buyer',     priority:'urgent', days:33 },
-    { key:'review_hud',             label:'Review HUD / closing disclosure',    priority:'urgent', days:34 },
-    { key:'confirm_keys',           label:'Confirm keys & access transfer',      priority:'high',   days:35 },
-  ],
-  closed: [
-    { key:'confirm_commission',     label:'Confirm commission received',         priority:'urgent', days:0  },
-    { key:'update_production',      label:'Update Production board as Closed',  priority:'urgent', days:0  },
-    { key:'send_thank_you',         label:'Send thank you card to client',      priority:'high',   days:2  },
-    { key:'closing_gift',           label:'Arrange closing gift',               priority:'high',   days:2  },
-    { key:'request_review',         label:'Request Google review from client',  priority:'normal', days:7  },
-    { key:'ask_referrals',          label:'Ask for referrals',                  priority:'normal', days:14 },
-    { key:'archive_file',           label:'Archive transaction file',           priority:'normal', days:7  },
-  ],
-}
 
 function addDays(n) {
   const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10)
@@ -484,9 +434,13 @@ export function TransactionCoordinator() {
     </div>
   )
 
+  const [tcCfg, setTcCfg] = useState(null)   // merged TC settings (templates, services, statuses…)
+  const templatesFor = phase => (tcCfg?.task_templates?.[phase] || PHASE_TASKS[phase] || [])
+
   async function loadAll() {
     setLoading(true)
     try {
+      loadTcSettings().then(setTcCfg).catch(() => {})
       const [dr, tr, ar] = await Promise.all([
         supabase.from('tc_deals').select('*').order('updated_at', { ascending:false }).range(0, 499),
         supabase.from('tc_tasks').select('*').order('due_date',   { ascending:true  }).range(0, 4999),
@@ -574,7 +528,7 @@ export function TransactionCoordinator() {
 
       await generatePhaseTasks(newDeal, dealForm.tc_phase)
 
-      const taskCount = PHASE_TASKS[dealForm.tc_phase]?.length || 0
+      const taskCount = templatesFor(dealForm.tc_phase).length
       toast('✅ Deal created · ' + taskCount + ' tasks auto-generated')
       setShowAddDeal(false)
       setDealForm({ ...DEAL_BLANK })
@@ -588,7 +542,7 @@ export function TransactionCoordinator() {
   }
 
   async function generatePhaseTasks(deal, phase) {
-    const templates = PHASE_TASKS[phase] || []
+    const templates = templatesFor(phase)
     if (!templates.length) return
     const rows = templates.map(t => ({
       deal_id:       deal.id,
@@ -636,7 +590,7 @@ export function TransactionCoordinator() {
   async function changePhase(deal, newPhase) {
     if (deal.tc_phase === newPhase) return
     const pDef     = PHASES.find(p => p.id === newPhase)
-    const taskCount= PHASE_TASKS[newPhase]?.length || 0
+    const taskCount= templatesFor(newPhase).length
     const calCount = PHASE_TASKS[newPhase]?.filter(t=>t.cal).length || 0
     if (!window.confirm('Move "' + deal.addr + '" to ' + (pDef?.label||'') + '?\n\n• ' + taskCount + ' tasks will be auto-generated' + (calCount>0 ? '\n• ' + calCount + ' calendar events will be created' : '') + '\n• All linked boards will be updated automatically')) return
     try {
@@ -807,12 +761,15 @@ export function TransactionCoordinator() {
         actions={
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             <LastVisited page="tc" />
+            {isAdmin && <Btn variant="secondary" onClick={() => navigate('/tc-settings')}>⚙️ TC Settings</Btn>}
             <TCSyncHealth agents={agents} onFixed={loadAll} />
             <Btn variant="secondary" onClick={() => navigate('/calendar')}>📅 Calendar</Btn>
             <Btn onClick={() => { setDealForm({...DEAL_BLANK}); setShowAddDeal(true) }}>+ New Deal</Btn>
           </div>
         }
       />
+
+      <TCMorningSummary tasks={tasks} deals={deals} onCompleteTask={checkTask} />
 
       {/* Stats */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:16 }}>
@@ -971,7 +928,7 @@ export function TransactionCoordinator() {
       </Modal>
 
       {/* ── EDIT DEAL MODAL ── */}
-      <Modal open={showEditDeal} onClose={()=>setShowEditDeal(false)} title={'Edit — ' + (selDeal?.addr||'')} width={600}>
+      <Modal open={showEditDeal} onClose={()=>setShowEditDeal(false)} title={'Edit — ' + (selDeal?.addr||'')} width={720}>
         <div style={{ marginBottom:10, padding:'8px 12px', background:'rgba(16,185,129,.06)', borderRadius:8, fontSize:11, color:'var(--muted)' }}>
           ⚡ Changes sync automatically to Production and Listings boards
         </div>
@@ -1042,6 +999,19 @@ export function TransactionCoordinator() {
             <textarea value={dealForm.notes} onChange={e=>setDealForm(p=>({...p,notes:e.target.value}))} rows={2} style={{ ...S, resize:'vertical' }} />
           </div>
         </div>
+
+        {selDeal?.id && (
+          <div style={{ marginTop:14, borderTop:'1px solid var(--border)', paddingTop:4 }}>
+            <PeoplePanel dealId={selDeal.id} agentId={selDeal.agent_id}
+                         roles={(tcCfg || DEFAULT_TC_SETTINGS).participant_roles} toast={toast} />
+            <DocumentsPanel dealId={selDeal.id}
+                            statuses={(tcCfg || DEFAULT_TC_SETTINGS).doc_statuses} toast={toast} />
+            <PhotographyPanel deal={selDeal}
+                              services={(tcCfg || DEFAULT_TC_SETTINGS).photo_services}
+                              checklist={(tcCfg || DEFAULT_TC_SETTINGS).readiness_checklist} toast={toast} />
+          </div>
+        )}
+
         <ModalActions>
           <Btn variant="secondary" onClick={()=>setShowEditDeal(false)}>Cancel</Btn>
           <Btn onClick={saveDeal} loading={saving}>Save + Sync All Boards</Btn>
