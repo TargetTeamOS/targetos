@@ -389,6 +389,8 @@ export function DailyBriefing() {
       for (const ag of allAgents) {
         const ap = agentPrefs[ag.id]
         if (ap && !ap.enabled) continue
+        // record the send so today's cron slot can't double-send
+        try { await supabase.from('briefing_sends').insert({ agent_id: ag.id, sent_date: new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }), source: 'manual' }) } catch (e) { /* already sent today — manual send proceeds anyway */ }
         try {
           const today  = new Date().toISOString().slice(0,10)
           const wkEnd  = new Date(); wkEnd.setDate(wkEnd.getDate()+7)

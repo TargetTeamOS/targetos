@@ -50,10 +50,13 @@ async function gatherAgentData(supabase, agentId) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
-  // Same CRON_SECRET pattern as task-reminders.js
+  // HARDENED (July 2026): the secret is now ENFORCED. Previously a
+  // mismatch only logged a warning and the send proceeded anyway,
+  // meaning anything that hit this URL triggered a full team send.
   const CRON_SECRET = process.env.CRON_SECRET
   if (CRON_SECRET && req.headers['authorization'] !== 'Bearer ' + CRON_SECRET) {
-    console.warn('[daily-briefing-cron] unauthorized invocation attempt')
+    console.warn('[daily-briefing-cron] BLOCKED unauthorized invocation')
+    return res.status(401).json({ ok: false, error: 'unauthorized' })
   }
 
   const supabase = getSupabase()
@@ -61,6 +64,14 @@ module.exports = async function handler(req, res) {
 
   const RESEND_KEY = process.env.RESEND_API_KEY
   if (!RESEND_KEY) return res.status(200).json({ ok: false, error: 'RESEND_API_KEY not set' })
+
+  // Current time in the team's timezone, floored to the half hour, so
+  // each agent gets their briefing in the 30-minute slot matching
+  // their own send_time preference (cron now runs every 30 minutes —
+  // see vercel.json).
+  const nowET = new Date().toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })
+  const slot  = nowET.slice(0, 3) + (Number(nowET.slice(3, 5)) < 30 ? '00' : '30')
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 
   let sent = 0, skipped = 0, failed = 0
   const errors = []
@@ -72,9 +83,26 @@ module.exports = async function handler(req, res) {
       try {
         const { data: prefRow } = await supabase.from('briefing_prefs').select('*').eq('agent_id', agentRow.id).maybeSingle()
 
-        // Default to enabled if no row exists yet (matches DEFAULT_PREFS.emailEnabled = true)
-        const enabled = prefRow ? prefRow.enabled !== false : true
+        // HARDENED (July 2026): EXPLICIT OPT-IN ONLY. The old default
+        // ("send unless a row says enabled=false") emailed every agent
+        // who had never opened briefing settings — including everyone
+        // whose opt-out lived in the old browser-only prefs the server
+        // can't see. Now a briefing goes out only when the agent has a
+        // saved row with enabled=true.
+        const enabled = !!(prefRow && prefRow.enabled === true)
         if (!enabled || !agentRow.email) { skipped++; continue }
+
+        // Send only in the agent's chosen 30-minute slot (default 07:00)
+        const wantRaw  = (prefRow.send_time || '07:00').slice(0, 5)
+        const wantSlot = wantRaw.slice(0, 3) + (Number(wantRaw.slice(3, 5)) < 30 ? '00' : '30')
+        if (wantSlot !== slot) { skipped++; continue }
+
+        // Once-per-day guard: unique(agent_id, sent_date) in
+        // briefing_sends makes double sends impossible even if the
+        // cron fires twice or overlaps a manual Send All.
+        const { error: dupErr } = await supabase.from('briefing_sends')
+          .insert({ agent_id: agentRow.id, sent_date: todayStr, source: 'cron' })
+        if (dupErr) { skipped++; continue }  // unique violation = already sent today
 
         const prefs = { ...DEFAULT_PREFS, ...(prefRow?.sections || {}), emailEnabled: enabled }
         const emailStyle = prefRow?.email_style ? { ...DEFAULT_STYLE, ...prefRow.email_style } : DEFAULT_STYLE
