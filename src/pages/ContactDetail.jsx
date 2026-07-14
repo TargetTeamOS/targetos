@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { CallJourney } from '../components/CallJourney'
+import { EmailComposeModal } from '../components/EmailComposeModal'
 import { db } from '../lib/db'
 import {
   fmtDate, fmtDateTime, fmtPhone, fmt$, initials,
@@ -52,6 +53,7 @@ const FOLLOWUP_TEMPLATES = [
 // ── INLINE EDIT FIELD ─────────────────────────────────────────────
 function InlineField({ label, value, onChange, type = 'text', options = null, placeholder = '—', multiline = false, prefix = null }) {
   const [editing, setEditing]   = useState(false)
+  const [composeOpen, setComposeOpen] = useState(false)
   const [draft,   setDraft]     = useState(value)
   const ref = useRef(null)
 
@@ -953,7 +955,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       <RightSection title="Quick Actions" icon="⚡" color="#CC2200" defaultOpen={false}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
           {[
-            { label: '📧 Send Email',     onClick: () => window.open('mailto:' + (f.email || '')) },
+            { label: '📧 Send Email',     onClick: () => setComposeOpen(true) },
             { label: '📞 Call',           onClick: () => {} },
             { label: '💬 WhatsApp',       onClick: () => window.open('https://wa.me/' + (f.phone||'').replace(/\D/g,'')) },
             { label: '📊 Add to Deal',   onClick: () => navigate('/production/new') },
@@ -971,6 +973,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
           ))}
         </div>
       </RightSection>
+      <EmailComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} contact={f} agent={agent} toast={toast} />
 
     </div>
   )

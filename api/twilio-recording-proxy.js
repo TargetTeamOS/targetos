@@ -14,11 +14,19 @@
 const { requireAnyAgent, getSupabase } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
-  // HARDENED (July 2026): require a logged-in user — this endpoint
-  // was previously callable by anyone who found the URL.
+  // HARDENED (July 2026): caller authentication with staged rollout,
+  // same pattern as TWILIO_SIG_ENFORCE. Log-only until AUTH_ENFORCE
+  // is set to 'true' in Vercel — watch logs for '[AUTH]' lines, flip
+  // the env var when clean. Kill-switch: set it back to 'false'.
   const { requireUser } = require('./_lib/auth')
   const __user = await requireUser(req)
-  if (!__user) { res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' })) }
+  if (!__user) {
+    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
+      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
+      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
+    }
+    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
+  }
   const authCheck = await requireAnyAgent(req)
   if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
 
