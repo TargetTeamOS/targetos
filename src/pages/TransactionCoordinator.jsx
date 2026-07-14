@@ -26,6 +26,8 @@ const PHASE_TASKS = DEFAULT_PHASE_TASKS
 import TCSyncHealth from '../components/TCSyncHealth'
 import TCMorningSummary from '../components/TCMorningSummary'
 import { PeoplePanel, DocumentsPanel, PhotographyPanel } from '../components/TCDealPanels'
+import { TCDealChat } from '../components/TCDealChat'
+import { TCSignPanel, CommissionBillModal } from '../components/TCStage2'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { BoardLinks } from '../components/BoardLinks'
 import { DEFAULT_TC_SETTINGS } from '../lib/tcSettings'
@@ -386,7 +388,7 @@ export function TransactionCoordinator() {
 
   const DEAL_BLANK = {
     addr:'', side:'Seller', agent_id:'', tc_phase:'pre_listing',
-    list_price:'', sale_price:'', ao_date:'', close_date:'',
+    list_price:'', sale_price:'', ao_date:'', close_date:'', c2c_enabled:false,
     attorney_name:'', attorney_phone:'', attorney_email:'',
     mortgage_broker:'', mortgage_phone:'',
     inspector:'', inspector_phone:'', notes:'',
@@ -402,6 +404,7 @@ export function TransactionCoordinator() {
       list_price:      f.list_price ? parseFloat(String(f.list_price).replace(/[$,]/g,'')) : null,
       sale_price:      f.sale_price ? parseFloat(String(f.sale_price).replace(/[$,]/g,'')) : null,
       ao_date:         f.ao_date    || null,
+      c2c_enabled:     !!f.c2c_enabled,
       close_date:      f.close_date || null,
       attorney_name:   f.attorney_name   || null,
       attorney_phone:  f.attorney_phone  || null,
@@ -438,6 +441,22 @@ export function TransactionCoordinator() {
   )
 
   const [tcCfg, setTcCfg] = useState(null)   // merged TC settings (templates, services, statuses…)
+  const [showBill, setShowBill] = useState(false)
+  const [billPeople, setBillPeople] = useState({ rows: [], contacts: {} })
+
+  async function openCommissionBill() {
+    try {
+      const { data: rows } = await supabase.from('tc_participants').select('*').eq('tc_deal_id', selDeal.id)
+      const ids = [...new Set((rows||[]).map(r => r.contact_id))]
+      let contacts = {}
+      if (ids.length) {
+        const { data: cs } = await supabase.from('contacts').select('id, first_name, last_name, email').in('id', ids)
+        contacts = Object.fromEntries((cs||[]).map(x => [x.id, x]))
+      }
+      setBillPeople({ rows: rows || [], contacts })
+    } catch { setBillPeople({ rows: [], contacts: {} }) }
+    setShowBill(true)
+  }
   const templatesFor = phase => (tcCfg?.task_templates?.[phase] || PHASE_TASKS[phase] || [])
 
   async function loadAll() {
@@ -550,6 +569,46 @@ export function TransactionCoordinator() {
       toast('Failed: ' + (e.message || e.details || JSON.stringify(e)), '#DC2626')
     }
     finally { setSaving(false) }
+  }
+
+  // Contract-to-close service: weekly check-in tasks from now (or AO
+  // date) until close date, capped at 12 weeks. Fired once when the
+  // toggle flips on; tasks are normal tc_tasks (editable/deletable).
+  async function generateC2CTasks(deal) {
+    try {
+      const start = new Date(Math.max(Date.now(), deal.ao_date ? new Date(deal.ao_date).getTime() : 0))
+      const end   = deal.close_date ? new Date(deal.close_date) : new Date(Date.now() + 84*86400000)
+      const rows = []
+      const d = new Date(start)
+      d.setDate(d.getDate() + 7)
+      let week = 1
+      while (d <= end && rows.length < 12) {
+        rows.push({
+          deal_id: deal.id,
+          title: '📞 C2C week ' + week + ': mortgage broker check-in + update seller, buyer\u2019s agent & attorneys',
+          priority: 'high', due_date: d.toISOString().slice(0,10),
+          status: 'pending', agent_id: deal.agent_id,
+          needs_calendar: false, phase: 'under_contract',
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        })
+        d.setDate(d.getDate() + 7); week++
+      }
+      if (deal.close_date) {
+        const bill = new Date(deal.close_date); bill.setDate(bill.getDate() - 7)
+        if (bill >= new Date()) rows.push({
+          deal_id: deal.id, title: '🧾 Send commission bill to attorneys (1 week before closing)',
+          priority: 'urgent', due_date: bill.toISOString().slice(0,10),
+          status: 'pending', agent_id: deal.agent_id, needs_calendar: true,
+          phase: 'under_contract', created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        })
+      }
+      if (rows.length) {
+        const { error } = await supabase.from('tc_tasks').insert(rows)
+        if (error) throw error
+        setTasks(prev => [...prev, ...rows])
+        toast('📋 ' + rows.length + ' contract-to-close tasks generated')
+      }
+    } catch (e) { toast('C2C task generation failed: ' + e.message, '#DC2626') }
   }
 
   async function generatePhaseTasks(deal, phase) {
@@ -714,6 +773,7 @@ export function TransactionCoordinator() {
     try {
       const { synced, failed } = await syncToAllBoards(selDeal, dealPayload(dealForm))
       if (!failed) toast('✅ Deal saved' + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
+      if (dealForm.c2c_enabled && !selDeal.c2c_enabled) await generateC2CTasks({ ...selDeal, ...dealPayload(dealForm) })
       setShowEditDeal(false); loadAll()
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
     finally { setSaving(false) }
@@ -1012,6 +1072,11 @@ export function TransactionCoordinator() {
             <span style={SL}>Notes</span>
             <textarea value={dealForm.notes} onChange={e=>setDealForm(p=>({...p,notes:e.target.value}))} rows={2} style={{ ...S, resize:'vertical' }} />
           </div>
+          <label style={{ gridColumn:'span 2', display:'flex', alignItems:'center', gap:8, fontSize:13, color:'var(--text)', cursor:'pointer' }}>
+            <input type="checkbox" checked={!!dealForm.c2c_enabled}
+                   onChange={e=>setDealForm(p=>({...p,c2c_enabled:e.target.checked}))} />
+            <span><b>Contract-to-close service</b> — auto-generates weekly mortgage-broker check-ins & party updates until closing, plus a commission-bill reminder a week before close</span>
+          </label>
         </div>
 
         {selDeal?.id && (
@@ -1024,8 +1089,19 @@ export function TransactionCoordinator() {
             <PhotographyPanel deal={selDeal}
                               services={(tcCfg || DEFAULT_TC_SETTINGS).photo_services}
                               checklist={(tcCfg || DEFAULT_TC_SETTINGS).readiness_checklist} toast={toast} />
+            <TCSignPanel deal={selDeal} toast={toast}
+                         onLinked={id => setSelDeal(d => ({ ...d, linked_sign_id: id }))} />
+            <TCDealChat dealId={selDeal.id} dealAddr={selDeal.addr} agents={agents} me={agent} toast={toast} />
+            <div style={{ marginTop:12 }}>
+              <Btn variant="secondary" onClick={openCommissionBill}>🧾 Commission Bill…</Btn>
+            </div>
           </div>
         )}
+
+        <CommissionBillModal open={showBill} onClose={()=>setShowBill(false)} deal={selDeal}
+                             participants={billPeople.rows} contacts={billPeople.contacts}
+                             agent={agent} ratePercent={(tcCfg || DEFAULT_TC_SETTINGS).commission_rate_percent || 1.5}
+                             toast={toast} />
 
         <ModalActions>
           <Btn variant="secondary" onClick={()=>setShowEditDeal(false)}>Cancel</Btn>

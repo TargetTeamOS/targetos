@@ -88,6 +88,7 @@ export const DEFAULT_TC_SETTINGS = {
     'Attorney (Seller)', 'Attorney (Buyer)', 'Photographer', 'Inspector',
   ],
   task_templates: DEFAULT_PHASE_TASKS,
+  commission_rate_percent: 1.5,
 }
 
 let _cache = null

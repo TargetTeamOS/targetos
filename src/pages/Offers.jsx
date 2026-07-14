@@ -513,6 +513,8 @@ export function Offers() {
         buyer_address:       form.buyer_address       || null,
         seller_name:         form.seller_name         || null,
         seller_contact_id:   form.seller_contact_id   || null,
+        co_buyer_contact_id: form.co_buyer_contact_id || null,
+        co_seller_contact_id: form.co_seller_contact_id || null,
         co_seller_name:      form.co_seller_name      || null,
         sellers_agent_name:  form.sellers_agent_name  || null,
         seller_agent_company:form.seller_agent_company|| null,
@@ -832,7 +834,9 @@ export function Offers() {
                 />
                 {form.buyer_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:3 }}>✓ Linked to contact record</div>}
                 <span style={SL}>Co-Buyer (optional)</span>
-                <input value={form.co_buyer_name||''} onChange={e=>set('co_buyer_name',e.target.value)} placeholder="Co-buyer name" style={S} />
+                <ContactSearch value={form.co_buyer_name||''} onChange={v=>set('co_buyer_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,co_buyer_name:[c.first_name,c.last_name].filter(Boolean).join(' '),co_buyer_contact_id:c.id})) }}
+                  placeholder="Search contacts or enter co-buyer name..." />
                 <span style={SL}>Buyer Phone</span>
                 <input value={form.buyer_phone||''} onChange={e=>set('buyer_phone',e.target.value)} placeholder="(845) 555-1234" style={S} />
                 <span style={SL}>Buyer Email</span>
@@ -850,7 +854,7 @@ export function Offers() {
                   placeholder="Search contacts or enter name..." />
                 <span style={SL}>Co-Seller (optional)</span>
                 <ContactSearch value={form.co_seller_name||''} onChange={v=>set('co_seller_name',v)}
-                  onSelect={c=>{ if(c) setForm(f=>({...f,co_seller_name:[c.first_name,c.last_name].filter(Boolean).join(' ')})) }}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,co_seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),co_seller_contact_id:c.id})) }}
                   placeholder="Co-seller name" />
                 <span style={SL}>Seller's Agent Name</span>
                 <input value={form.sellers_agent_name||''} onChange={e=>set('sellers_agent_name',e.target.value)} placeholder="Auto-filled from MLS or enter" style={S} />

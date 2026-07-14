@@ -145,6 +145,14 @@ export default function TCSettings() {
         <ListEditor items={cfg.participant_roles} onChange={v => set('participant_roles', v)} placeholder="New role…" />
       </div>
 
+      {/* Commission */}
+      <div style={card}>
+        <div style={cardTitle}><span>🧾 Commission bill default rate (%)</span></div>
+        <div style={hint}>Pre-fills the rate on every commission bill — editable per bill before sending.</div>
+        <input style={{ ...inp, width: 120 }} type="number" step="0.05" value={cfg.commission_rate_percent ?? 1.5}
+               onChange={e => set('commission_rate_percent', Number(e.target.value))} />
+      </div>
+
       {/* Task templates */}
       <div style={card}>
         <div style={cardTitle}><span>📋 Task templates per phase</span>
