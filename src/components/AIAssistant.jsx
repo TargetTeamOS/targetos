@@ -3,6 +3,7 @@
 // Has full CRM context: knows the team, can answer questions about deals, contacts, etc.
 
 import React, { useState, useRef, useEffect } from 'react'
+import { authFetch } from '../lib/apiAuth'
 import { useAuth }  from '../context/AuthContext'
 import { useAgents } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
@@ -157,7 +158,7 @@ Current user: ${agent?.name || 'Unknown'} (${agent?.role || 'agent'})
 Keep responses concise and practical. Use bullet points for lists. Be direct and helpful.`
 
       const { data: { session } } = await supabase.auth.getSession()
-      const response = await fetch('/api/ai-assistant', {
+      const response = await authFetch('/api/ai-assistant', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

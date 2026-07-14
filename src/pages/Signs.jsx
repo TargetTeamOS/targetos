@@ -33,7 +33,7 @@ const SIGNS_EXPORT_COLS = [
 ]
 
 // ── CONSTANTS ─────────────────────────────────────────────────────
-const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || 'AIzaSyAgxix5MkxxNo1F5DPdrab3JMce2aSMe6c'
+const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
 
 const ORDER_STATUS = [
   { id: 'On Property',           color: '#10B981', bg: '#F0FDF4', icon: '✅' },

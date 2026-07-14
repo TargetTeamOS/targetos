@@ -31,6 +31,11 @@ function datePart(s, p) {
 }
 
 module.exports = async function handler(req, res) {
+  // HARDENED (July 2026): require a logged-in user — this endpoint
+  // was previously callable by anyone who found the URL.
+  const { requireUser } = require('./_lib/auth')
+  const __user = await requireUser(req)
+  if (!__user) { res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' })) }
   if (req.method !== 'POST') return res.status(405).json({ error:'POST only' })
 
   const authCheck = await requireAnyAgent(req)

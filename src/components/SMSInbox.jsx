@@ -4,6 +4,7 @@
 // Uses Twilio webhooks to receive incoming messages.
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useEffect, useRef } from 'react'
+import { authFetch } from '../lib/apiAuth'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 
@@ -53,7 +54,7 @@ export function SMSThread({ contactId, contactPhone, contactName }) {
       setMessages(p => [...p, optimistic])
 
       const { data: { session } } = await supabase.auth.getSession()
-      const res  = await fetch('/api/send-sms', {
+      const res  = await authFetch('/api/send-sms', {
         method:'POST',
         headers:{
           'Content-Type':'application/json',

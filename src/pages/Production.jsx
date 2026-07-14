@@ -12,6 +12,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { authFetch } from '../lib/apiAuth'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
@@ -1780,7 +1781,7 @@ export function Production() {
       const ag = agents.find(a => a.id === deal.agent_id)
       if (!ag?.email) return
       const { data: { session } } = await supabase.auth.getSession()
-      await fetch('/api/send-email', {
+      await authFetch('/api/send-email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

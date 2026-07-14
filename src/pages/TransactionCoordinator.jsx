@@ -13,6 +13,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { authFetch } from '../lib/apiAuth'
 import { useNavigate } from 'react-router-dom'
 import { useAuth }    from '../context/AuthContext'
 import { useApp }     from '../context/AppContext'
@@ -345,7 +346,7 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask,
 // access token now that the endpoint actually checks auth (July 2026).
 async function callSendEmail(payload) {
   const { data: { session } } = await supabase.auth.getSession()
-  return fetch('/api/send-email', {
+  return authFetch('/api/send-email', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

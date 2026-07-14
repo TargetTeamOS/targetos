@@ -13,6 +13,11 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
+  // HARDENED (July 2026): require a logged-in user — this endpoint
+  // was previously callable by anyone who found the URL.
+  const { requireUser } = require('./_lib/auth')
+  const __user = await requireUser(req)
+  if (!__user) { res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' })) }
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')

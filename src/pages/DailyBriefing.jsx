@@ -2,6 +2,7 @@
 // Email-safe HTML (table-based, no flex/grid), live customizer,
 // per-agent prefs, KW quotes, admin send-all.
 import React, { useState, useEffect, useCallback } from 'react'
+import { authFetch } from '../lib/apiAuth'
 import { useAuth } from '../context/AuthContext'
 import { useApp }  from '../context/AppContext'
 import { supabase } from '../lib/supabase'
@@ -358,7 +359,7 @@ export function DailyBriefing() {
       const quote = getTodaysQuote(customQuotes)
       const html  = buildEmailHTML(agent.name, data, prefs, quote, customMsg, emailStyle)
       const { data: { session } } = await supabase.auth.getSession()
-      const res   = await fetch('/api/send-email', {
+      const res   = await authFetch('/api/send-email', {
         method: 'POST', headers: {
           'Content-Type': 'application/json',
           ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
@@ -414,7 +415,7 @@ export function DailyBriefing() {
           const agStyle = (ap && ap.email_style) ? { ...DEFAULT_STYLE, ...ap.email_style } : emailStyle
           const agPrefs2 = ap?.sections ? { ...DEFAULT_PREFS, ...ap.sections } : DEFAULT_PREFS
           const html = buildEmailHTML(ag.name, agData, agPrefs2, getTodaysQuote(quotes), ap?.custom_message||'', agStyle)
-          const res = await fetch('/api/send-email', {
+          const res = await authFetch('/api/send-email', {
             method:'POST', headers:{'Content-Type':'application/json', ...authHeaders},
             body: JSON.stringify({ from:'TargetOS Briefing <briefing@targetreteam.com>', to:[ag.email], subject:'☀️ Daily Briefing — ' + new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:'America/New_York'}), html }),
           })

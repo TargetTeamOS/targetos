@@ -7,7 +7,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 
 const ff  = 'Inter, system-ui, -apple-system, sans-serif'
-const KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || 'AIzaSyAgxix5MkxxNo1F5DPdrab3JMce2aSMe6c'
+const KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
 
 // ── Load script once, globally ──────────────────────────────────
 let _state = 'idle'  // idle | loading | ready

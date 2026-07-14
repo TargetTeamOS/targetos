@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect } from 'react'
+import { authFetch } from '../lib/apiAuth'
 import { FileAttachments } from '../components/FileAttachments'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -372,7 +373,7 @@ export function Contacts() {
         if (assignedAgent?.email) {
           try {
             const { data: { session } } = await supabase.auth.getSession()
-            await fetch('/api/send-email', {
+            await authFetch('/api/send-email', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',

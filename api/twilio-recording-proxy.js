@@ -14,6 +14,11 @@
 const { requireAnyAgent, getSupabase } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
+  // HARDENED (July 2026): require a logged-in user — this endpoint
+  // was previously callable by anyone who found the URL.
+  const { requireUser } = require('./_lib/auth')
+  const __user = await requireUser(req)
+  if (!__user) { res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' })) }
   const authCheck = await requireAnyAgent(req)
   if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
 

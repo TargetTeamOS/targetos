@@ -1,4 +1,5 @@
 import { ClickToCall } from '../components/ClickToCall'
+import { authFetch } from '../lib/apiAuth'
 // ═══════════════════════════════════════════════════════════════
 // TargetOS V2 — Contact Detail Page (Full Rebuild)
 //
@@ -197,7 +198,7 @@ function TimelineItem({ item }) {
     setState({ status: 'loading', url: null })
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch('/api/twilio-recording-proxy?callId=' + item.id, {
+      const res = await authFetch('/api/twilio-recording-proxy?callId=' + item.id, {
         headers: session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {},
       })
       if (!res.ok) throw new Error('failed')

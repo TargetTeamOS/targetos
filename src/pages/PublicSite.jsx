@@ -10,7 +10,7 @@ import { AddressAutocomplete } from '../components/AddressAutocomplete'
 
 const MLS_USER = import.meta.env.VITE_SIMPLYRETS_USER || 'simplyrets'
 const MLS_PASS = import.meta.env.VITE_SIMPLYRETS_PASS || 'simplyrets'
-const GKEY     = import.meta.env.VITE_GOOGLE_MAPS_KEY || 'AIzaSyAgxix5MkxxNo1F5DPdrab3JMce2aSMe6c'
+const GKEY     = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
 
 function fmt$(n) { return n ? '$' + Number(n).toLocaleString() : '' }
 

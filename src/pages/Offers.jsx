@@ -15,6 +15,7 @@
 // - Stats: total offers, accepted, per-client, conversion rate
 
 import { BoardLinks } from '../components/BoardLinks'
+import { authFetch } from '../lib/apiAuth'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
@@ -458,7 +459,7 @@ export function Offers() {
       }
 
       const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch('/api/generate-offer-pdf', {
+      const res = await authFetch('/api/generate-offer-pdf', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,3 +1,4 @@
+import { authFetch } from './apiAuth'
 // ═══════════════════════════════════════════════════════════════
 // TargetOS V2 — Voice Parser
 // Parses transcribed speech into structured data.
@@ -196,7 +197,7 @@ export async function parseVoiceWithAI(text, authHeaders) {
     'Today\'s date is ' + today + '. Return ONLY the JSON object.'
 
   try {
-    const res = await fetch('/api/ai-assistant', {
+    const res = await authFetch('/api/ai-assistant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(authHeaders || {}) },
       body: JSON.stringify({
