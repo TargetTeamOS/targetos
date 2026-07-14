@@ -389,7 +389,8 @@ export function DailyBriefing() {
       const authHeaders = session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}
       for (const ag of allAgents) {
         const ap = agentPrefs[ag.id]
-        if (ap && !ap.enabled) continue
+        // Aligned with the hardened cron: EXPLICIT opt-in only
+        if (!(ap && ap.enabled === true)) continue
         // record the send so today's cron slot can't double-send
         try { await supabase.from('briefing_sends').insert({ agent_id: ag.id, sent_date: new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }), source: 'manual' }) } catch (e) { /* already sent today — manual send proceeds anyway */ }
         try {

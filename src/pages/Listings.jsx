@@ -10,7 +10,7 @@ import { HeaderCallButton } from '../components/ClickToCall'
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useRef } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth }  from '../context/AuthContext'
 import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
@@ -539,6 +539,16 @@ export function Listings() {
   const [view,        setView]        = useState('grid') // grid | board
 
   useEffect(() => { load() }, [])
+
+  // Deep link: /listings?open=<id> opens that listing's drawer
+  const location = useLocation()
+  const [deepLinked, setDeepLinked] = useState(false)
+  useEffect(() => {
+    if (deepLinked || !listings.length) return
+    const id = new URLSearchParams(location.search).get('open')
+    if (id) { const l = listings.find(x => x.id === id); if (l) setSelected(l) }
+    setDeepLinked(true)
+  }, [listings.length, location.search])
 
   async function load() {
     setLoading(true)

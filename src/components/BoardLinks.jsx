@@ -43,9 +43,9 @@ export function BoardLinks({ listingId = null, dealId = null, tcDealId = null })
 
   if (!links) return null
   const chips = []
-  if (links.listing && !listingId) chips.push({ label: '🏠 View on Listings',   to: '/listings' })
-  if (links.deal && !dealId)       chips.push({ label: '💼 View on Production', to: '/production' })
-  if (links.tc && !tcDealId)       chips.push({ label: '📋 View on TC Board',   to: '/tc' })
+  if (links.listing && !listingId) chips.push({ label: '🏠 View on Listings',   to: '/listings?open=' + links.listing })
+  if (links.deal && !dealId)       chips.push({ label: '💼 View on Production', to: '/production?open=' + links.deal })
+  if (links.tc && !tcDealId)       chips.push({ label: '📋 View on TC Board',   to: '/tc?open=' + links.tc })
   if (!chips.length) return null
 
   return (

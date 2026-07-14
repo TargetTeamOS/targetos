@@ -85,7 +85,7 @@ function Funnel({ stages }) {
 }
 
 export function Reports() {
-  const { agent, isAdmin, canManage } = useAuth()
+  const { agent, isAdmin, canManage, can } = useAuth()
   usePageView('reports')
   const [tab,    setTab]    = useState('overview')
   const [deals,  setDeals]  = useState([])
@@ -203,7 +203,7 @@ export function Reports() {
         actions={
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             <LastVisited page="reports" />
-            {(isAdmin||canManage) && (
+            {can('reports.agent_stats') && (
               <select value={agentFilter} onChange={e=>setAgentFilter(e.target.value)}
                 style={{ padding:'6px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff }}>
                 <option value="">All Agents</option>
@@ -320,7 +320,7 @@ export function Reports() {
       )}
 
       {/* ── AGENTS ── */}
-      {tab === 'agents' && (isAdmin||canManage) && (
+      {tab === 'agents' && can('reports.agent_stats') && (
         <div style={{ background:'var(--panel)', borderRadius:'var(--radius)', border:'1px solid var(--border)', padding:20 }}>
           <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', marginBottom:16 }}>Agent Performance — {year}</div>
           {leaderboard.length === 0 ? <Empty title="No data yet" /> : (

@@ -14,7 +14,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { authFetch } from '../lib/apiAuth'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth }    from '../context/AuthContext'
 import { useApp }     from '../context/AppContext'
 import { supabase }   from '../lib/supabase'
@@ -439,6 +439,21 @@ export function TransactionCoordinator() {
       </div>
     </div>
   )
+
+  const location = useLocation()
+  const [deepLinked, setDeepLinked] = useState(false)
+  useEffect(() => {
+    if (deepLinked || !deals.length) return
+    const id = new URLSearchParams(location.search).get('open')
+    if (!id) { setDeepLinked(true); return }
+    const d = deals.find(x => x.id === id)
+    if (d) {
+      setSelDeal(d)
+      setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'' })
+      setShowEditDeal(true)
+    }
+    setDeepLinked(true)
+  }, [deals.length, location.search])
 
   const [tcCfg, setTcCfg] = useState(null)   // merged TC settings (templates, services, statuses…)
   const [showBill, setShowBill] = useState(false)
@@ -912,7 +927,7 @@ export function TransactionCoordinator() {
             onCheckTask={checkTask}
             onEditTask={t => { setSelTask(t); setSelDeal(deals.find(d=>d.id===t.deal_id)); setTaskForm({ title:t.title, priority:t.priority, due_date:t.due_date||'', agent_id:t.agent_id||'', notes:t.notes||'', needs_calendar:!!t.needs_calendar, reminder_days:t.reminder_days||'', completion_action:t.completion_action||'none', completion_note:t.completion_note||'' }); setShowEditTask(true) }}
             onAddTask={d => { setSelDeal(d); setSelTask(null); setTaskForm({...TASK_BLANK}); setShowAddTask(true) }}
-            onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'' }); setShowEditDeal(true) }}
+            onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'' }); setShowEditDeal(true) }}
           />
         ))
       )}

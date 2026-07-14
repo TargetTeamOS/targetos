@@ -13,7 +13,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { authFetch } from '../lib/apiAuth'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
@@ -1421,6 +1421,16 @@ export function Production() {
   for (let y = new Date().getFullYear(); y >= 2015; y--) years.push(y.toString())
 
   useEffect(() => { load() }, [])
+
+  // Deep link: /production?open=<id> opens that deal
+  const location = useLocation()
+  const [deepLinked, setDeepLinked] = useState(false)
+  useEffect(() => {
+    if (deepLinked || !deals.length) return
+    const id = new URLSearchParams(location.search).get('open')
+    if (id) { const d = deals.find(x => x.id === id); if (d) openDeal(d) }
+    setDeepLinked(true)
+  }, [deals.length, location.search])
 
   function renameGroup(id, label) {
     setCustomGroups(prev => (prev || [...BOARD_GROUPS, ...buildYearGroups(deals)]).map(g => g.id === id ? {...g, label} : g))

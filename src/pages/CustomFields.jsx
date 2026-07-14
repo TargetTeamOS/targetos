@@ -17,7 +17,7 @@ const CARD = { background:'var(--panel)', borderRadius:'var(--radius)', border:'
 const BLANK = { label:'', key:'', type:'text', entity:'contacts', options:[], section:'', required:false, active:true, order:0 }
 
 export function CustomFields() {
-  const { isAdmin }  = useAuth()
+  const { isAdmin, can }  = useAuth()
   const { toast }    = useApp()
   const [fields,     setFields]   = useState([])
   const [loading,    setLoading]  = useState(true)
@@ -124,7 +124,7 @@ export function CustomFields() {
     .filter(f => f.entity === entityTab)
     .sort((a,b) => (a.order||0) - (b.order||0))
 
-  if (!isAdmin) return (
+  if (!can('admin.customize')) return (
     <div style={{ padding:40, textAlign:'center', fontFamily:ff }}>
       <div style={{ fontSize:40, marginBottom:12 }}>🔒</div>
       <div style={{ fontSize:14, color:'var(--muted)' }}>Admin access required</div>
