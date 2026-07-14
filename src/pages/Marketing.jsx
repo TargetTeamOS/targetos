@@ -7,6 +7,7 @@
 import React, { useState } from 'react'
 import { PageHeader, Tabs } from '../components/UI'
 import { SocialCards } from './SocialCards'
+import { DesignStudio } from './DesignStudio'
 import { WeeklyAd } from './WeeklyAd'
 import { MarketUpdateCard } from './MarketUpdateCard'
 import { TestimonialCard } from './TestimonialCard'
@@ -15,6 +16,7 @@ import { usePageView, LastVisited } from '../components/PageViewTracking'
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 const TABS = [
+  { id: 'studio', label: '🎨 Design Studio' },
   { id: 'social', label: '📱 Social Cards' },
   { id: 'weekly',  label: '📰 Weekly Ad' },
   { id: 'market',  label: '📊 Market Update' },
@@ -22,7 +24,7 @@ const TABS = [
 ]
 
 export function Marketing() {
-  const [tab, setTab] = useState('social')
+  const [tab, setTab] = useState('studio')
   usePageView('marketing')
 
   return (
@@ -42,6 +44,7 @@ export function Marketing() {
         <div style={{ marginLeft:'auto', paddingBottom:6 }}><LastVisited page="marketing" /></div>
       </div>
 
+      {tab === 'studio' && <DesignStudio />}
       {tab === 'social' && <SocialCards />}
       {tab === 'weekly'  && <WeeklyAd />}
       {tab === 'market'  && <MarketUpdateCard />}
