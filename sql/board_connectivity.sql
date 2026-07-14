@@ -13,3 +13,8 @@ create index if not exists idx_deals_listing on deals (listing_id);
 -- Gifts tie to the Contacts board
 alter table gifts add column if not exists contact_id uuid;
 create index if not exists idx_gifts_contact on gifts (contact_id);
+
+-- Offers: persist the seller's contact link (seller search already
+-- existed; the stored link did not)
+alter table offers add column if not exists seller_contact_id uuid;
+create index if not exists idx_offers_seller_contact on offers (seller_contact_id);

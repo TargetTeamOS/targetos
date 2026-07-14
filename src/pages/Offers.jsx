@@ -14,6 +14,7 @@
 // - Per-agent offer history (agents see only their own)
 // - Stats: total offers, accepted, per-client, conversion rate
 
+import { BoardLinks } from '../components/BoardLinks'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
@@ -42,7 +43,7 @@ const BLANK = {
   buyer_name:'', co_buyer_name:'', buyer_contact_id:'',
   buyer_phone:'', buyer_email:'', buyer_address:'',
   // Seller
-  seller_name:'', co_seller_name:'',
+  seller_name:'', co_seller_name:'', seller_contact_id:'',
   seller_agent_name:'', seller_agent_company:'',
   // Financials
   purchase_price:'', deposit:'', sellers_concession:'',
@@ -510,6 +511,7 @@ export function Offers() {
         buyer_email:         form.buyer_email         || null,
         buyer_address:       form.buyer_address       || null,
         seller_name:         form.seller_name         || null,
+        seller_contact_id:   form.seller_contact_id   || null,
         co_seller_name:      form.co_seller_name      || null,
         sellers_agent_name:  form.sellers_agent_name  || null,
         seller_agent_company:form.seller_agent_company|| null,
@@ -789,6 +791,7 @@ export function Offers() {
                 <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em' }}>
                   🏠 Property Information
                   {form.is_inhouse && <span style={{ color:'#10B981', background:'rgba(16,185,129,.12)', padding:'1px 7px', borderRadius:99, marginLeft:6, fontSize:10 }}>🏡 In-House</span>}
+                  {form.inhouse_listing_id ? <div style={{ marginTop:6 }}><BoardLinks listingId={form.inhouse_listing_id} /></div> : null}
                 </div>
                 <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--text)', cursor:'pointer' }}>
                   <input type="checkbox" checked={!!form.off_market} onChange={e=>set('off_market',e.target.checked)} style={{ accentColor:'var(--brand)' }} />
@@ -842,7 +845,7 @@ export function Offers() {
                 <div style={{ fontSize:11, fontWeight:800, color:'#10B981', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>SELLER</div>
                 <span style={SL}>Seller Name</span>
                 <ContactSearch value={form.seller_name||''} onChange={v=>set('seller_name',v)}
-                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' ')})) }}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),seller_contact_id:c.id})) }}
                   placeholder="Search contacts or enter name..." />
                 <span style={SL}>Co-Seller (optional)</span>
                 <ContactSearch value={form.co_seller_name||''} onChange={v=>set('co_seller_name',v)}
@@ -1068,7 +1071,7 @@ export function Offers() {
               <div>
                 <span style={SL}>Seller Name</span>
                 <ContactSearch value={form.seller_name||''} onChange={v=>set('seller_name',v)}
-                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' ')})) }}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),seller_contact_id:c.id})) }}
                   placeholder="Search or enter seller..." />
               </div>
               <div>
