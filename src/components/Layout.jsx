@@ -49,6 +49,7 @@ const NAV = [
   { id: 'automations',   label: 'Automations',    icon: '⚡', roles: ['admin'] },
   { id: 'website',       label: 'Website',        icon: '🌐', roles: ['admin'] },
   { id: 'activitylog',   label: 'Activity Log',   icon: '📋', roles: ['admin'] },
+  { id: 'call-diagnostics', label: 'Call Diagnostics', icon: '🩺', roles: ['admin'] },
   { id: 'custom-fields', label: 'Custom Fields',  icon: '🔲', roles: ['admin'] },
   { id: 'admin',         label: 'Admin',          icon: '⚙️',  roles: ['admin'] },
   { id: 'settings',      label: 'Settings',       icon: '🔧', roles: ['admin','secretary','agent'] },

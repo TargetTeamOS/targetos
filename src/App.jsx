@@ -44,6 +44,7 @@ import { EmailDesigner } from './pages/EmailDesigner'
 import { Settings }      from './pages/Settings'
 import { Admin }         from './pages/Admin'
 import { ActivityLog }   from './pages/ActivityLog'
+import { CallDiagnostics } from './pages/CallDiagnostics'
 import { Mortgage }      from './pages/Mortgage'
 import { WebsiteBuilder } from './pages/WebsiteBuilder'
 import { PublicHome, PublicListings, PublicListingDetail, PublicAbout, PublicContact } from './pages/PublicSite'
@@ -173,6 +174,7 @@ function AppShell() {
           <Route path="/settings"            element={<Settings />} />
           <Route path="/admin"               element={<Admin />} />
           <Route path="/activitylog"         element={<ActivityLog />} />
+          <Route path="/call-diagnostics"    element={<CallDiagnostics />} />
           <Route path="/mortgage"            element={<Mortgage />} />
           <Route path="/website"             element={<WebsiteBuilder />} />
           <Route path="/route"               element={<RoutePage />} />
