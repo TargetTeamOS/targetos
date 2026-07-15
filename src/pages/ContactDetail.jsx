@@ -17,7 +17,6 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { CallJourney } from '../components/CallJourney'
 import { loadContactLayout, saveContactLayout } from '../lib/contactLayout'
-import { ContactLayoutEditor } from '../components/ContactLayoutEditor'
 import { EmailComposeModal } from '../components/EmailComposeModal'
 import { db } from '../lib/db'
 import {
@@ -583,34 +582,64 @@ function AgreementsSection({ contactId, agentId, onActivityLog }) {
 // ════════════════════════════════════════════════════════════════
 
 // Section-visibility: admins can hide panels + reorder via a layout
-// settings object. hideKey identifies the panel.
-function RightSection({ title, icon, color = 'var(--brand)', children, action = null, defaultOpen = true, hideKey = null, hidden = {}, layout = null }) {
+// settings object. hideKey identifies the panel. In arrange mode
+// (editLayout) each section shows a drag handle + hide button.
+function RightSection({ title, icon, color = 'var(--brand)', children, action = null, defaultOpen = true, hideKey = null, hidden = {}, layout = null, editLayout = false, onReorder = null, onHide = null }) {
   const [open, setOpen] = React.useState(defaultOpen)
   const isHidden = hideKey ? (layout?.hidden?.[hideKey] || hidden[hideKey]) : false
-  if (isHidden) return null
+  // In arrange mode, show hidden panels too (dimmed) so they can be re-shown
+  if (isHidden && !editLayout) return null
   let ord
   if (hideKey && layout?.order) {
     const i = layout.order.indexOf(hideKey)
     ord = i < 0 ? 999 : i
   }
+  const dragProps = (editLayout && hideKey) ? {
+    draggable: true,
+    onDragStart: e => { e.dataTransfer.setData('text/panel', hideKey); e.dataTransfer.effectAllowed = 'move' },
+    onDragOver: e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' },
+    onDrop: e => { e.preventDefault(); const from = e.dataTransfer.getData('text/panel'); if (from && from !== hideKey && onReorder) onReorder(from, hideKey) },
+  } : {}
   return (
-    <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden', marginBottom: '8px', order: ord }}>
-      <div onClick={() => setOpen(o => !o)}
-        style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', background: 'var(--dim)' }}>
+    <div {...dragProps} style={{ background: 'var(--panel)', borderRadius: '10px', border: editLayout ? '1px dashed var(--brand)' : '1px solid var(--border)', overflow: 'hidden', marginBottom: '8px', order: ord, opacity: isHidden ? 0.5 : 1 }}>
+      <div onClick={() => !editLayout && setOpen(o => !o)}
+        style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: editLayout ? 'grab' : 'pointer', userSelect: 'none', background: 'var(--dim)' }}>
+        {editLayout && hideKey && <span style={{ fontSize: '14px', color: 'var(--muted)', cursor: 'grab' }} title="Drag to reorder">⠿</span>}
         <span style={{ fontSize: '14px' }}>{icon}</span>
         <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{title}</span>
-        {action && <span onClick={e => { e.stopPropagation(); action.onClick() }}
-          style={{ fontSize: '11px', fontWeight: 700, color: color, background: color + '18', padding: '2px 8px', borderRadius: '6px', cursor: 'pointer', border: "1px solid " + (color) + "33" }}>
-          {action.label}
-        </span>}
-        <span style={{ fontSize: '11px', color: 'var(--muted)', transition: 'transform .2s', transform: open ? 'rotate(0)' : 'rotate(-90deg)' }}>▾</span>
+        {editLayout && hideKey ? (
+          <span onClick={e => { e.stopPropagation(); onHide && onHide(hideKey, !isHidden) }}
+            style={{ fontSize: '12px', fontWeight: 700, color: isHidden ? '#10B981' : 'var(--muted)', cursor: 'pointer', padding: '2px 8px', borderRadius: 6, background: 'var(--panel)', border: '1px solid var(--border)' }}>
+            {isHidden ? 'Show' : '✕ Hide'}
+          </span>
+        ) : (
+          <>
+            {action && <span onClick={e => { e.stopPropagation(); action.onClick() }}
+              style={{ fontSize: '11px', fontWeight: 700, color: color, background: color + '18', padding: '2px 8px', borderRadius: '6px', cursor: 'pointer', border: "1px solid " + (color) + "33" }}>
+              {action.label}
+            </span>}
+            <span style={{ fontSize: '11px', color: 'var(--muted)', transition: 'transform .2s', transform: open ? 'rotate(0)' : 'rotate(-90deg)' }}>▾</span>
+          </>
+        )}
       </div>
-      {open && <div style={{ padding: '10px 14px' }}>{children}</div>}
+      {open && !editLayout && <div style={{ padding: '10px 14px' }}>{children}</div>}
     </div>
   )
 }
 
-function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, onRefreshTimeline, layout }) {
+function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, onRefreshTimeline, layout, editLayout, setLayout }) {
+  function onReorder(fromKey, toKey) {
+    const order = (layout?.order || []).slice()
+    const fi = order.indexOf(fromKey), ti = order.indexOf(toKey)
+    if (fi < 0 || ti < 0) return
+    order.splice(ti, 0, order.splice(fi, 1)[0])
+    setLayout({ ...layout, order })
+  }
+  function onHide(key, hide) {
+    const hidden = { ...(layout?.hidden || {}) }
+    if (hide) hidden[key] = true; else delete hidden[key]
+    setLayout({ ...layout, hidden })
+  }
   const [composeOpen, setComposeOpen] = React.useState(false)
 
   async function onAssignAgent(newAgentId) {
@@ -746,7 +775,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
 
       {/* sections are admin-reorderable/hideable via layout (CSS order) */}
       {/* ── ASSIGNED TO ── */}
-      <RightSection hideKey="assigned" layout={layout} title="Assigned To" icon="👤" color="#0EA5E9">
+      <RightSection hideKey="assigned" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Assigned To" icon="👤" color="#0EA5E9">
         {f.agents ? (
           <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
             <Avatar agent={f.agents} size={36} />
@@ -776,11 +805,11 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       <AgreementsSection contactId={contactId} agentId={f.agent_id || agent?.id} contactName={f.first_name + ' ' + (f.last_name || '')} onActivityLog={onRefreshTimeline} />
 
       {/* ── APPOINTMENTS ── */}
-      <RightSection hideKey="showings" layout={layout} title="Showings & Interest" icon="🏡" color="#10B981">
+      <RightSection hideKey="showings" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Showings & Interest" icon="🏡" color="#10B981">
       <BuyerInterest contactId={contactId} agentId={f.agent_id || agent?.id} />
     </RightSection>
 
-    <RightSection hideKey="appointments" layout={layout} title="Appointments" icon="📅" color="#8B5CF6"
+    <RightSection hideKey="appointments" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Appointments" icon="📅" color="#8B5CF6"
         action={{ label: '+ Add', onClick: () => setAddingAppt(true) }}>
         {appts.length === 0 && <EmptyState text="No appointments yet" action={{ label: '+ Schedule', onClick: () => setAddingAppt(true) }} />}
         {appts.map(a => (
@@ -806,7 +835,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── TASKS ── */}
-      <RightSection hideKey="tasks" layout={layout} title={"Tasks (" + (relTasks.length) + ")"} icon="✅" color="#F97316"
+      <RightSection hideKey="tasks" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title={"Tasks (" + (relTasks.length) + ")"} icon="✅" color="#F97316"
         action={{ label: '+ Add', onClick: () => setAddingTask(true) }}>
         {relTasks.length === 0 && <EmptyState text="No tasks yet" action={{ label: '+ Create task', onClick: () => setAddingTask(true) }} />}
         {relTasks.slice(0,5).map(t => (
@@ -838,7 +867,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── DEALS ── */}
-      <RightSection hideKey="deals" layout={layout} title={"Deals (" + (relDeals.length) + ")"} icon="💼" color="#10B981">
+      <RightSection hideKey="deals" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title={"Deals (" + (relDeals.length) + ")"} icon="💼" color="#10B981">
         {relDeals.length === 0 && <EmptyState text="No deals linked" action={{ label: '+ Link Deal', onClick: () => navigate('/production/new') }} />}
         {relDeals.map(d => (
           <div key={d.id} onClick={() => navigate('/production/' + d.id)}
@@ -854,7 +883,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── CALLS LOG ── */}
-      <RightSection hideKey="calls" layout={layout} title={"Calls (" + (calls.length) + ")"} icon="📞" color="#3B82F6">
+      <RightSection hideKey="calls" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title={"Calls (" + (calls.length) + ")"} icon="📞" color="#3B82F6">
         {calls.length === 0 && <EmptyState text="No calls logged" action={{ label: '+ Log Call', onClick: () => navigate('/calls/new') }} />}
         {calls.slice(0,4).map(c => (
           <div key={c.id} style={{ padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
@@ -878,7 +907,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── GIFTS ── */}
-      <RightSection hideKey="gifts" layout={layout} title={"Gifts (" + (gifts.length) + ")"} icon="🎁" color="#EC4899">
+      <RightSection hideKey="gifts" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title={"Gifts (" + (gifts.length) + ")"} icon="🎁" color="#EC4899">
         {gifts.length === 0 && <EmptyState text="No gifts yet" action={{ label: '+ Add Gift', onClick: () => navigate('/gifts/new') }} />}
         {gifts.map(g => (
           <div key={g.id} onClick={() => navigate('/gifts/' + g.id)}
@@ -891,7 +920,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── AUTO PLANS (Automations) ── */}
-      <RightSection hideKey="autoplans" layout={layout} title="Auto Plans" icon="⚡" color="#CC2200" defaultOpen={false}>
+      <RightSection hideKey="autoplans" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Auto Plans" icon="⚡" color="#CC2200" defaultOpen={false}>
         <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'10px', lineHeight:1.5 }}>
           Apply automations to this contact to send emails, create tasks, and follow ups automatically.
         </div>
@@ -919,7 +948,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── LISTING ALERTS ── */}
-      <RightSection hideKey="alerts" layout={layout} title="Listing Alerts" icon="🏡" color="#F5A623" defaultOpen={false}>
+      <RightSection hideKey="alerts" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Listing Alerts" icon="🏡" color="#F5A623" defaultOpen={false}>
         <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'10px', lineHeight:1.5 }}>
           Send matching listing alerts to this contact based on their buyer criteria.
         </div>
@@ -955,7 +984,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── MARKET REPORT ── */}
-      <RightSection hideKey="market" layout={layout} title="Market Report" icon="📊" color="#6366F1" defaultOpen={false}>
+      <RightSection hideKey="market" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Market Report" icon="📊" color="#6366F1" defaultOpen={false}>
         <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'10px', lineHeight:1.5 }}>
           Send a market update to this contact for their area.
         </div>
@@ -986,7 +1015,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── FILES ── */}
-      <RightSection hideKey="files" layout={layout} title="Files" icon="📎" color="#14B8A6" defaultOpen={false}>
+      <RightSection hideKey="files" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Files" icon="📎" color="#14B8A6" defaultOpen={false}>
         <FileAttachments tableName="contacts" recordId={contactId} />
       </RightSection>
 
@@ -1015,6 +1044,11 @@ export function ContactDetail() {
   const [relDeals,  setRelDeals]  = useState([])
   const [contactLayout, setContactLayout] = useState(null)
   const [editLayout, setEditLayout] = useState(false)
+
+  async function saveLayoutNow() {
+    try { await saveContactLayout(contactLayout); toast('Layout saved for everyone'); setEditLayout(false) }
+    catch (e) { toast('Save failed: ' + e.message, '#DC2626') }
+  }
   const [relTasks,  setRelTasks]  = useState([])
   const [agents,    setAgents]    = useState([])
   const [recordingGrants, setRecordingGrants] = useState([])
@@ -1278,76 +1312,66 @@ export function ContactDetail() {
   return (
     <div style={{ fontFamily: ff }}>
 
-      {/* ── TOP HEADER — HubSpot-style ── */}
-      <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 18px', marginBottom:14 }}>
-        {/* Row 1: back + name + status */}
-        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:10 }}>
-          <button onClick={() => navigate('/contacts')}
-            style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:12, color:'var(--muted)', fontFamily:ff, padding:'2px 0', display:'flex', alignItems:'center', gap:4 }}>
-            ← Contacts
-          </button>
-          <div style={{ width:42, height:42, borderRadius:'50%', background:statusColor, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, flexShrink:0 }}>
-            {initials((f.first_name||'')+' '+(f.last_name||''))}
-          </div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              <h1 style={{ fontSize:18, fontWeight:800, color:'var(--text)', margin:0 }}>{f.first_name} {f.last_name}</h1>
-              {f.source && <span style={{ fontSize:11, color:'var(--muted)' }}>via {f.source}</span>}
-              {daysSinceContact !== null && (
-                <span style={{ fontSize:11, color:daysSinceContact>14?'#DC2626':'var(--muted)', fontWeight:daysSinceContact>14?700:400 }}>
-                  · {daysSinceContact===0?'Reached today':'Last contact '+daysSinceContact+'d ago'}
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
-              {[f.phone, f.email, f.company].filter(Boolean).join(' · ')}
-            </div>
-          </div>
-          {isAdmin && (
-            <button onClick={()=>setEditLayout(v=>!v)}
-              style={{ padding:'6px 12px', borderRadius:99, border:'1px solid var(--border)', background: editLayout ? 'var(--brand)' : 'var(--dim)', color: editLayout ? '#fff' : 'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, marginRight:6 }}>
-              {editLayout ? '✓ Done editing' : '⚙️ Edit layout'}
-            </button>
-          )}
-          {/* Status shown ONCE — the pill IS the selector (no separate dropdown) */}
-          <select value={f.status||'New'} onChange={e=>saveField('status',e.target.value)}
-            style={{ padding:'6px 30px 6px 14px', borderRadius:'99px', border:'none',
-              background:(STATUS_COLORS[f.status]||'#8B5CF6')+'22', color:STATUS_COLORS[f.status]||'#8B5CF6',
-              fontSize:12, fontWeight:800, fontFamily:ff, cursor:'pointer', appearance:'none',
-              backgroundImage:'url("data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 fill=%27none%27 stroke=%27gray%27 stroke-width=%272%27><path d=%27M3 4.5L6 7.5L9 4.5%27/></svg>")',
-              backgroundRepeat:'no-repeat', backgroundPosition:'right 10px center' }}>
-            {CONTACT_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
+      {/* ── TOP HEADER ── */}
+      <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 16px', marginBottom:14, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+        <button onClick={() => navigate('/contacts')}
+          style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:18, color:'var(--muted)', fontFamily:ff, lineHeight:1, padding:0, flexShrink:0 }}
+          title="Back to Contacts">←</button>
+        <div style={{ width:40, height:40, borderRadius:'50%', background:statusColor, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, flexShrink:0 }}>
+          {initials((f.first_name||'')+' '+(f.last_name||''))}
         </div>
-        {/* Row 2: outward actions only (launch phone/email/sms). Logging
-            actions (Note/Task/Appointment/Meeting) live in the timeline
-            composer below — no longer duplicated here. */}
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ minWidth:0, flex:'0 1 auto' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <h1 style={{ fontSize:17, fontWeight:800, color:'var(--text)', margin:0, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{f.first_name} {f.last_name}</h1>
+            <select value={f.status||'New'} onChange={e=>saveField('status',e.target.value)}
+              style={{ padding:'4px 26px 4px 12px', borderRadius:99, border:'none', width:'auto',
+                background:(STATUS_COLORS[f.status]||'#8B5CF6')+'22', color:STATUS_COLORS[f.status]||'#8B5CF6',
+                fontSize:11, fontWeight:800, fontFamily:ff, cursor:'pointer', appearance:'none', flexShrink:0,
+                backgroundImage:'url("data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 width=%2710%27 height=%2710%27 fill=%27none%27 stroke=%27gray%27 stroke-width=%272%27><path d=%27M2 3.5L5 6.5L8 3.5%27/></svg>")',
+                backgroundRepeat:'no-repeat', backgroundPosition:'right 9px center' }}>
+              {CONTACT_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </div>
+          <div style={{ fontSize:11, color:'var(--muted)', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+            {[f.phone, f.email, f.source && ('via '+f.source),
+              daysSinceContact!==null && (daysSinceContact===0?'Reached today':'Last contact '+daysSinceContact+'d ago')
+             ].filter(Boolean).join('  ·  ')}
+          </div>
+        </div>
+        {/* actions, right-aligned */}
+        <div style={{ marginLeft:'auto', display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
           {f.phone && <ClickToCall phone={f.phone} contactName={(f.first_name||'')+' '+(f.last_name||'')} contactId={id} showLabel />}
           {f.email && (
-            <button onClick={()=>window.open('mailto:'+f.email)}
-              style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}
-              onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'}
-              onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
+            <button onClick={()=>window.open('mailto:'+f.email)} title="Email"
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}
+              onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'} onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
               📧 Email
             </button>
           )}
           {f.phone && (
-            <button onClick={()=>window.open('sms:'+f.phone)}
-              style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}
-              onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'}
-              onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
-              💬 SMS
+            <button onClick={()=>window.open('sms:'+f.phone)} title="Text"
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}
+              onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'} onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
+              💬 Text
+            </button>
+          )}
+          {isAdmin && (
+            <button onClick={()=>setEditLayout(v=>!v)} title="Rearrange the panels on this page"
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1px solid '+(editLayout?'var(--brand)':'var(--border)'), background: editLayout ? 'var(--brand)' : 'var(--dim)', color: editLayout ? '#fff' : 'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+              {editLayout ? '✓ Done' : '⚙ Arrange'}
             </button>
           )}
         </div>
       </div>
 
       {editLayout && isAdmin && (
-        <div style={{ background:'var(--panel)', border:'2px solid var(--brand)', borderRadius:12, padding:16, marginBottom:12 }}>
-          <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', marginBottom:4 }}>⚙️ Editing contact page layout</div>
-          <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12 }}>Show/hide and reorder the right-column sections. Saved changes apply to everyone. The page below updates live as you edit.</div>
-          <ContactLayoutEditor toast={toast} onChange={setContactLayout} />
+        <div style={{ background:'rgba(204,34,0,.06)', border:'1px solid var(--brand)', borderRadius:10, padding:'10px 14px', marginBottom:12, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+          <span style={{ fontSize:13, fontWeight:700, color:'var(--brand)' }}>⚙ Arrange mode</span>
+          <span style={{ fontSize:12, color:'var(--muted)', flex:1 }}>Drag the ⠿ handle on any panel to reorder. Click ✕ on a panel to hide it. Changes save for everyone.</span>
+          <button onClick={saveLayoutNow}
+            style={{ padding:'6px 14px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>Save for everyone</button>
+          <button onClick={()=>{ loadContactLayout(true).then(setContactLayout); setEditLayout(false) }}
+            style={{ padding:'6px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>Cancel</button>
         </div>
       )}
 
@@ -1667,7 +1691,7 @@ export function ContactDetail() {
         {/* ══════════════════════════════════════════════════════
             RIGHT — ACTIONS + DEALS + TASKS + FILES
         ══════════════════════════════════════════════════════ */}
-        <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relTasks={relTasks} agents={agents} agent={agent} onRefreshTimeline={loadTimeline} layout={contactLayout} />
+        <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relTasks={relTasks} agents={agents} agent={agent} onRefreshTimeline={loadTimeline} layout={contactLayout} editLayout={editLayout} setLayout={setContactLayout} toast={toast} />
       </div>
 
       <Confirm open={confirmDel} message={'Delete ' + f.first_name + ' ' + (f.last_name || '') + '? Cannot be undone.'} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />
