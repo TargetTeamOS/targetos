@@ -85,15 +85,19 @@ function InlineField({ label, value, onChange, type = 'text', options = null, pl
             style={{ width: '100%', padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--brand)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, outline: 'none', boxSizing: 'border-box' }} />
         )
       ) : (
-        <div onClick={() => setEditing(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'text', minHeight: '24px', padding: '2px 4px', borderRadius: '4px', border: '1px solid transparent', transition: 'border-color .1s' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
+        <div onClick={() => setEditing(true)} className="inline-edit-row"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'text', minHeight: '26px', padding: '3px 8px', borderRadius: '6px', border: '1px solid transparent', transition: 'background .12s, border-color .12s' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--dim)'; const p = e.currentTarget.querySelector('.edit-hint'); if (p) p.style.opacity = '1' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; const p = e.currentTarget.querySelector('.edit-hint'); if (p) p.style.opacity = '0' }}>
           {prefix && <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{prefix}</span>}
-          <span style={{ fontSize: '13px', color: displayVal ? 'var(--text)' : 'var(--muted)', fontWeight: displayVal ? 500 : 400 }}>
+          <span style={{ flex: 1, fontSize: '13px', color: displayVal ? 'var(--text)' : 'var(--muted)', fontWeight: displayVal ? 500 : 400 }}>
             {displayVal || placeholder}
           </span>
-          <span style={{ fontSize: '10px', color: 'var(--border)', marginLeft: '2px' }}>✏️</span>
+          <svg className="edit-hint" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ color: 'var(--muted)', opacity: 0, transition: 'opacity .12s', flexShrink: 0 }}>
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/>
+          </svg>
         </div>
       )}
     </div>
@@ -977,28 +981,9 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
         <FileAttachments tableName="contacts" recordId={contactId} />
       </RightSection>
 
-      {/* ── QUICK ACTIONS ── */}
-      <RightSection title="Quick Actions" icon="⚡" color="#CC2200" defaultOpen={false}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
-          {[
-            { label: '📧 Send Email',     onClick: () => setComposeOpen(true) },
-            { label: '📞 Call',           onClick: () => { if (f.phone) window.location.href = 'tel:' + f.phone } },
-            { label: '💬 WhatsApp',       onClick: () => window.open('https://wa.me/' + (f.phone||'').replace(/\D/g,'')) },
-            { label: '📊 Add to Deal',   onClick: () => navigate('/production/new') },
-            { label: '🏡 New Listing',   onClick: () => navigate('/listings/new') },
-            { label: '🚪 Open House',    onClick: () => navigate('/openhouse/new') },
-            { label: '📝 Add Note',      onClick: () => {} },
-            { label: '🖨 Print Profile', onClick: () => window.print() },
-          ].map(a => (
-            <button key={a.label} onClick={a.onClick}
-              style={{ padding:'7px 8px', textAlign:'left', background:'var(--dim)', border:'1px solid var(--border)', borderRadius:'7px', cursor:'pointer', fontSize:'11px', fontWeight:600, color:'var(--text)', fontFamily:'Inter,system-ui,sans-serif' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--dim)'}>
-              {a.label}
-            </button>
-          ))}
-        </div>
-      </RightSection>
+      {/* Quick Actions panel removed — its actions live in the header
+          action bar (Note/Email/Call/Task/Appointment/SMS) and the
+          Deals/Listings sections, so this was a third redundant copy. */}
       <EmailComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} contact={f} agent={agent} toast={toast} />
 
     </div>
@@ -1306,9 +1291,13 @@ export function ContactDetail() {
               {[f.phone, f.email, f.company].filter(Boolean).join(' · ')}
             </div>
           </div>
-          {/* Quick status change */}
+          {/* Quick status change — colored pill */}
           <select value={f.status||'New'} onChange={e=>saveField('status',e.target.value)}
-            style={{ padding:'5px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, cursor:'pointer' }}>
+            style={{ padding:'6px 30px 6px 12px', borderRadius:'99px', border:'none',
+              background:(STATUS_COLORS[f.status]||'#8B5CF6')+'1a', color:STATUS_COLORS[f.status]||'#8B5CF6',
+              fontSize:12, fontWeight:700, fontFamily:ff, cursor:'pointer', appearance:'none',
+              backgroundImage:'url("data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 fill=%27none%27 stroke=%27gray%27 stroke-width=%272%27><path d=%27M3 4.5L6 7.5L9 4.5%27/></svg>")',
+              backgroundRepeat:'no-repeat', backgroundPosition:'right 10px center' }}>
             {CONTACT_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
