@@ -305,16 +305,38 @@ export function FilterBar({
   const panelRef = useRef(null)
   useClickOutside(panelRef, () => setPanelOpen(false))
 
+  // Is a filter value actually set? Handles strings, arrays, and
+  // object-valued filters like date ranges ({} or {from:'',to:''} = not set).
+  function isSet(v) {
+    if (v === '' || v === null || v === undefined) return false
+    if (Array.isArray(v)) return v.length > 0
+    if (typeof v === 'object') return Object.values(v).some(x => x !== '' && x !== null && x !== undefined)
+    return true
+  }
+
+  // Human-readable value for a chip (date ranges render as "from → to",
+  // never "[object Object]")
+  function chipText(def, v) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const parts = []
+      if (v.from) parts.push('from ' + v.from)
+      if (v.to)   parts.push('to ' + v.to)
+      return def.label + ': ' + (parts.join(' ') || '—')
+    }
+    return def.label + ': ' + (def.options?.find(o => o.value === v)?.label || v)
+  }
+
   // Count active filters (excluding search)
-  const activeCount = definitions.filter(def => {
-    const v = filters[def.key]
-    return Array.isArray(v) ? v.length > 0 : (v !== '' && v !== null && v !== undefined)
-  }).length
+  const activeCount = definitions.filter(def => isSet(filters[def.key])).length
 
   // Active chips for display
   const activeChips = definitions.flatMap(def => {
     const v = filters[def.key]
-    const vals = Array.isArray(v) ? v : (v ? [v] : [])
+    if (!isSet(v)) return []
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      return [{ key: def.key, label: chipText(def, v), color: '#CC2200' }]
+    }
+    const vals = Array.isArray(v) ? v : [v]
     return vals.map(val => ({
       key: def.key,
       label: def.label + ': ' + (def.options?.find(o=>o.value===val)?.label || val),
