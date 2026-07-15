@@ -576,8 +576,11 @@ function AgreementsSection({ contactId, agentId, onActivityLog }) {
 // Matches and exceeds Brivity's right panel functionality
 // ════════════════════════════════════════════════════════════════
 
-function RightSection({ title, icon, color = 'var(--brand)', children, action = null, defaultOpen = true }) {
+// Section-visibility: admins can hide panels via a settings object.
+// hideKey identifies the panel; hidden is the map of hidden keys.
+function RightSection({ title, icon, color = 'var(--brand)', children, action = null, defaultOpen = true, hideKey = null, hidden = {} }) {
   const [open, setOpen] = React.useState(defaultOpen)
+  if (hideKey && hidden[hideKey]) return null
   return (
     <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden', marginBottom: '8px' }}>
       <div onClick={() => setOpen(o => !o)}
@@ -597,6 +600,18 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
 
 function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, onRefreshTimeline }) {
   const [composeOpen, setComposeOpen] = React.useState(false)
+
+  async function onAssignAgent(newAgentId) {
+    try {
+      await db.contacts.update(contactId, { agent_id: newAgentId }, agent?.id)
+      const picked = (agents || []).find(a => a.id === newAgentId) || null
+      // reflect immediately without a full reload
+      f.agent_id = newAgentId
+      f.agents = picked
+      toast(newAgentId ? 'Assigned to ' + (picked?.name || 'agent') : 'Agent unassigned')
+      onRefreshTimeline && onRefreshTimeline()
+    } catch (e) { toast('Could not assign: ' + e.message, '#DC2626') }
+  }
   const { toast } = useApp()
   const [rightTab,      setRightTab]     = React.useState('deals')
   const [addingTask,    setAddingTask]   = React.useState(false)
@@ -726,10 +741,21 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
               <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>{f.agents.name}</div>
               <div style={{ fontSize:'11px', color:'var(--muted)' }}>Primary Agent</div>
             </div>
-            <Btn size="sm" variant="secondary" style={{ marginLeft:'auto' }} onClick={() => navigate('/contacts/' + contactId)}>Edit</Btn>
+            <select value={f.agent_id || ''} onChange={e => onAssignAgent(e.target.value || null)}
+              style={{ marginLeft:'auto', padding:'5px 8px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
+              {(agents || []).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              <option value="">— Unassign —</option>
+            </select>
           </div>
         ) : (
-          <EmptyState text="No agent assigned" action={{ label: '+ Assign Agent', onClick: () => {} }} />
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+            <div style={{ fontSize:'12px', color:'var(--muted)' }}>No agent assigned</div>
+            <select value="" onChange={e => e.target.value && onAssignAgent(e.target.value)}
+              style={{ padding:'7px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
+              <option value="">+ Assign an agent…</option>
+              {(agents || []).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
         )}
       </RightSection>
 
@@ -956,7 +982,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
           {[
             { label: '📧 Send Email',     onClick: () => setComposeOpen(true) },
-            { label: '📞 Call',           onClick: () => {} },
+            { label: '📞 Call',           onClick: () => { if (f.phone) window.location.href = 'tel:' + f.phone } },
             { label: '💬 WhatsApp',       onClick: () => window.open('https://wa.me/' + (f.phone||'').replace(/\D/g,'')) },
             { label: '📊 Add to Deal',   onClick: () => navigate('/production/new') },
             { label: '🏡 New Listing',   onClick: () => navigate('/listings/new') },
@@ -1148,13 +1174,27 @@ export function ContactDetail() {
 
   async function loadRelated() {
     try {
-      const [deals, tasks] = await Promise.all([
-        supabase.from('deals').select('id,addr,stage,gci,agents(id,name,color)').limit(10).then(r => r.data || []),
+      // Deals actually linked to THIS contact (contact_id, or as a
+      // participant via tc_participants). Previously this loaded the
+      // 10 most-recent deals in the whole system with no filter — so
+      // every contact showed the same unrelated deals.
+      const [ownDeals, partRows, tasks] = await Promise.all([
+        supabase.from('deals').select('id,addr,stage,gci,agents(id,name,color)').eq('contact_id', id).then(r => r.data || []),
+        supabase.from('tc_participants').select('tc_deal_id').eq('contact_id', id).then(r => r.data || []),
         supabase.from('tasks').select('id,title,status,priority,due_date').eq('contact_id', id).order('due_date').then(r => r.data || []),
       ])
+      let deals = ownDeals
+      // Include deals where this contact is a participant (seller, buyer, etc.)
+      const tcIds = [...new Set((partRows || []).map(p => p.tc_deal_id).filter(Boolean))]
+      if (tcIds.length) {
+        const { data: tcDeals } = await supabase.from('tc_deals').select('id,addr,tc_phase,sale_price,agent_id,agents(id,name,color)').in('id', tcIds)
+        const mapped = (tcDeals || []).map(d => ({ id: d.id, addr: d.addr, stage: d.tc_phase, gci: d.sale_price, agents: d.agents, _tc: true }))
+        const seen = new Set(deals.map(d => d.id))
+        deals = [...deals, ...mapped.filter(m => !seen.has(m.id))]
+      }
       setRelDeals(deals)
       setRelTasks(tasks)
-    } catch {}
+    } catch (e) { console.warn('loadRelated:', e.message) }
   }
 
   // ── AUTOSAVE FIELD ────────────────────────────────────────────
