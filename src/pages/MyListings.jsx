@@ -216,7 +216,7 @@ export function MyListings() {
   const [openHouses, setOpenHouses] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [expanded,   setExpanded]   = useState({})
-  const [statusFilter,setStatusFilter] = useState('Active')
+  const [statusFilter,setStatusFilter] = useState('All')
   const [search,     setSearch]     = useState('')
 
   // Modals

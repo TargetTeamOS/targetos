@@ -525,7 +525,7 @@ export function Listings() {
   const [loading,     setLoading]     = useState(true)
   const [syncing,     setSyncing]     = useState(false)
   const [search,      setSearch]      = useState('')
-  const [statusF,     setStatusF]     = useState('Active')
+  const [statusF,     setStatusF]     = useState('')
   const [agentF,      setAgentF]      = useState('')
   const [bedsF,       setBedsF]       = useState('')
   const [typeF,       setTypeF]       = useState('')
