@@ -13,6 +13,7 @@ const BOTTOM_NAV = [
 const MORE_NAV = [
   { id: '/listings',    icon: '🏡', label: 'Listings'        },
   { id: '/pipeline',    icon: '📈', label: 'Pipeline'        },
+  { id: '/tc',          icon: '🎯', label: 'TC Board'        },
   { id: '/transactions',icon: '📋', label: 'Transactions'    },
   { id: '/offers',      icon: '📝', label: 'Offers'          },
   { id: '/gifts',       icon: '🎁', label: 'Gifts'           },
@@ -23,6 +24,7 @@ const MORE_NAV = [
   { id: '/calendar',    icon: '📅', label: 'Calendar'        },
   { id: '/announcements',icon:'📣', label: 'Announcements'   },
   { id: '/email',       icon: '✉',  label: 'Email'           },
+  { id: '/marketing',   icon: '🎨', label: 'Marketing'       },
   { id: '/settings',    icon: '⚙',  label: 'Settings'        },
 ]
 
