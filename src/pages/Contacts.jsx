@@ -473,13 +473,16 @@ export function Contacts() {
         actions={
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
             <LastVisited page="contacts" />
-            <ImportExport
-              table="contacts"
-              data={filtered}
-              columns={CONTACT_EXPORT_COLS}
-              label="Contacts"
-              onImport={refetch}
-            />
+            {can('contacts.export') && (
+              <ImportExport
+                table="contacts"
+                data={filtered}
+                columns={CONTACT_EXPORT_COLS}
+                label="Contacts"
+                onImport={can('contacts.import') ? refetch : undefined}
+                exportOnly={!can('contacts.import')}
+              />
+            )}
             <div style={{ display:'flex', background:'var(--dim)', borderRadius:'8px', padding:'2px', gap:'2px' }}>
               {[['grid','⊞'],['list','☰']].map(([v,icon]) => (
                 <button key={v} onClick={() => setViewMode(v)}

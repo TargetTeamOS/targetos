@@ -156,7 +156,7 @@ function downloadFile(content, filename, type = 'text/csv;charset=utf-8;') {
 }
 
 // ── MAIN COMPONENT ────────────────────────────────────────────────
-export function ImportExport({ table, data = [], columns = [], onImport, label = 'Records' }) {
+export function ImportExport({ table, data = [], columns = [], onImport, label = 'Records', exportOnly = false }) {
   const { toast } = useApp()
   const [open,        setOpen]        = useState(false)
   const [mode,        setMode]        = useState('export') // 'export' | 'import'
@@ -630,6 +630,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
           ⬇ Export
         </button>
+        {!exportOnly && (
         <button
           onClick={() => { setOpen(true); setMode('import'); setPreview(null); setImportDone(null) }}
           style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}
@@ -637,6 +638,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
           ⬆ Import
         </button>
+        )}
       </div>
     )
   }
