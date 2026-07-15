@@ -55,6 +55,7 @@ import { TransactionCoordinator } from './pages/TransactionCoordinator'
 import { MyListings }            from './pages/MyListings'
 import { Segments }       from './pages/Segments'
 import { Reports }        from './pages/Reports'
+import { ReportBuilder }  from './pages/ReportBuilder'
 
 // ── ERROR BOUNDARY ───────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -185,6 +186,7 @@ function AppShell() {
           <Route path="/tc-settings"        element={<RequirePermission perm="admin.customize"><TCSettings /></RequirePermission>} />
           <Route path="/my-listings"          element={<MyListings />} />
           <Route path="/reports"            element={<Reports />} />
+          <Route path="/reportbuilder"      element={<ReportBuilder />} />
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />
         </Routes>
