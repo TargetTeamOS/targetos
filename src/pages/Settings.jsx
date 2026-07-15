@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase'
 import { db }       from '../lib/db'
 import { loadPrefs, savePrefs, PREF_DEFAULTS } from '../lib/userPrefs'
 import { PageHeader, Field, Input, Btn, Avatar, SectionTitle, Toggle, Tabs } from '../components/UI'
+import { ContactLayoutEditor } from '../components/ContactLayoutEditor'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const S  = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }
@@ -91,7 +92,7 @@ function PhoneSetup() {
 }
 
 export function Settings() {
-  const { agent, refreshAgent } = useAuth()
+  const { agent, refreshAgent, isAdmin } = useAuth()
   const { state, setTheme, setCustom, toast } = useApp()
 
   const [tab, setTab] = useState('profile')
@@ -194,6 +195,7 @@ export function Settings() {
     { id:'preferences',   label:'Preferences'      },
     { id:'shortcuts',     label:'Shortcuts'        },
     { id:'phone',         label:'Browser Phone'    },
+    ...(isAdmin ? [{ id:'contactlayout', label:'Contact Layout' }] : []),
   ]
 
   return (
@@ -485,6 +487,13 @@ export function Settings() {
       )}
 
       {/* ── PHONE SETUP ── */}
+      {tab === 'contactlayout' && isAdmin && (
+        <div style={CARD}>
+          <SectionTitle>Contact Page Layout</SectionTitle>
+          <ContactLayoutEditor toast={toast} />
+        </div>
+      )}
+
       {tab === 'phone' && (
         <div style={CARD}>
           <SectionTitle>Browser Phone Configuration</SectionTitle>

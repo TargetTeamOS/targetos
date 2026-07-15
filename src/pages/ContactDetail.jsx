@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { CallJourney } from '../components/CallJourney'
+import { loadContactLayout } from '../lib/contactLayout'
 import { EmailComposeModal } from '../components/EmailComposeModal'
 import { db } from '../lib/db'
 import {
@@ -580,13 +581,19 @@ function AgreementsSection({ contactId, agentId, onActivityLog }) {
 // Matches and exceeds Brivity's right panel functionality
 // ════════════════════════════════════════════════════════════════
 
-// Section-visibility: admins can hide panels via a settings object.
-// hideKey identifies the panel; hidden is the map of hidden keys.
-function RightSection({ title, icon, color = 'var(--brand)', children, action = null, defaultOpen = true, hideKey = null, hidden = {} }) {
+// Section-visibility: admins can hide panels + reorder via a layout
+// settings object. hideKey identifies the panel.
+function RightSection({ title, icon, color = 'var(--brand)', children, action = null, defaultOpen = true, hideKey = null, hidden = {}, layout = null }) {
   const [open, setOpen] = React.useState(defaultOpen)
-  if (hideKey && hidden[hideKey]) return null
+  const isHidden = hideKey ? (layout?.hidden?.[hideKey] || hidden[hideKey]) : false
+  if (isHidden) return null
+  let ord
+  if (hideKey && layout?.order) {
+    const i = layout.order.indexOf(hideKey)
+    ord = i < 0 ? 999 : i
+  }
   return (
-    <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden', marginBottom: '8px' }}>
+    <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden', marginBottom: '8px', order: ord }}>
       <div onClick={() => setOpen(o => !o)}
         style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', background: 'var(--dim)' }}>
         <span style={{ fontSize: '14px' }}>{icon}</span>
@@ -602,7 +609,7 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
   )
 }
 
-function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, onRefreshTimeline }) {
+function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, onRefreshTimeline, layout }) {
   const [composeOpen, setComposeOpen] = React.useState(false)
 
   async function onAssignAgent(newAgentId) {
@@ -736,8 +743,9 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
 
+      {/* sections are admin-reorderable/hideable via layout (CSS order) */}
       {/* ── ASSIGNED TO ── */}
-      <RightSection title="Assigned To" icon="👤" color="#0EA5E9">
+      <RightSection hideKey="assigned" layout={layout} title="Assigned To" icon="👤" color="#0EA5E9">
         {f.agents ? (
           <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
             <Avatar agent={f.agents} size={36} />
@@ -767,11 +775,11 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       <AgreementsSection contactId={contactId} agentId={f.agent_id || agent?.id} contactName={f.first_name + ' ' + (f.last_name || '')} onActivityLog={onRefreshTimeline} />
 
       {/* ── APPOINTMENTS ── */}
-      <RightSection title="Showings & Interest" icon="🏡" color="#10B981">
+      <RightSection hideKey="showings" layout={layout} title="Showings & Interest" icon="🏡" color="#10B981">
       <BuyerInterest contactId={contactId} agentId={f.agent_id || agent?.id} />
     </RightSection>
 
-    <RightSection title="Appointments" icon="📅" color="#8B5CF6"
+    <RightSection hideKey="appointments" layout={layout} title="Appointments" icon="📅" color="#8B5CF6"
         action={{ label: '+ Add', onClick: () => setAddingAppt(true) }}>
         {appts.length === 0 && <EmptyState text="No appointments yet" action={{ label: '+ Schedule', onClick: () => setAddingAppt(true) }} />}
         {appts.map(a => (
@@ -797,7 +805,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── TASKS ── */}
-      <RightSection title={"Tasks (" + (relTasks.length) + ")"} icon="✅" color="#F97316"
+      <RightSection hideKey="tasks" layout={layout} title={"Tasks (" + (relTasks.length) + ")"} icon="✅" color="#F97316"
         action={{ label: '+ Add', onClick: () => setAddingTask(true) }}>
         {relTasks.length === 0 && <EmptyState text="No tasks yet" action={{ label: '+ Create task', onClick: () => setAddingTask(true) }} />}
         {relTasks.slice(0,5).map(t => (
@@ -829,7 +837,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── DEALS ── */}
-      <RightSection title={"Deals (" + (relDeals.length) + ")"} icon="💼" color="#10B981">
+      <RightSection hideKey="deals" layout={layout} title={"Deals (" + (relDeals.length) + ")"} icon="💼" color="#10B981">
         {relDeals.length === 0 && <EmptyState text="No deals linked" action={{ label: '+ Link Deal', onClick: () => navigate('/production/new') }} />}
         {relDeals.map(d => (
           <div key={d.id} onClick={() => navigate('/production/' + d.id)}
@@ -845,7 +853,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── CALLS LOG ── */}
-      <RightSection title={"Calls (" + (calls.length) + ")"} icon="📞" color="#3B82F6">
+      <RightSection hideKey="calls" layout={layout} title={"Calls (" + (calls.length) + ")"} icon="📞" color="#3B82F6">
         {calls.length === 0 && <EmptyState text="No calls logged" action={{ label: '+ Log Call', onClick: () => navigate('/calls/new') }} />}
         {calls.slice(0,4).map(c => (
           <div key={c.id} style={{ padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
@@ -869,7 +877,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── GIFTS ── */}
-      <RightSection title={"Gifts (" + (gifts.length) + ")"} icon="🎁" color="#EC4899">
+      <RightSection hideKey="gifts" layout={layout} title={"Gifts (" + (gifts.length) + ")"} icon="🎁" color="#EC4899">
         {gifts.length === 0 && <EmptyState text="No gifts yet" action={{ label: '+ Add Gift', onClick: () => navigate('/gifts/new') }} />}
         {gifts.map(g => (
           <div key={g.id} onClick={() => navigate('/gifts/' + g.id)}
@@ -882,7 +890,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── AUTO PLANS (Automations) ── */}
-      <RightSection title="Auto Plans" icon="⚡" color="#CC2200" defaultOpen={false}>
+      <RightSection hideKey="autoplans" layout={layout} title="Auto Plans" icon="⚡" color="#CC2200" defaultOpen={false}>
         <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'10px', lineHeight:1.5 }}>
           Apply automations to this contact to send emails, create tasks, and follow ups automatically.
         </div>
@@ -910,7 +918,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── LISTING ALERTS ── */}
-      <RightSection title="Listing Alerts" icon="🏡" color="#F5A623" defaultOpen={false}>
+      <RightSection hideKey="alerts" layout={layout} title="Listing Alerts" icon="🏡" color="#F5A623" defaultOpen={false}>
         <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'10px', lineHeight:1.5 }}>
           Send matching listing alerts to this contact based on their buyer criteria.
         </div>
@@ -946,7 +954,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── MARKET REPORT ── */}
-      <RightSection title="Market Report" icon="📊" color="#6366F1" defaultOpen={false}>
+      <RightSection hideKey="market" layout={layout} title="Market Report" icon="📊" color="#6366F1" defaultOpen={false}>
         <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'10px', lineHeight:1.5 }}>
           Send a market update to this contact for their area.
         </div>
@@ -977,7 +985,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       </RightSection>
 
       {/* ── FILES ── */}
-      <RightSection title="Files" icon="📎" color="#14B8A6" defaultOpen={false}>
+      <RightSection hideKey="files" layout={layout} title="Files" icon="📎" color="#14B8A6" defaultOpen={false}>
         <FileAttachments tableName="contacts" recordId={contactId} />
       </RightSection>
 
@@ -1004,6 +1012,7 @@ export function ContactDetail() {
   const [timeline,  setTimeline]  = useState([])
   const [tlLoading, setTlLoading] = useState(true)
   const [relDeals,  setRelDeals]  = useState([])
+  const [contactLayout, setContactLayout] = useState(null)
   const [relTasks,  setRelTasks]  = useState([])
   const [agents,    setAgents]    = useState([])
   const [recordingGrants, setRecordingGrants] = useState([])
@@ -1156,6 +1165,8 @@ export function ContactDetail() {
     } catch(e) { console.error('Timeline error:', e) }
     finally { setTlLoading(false) }
   }
+
+  useEffect(() => { loadContactLayout().then(setContactLayout).catch(() => {}) }, [])
 
   async function loadRelated() {
     try {
@@ -1641,7 +1652,7 @@ export function ContactDetail() {
         {/* ══════════════════════════════════════════════════════
             RIGHT — ACTIONS + DEALS + TASKS + FILES
         ══════════════════════════════════════════════════════ */}
-        <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relTasks={relTasks} agents={agents} agent={agent} onRefreshTimeline={loadTimeline} />
+        <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relTasks={relTasks} agents={agents} agent={agent} onRefreshTimeline={loadTimeline} layout={contactLayout} />
       </div>
 
       <Confirm open={confirmDel} message={'Delete ' + f.first_name + ' ' + (f.last_name || '') + '? Cannot be undone.'} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />
