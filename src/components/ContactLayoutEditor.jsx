@@ -9,27 +9,28 @@ import React, { useEffect, useState } from 'react'
 import { Btn } from './UI'
 import { CONTACT_PANELS, DEFAULT_CONTACT_LAYOUT, loadContactLayout, saveContactLayout } from '../lib/contactLayout'
 
-export function ContactLayoutEditor({ toast }) {
+export function ContactLayoutEditor({ toast, onChange }) {
   const [layout, setLayout] = useState(null)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { loadContactLayout(true).then(setLayout) }, [])
+  useEffect(() => { loadContactLayout(true).then(l => { setLayout(l); onChange && onChange(l) }) }, [])
   if (!layout) return <div style={{ fontSize: 13, color: 'var(--muted)' }}>Loading…</div>
 
   const panelById = Object.fromEntries(CONTACT_PANELS.map(p => [p.id, p]))
   const ordered = layout.order.filter(id => panelById[id])
 
+  function apply(next) { setLayout(next); onChange && onChange(next) }
   function move(i, dir) {
     const j = i + dir
     if (j < 0 || j >= ordered.length) return
     const next = [...ordered]
     ;[next[i], next[j]] = [next[j], next[i]]
-    setLayout({ ...layout, order: next })
+    apply({ ...layout, order: next })
   }
   function toggle(id) {
     const hidden = { ...layout.hidden }
     if (hidden[id]) delete hidden[id]; else hidden[id] = true
-    setLayout({ ...layout, hidden })
+    apply({ ...layout, hidden })
   }
 
   async function save() {
@@ -38,7 +39,7 @@ export function ContactLayoutEditor({ toast }) {
     catch (e) { toast?.('Save failed: ' + e.message, '#DC2626') }
     finally { setSaving(false) }
   }
-  function reset() { setLayout(JSON.parse(JSON.stringify(DEFAULT_CONTACT_LAYOUT))) }
+  function reset() { apply(JSON.parse(JSON.stringify(DEFAULT_CONTACT_LAYOUT))) }
 
   const row = { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 6, background: 'var(--panel)' }
 

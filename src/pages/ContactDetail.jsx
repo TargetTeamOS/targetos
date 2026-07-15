@@ -16,7 +16,8 @@ import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { CallJourney } from '../components/CallJourney'
-import { loadContactLayout } from '../lib/contactLayout'
+import { loadContactLayout, saveContactLayout } from '../lib/contactLayout'
+import { ContactLayoutEditor } from '../components/ContactLayoutEditor'
 import { EmailComposeModal } from '../components/EmailComposeModal'
 import { db } from '../lib/db'
 import {
@@ -1013,6 +1014,7 @@ export function ContactDetail() {
   const [tlLoading, setTlLoading] = useState(true)
   const [relDeals,  setRelDeals]  = useState([])
   const [contactLayout, setContactLayout] = useState(null)
+  const [editLayout, setEditLayout] = useState(false)
   const [relTasks,  setRelTasks]  = useState([])
   const [agents,    setAgents]    = useState([])
   const [recordingGrants, setRecordingGrants] = useState([])
@@ -1290,7 +1292,6 @@ export function ContactDetail() {
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
               <h1 style={{ fontSize:18, fontWeight:800, color:'var(--text)', margin:0 }}>{f.first_name} {f.last_name}</h1>
-              <Pill label={f.status||'New'} color={statusColor} size="md" />
               {f.source && <span style={{ fontSize:11, color:'var(--muted)' }}>via {f.source}</span>}
               {daysSinceContact !== null && (
                 <span style={{ fontSize:11, color:daysSinceContact>14?'#DC2626':'var(--muted)', fontWeight:daysSinceContact>14?700:400 }}>
@@ -1302,39 +1303,53 @@ export function ContactDetail() {
               {[f.phone, f.email, f.company].filter(Boolean).join(' · ')}
             </div>
           </div>
-          {/* Quick status change — colored pill */}
+          {isAdmin && (
+            <button onClick={()=>setEditLayout(v=>!v)}
+              style={{ padding:'6px 12px', borderRadius:99, border:'1px solid var(--border)', background: editLayout ? 'var(--brand)' : 'var(--dim)', color: editLayout ? '#fff' : 'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, marginRight:6 }}>
+              {editLayout ? '✓ Done editing' : '⚙️ Edit layout'}
+            </button>
+          )}
+          {/* Status shown ONCE — the pill IS the selector (no separate dropdown) */}
           <select value={f.status||'New'} onChange={e=>saveField('status',e.target.value)}
-            style={{ padding:'6px 30px 6px 12px', borderRadius:'99px', border:'none',
-              background:(STATUS_COLORS[f.status]||'#8B5CF6')+'1a', color:STATUS_COLORS[f.status]||'#8B5CF6',
-              fontSize:12, fontWeight:700, fontFamily:ff, cursor:'pointer', appearance:'none',
+            style={{ padding:'6px 30px 6px 14px', borderRadius:'99px', border:'none',
+              background:(STATUS_COLORS[f.status]||'#8B5CF6')+'22', color:STATUS_COLORS[f.status]||'#8B5CF6',
+              fontSize:12, fontWeight:800, fontFamily:ff, cursor:'pointer', appearance:'none',
               backgroundImage:'url("data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 fill=%27none%27 stroke=%27gray%27 stroke-width=%272%27><path d=%27M3 4.5L6 7.5L9 4.5%27/></svg>")',
               backgroundRepeat:'no-repeat', backgroundPosition:'right 10px center' }}>
             {CONTACT_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
-        {/* Row 2: HubSpot-style action buttons */}
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-          {[
-            { icon:'📝', label:'Note',        action:()=>{ setActiveTab('note') } },
-            { icon:'📧', label:'Email',        action:()=>{ if(f.email) window.open('mailto:'+f.email) } },
-            { icon:'📞', label:'Call',         action:()=>{ if(f.phone) window.open(phoneHref(f.phone)) } },
-            { icon:'✅', label:'Task',         action:()=>{ setActiveTab('task') } },
-            { icon:'📅', label:'Appointment',  action:()=>{ setActiveTab('appt') } },
-            { icon:'💬', label:'SMS',          action:()=>{ if(f.phone) window.open('sms:'+f.phone) } },
-          ].map(function(btn) {
-            return (
-              <button key={btn.label} onClick={btn.action}
-                style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff, transition:'background .12s' }}
-                onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'}
-                onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
-                <span>{btn.icon}</span>{btn.label}
-              </button>
-            )
-          })}
-          <div style={{ flex:1 }} />
+        {/* Row 2: outward actions only (launch phone/email/sms). Logging
+            actions (Note/Task/Appointment/Meeting) live in the timeline
+            composer below — no longer duplicated here. */}
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
           {f.phone && <ClickToCall phone={f.phone} contactName={(f.first_name||'')+' '+(f.last_name||'')} contactId={id} showLabel />}
+          {f.email && (
+            <button onClick={()=>window.open('mailto:'+f.email)}
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}
+              onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'}
+              onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
+              📧 Email
+            </button>
+          )}
+          {f.phone && (
+            <button onClick={()=>window.open('sms:'+f.phone)}
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}
+              onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'}
+              onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
+              💬 SMS
+            </button>
+          )}
         </div>
       </div>
+
+      {editLayout && isAdmin && (
+        <div style={{ background:'var(--panel)', border:'2px solid var(--brand)', borderRadius:12, padding:16, marginBottom:12 }}>
+          <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', marginBottom:4 }}>⚙️ Editing contact page layout</div>
+          <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12 }}>Show/hide and reorder the right-column sections. Saved changes apply to everyone. The page below updates live as you edit.</div>
+          <ContactLayoutEditor toast={toast} onChange={setContactLayout} />
+        </div>
+      )}
 
       {/* ── THREE PANEL LAYOUT — GHL/HubSpot style ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '12px', alignItems: 'start', minHeight: 'calc(100vh - 200px)' }}>
