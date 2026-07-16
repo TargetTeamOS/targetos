@@ -20,6 +20,9 @@ const BLOCK_OPTIONS = [
   { id: 'contacts',  label: '🧑 New contacts (linked)' },
   { id: 'listings',  label: '🏡 Listings (linked)' },
   { id: 'offers',    label: '📝 Offers' },
+  { id: 'open_house', label: '🚪 Open house visitors (linked)' },
+  { id: 'signs',     label: '🪧 Sign inventory status' },
+  { id: 'conversion', label: '📈 Conversion rates' },
   { id: 'per_agent', label: '👥 Per-agent activity table' },
 ]
 const RANGES = [

@@ -97,6 +97,41 @@ async function computeReport(supabase, def) {
       head: ['Agent', 'Calls', 'Deals', 'Tasks', 'New contacts'],
       rows: rows.map(r => [r.name, r.calls, r.deals, r.tasksDone, r.contacts]) })
   }
+  if (blocks.includes('open_house')) {
+    let ohq = supabase.from('oh_visitors').select('id,first_name,last_name,interest_level,listing_addr,agent_id,visited_at,open_house_id').gte('visited_at', fromStart).lte('visited_at', toEnd)
+    ohq = agentFilter(ohq)
+    const visitors = (await ohq).data || []
+    const hot = visitors.filter(v => /hot|high/i.test(v.interest_level || '')).length
+    const houses = [...new Set(visitors.map(v => v.open_house_id).filter(Boolean))].length
+    out.blocks.push({ type: 'stat', title: '🚪 Open House Visitors', value: visitors.length,
+      sub: hot + ' hot leads · ' + houses + ' open house' + (houses === 1 ? '' : 's') })
+    if (visitors.length) out.blocks.push({ type: 'list', title: 'Open house sign-ins',
+      items: visitors.slice(0, 15).map(v => ({
+        label: ((v.first_name || '') + ' ' + (v.last_name || '')).trim() || 'Unnamed',
+        meta: (v.listing_addr || '') + (v.interest_level && v.interest_level !== 'Unknown' ? ' · ' + v.interest_level : '') + ' · ' + agentName(v.agent_id),
+        href: BASE + '/openhouse' + (v.open_house_id ? '/' + v.open_house_id : '') })) })
+  }
+  if (blocks.includes('signs')) {
+    // Inventory snapshot (signs are not period-scoped)
+    const signs = (await supabase.from('signs').select('id,order_status')).data || []
+    const cnt = s => signs.filter(x => x.order_status === s).length
+    out.blocks.push({ type: 'stat', title: '🪧 Sign Inventory', value: signs.length,
+      sub: cnt('On Property') + ' on property · ' + cnt('Order Sent In') + ' ordered · ' + cnt('Missing - broken') + ' missing/broken' })
+  }
+  if (blocks.includes('conversion')) {
+    const accepted = offers.filter(o => /accept/i.test(o.status || '')).length
+    const closed = deals.filter(d => d.stage === 'Closed').length
+    const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—'
+    out.blocks.push({ type: 'table', title: '📈 Conversion (this period)',
+      head: ['Step', 'Count', 'Rate'],
+      rows: [
+        ['New contacts', contacts.length, ''],
+        ['New deals', deals.length, pct(deals.length, contacts.length) + ' of new contacts'],
+        ['Offers made', offers.length, ''],
+        ['Offers accepted', accepted, pct(accepted, offers.length) + ' of offers'],
+        ['Deals closed', closed, pct(closed, deals.length) + ' of new deals'],
+      ] })
+  }
   return out
 }
 
