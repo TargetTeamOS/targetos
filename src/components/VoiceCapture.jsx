@@ -93,6 +93,15 @@ export function VoiceCapture() {
   }
 
   // ── RECORD ────────────────────────────────────────────────────
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader()
+      r.onloadend = () => resolve(r.result)
+      r.onerror = reject
+      r.readAsDataURL(blob)
+    })
+  }
+
   function startRecord() {
     setRecording(true)
     setParsed(null)
@@ -100,51 +109,73 @@ export function VoiceCapture() {
     setAudioBlob(null)
     setLiveText('')
     audioChunks.current = []
-    // Capture the actual audio in parallel with speech-to-text, so the
-    // saved record (contact/task/event/note) keeps a playable recording.
+    let browserTranscript = ''
+
+    // Primary path: record real audio → Whisper (reliable, handles
+    // Yiddish/English). Browser speech is used only for live on-screen
+    // feedback and as a fallback if Whisper is unavailable.
     navigator.mediaDevices?.getUserMedia?.({ audio: true }).then(stream => {
       audioStream.current = stream
       const mr = new MediaRecorder(stream)
       mr.ondataavailable = e => { if (e.data.size) audioChunks.current.push(e.data) }
-      mr.onstop = () => {
-        if (audioChunks.current.length) setAudioBlob(new Blob(audioChunks.current, { type: 'audio/webm' }))
+      mr.onstop = async () => {
         audioStream.current?.getTracks().forEach(t => t.stop())
-      }
-      mr.start(); audioRec.current = mr
-    }).catch(() => { /* audio optional; transcript still works */ })
-    recRef.current = startRecording(
-      async (transcript) => {
+        const blob = audioChunks.current.length ? new Blob(audioChunks.current, { type: 'audio/webm' }) : null
+        if (blob) setAudioBlob(blob)
         setRecording(false)
-        try { audioRec.current?.stop() } catch {}
         setStep('parsing')
         try {
+          let transcript = ''
+          // Whisper first
+          if (blob) {
+            try {
+              const b64 = await blobToBase64(blob)
+              const r = await authFetch('/api/transcribe', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ audioBase64: b64, mimeType: 'audio/webm' }),
+              })
+              const j = await r.json()
+              if (r.ok && j.text) transcript = j.text
+            } catch (e) { /* fall back to browser transcript */ }
+          }
+          if (!transcript) transcript = browserTranscript
+          if (!transcript || !transcript.trim()) {
+            toast('Didn\'t catch anything — try again', '#F59E0B'); setStep('idle'); return
+          }
+          setLiveText(transcript)
           const { data: { session } } = await supabase.auth.getSession()
           const authHeaders = session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}
           const result = await parseVoiceWithAI(transcript, authHeaders)
           setParsed(result)
           setStep('reviewing')
-        } catch(e) {
+        } catch (e) {
           toast('Could not process — please try again', '#DC2626')
           setStep('idle')
         }
-      },
-      (err) => {
-        setRecording(false)
-        try { audioRec.current?.stop() } catch {}
-        toast('Mic error: ' + err, '#DC2626')
-        setStep('idle')
+      }
+      mr.start(); audioRec.current = mr
+    }).catch(() => {
+      toast('Microphone access needed — allow it in your browser settings', '#DC2626')
+      setRecording(false)
+    })
+
+    // Browser speech recognition — live feedback + fallback text only.
+    recRef.current = startRecording(
+      (transcript) => { browserTranscript = transcript; try { audioRec.current?.stop() } catch {} },
+      (err) => { /* browser engine failing is OK — Whisper is primary. Just stop audio. */
+        if (audioRec.current && audioRec.current.state !== 'inactive') { try { audioRec.current.stop() } catch {} }
       },
       {
-        silenceMs: 6000,                       // auto-finish after ~6s quiet
-        onInterim: (txt) => setLiveText(txt),  // show words as they're heard
+        silenceMs: 6000,
+        onInterim: (txt) => setLiveText(txt),
       }
     )
   }
 
   function stopRecord() {
-    recRef.current?.stop?.()
+    // Stopping the audio recorder triggers transcription in mr.onstop
+    try { recRef.current?.stop?.() } catch {}
     try { audioRec.current?.stop() } catch {}
-    setRecording(false)
   }
 
   // Upload the captured audio and attach it to a record via the notes
