@@ -25,16 +25,23 @@ const RULE_TYPES = [
   { id: 'direct',        label: 'Direct Extension', icon: '📱', desc: 'Always route to a specific extension' },
 ]
 
+// Consolidated (July 2026): daily-use tabs stay primary; the five
+// configuration screens live under one "Phone System" tab with
+// sub-tabs — 8 flat tabs mixed usage + setup, now 4 clean ones.
 const TABS_MAIN = [
   { id: 'log',        label: '📋 Call Log' },
   { id: 'voicemail',  label: '📬 Voicemail' },
-  { id: 'extensions', label: '📞 Extensions' },
-  { id: 'ivr',        label: '🎛 IVR Menu' },
-  { id: 'flow',       label: '🔀 Call Flows' },
   { id: 'listings',   label: '🏡 Listings Search' },
-  { id: 'routing',    label: '⚙️ Routing Rules' },
+  { id: 'system',     label: '⚙️ Phone System' },
+]
+const SYSTEM_TABS = [
+  { id: 'flow',       label: '🔀 Call Flows' },
+  { id: 'ivr',        label: '🎛 IVR Menu (legacy)' },
+  { id: 'extensions', label: '📞 Extensions' },
+  { id: 'routing',    label: 'Routing Rules' },
   { id: 'settings',   label: '🔌 Twilio Setup' },
 ]
+const SYSTEM_TAB_IDS = SYSTEM_TABS.map(t => t.id)
 
 // ── HELPERS ──────────────────────────────────────────────────
 function fmtDuration(sec) {
@@ -1196,17 +1203,30 @@ export function Calls() {
       </div>
 
       {/* Tab bar */}
-      <div style={{ display:'flex', borderBottom:'2px solid var(--border)', marginBottom:'20px', overflowX:'auto', gap:'0' }}>
-        {TABS_MAIN.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ padding:'9px 16px', border:'none', background:'none', cursor:'pointer', borderBottom: tab===t.id ? '2px solid #CC2200' : '2px solid transparent', marginBottom:'-2px', fontSize:'13px', fontWeight: tab===t.id ? 700 : 500, color: tab===t.id ? '#CC2200' : 'var(--muted)', fontFamily:ff, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'6px' }}>
+      <div style={{ display:'flex', borderBottom:'2px solid var(--border)', marginBottom: SYSTEM_TAB_IDS.includes(tab) || tab === 'system' ? '0' : '20px', overflowX:'auto', gap:'0' }}>
+        {TABS_MAIN.map(t => {
+          const active = tab === t.id || (t.id === 'system' && SYSTEM_TAB_IDS.includes(tab))
+          return (
+          <button key={t.id} onClick={() => setTab(t.id === 'system' ? 'flow' : t.id)}
+            style={{ padding:'9px 16px', border:'none', background:'none', cursor:'pointer', borderBottom: active ? '2px solid #CC2200' : '2px solid transparent', marginBottom:'-2px', fontSize:'13px', fontWeight: active ? 700 : 500, color: active ? '#CC2200' : 'var(--muted)', fontFamily:ff, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'6px' }}>
             {t.label}
             {t.id === 'voicemail' && vmUnread > 0 && (
               <span style={{ width:16, height:16, borderRadius:'50%', background:'#CC2200', color:'#fff', fontSize:'9px', fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center' }}>{vmUnread}</span>
             )}
           </button>
-        ))}
+          )
+        })}
       </div>
+      {SYSTEM_TAB_IDS.includes(tab) && (
+        <div style={{ display:'flex', gap:6, padding:'10px 0 0', marginBottom:'20px', flexWrap:'wrap' }}>
+          {SYSTEM_TABS.map(st => (
+            <button key={st.id} onClick={() => setTab(st.id)}
+              style={{ padding:'6px 13px', borderRadius:99, border:'1px solid ' + (tab===st.id ? '#CC2200' : 'var(--border)'), background: tab===st.id ? 'rgba(204,34,0,.08)' : 'transparent', color: tab===st.id ? '#CC2200' : 'var(--muted)', fontSize:'12px', fontWeight: tab===st.id ? 700 : 500, cursor:'pointer', fontFamily:ff }}>
+              {st.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── CALL LOG TAB ── */}
       {tab === 'log' && (
