@@ -11,7 +11,6 @@ import { supabase } from '../lib/supabase'
 import { db }       from '../lib/db'
 import { loadPrefs, savePrefs, PREF_DEFAULTS } from '../lib/userPrefs'
 import { PageHeader, Field, Input, Btn, Avatar, SectionTitle, Toggle, Tabs } from '../components/UI'
-import { ContactLayoutEditor } from '../components/ContactLayoutEditor'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const S  = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }
@@ -195,7 +194,6 @@ export function Settings() {
     { id:'preferences',   label:'Preferences'      },
     { id:'shortcuts',     label:'Shortcuts'        },
     { id:'phone',         label:'Browser Phone'    },
-    ...(isAdmin ? [{ id:'contactlayout', label:'Contact Layout' }] : []),
   ]
 
   return (
@@ -270,47 +268,8 @@ export function Settings() {
             </div>
           </div>
 
-          <div style={CARD}>
-            <SectionTitle>Typography</SectionTitle>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-              <div>
-                <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Font Family</div>
-                <select value={custom.fontFamily||'Inter'} onChange={e => setCustom({ fontFamily:e.target.value })} style={S}>
-                  {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Base Font Size: {custom.fontSize||13}px</div>
-                <input type="range" min={11} max={16} value={parseInt(custom.fontSize)||13} onChange={e => setCustom({ fontSize:e.target.value })} style={{ width:'100%', accentColor:'var(--brand)' }} />
-              </div>
-            </div>
-          </div>
-
-          <div style={CARD}>
-            <SectionTitle>Layout</SectionTitle>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
-              <div>
-                <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Border Radius: {custom.borderRadius||12}px</div>
-                <input type="range" min={0} max={20} value={parseInt(custom.borderRadius)||12} onChange={e => setCustom({ borderRadius:e.target.value })} style={{ width:'100%', accentColor:'var(--brand)', marginBottom:8 }} />
-                <div style={{ display:'flex', gap:6 }}>
-                  {[0,6,12,18].map(r => (
-                    <div key={r} onClick={() => setCustom({ borderRadius:String(r) })}
-                      style={{ width:32, height:24, border:'2px solid '+(parseInt(custom.borderRadius)===r?'var(--brand)':'var(--border)'), borderRadius:r+'px', cursor:'pointer', background:'var(--dim)' }} />
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Sidebar Width: {custom.sidebarWidth||220}px</div>
-                <input type="range" min={180} max={280} step={10} value={parseInt(custom.sidebarWidth)||220} onChange={e => setCustom({ sidebarWidth:e.target.value })} style={{ width:'100%', accentColor:'var(--brand)' }} />
-              </div>
-            </div>
-            <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', marginBottom:10 }}>
-              <input type="checkbox" checked={!!custom.compactMode} onChange={e => setCustom({ compactMode:e.target.checked })} style={{ width:16, height:16, accentColor:'var(--brand)' }} />
-              <div>
-                <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>Compact Mode</div>
-                <div style={{ fontSize:11, color:'var(--muted)' }}>Reduce padding and spacing throughout the app</div>
-              </div>
-            </label>
+          <div style={{ fontSize:12, color:'var(--muted)', margin:'2px 4px 14px' }}>
+            Team-wide styling — brand colors, fonts, border radius, sidebar — is managed by admins in <strong>Admin → Customize</strong>.
           </div>
 
           {prefs && (
@@ -487,13 +446,6 @@ export function Settings() {
       )}
 
       {/* ── PHONE SETUP ── */}
-      {tab === 'contactlayout' && isAdmin && (
-        <div style={CARD}>
-          <SectionTitle>Contact Page Layout</SectionTitle>
-          <ContactLayoutEditor toast={toast} />
-        </div>
-      )}
-
       {tab === 'phone' && (
         <div style={CARD}>
           <SectionTitle>Browser Phone Configuration</SectionTitle>

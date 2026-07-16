@@ -17,6 +17,7 @@ import {
   SectionTitle, Pill, Tabs, Toggle, Confirm, Loading
 } from '../components/UI'
 import { FeatureFlagsPanel } from '../components/FeatureFlagsPanel'
+import { ContactLayoutEditor } from '../components/ContactLayoutEditor'
 
 // Shared helper — every admin-users call needs the current session's
 // access token now that the endpoint actually checks auth (July 2026).
@@ -470,35 +471,8 @@ export function Admin() {
             </div>
           </div>
 
-          {/* Theme */}
-          <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:20,marginBottom:14}}>
-            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:14}}>Theme</div>
-            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-              {[
-                {id:'light', label:'Light',  bg:'#F0F2F5', panel:'#fff',    text:'#0F172A'},
-                {id:'dark',  label:'Dark',   bg:'#0F1A2E', panel:'#1A2744', text:'#F1F5F9'},
-                {id:'slate', label:'Slate',  bg:'#1E1E2E', panel:'#2A2A3C', text:'#CDD6F4'},
-              ].map(t => (
-                <div key={t.id} onClick={() => setTheme(t.id)}
-                  style={{cursor:'pointer',borderRadius:10,border:'2px solid '+(state.theme===t.id ? 'var(--brand)' : 'var(--border)'),overflow:'hidden',width:110,flexShrink:0}}>
-                  <div style={{background:t.bg,padding:'10px 10px 6px',display:'flex',gap:3,marginBottom:4}}>
-                    <div style={{width:8,height:8,borderRadius:'50%',background:'#DC2626'}}/>
-                    <div style={{width:8,height:8,borderRadius:'50%',background:'#F5A623'}}/>
-                    <div style={{width:8,height:8,borderRadius:'50%',background:'#10B981'}}/>
-                  </div>
-                  <div style={{background:t.bg,padding:'0 10px 10px',display:'flex',gap:6}}>
-                    <div style={{width:20,background:t.panel,borderRadius:4,height:30}}/>
-                    <div style={{flex:1}}>
-                      <div style={{height:4,background:t.text,borderRadius:2,marginBottom:3,opacity:.7}}/>
-                      <div style={{height:3,background:t.text,borderRadius:2,width:'70%',opacity:.4}}/>
-                    </div>
-                  </div>
-                  <div style={{background:t.panel,padding:'6px 10px',fontSize:11,fontWeight:700,color:t.text,textAlign:'center',borderTop:'1px solid rgba(128,128,128,.15)'}}>
-                    {t.label}{state.theme===t.id ? ' ✓' : ''}
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div style={{fontSize:12,color:'var(--muted)',margin:'2px 4px 14px'}}>
+            Everything on this tab applies to the <strong>whole team</strong>. Personal theme (light/dark) is per-user in Settings → Appearance.
           </div>
 
           {/* Typography */}
@@ -625,6 +599,12 @@ export function Admin() {
               style={{padding:'8px 16px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',color:'var(--muted)',fontSize:12,cursor:'pointer',fontFamily:ff}}>
               Reset to Defaults
             </button>
+          </div>
+
+          {/* Contact page layout (moved from Settings — admin tool) */}
+          <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:20,marginTop:14}}>
+            <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:14}}>Contact Page Layout</div>
+            <ContactLayoutEditor toast={toast} />
           </div>
         </div>
       )}
