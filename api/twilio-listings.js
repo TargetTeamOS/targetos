@@ -401,7 +401,7 @@ module.exports = async function handler(req, res) {
             const whisperUrl = BASE_URL + '/api/twilio-recording-notice?context=listing&addr=' + encodeURIComponent(chosen.addr || '')
             return res.send(wrap(
               say('Connecting you about ' + (chosen.addr || 'that listing') + '. Please hold.', voice) +
-              '<Dial callerId="' + esc(callData.from || callData.to) + '" record="record-from-answer" timeout="25" action="' + esc(buildNextUrl('dialresult', { voice, max: maxRes })) + '" method="GET">' +
+              '<Dial callerId="' + esc(callData.from || callData.to) + '" record="record-from-answer" recordingStatusCallback="' + esc(BASE_URL + '/api/twilio-status') + '" timeout="25" action="' + esc(buildNextUrl('dialresult', { voice, max: maxRes })) + '" method="GET">' +
                 '<Number url="' + esc(whisperUrl) + '">' + esc(dialNumber) + '</Number>' +
               '</Dial>'
             ))
