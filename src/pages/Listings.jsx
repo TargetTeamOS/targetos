@@ -12,6 +12,7 @@ import { HeaderCallButton } from '../components/ClickToCall'
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth }  from '../context/AuthContext'
+import { useFeature } from '../lib/features'
 import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
@@ -517,6 +518,7 @@ export function Listings() {
   const navigate    = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage, can } = useAuth()
+  const mlsOn = useFeature('mls_search', agent)
   usePageView('listings')
   const { toast }   = useApp()
   const { agents }  = useAgents()
@@ -712,7 +714,7 @@ export function Listings() {
 
       {/* ── TOP TABS: My Listings vs MLS Search ── */}
       <div style={{ display:'flex', alignItems:'center', gap:0, marginBottom:0, borderBottom:'2px solid var(--border)', marginTop:-8 }}>
-        {[['my','🏡 My Listings'],['mls','🔍 MLS Search']].map(function([id, label]) {
+        {[['my','🏡 My Listings'],...(mlsOn ? [['mls','🔍 MLS Search']] : [])].map(function([id, label]) {
           const active = activeMainTab === id
           return (
             <button key={id} onClick={() => setActiveMainTab(id)}
@@ -727,7 +729,10 @@ export function Listings() {
       </div>
 
       {/* ── MLS SEARCH TAB ── */}
-      {activeMainTab === 'mls' && (
+      {activeMainTab === 'mls' && !mlsOn && (
+        <div style={{ marginTop:20, padding:30, textAlign:'center', color:'var(--muted)', fontSize:13 }}>MLS Search is currently disabled by your administrator.</div>
+      )}
+      {activeMainTab === 'mls' && mlsOn && (
         <div style={{ marginTop:20 }}>
           <MLSSearch
             agents={agents || []}

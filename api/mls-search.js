@@ -80,6 +80,33 @@ module.exports = async function handler(req, res) {
     return res.status(500).end(JSON.stringify({ error: 'MLS not configured (MLSGRID_BASE / MLSGRID_TOKEN missing)' }))
   }
 
+  // Feature flag: admin kill switch + per-agent allowlist, enforced
+  // server-side so hiding the UI is not the only line of defense.
+  // Fail-open on infrastructure errors (missing table), fail-closed
+  // on an explicit OFF or allowlist exclusion.
+  try {
+    const { getSupabase } = require('./_lib/phone')
+    const sb = getSupabase()
+    if (sb) {
+      const { data: flag } = await sb.from('feature_flags').select('*').eq('key', 'mls_search').maybeSingle()
+      if (flag) {
+        let agentRow = null
+        if (user) {
+          const { data } = await sb.from('agents').select('id,role').eq('auth_user_id', user.id).maybeSingle()
+          agentRow = data
+        }
+        const isAdminCaller = agentRow?.role === 'admin'
+        if (!isAdminCaller) {
+          if (!flag.enabled) return res.status(403).end(JSON.stringify({ error: 'MLS Search is disabled by your administrator' }))
+          const allow = Array.isArray(flag.allowed_agent_ids) ? flag.allowed_agent_ids : []
+          if (allow.length > 0 && (!agentRow || !allow.includes(agentRow.id))) {
+            return res.status(403).end(JSON.stringify({ error: 'MLS Search is not enabled for your account' }))
+          }
+        }
+      }
+    }
+  } catch (e) { console.warn('[MLS] flag check skipped:', e.message) }
+
   const q = req.query || {}
   let url
 

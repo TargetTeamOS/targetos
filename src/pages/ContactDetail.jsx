@@ -13,6 +13,7 @@ import { authFetch } from '../lib/apiAuth'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useFeature } from '../lib/features'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { CallJourney } from '../components/CallJourney'
@@ -1054,6 +1055,7 @@ export function ContactDetail() {
   const { id }    = useParams()
   const navigate  = useNavigate()
   const { agent, isAdmin, canManage } = useAuth()
+  const cols3On = useFeature('contact_3col', agent)
   const { toast } = useApp()
 
   const [contact,   setContact]   = useState(null)
@@ -1401,7 +1403,7 @@ export function ContactDetail() {
       )}
 
       {/* ── THREE PANEL LAYOUT — GHL/HubSpot style ── */}
-      <div className="contact-3col" style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '12px', alignItems: 'stretch' }}>
+      <div className={cols3On ? "contact-3col" : ""} style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '12px', alignItems: 'stretch' }}>
 
         {/* ══════════════════════════════════════════════════════
             LEFT PANEL

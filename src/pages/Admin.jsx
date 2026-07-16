@@ -16,6 +16,7 @@ import {
   PageHeader, Field, Input, Select, Btn, Avatar, Modal, ModalActions,
   SectionTitle, Pill, Tabs, Toggle, Confirm, Loading
 } from '../components/UI'
+import { FeatureFlagsPanel } from '../components/FeatureFlagsPanel'
 
 // Shared helper — every admin-users call needs the current session's
 // access token now that the endpoint actually checks auth (July 2026).
@@ -341,6 +342,7 @@ export function Admin() {
         { id:'permissions', label:'Permissions' },
         { id:'customize',   label:'Customize' },
         { id:'rules',       label:'Data Rules' },
+        { id:'features',    label:'Features' },
         { id:'system',      label:'System' },
       ]} active={tab} onChange={setTab} />
 
@@ -715,6 +717,8 @@ export function Admin() {
       )}
 
       {/* ── SYSTEM TAB ── */}
+      {tab==='features' && <FeatureFlagsPanel agents={agents} />}
+
       {tab==='system' && (
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {[

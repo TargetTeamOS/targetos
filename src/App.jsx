@@ -10,6 +10,7 @@ import { AppProvider, useApp }    from './context/AppContext'
 import { Login }                  from './pages/Login'
 import { Layout }                 from './components/Layout'
 import { VoiceCapture }           from './components/VoiceCapture'
+import { useFeature }              from './lib/features'
 import { CommandPalette, useCommandPalette } from './components/CommandPalette'
 import { ActiveCallBar } from './components/ClickToCall'
 
@@ -221,10 +222,12 @@ function CommandPaletteWrapper() {
 // Mic on Dashboard only, AI on all pages EXCEPT dashboard
 function LocationAwareTools() {
   const loc = useLocation()
+  const { agent } = useAuth()
+  const voiceOn = useFeature('voice_capture', agent)
   const isDashboard = loc.pathname === '/' || loc.pathname === '/dashboard'
   return (
     <>
-      {isDashboard && <VoiceCapture />}
+      {isDashboard && voiceOn && <VoiceCapture />}
       {!isDashboard && <AIAssistant />}
     </>
   )
