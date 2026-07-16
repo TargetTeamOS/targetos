@@ -629,6 +629,8 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
 }
 
 function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, onRefreshTimeline, layout, editLayout, setLayout }) {
+  const { can } = useAuth()
+  const canReassign = can('contacts.reassign')
   function onReorder(fromKey, toKey) {
     const order = (layout?.order || []).slice()
     const fi = order.indexOf(fromKey), ti = order.indexOf(toKey)
@@ -644,6 +646,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
   const [composeOpen, setComposeOpen] = React.useState(false)
 
   async function onAssignAgent(newAgentId) {
+    if (!canReassign) { toast('You do not have permission to reassign contacts', '#DC2626'); return }
     try {
       await db.contacts.update(contactId, { agent_id: newAgentId }, agent?.id)
       const picked = (agents || []).find(a => a.id === newAgentId) || null
@@ -784,20 +787,24 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
               <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>{f.agents.name}</div>
               <div style={{ fontSize:'11px', color:'var(--muted)' }}>Primary Agent</div>
             </div>
+            {canReassign && (
             <select value={f.agent_id || ''} onChange={e => onAssignAgent(e.target.value || null)}
               style={{ marginLeft:'auto', padding:'5px 8px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'12px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
               {(agents || []).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               <option value="">— Unassign —</option>
             </select>
+            )}
           </div>
         ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
             <div style={{ fontSize:'12px', color:'var(--muted)' }}>No agent assigned</div>
+            {canReassign && (
             <select value="" onChange={e => e.target.value && onAssignAgent(e.target.value)}
               style={{ padding:'7px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
               <option value="">+ Assign an agent…</option>
               {(agents || []).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
+            )}
           </div>
         )}
       </RightSection>

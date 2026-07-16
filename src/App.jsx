@@ -168,8 +168,8 @@ function AppShell() {
           <Route path="/transactions/:id"    element={<Transactions />} />
           <Route path="/notes"               element={<Notes />} />
           <Route path="/notes/:id"           element={<Notes />} />
-          <Route path="/automations"         element={<Automations />} />
-          <Route path="/automations/:id"     element={<Automations />} />
+          <Route path="/automations"         element={<RequirePermission perm="admin.automations"><Automations /></RequirePermission>} />
+          <Route path="/automations/:id"     element={<RequirePermission perm="admin.automations"><Automations /></RequirePermission>} />
           <Route path="/briefing"            element={<DailyBriefing />} />
           <Route path="/email"               element={<Email />} />
           <Route path="/designer"            element={<EmailDesigner />} />
@@ -182,11 +182,11 @@ function AppShell() {
           <Route path="/website"             element={<WebsiteBuilder />} />
           <Route path="/route"               element={<RoutePage />} />
           <Route path="/segments"           element={<Segments />} />
-          <Route path="/custom-fields"      element={<CustomFields />} />
+          <Route path="/custom-fields"      element={<RequirePermission perm="admin.customize"><CustomFields /></RequirePermission>} />
           <Route path="/tc"                 element={<TransactionCoordinator />} />
           <Route path="/tc-settings"        element={<RequirePermission perm="admin.customize"><TCSettings /></RequirePermission>} />
           <Route path="/my-listings"          element={<MyListings />} />
-          <Route path="/reports"            element={<Reports />} />
+          <Route path="/reports"            element={<RequirePermission perm="reports.view"><Reports /></RequirePermission>} />
           <Route path="/reportbuilder"      element={<ReportBuilder />} />
           <Route path="/notepad"            element={<Notepad />} />
           {/* Catch-all redirect */}

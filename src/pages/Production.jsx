@@ -571,6 +571,8 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
 
 // ── MONDAY.COM GROUP ─────────────────────────────────────────────
 function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename, onDealDragStart, onDropDeal, isDragOver, onDragEnterGroup, onDragLeaveGroup, onDealDropOnRow }) {
+  const { can } = useAuth()
+  const showGci = can('deals.view_gci')
   const [collapsed, setCollapsed] = React.useState(false)
   const [renaming,  setRenaming]  = React.useState(false)
   const [renameVal, setRenameVal] = React.useState(group.label)
@@ -627,7 +629,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
 
         {/* Totals */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 20, alignItems: 'center', paddingRight: 16, fontSize: 12, color: '#676879' }}>
-          <span>GCI: <strong style={{ color: '#037f4c' }}>{fmtFull$(totalGCI)}</strong></span>
+          {showGci && <span>GCI: <strong style={{ color: '#037f4c' }}>{fmtFull$(totalGCI)}</strong></span>}
           <span>Vol: <strong style={{ color: '#323338' }}>{fmtFull$(totalProd)}</strong></span>
         </div>
       </div>
@@ -925,6 +927,8 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
 
 // ── DEAL DETAIL DRAWER ─────────────────────────────────────────────
 function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, canManage }) {
+  const { can } = useAuth()
+  const showGciField = can('deals.view_gci')
   const [form, setForm] = useState(() => ({ ...BLANK, ...deal }))
   const [tab,  setTab]  = useState('deal')
   const [confirmDel, setConfirmDel] = useState(false)
@@ -1005,7 +1009,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
                 <StagePill stage={form.stage} />
                 {form.side && <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>{form.side}</span>}
-                {form.gci && <span style={{ fontSize: '12px', fontWeight: 800, color: '#10B981' }}>{fmtFull$(form.gci)} GCI</span>}
+                {showGciField && form.gci && <span style={{ fontSize: '12px', fontWeight: 800, color: '#10B981' }}>{fmtFull$(form.gci)} GCI</span>}
                 {daysToClose !== null && daysToClose >= 0 && daysToClose <= 30 && (
                   <span style={{ fontSize: '11px', fontWeight: 700, color: daysToClose <= 7 ? '#DC2626' : '#F5A623', background: (daysToClose <= 7 ? '#DC2626' : '#F5A623') + '18', padding: '1px 6px', borderRadius: '10px' }}>
                     Closes in {daysToClose}d
@@ -1178,7 +1182,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
               <SectionHdr>Deal Financials</SectionHdr>
               <Grid2>
                 <Field label="Production $"><Inp k="production" type="number" placeholder="500000" /></Field>
-                <Field label="GCI $"><Inp k="gci" type="number" placeholder="15000" /></Field>
+                {showGciField && <Field label="GCI $"><Inp k="gci" type="number" placeholder="15000" /></Field>}
               </Grid2>
               <SectionHdr>Commission Tracking</SectionHdr>
               <Grid2>
@@ -1317,12 +1321,13 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
 // ════════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ════════════════════════════════════════════════════════════════
-function exportSelected(selectedIds, filtered, agents) {
+function exportSelected(selectedIds, filtered, agents, includeGci = true) {
   const sel = filtered.filter(d => selectedIds.includes(d.id))
-  const header = 'Address,Side,Stage,Production,GCI,A/O Date,Close Date,Client,Agent'
+  const cols = ['Address','Side','Stage','Production'].concat(includeGci ? ['GCI'] : []).concat(['A/O Date','Close Date','Client','Agent'])
+  const header = cols.join(',')
   const rows = sel.map(d => {
     const a = agents.find(x => x.id === d.agent_id)
-    return [d.addr, d.side, d.stage, d.production, d.gci, d.ao_date, d.close_date, d.client_name, a ? a.name : '']
+    return [d.addr, d.side, d.stage, d.production].concat(includeGci ? [d.gci] : []).concat([d.ao_date, d.close_date, d.client_name, a ? a.name : ''])
       .map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(',')
   })
   const csv  = [header].concat(rows).join('\r\n')
@@ -1340,7 +1345,7 @@ function exportSelected(selectedIds, filtered, agents) {
 export function Production() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
-  const { agent, isAdmin, canManage } = useAuth()
+  const { agent, isAdmin, canManage, can } = useAuth()
   usePageView('production')
   const { toast } = useApp()
   const { agents } = useAgents()
@@ -1406,16 +1411,18 @@ export function Production() {
     })),
   ], [customFieldDefs])
 
+  const canViewGci = can('deals.view_gci')
   const activeGroups  = useMemo(() => customGroups || [...BOARD_GROUPS, ...buildYearGroups(deals)], [customGroups, deals])
   const visibleCols   = useMemo(() => {
     let cols = ALL_COLUMNS_WITH_CUSTOM.filter(c => !hiddenCols.includes(c.key))
     if (agent?.hide_client_column) cols = cols.filter(c => c.key !== '_client')
+    if (!canViewGci) cols = cols.filter(c => c.key !== 'gci')
     if (colOrder) {
       const orderMap = new Map(colOrder.map((k, i) => [k, i]))
       cols = [...cols].sort((a, b) => (orderMap.has(a.key) ? orderMap.get(a.key) : 999) - (orderMap.has(b.key) ? orderMap.get(b.key) : 999))
     }
     return cols
-  }, [ALL_COLUMNS_WITH_CUSTOM, hiddenCols, colOrder, agent?.hide_client_column])
+  }, [ALL_COLUMNS_WITH_CUSTOM, hiddenCols, colOrder, agent?.hide_client_column, canViewGci])
 
   const years = []
   for (let y = new Date().getFullYear(); y >= 2015; y--) years.push(y.toString())
@@ -2085,11 +2092,13 @@ export function Production() {
                 <option value="" disabled>📊 Change stage...</option>
                 {DEAL_STAGES.map(s => <option key={s.value} value={s.value} style={{ color: '#1E293B', background: '#fff' }}>{s.label}</option>)}
               </select>
+              {can('deals.export') && (
               <button
-                onClick={() => exportSelected(selectedIds, filtered, agents)}
+                onClick={() => exportSelected(selectedIds, filtered, agents, canViewGci)}
                 style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid rgba(255,255,255,.2)', background: 'transparent', color: '#fff', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
                 ⬇ Export {sel.length}
               </button>
+              )}
               <button
                 onClick={bulkDelete}
                 disabled={bulkDeleting}
