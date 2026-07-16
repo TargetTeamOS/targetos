@@ -60,6 +60,38 @@ module.exports = async function handler(req, res) {
     callId = cr?.id
   } catch(e) { console.warn('[inbound] log call:', e.message) }
 
+  // 3b. FULL-CALL RECORDING (July 2026): start recording via the REST
+  // API so the recording covers the ENTIRE call from the first menu —
+  // not just after an agent answers (TwiML record-from-answer only
+  // captures dial legs). Combined with the listings_step_* /
+  // menu_selected call events, this gives a complete picture of what
+  // every caller heard and pressed. Recording lands on the call row
+  // via the existing /api/twilio-status callback.
+  // Disable with IVR_RECORD_FULL_CALL=false. Fire-and-forget: a
+  // recording failure must never delay answering the call.
+  if (String(process.env.IVR_RECORD_FULL_CALL || 'true').toLowerCase() !== 'false' && callSid) {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID
+    const authToken  = process.env.TWILIO_AUTH_TOKEN
+    if (accountSid && authToken) {
+      const recUrl = 'https://api.twilio.com/2010-04-01/Accounts/' + accountSid + '/Calls/' + callSid + '/Recordings.json'
+      const params = new URLSearchParams({
+        RecordingChannels: 'dual',
+        RecordingStatusCallback: (process.env.BASE_URL || 'https://app.targetreteam.com') + '/api/twilio-status',
+        RecordingStatusCallbackEvent: 'completed',
+      })
+      fetch(recUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64'),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      }).then(async r => {
+        if (!r.ok) console.warn('[inbound] full-call recording failed to start:', r.status, (await r.text()).slice(0, 200))
+      }).catch(e => console.warn('[inbound] full-call recording error:', e.message))
+    }
+  }
+
   // 4. Activity log (non-blocking)
   if (finalContact?.id) {
     try {
