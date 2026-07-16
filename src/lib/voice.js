@@ -261,6 +261,7 @@ export function startRecording(onResult, onError, opts = {}) {
   rec.maxAlternatives = 1
 
   let finalText = ''
+  let lastInterim = ''
   let delivered = false
   let silenceTimer = null
 
@@ -276,6 +277,7 @@ export function startRecording(onResult, onError, opts = {}) {
       if (e.results[i].isFinal) finalText += t + ' '
       else interim += t
     }
+    lastInterim = interim
     armSilence()
     if (typeof opts.onInterim === 'function') opts.onInterim((finalText + interim).trim())
   }
@@ -288,7 +290,9 @@ export function startRecording(onResult, onError, opts = {}) {
     if (silenceTimer) clearTimeout(silenceTimer)
     if (delivered) return
     delivered = true
-    const text = finalText.trim()
+    // Fall back to interim text if no final result was committed — short
+    // phrases often end before the engine finalizes them.
+    const text = (finalText.trim() || lastInterim.trim())
     if (text) onResult?.(text)
     else onError?.('Didn\'t catch anything — try again')
   }
