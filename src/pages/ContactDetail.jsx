@@ -1090,7 +1090,7 @@ export function ContactDetail() {
   const navIdx  = navIds ? navIds.indexOf(id) : -1
   const prevId  = navIdx > 0 ? navIds[navIdx - 1] : null
   const nextId  = (navIdx >= 0 && navIdx < (navIds?.length || 0) - 1) ? navIds[navIdx + 1] : null
-  function goSibling(cid) { if (cid) navigate('/contacts/' + cid, { state: { ids: navIds } }) }
+  function goSibling(cid) { if (cid) navigate('/contacts/' + cid + '/detail', { state: { ids: navIds } }) }
   const { agent, isAdmin, canManage } = useAuth()
   const cols3On = useFeature('contact_3col', agent)
   const { toast } = useApp()
