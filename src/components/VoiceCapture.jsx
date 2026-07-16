@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { startRecording, parseVoiceWithAI } from '../lib/voice'
+import { authFetch } from '../lib/apiAuth'
 import { db } from '../lib/db'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
@@ -22,7 +23,10 @@ export function VoiceCapture() {
   const [parsed,  setParsed]  = useState(null)
   const [step,    setStep]    = useState('idle') // idle | parsing | reviewing | done
   const [saving,  setSaving]  = useState(false)
-  const [pos,     setPos]     = useState({ x: 24, y: null }) // bottom-left
+  const [pos,     setPos]     = useState(() => {
+    try { const s = JSON.parse(localStorage.getItem('micPos') || 'null'); if (s && typeof s.x === 'number') return s } catch {}
+    return { x: (typeof window !== 'undefined' ? window.innerWidth - 76 : 300), y: null }
+  }) // default RIGHT side, saved per-user
   const recRef = useRef(null)
   const dragging = useRef(false)
   const dragStart = useRef(null)
@@ -47,7 +51,13 @@ export function VoiceCapture() {
   function onMouseUp() {
     window.removeEventListener('mousemove', onMouseMove)
     window.removeEventListener('mouseup', onMouseUp)
-    if (!dragging.current) toggleOpen()
+    if (!dragging.current) { toggleOpen(); return }
+    // Snap to whichever side is nearest, then persist per-user.
+    setPos(p => {
+      const snapped = { x: (p.x + 30) < window.innerWidth / 2 ? 24 : window.innerWidth - 76, y: p.y }
+      try { localStorage.setItem('micPos', JSON.stringify(snapped)) } catch {}
+      return snapped
+    })
   }
 
   function toggleOpen() {
@@ -98,17 +108,57 @@ export function VoiceCapture() {
     if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
     setSaving(true)
     try {
-      await db.contacts.create({
+      const interest = parsed.address || parsed.interest || ''
+      const created = await db.contacts.create({
         first_name: parsed.name?.first || 'Voice Lead',
         last_name:  parsed.name?.last  || '',
         phone:      parsed.phone       || '',
         email:      parsed.email       || '',
         address:    parsed.address     || '',
-        notes:      parsed.aiParsed ? parsed.notes : parsed.rawText,
+        // Capture the property they were interested in on the contact
+        property_interest: interest || null,
+        notes:      (parsed.aiParsed ? parsed.notes : parsed.rawText)
+                    + (interest ? '\n\nInterested in: ' + interest : '')
+                    + '\n\n⚠️ Needs full profile — added by voice capture.',
         source:     'Voice Capture',
+        status:     'New',
         agent_id:   agent.id,
       })
-      toast('✅ Contact saved — ' + (parsed.name?.first || 'Lead'), '#10B981')
+      const contactId = created?.id || created?.[0]?.id
+      const leadName = ((parsed.name?.first || 'Voice') + ' ' + (parsed.name?.last || 'Lead')).trim()
+
+      // Follow-up task LINKED to the contact (clicking it opens the contact)
+      try {
+        await db.tasks.create({
+          title: 'Complete new lead profile — ' + leadName + (parsed.phone ? ' (' + parsed.phone + ')' : ''),
+          agent_id: agent.id, created_by: agent.id, contact_id: contactId,
+          due_date: new Date(Date.now() + 86400000).toISOString().slice(0,10),
+          priority: 'high', status: 'pending',
+          notes: 'Add email, phone, and details.' + (interest ? ' Interested in: ' + interest : ''),
+        })
+      } catch (e) { console.warn('task link:', e.message) }
+
+      // Email the agent about the new lead + what to finish
+      try {
+        if (agent.email) {
+          await authFetch('/api/send-email', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: agent.email,
+              subject: '🎤 New voice lead: ' + leadName,
+              html: '<div style="font-family:Arial,sans-serif;max-width:520px">' +
+                '<h2 style="color:#0F172A">New lead captured by voice</h2>' +
+                '<p><b>' + leadName + '</b>' + (parsed.phone ? ' · ' + parsed.phone : '') + '</p>' +
+                (interest ? '<p>Interested in: <b>' + interest + '</b></p>' : '') +
+                '<p style="color:#64748B">Please add their email, phone, and full details.</p>' +
+                '<p><a href="https://app.targetreteam.com/contacts/' + contactId + '/detail" style="background:#CC2200;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:700">Open contact to finish →</a></p>' +
+                '</div>',
+            }),
+          })
+        }
+      } catch (e) { console.warn('agent email:', e.message) }
+
+      toast('✅ Lead saved — task + email sent to finish the profile', '#10B981')
       setStep('done')
     } catch(e) {
       toast('Save failed: ' + (e.message || JSON.stringify(e)), '#DC2626')
