@@ -12,6 +12,7 @@ import { supabase } from './supabase'
 export const CONTACT_PANELS = [
   { id: 'assigned',   label: 'Assigned To',        icon: '👤' },
   { id: 'showings',   label: 'Showings & Interest', icon: '🏡' },
+  { id: 'voice',      label: 'Voice Recordings',   icon: '🎤' },
   { id: 'appointments', label: 'Appointments',     icon: '📅' },
   { id: 'tasks',      label: 'Tasks',              icon: '✅' },
   { id: 'deals',      label: 'Deals',              icon: '💼' },

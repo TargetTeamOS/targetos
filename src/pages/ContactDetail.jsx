@@ -805,6 +805,17 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       <AgreementsSection contactId={contactId} agentId={f.agent_id || agent?.id} contactName={f.first_name + ' ' + (f.last_name || '')} onActivityLog={onRefreshTimeline} />
 
       {/* ── APPOINTMENTS ── */}
+      {voiceNotes.length > 0 && (
+        <RightSection hideKey="voice" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title={"🎤 Voice Recordings (" + voiceNotes.length + ")"} icon="🎤" color="#8B5CF6">
+          {voiceNotes.map(function(n){ return (
+            <div key={n.id} style={{ marginBottom:10, paddingBottom:10, borderBottom:'1px solid var(--border)' }}>
+              <div style={{ fontSize:11, color:'var(--muted)', marginBottom:4 }}>{new Date(n.created_at).toLocaleString()}</div>
+              <audio controls src={n.audio_url} style={{ width:'100%' }} />
+              {n.transcript && <div style={{ fontSize:12, color:'var(--muted)', marginTop:4, fontStyle:'italic' }}>“{n.transcript}”</div>}
+            </div>
+          )})}
+        </RightSection>
+      )}
       <RightSection hideKey="showings" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Showings & Interest" icon="🏡" color="#10B981">
       <BuyerInterest contactId={contactId} agentId={f.agent_id || agent?.id} />
     </RightSection>
@@ -1042,6 +1053,7 @@ export function ContactDetail() {
   const [timeline,  setTimeline]  = useState([])
   const [tlLoading, setTlLoading] = useState(true)
   const [relDeals,  setRelDeals]  = useState([])
+  const [voiceNotes, setVoiceNotes] = useState([])
   const [contactLayout, setContactLayout] = useState(null)
   const [editLayout, setEditLayout] = useState(false)
 
@@ -1203,6 +1215,11 @@ export function ContactDetail() {
   }
 
   useEffect(() => { loadContactLayout().then(setContactLayout).catch(() => {}) }, [])
+  useEffect(() => {
+    if (!id) return
+    supabase.from('notes').select('*').eq('linked_type','contact').eq('linked_id',id).not('audio_url','is',null)
+      .order('created_at',{ascending:false}).then(({data}) => setVoiceNotes(data || [])).catch(()=>{})
+  }, [id])
 
   async function loadRelated() {
     try {

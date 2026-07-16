@@ -28,6 +28,10 @@ export function VoiceCapture() {
     return { x: (typeof window !== 'undefined' ? window.innerWidth - 76 : 300), y: null }
   }) // default RIGHT side, saved per-user
   const recRef = useRef(null)
+  const audioRec = useRef(null)
+  const audioChunks = useRef([])
+  const audioStream = useRef(null)
+  const [audioBlob, setAudioBlob] = useState(null)
   const dragging = useRef(false)
   const dragStart = useRef(null)
 
@@ -75,9 +79,24 @@ export function VoiceCapture() {
     setRecording(true)
     setParsed(null)
     setStep('idle')
+    setAudioBlob(null)
+    audioChunks.current = []
+    // Capture the actual audio in parallel with speech-to-text, so the
+    // saved record (contact/task/event/note) keeps a playable recording.
+    navigator.mediaDevices?.getUserMedia?.({ audio: true }).then(stream => {
+      audioStream.current = stream
+      const mr = new MediaRecorder(stream)
+      mr.ondataavailable = e => { if (e.data.size) audioChunks.current.push(e.data) }
+      mr.onstop = () => {
+        if (audioChunks.current.length) setAudioBlob(new Blob(audioChunks.current, { type: 'audio/webm' }))
+        audioStream.current?.getTracks().forEach(t => t.stop())
+      }
+      mr.start(); audioRec.current = mr
+    }).catch(() => { /* audio optional; transcript still works */ })
     recRef.current = startRecording(
       async (transcript) => {
         setRecording(false)
+        try { audioRec.current?.stop() } catch {}
         setStep('parsing')
         try {
           const { data: { session } } = await supabase.auth.getSession()
@@ -99,7 +118,20 @@ export function VoiceCapture() {
 
   function stopRecord() {
     recRef.current?.stop?.()
+    try { audioRec.current?.stop() } catch {}
     setRecording(false)
+  }
+
+  // Upload the captured audio and attach it to a record via the notes
+  // table pattern (audio_url). Returns { audio_url, audio_path } or {}.
+  async function uploadAudioFor(recordType, recordId) {
+    if (!audioBlob || !recordId) return {}
+    try {
+      const { uploadFile } = await import('../lib/storage')
+      const file = new File([audioBlob], recordType + '-' + recordId + '.webm', { type: 'audio/webm' })
+      const up = await uploadFile(file, recordType, recordId)
+      return { audio_url: up.url, audio_path: up.path }
+    } catch (e) { console.warn('audio upload:', e.message); return {} }
   }
 
   // ── SAVE AS CONTACT ───────────────────────────────────────────
@@ -126,6 +158,20 @@ export function VoiceCapture() {
       })
       const contactId = created?.id || created?.[0]?.id
       const leadName = ((parsed.name?.first || 'Voice') + ' ' + (parsed.name?.last || 'Lead')).trim()
+
+      // Save the actual recording + transcript, linked to this contact
+      try {
+        const au = await uploadAudioFor('contact', contactId)
+        if (au.audio_url || parsed.rawText) {
+          await supabase.from('notes').insert({
+            agent_id: agent.id, title: '🎤 Voice capture — ' + leadName,
+            body: parsed.aiParsed ? parsed.notes : parsed.rawText,
+            transcript: parsed.rawText || null,
+            audio_url: au.audio_url || null, audio_path: au.audio_path || null,
+            linked_type: 'contact', linked_id: contactId,
+          })
+        }
+      } catch (e) { console.warn('voice note attach:', e.message) }
 
       // Follow-up task LINKED to the contact (clicking it opens the contact)
       try {
@@ -171,7 +217,7 @@ export function VoiceCapture() {
     if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
     setSaving(true)
     try {
-      await db.tasks.create({
+      const t = await db.tasks.create({
         title:         parsed.title || parsed.rawText.slice(0, 100),
         agent_id:      agent.id,
         created_by:    agent.id,
@@ -181,6 +227,15 @@ export function VoiceCapture() {
         status:        'pending',
         notes:         parsed.aiParsed ? parsed.notes : parsed.rawText,
       })
+      const taskId = t?.id || t?.[0]?.id
+      try {
+        const au = await uploadAudioFor('task', taskId)
+        if (au.audio_url) await supabase.from('notes').insert({
+          agent_id: agent.id, title: '🎤 Voice recording for task',
+          body: parsed.aiParsed ? parsed.notes : parsed.rawText, transcript: parsed.rawText || null,
+          audio_url: au.audio_url, audio_path: au.audio_path, linked_type: 'task', linked_id: taskId,
+        })
+      } catch (e) { console.warn('task audio:', e.message) }
       toast('✅ Task saved' + (parsed.reminderDays ? ' — reminder set for ' + parsed.reminderDays + ' day' + (parsed.reminderDays > 1 ? 's' : '') + ' before' : ''), '#10B981')
       setStep('done')
     } catch(e) {
@@ -189,24 +244,25 @@ export function VoiceCapture() {
   }
 
   // ── SAVE AS NOTE ───────────────────────────────────────────────
-  // No standalone "note" entity outside a specific contact/deal in
-  // this app -- saved as a no-due-date task so it's still visible
-  // somewhere (the agent's task list) instead of disappearing.
+  // Saved to the real notes table (Notepad) with the audio recording
+  // + transcript, so the agent can replay it later.
   async function saveAsNote() {
     if (!parsed) return
     if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
     setSaving(true)
     try {
-      await db.tasks.create({
-        title:      parsed.title || 'Voice note',
-        agent_id:   agent.id,
-        created_by: agent.id,
-        due_date:   null,
-        priority:   'normal',
-        status:     'pending',
-        notes:      parsed.aiParsed ? parsed.notes : parsed.rawText,
-      })
-      toast('✅ Note saved to your tasks', '#10B981')
+      const { data: n, error } = await supabase.from('notes').insert({
+        agent_id: agent.id,
+        title: parsed.title || '🎤 Voice note',
+        body: parsed.aiParsed ? parsed.notes : parsed.rawText,
+        transcript: parsed.rawText || null,
+      }).select().single()
+      if (error) throw error
+      try {
+        const au = await uploadAudioFor('note', n.id)
+        if (au.audio_url) await supabase.from('notes').update({ audio_url: au.audio_url, audio_path: au.audio_path }).eq('id', n.id)
+      } catch (e) { console.warn('note audio:', e.message) }
+      toast('✅ Note saved to your Notepad', '#10B981')
       setStep('done')
     } catch(e) {
       toast('Save failed: ' + (e.message || JSON.stringify(e)), '#DC2626')
@@ -219,13 +275,22 @@ export function VoiceCapture() {
     if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
     setSaving(true)
     try {
-      await db.calendar.create({
+      const ev = await db.calendar.create({
         title:      parsed.title || parsed.rawText.slice(0, 100),
         agent_id:   agent.id,
         start_date: parsed.date || new Date().toISOString().slice(0, 10),
         start_time: parsed.eventTime || null,
         type:       'event',
       })
+      const evId = ev?.id || ev?.[0]?.id
+      try {
+        const au = await uploadAudioFor('event', evId)
+        if (au.audio_url) await supabase.from('notes').insert({
+          agent_id: agent.id, title: '🎤 Voice recording for event',
+          body: parsed.aiParsed ? parsed.notes : parsed.rawText, transcript: parsed.rawText || null,
+          audio_url: au.audio_url, audio_path: au.audio_path, linked_type: 'event', linked_id: evId,
+        })
+      } catch (e) { console.warn('event audio:', e.message) }
       toast('✅ Event saved', '#10B981')
       setStep('done')
     } catch(e) {
