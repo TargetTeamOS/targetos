@@ -13,3 +13,4 @@ alter table listings add column if not exists photo_url text;
 
 alter table card_templates add column if not exists price_layer   jsonb;
 alter table card_templates add column if not exists details_layer jsonb;
+alter table card_templates add column if not exists erase_zones jsonb;

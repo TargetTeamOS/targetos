@@ -61,7 +61,20 @@ module.exports = async function handler(req, res) {
     if (openaiKey) {
       const openaiMessages = []
       if (system) openaiMessages.push({ role: 'system', content: system })
-      messages.forEach(m => openaiMessages.push({ role: m.role, content: m.content }))
+      // Vision support: convert Anthropic-style image blocks to
+      // OpenAI's image_url format so image requests work on both.
+      messages.forEach(m => {
+        let content = m.content
+        if (Array.isArray(content)) {
+          content = content.map(block => {
+            if (block.type === 'image' && block.source?.type === 'base64') {
+              return { type: 'image_url', image_url: { url: 'data:' + block.source.media_type + ';base64,' + block.source.data } }
+            }
+            return block
+          })
+        }
+        openaiMessages.push({ role: m.role, content })
+      })
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',

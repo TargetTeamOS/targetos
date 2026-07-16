@@ -155,7 +155,7 @@ function SmartCards({ listings, deals }) {
   }, [])
 
   // Redraw whenever anything changes
-  useEffect(function() { draw() }, [tplImg, propImg, photoZone, addrLayer, priceLayer, detailsLayer, address, priceText, detailsText, cardType])
+  useEffect(function() { draw() }, [tplImg, propImg, photoZone, addrLayer, priceLayer, detailsLayer, eraseZones, address, priceText, detailsText, cardType])
 
   // AUTO-IMPORT: selecting a listing pulls its saved photo into the
   // photo zone automatically (manual upload still available and wins).
@@ -194,6 +194,17 @@ function SmartCards({ listings, deals }) {
         const ox = x + (w - sw) / 2, oy = y + (h - sh) / 2
         ctx.drawImage(propImg, ox, oy, sw, sh)
         ctx.restore()
+      }
+
+      // Cover the ORIGINAL example text with sampled background color
+      // (only once we have real data to draw instead)
+      if (eraseZones.length && (address || priceText || detailsText)) {
+        eraseZones.forEach(z => {
+          ctx.save()
+          ctx.fillStyle = z.color || '#FFFFFF'
+          ctx.fillRect(z.x - 4, z.y - 4, z.w + 8, z.h + 8)
+          ctx.restore()
+        })
       }
 
       // Draw the address text
@@ -307,6 +318,90 @@ function SmartCards({ listings, deals }) {
     reader.readAsDataURL(file)
   }
 
+  // ── AI ZONE DETECTION (July 2026) ──────────────────────────────
+  // Sends the uploaded draft to the AI proxy: it locates the property
+  // photo and each text element (address / price / beds-baths), with
+  // position, size, color, weight and alignment — then we replace them
+  // in place. Old text is painted over with the sampled background
+  // color before the new text draws (eraseZones).
+  const [eraseZones, setEraseZones] = useState([])   // [{x,y,w,h,color}]
+  const [detecting,  setDetecting]  = useState(false)
+
+  function sampleBgColor(img, zone) {
+    try {
+      const c = document.createElement('canvas')
+      c.width = CS; c.height = CS
+      const cx = c.getContext('2d')
+      cx.drawImage(img, 0, 0, CS, CS)
+      const pts = [
+        [zone.x + zone.w / 2, Math.max(2, zone.y - 8)],
+        [Math.max(2, zone.x - 8), zone.y + zone.h / 2],
+        [Math.min(CS - 2, zone.x + zone.w + 8), zone.y + zone.h / 2],
+        [zone.x + zone.w / 2, Math.min(CS - 2, zone.y + zone.h + 8)],
+      ]
+      const cols = pts.map(([px, py]) => {
+        const d = cx.getImageData(Math.round(px), Math.round(py), 1, 1).data
+        return [d[0], d[1], d[2]]
+      })
+      // median per channel — robust to one sample landing on a border
+      const med = i => cols.map(cl => cl[i]).sort((a, b) => a - b)[Math.floor(cols.length / 2)]
+      return 'rgb(' + med(0) + ',' + med(1) + ',' + med(2) + ')'
+    } catch(e) { return '#FFFFFF' }
+  }
+
+  async function autoDetectZones() {
+    if (!tplImg || !tplSrc) { toast('Upload a template image first', '#F5A623'); return }
+    setDetecting(true)
+    try {
+      // Downscale to the canvas size for a consistent coordinate space
+      const c = document.createElement('canvas')
+      c.width = CS; c.height = CS
+      c.getContext('2d').drawImage(tplImg, 0, 0, CS, CS)
+      const b64 = c.toDataURL('image/jpeg', 0.85).split(',')[1]
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/ai-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}) },
+        body: JSON.stringify({
+          max_tokens: 1500,
+          system: 'You analyze real-estate marketing card designs. The image is exactly 1080x1080 pixels. Respond ONLY with JSON, no markdown fences, no commentary.',
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+              { type: 'text', text: 'Locate the elements that change per property on this card: (1) the property PHOTO region, (2) the street ADDRESS text, (3) the PRICE text if present, (4) the beds/baths/size DETAILS text if present. Return JSON exactly like: {"photo_zone":{"x":0,"y":0,"w":0,"h":0},"texts":[{"role":"address|price|details","bbox":{"x":0,"y":0,"w":0,"h":0},"align":"left|center|right","color":"#RRGGBB","bold":true}]}. Coordinates in 1080x1080 pixel space. bbox must tightly wrap each text line. color is the TEXT color. Omit texts that are not present. Do not include the brokerage name, logo, agent name, phone numbers, or banner words like SOLD/FOR SALE — only property-specific values.' }
+            ]
+          }]
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'AI request failed')
+      const raw = (data.content || []).filter(x => x.type === 'text').map(x => x.text).join('')
+      const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim())
+
+      let applied = []
+      if (parsed.photo_zone?.w > 20) { setPhotoZone(parsed.photo_zone); applied.push('photo') }
+      const zones = []
+      ;(parsed.texts || []).forEach(t => {
+        if (!t.bbox || t.bbox.w < 5) return
+        const bg = sampleBgColor(tplImg, t.bbox)
+        zones.push({ ...t.bbox, color: bg })
+        const size = Math.max(14, Math.round(t.bbox.h * 0.78))
+        const align = ['left','center','right'].includes(t.align) ? t.align : 'center'
+        const x = align === 'left' ? t.bbox.x : align === 'right' ? t.bbox.x + t.bbox.w : t.bbox.x + t.bbox.w / 2
+        const layer = { x: Math.round(x), y: Math.round(t.bbox.y + t.bbox.h / 2), size, color: t.color || '#1B2B4B', bold: t.bold !== false, align, enabled: true }
+        if (t.role === 'address') { setAddrLayer(prev => ({ ...prev, ...layer, enabled: undefined })); applied.push('address') }
+        if (t.role === 'price')   { setPriceLayer(layer);   applied.push('price') }
+        if (t.role === 'details') { setDetailsLayer(layer); applied.push('beds/baths') }
+      })
+      setEraseZones(zones)
+      toast(applied.length ? '✨ Detected: ' + applied.join(', ') + ' — select a listing to fill them in' : 'Nothing detected — set zones manually', applied.length ? '#10B981' : '#F5A623')
+    } catch(e) {
+      toast('Auto-detect failed: ' + e.message + ' — set zones manually', '#DC2626')
+    } finally { setDetecting(false) }
+  }
+
   // Persist the uploaded photo onto the selected listing so every
   // future card auto-imports it (requires sql/marketing_cards_upgrade.sql).
   const [savingPhoto, setSavingPhoto] = useState(false)
@@ -337,6 +432,7 @@ function SmartCards({ listings, deals }) {
     if (tpl.addr_layer) setAddrLayer(tpl.addr_layer)
     if (tpl.price_layer)   setPriceLayer(tpl.price_layer)
     if (tpl.details_layer) setDetailsLayer(tpl.details_layer)
+    setEraseZones(Array.isArray(tpl.erase_zones) ? tpl.erase_zones : [])
     if (tpl.bg_image) {
       setTplSrc(tpl.bg_image)
       loadTemplateImage(tpl.bg_image)
@@ -396,6 +492,7 @@ function SmartCards({ listings, deals }) {
         addr_layer: addrLayer,
         price_layer:   priceLayer,
         details_layer: detailsLayer,
+        erase_zones:   eraseZones,
         thumbnail:  canvasRef.current?.toDataURL('image/jpeg', 0.4) || null,
         created_at: new Date().toISOString(),
       }
@@ -405,8 +502,8 @@ function SmartCards({ listings, deals }) {
       // saving keeps working exactly as before the upgrade.
       async function withColumnFallback(op) {
         let r = await op(row)
-        if (r.error && /price_layer|details_layer|column/i.test(r.error.message || '')) {
-          const legacy = { ...row }; delete legacy.price_layer; delete legacy.details_layer
+        if (r.error && /price_layer|details_layer|erase_zones|column/i.test(r.error.message || '')) {
+          const legacy = { ...row }; delete legacy.price_layer; delete legacy.details_layer; delete legacy.erase_zones
           r = await op(legacy)
         }
         return r
@@ -542,6 +639,12 @@ function SmartCards({ listings, deals }) {
                   </div>
                 ))}
               </div>
+
+              {/* AI auto-detect */}
+              <button onClick={autoDetectZones} disabled={detecting}
+                style={{ padding:'10px 12px', borderRadius:9, border:'none', background: detecting ? 'var(--dim)' : 'linear-gradient(135deg,#8B5CF6,#6D28D9)', color: detecting ? 'var(--muted)' : '#fff', fontSize:12, fontWeight:800, cursor: detecting ? 'wait' : 'pointer', fontFamily:ff, textAlign:'left' }}>
+                {detecting ? '⏳ Analyzing your design…' : '✨ Auto-detect photo & text zones (AI)'}
+              </button>
 
               {/* Address position */}
               <button onClick={() => { setDefiningAddr(true); setDefiningZone(false) }}
