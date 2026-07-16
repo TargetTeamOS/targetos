@@ -261,6 +261,20 @@ function TimelineItem({ item }) {
           </div>
         )}
 
+        {/* Phone journey — every menu step and keypress on this call */}
+        {item.twilio_call_sid && (item.type === 'call' || item.type === 'voicemail') && (
+          expanded
+            ? <div style={{ marginTop: 8 }}>
+                <button onClick={() => setExpanded(false)}
+                  style={{ border:'none', background:'none', padding:0, fontSize:11, color:'var(--muted)', cursor:'pointer', fontFamily: ff }}>Hide phone journey ▾</button>
+                <CallJourney callSid={item.twilio_call_sid} />
+              </div>
+            : <button onClick={() => setExpanded(true)}
+                style={{ border:'none', background:'none', padding:0, marginTop:6, fontSize:11, color:'var(--brand)', cursor:'pointer', fontFamily: ff }}>
+                📞 View phone journey — menus heard &amp; options pressed ▸
+              </button>
+        )}
+
         {/* Voicemail player + transcript */}
         {item.voicemail_url && (
           <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(249,115,22,.06)', borderRadius: 8, border: '1px solid rgba(249,115,22,.2)' }}>
@@ -1157,8 +1171,12 @@ export function ContactDetail() {
   async function loadTimeline() {
     setTlLoading(true)
     try {
-      const [calls, smsMessages, webActivity, logs] = await Promise.all([
+      const [calls, callSids, smsMessages, webActivity, logs] = await Promise.all([
         supabase.rpc('get_contact_calls', { p_contact_id: id }).then(r => r.data || []).catch(() => []),
+        // The RPC predates call-journey tracking and may not return the
+        // Twilio SID — merge it in from the calls table so the timeline
+        // can show the phone journey. Falls back harmlessly if blocked.
+        supabase.from('calls').select('id,twilio_call_sid').eq('contact_id', id).limit(100).then(r => r.data || []).catch(() => []),
         supabase.from('sms_messages').select('id,body,direction,from_number,to_number,created_at,agents(id,name,color)').eq('contact_id', id).order('created_at', { ascending: false }).limit(20).then(r => r.data || []).catch(()=>[]),
         supabase.from('audit_log').select('id,action,field_name,new_value,metadata,created_at,agents(id,name,color)').eq('record_id', id).eq('field_name', 'web_activity').order('created_at', { ascending: false }).limit(20).then(r => r.data || []).catch(()=>[]),
         supabase.from('audit_log').select('*, agents(id,name,color)').eq('record_id', id).order('created_at', { ascending: false }).limit(100).then(r => r.data || []),
@@ -1197,6 +1215,7 @@ export function ContactDetail() {
         voicemail_transcript: c.voicemail_transcript || null,
         transcript: c.transcript || null,
         transcript_language: c.transcript_language || null,
+        twilio_call_sid: c.twilio_call_sid || (callSids.find(x => x.id === c.id)?.twilio_call_sid) || null,
         duration_sec: c.duration_sec || 0,
         agent:       c.agent_id ? { id: c.agent_id, name: c.agent_name, color: c.agent_color } : null,
         created_at:  c.called_at,
