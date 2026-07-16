@@ -132,7 +132,7 @@ const ROCKLAND_STREETS = new Set([
   'central avenue','central ave',
   'saddle river','saddle river back unit',
   'amherst road','amherst rd',
-])`
+])
 
 // ── NAME DETECTION ────────────────────────────────────────────
 // Jewish/Hebrew/Yiddish names common in Rockland County
@@ -599,3 +599,15 @@ function fmtTime(t) {
 }
 
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '' }
+
+// Correct a single name token (or "First Last") using the phonetic map
+// + known-names set. Exported so the AI path can also fix misheard
+// Jewish/Yiddish names.
+export function correctNameToken(s) {
+  if (!s) return s
+  return s.split(/\s+/).map(w => {
+    const lw = w.toLowerCase()
+    const fixed = PHONETIC_CORRECTIONS[lw] || lw
+    return fixed.charAt(0).toUpperCase() + fixed.slice(1)
+  }).join(' ')
+}

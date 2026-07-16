@@ -148,24 +148,33 @@ function detectIntent(text) {
 }
 
 // ── MAIN PARSE FUNCTION ──────────────────────────────────────────
+import { parseVoice as parseVoiceRich, correctNameToken } from './voiceParser'
+
 export function parseVoice(text) {
   if (!text || !text.trim()) return null
 
-  const name    = detectName(text)
-  const phone   = detectPhone(text)
-  const address = detectAddress(text)
-  const city    = detectCity(text)
-  const date    = detectDate(text)
-  const intent  = detectIntent(text)
+  // Use the rich Rockland-County + Jewish/Yiddish-name parser (with
+  // phonetic mishear corrections). Fall back to the simple detectors
+  // only for anything it doesn't return.
+  let rich = null
+  try { rich = parseVoiceRich(text) } catch { /* fall back below */ }
+
+  const name    = (rich?.name?.first || rich?.name?.last) ? rich.name : detectName(text)
+  const phone   = rich?.phone || detectPhone(text)
+  const address = (rich?.addresses && rich.addresses[0]) || detectAddress(text)
+  const city    = rich?.city || detectCity(text)
+  const date    = (rich?.dateTime && (rich.dateTime.iso || rich.dateTime.date)) || detectDate(text)
+  const intent  = rich?.intents?.[0] || detectIntent(text)
 
   return {
-    rawText: text.trim(),
+    rawText: (rich?.raw || text).trim(),   // note: rich.raw is phonetically corrected
     name,
     phone,
     address,
     city,
     date,
     intent,
+    interest:   address || '',
     hasName:    !!(name?.first),
     hasPhone:   !!phone,
     hasAddress: !!address,
@@ -215,7 +224,7 @@ export async function parseVoiceWithAI(text, authHeaders) {
     return {
       rawText: text.trim(),
       intent:  parsed.intent || 'note',
-      name:    { first: parsed.first_name || '', last: parsed.last_name || '' },
+      name:    { first: correctNameToken(parsed.first_name || ''), last: correctNameToken(parsed.last_name || '') },
       phone:   parsed.phone || null,
       email:   parsed.email || null,
       address: parsed.address || null,
