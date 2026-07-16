@@ -629,7 +629,7 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
   )
 }
 
-function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, onRefreshTimeline, layout, editLayout, setLayout }) {
+function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, voiceNotes = [], onRefreshTimeline, layout, editLayout, setLayout }) {
   const { can } = useAuth()
   const canReassign = can('contacts.reassign')
   function onReorder(fromKey, toKey) {
@@ -1719,7 +1719,7 @@ export function ContactDetail() {
             RIGHT — ACTIONS + DEALS + TASKS + FILES
         ══════════════════════════════════════════════════════ */}
         <div className="contact-col">
-          <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relTasks={relTasks} agents={agents} agent={agent} onRefreshTimeline={loadTimeline} layout={contactLayout} editLayout={editLayout} setLayout={setContactLayout} toast={toast} />
+          <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relTasks={relTasks} agents={agents} agent={agent} voiceNotes={voiceNotes} onRefreshTimeline={loadTimeline} layout={contactLayout} editLayout={editLayout} setLayout={setContactLayout} toast={toast} />
         </div>
       </div>
 
