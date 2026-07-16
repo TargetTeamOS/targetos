@@ -1401,12 +1401,12 @@ export function ContactDetail() {
       )}
 
       {/* ── THREE PANEL LAYOUT — GHL/HubSpot style ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '12px', alignItems: 'start', minHeight: 'calc(100vh - 200px)' }}>
+      <div className="contact-3col" style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '12px', alignItems: 'stretch' }}>
 
         {/* ══════════════════════════════════════════════════════
             LEFT PANEL
         ══════════════════════════════════════════════════════ */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div className="contact-col" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
           {/* CONTACT INFO */}
           <Section title="Contact Info" icon="👤" collapsible={false}>
@@ -1616,7 +1616,7 @@ export function ContactDetail() {
         {/* ══════════════════════════════════════════════════════
             CENTER — CONVERSATION TIMELINE
         ══════════════════════════════════════════════════════ */}
-        <div>
+        <div className="contact-col">
           <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>💬 Conversation History</div>
@@ -1716,7 +1716,9 @@ export function ContactDetail() {
         {/* ══════════════════════════════════════════════════════
             RIGHT — ACTIONS + DEALS + TASKS + FILES
         ══════════════════════════════════════════════════════ */}
-        <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relTasks={relTasks} agents={agents} agent={agent} onRefreshTimeline={loadTimeline} layout={contactLayout} editLayout={editLayout} setLayout={setContactLayout} toast={toast} />
+        <div className="contact-col">
+          <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relTasks={relTasks} agents={agents} agent={agent} onRefreshTimeline={loadTimeline} layout={contactLayout} editLayout={editLayout} setLayout={setContactLayout} toast={toast} />
+        </div>
       </div>
 
       <Confirm open={confirmDel} message={'Delete ' + f.first_name + ' ' + (f.last_name || '') + '? Cannot be undone.'} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />

@@ -219,3 +219,24 @@ input[type=date], input[type=time], input[type=number] { color-scheme: light }
   .app-main { overflow: visible !important; height: auto !important; }
   .no-print { display: none !important; }
 }
+
+/* ── CONTACT PAGE: 3 INDEPENDENTLY SCROLLING COLUMNS ─────────── */
+@media (min-width: 769px) {
+  .contact-3col {
+    height: calc(100vh - 175px);
+    overflow: hidden;
+  }
+  .contact-3col .contact-col {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain; /* wheel at column edge doesn't drag the page */
+    padding-right: 2px;
+    scrollbar-width: thin;
+  }
+  .contact-3col .contact-col::-webkit-scrollbar { width: 6px; }
+  .contact-3col .contact-col::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+}
+@media (max-width: 768px) {
+  /* Phones: stack the three panels, normal page scroll */
+  .contact-3col { grid-template-columns: 1fr !important; }
+}

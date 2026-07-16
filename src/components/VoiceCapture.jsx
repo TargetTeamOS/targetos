@@ -123,8 +123,8 @@ export function VoiceCapture() {
       // The browser speech engine is unreliable (esp. Android Chrome) so
       // the recorder must NOT depend on it. We watch actual audio levels:
       // stop after SILENCE_STOP_MS of quiet, hard cap at MAX_RECORD_MS.
-      const SILENCE_STOP_MS = 5000   // stop this long after you stop talking
-      const MIN_RECORD_MS   = 2500   // never stop before this
+      const SILENCE_STOP_MS = 3000   // stop this long after you stop talking
+      const MIN_RECORD_MS   = 2000   // never stop before this
       const MAX_RECORD_MS   = 120000 // hard cap: 2 minutes
       let audioCtx = null, levelTimer = null
       const startedAt = Date.now()
@@ -462,7 +462,7 @@ export function VoiceCapture() {
                 </button>
                 {recording && (
                   <div style={{ marginTop: '12px' }}>
-                    <div style={{ color: '#DC2626', fontSize: '12px', fontWeight: 700 }}>● Listening… <span style={{ color:'var(--muted)', fontWeight:400 }}>(auto-stops ~5s after you finish, or tap ⏹)</span></div>
+                    <div style={{ color: '#DC2626', fontSize: '12px', fontWeight: 700 }}>● Listening… <span style={{ color:'var(--muted)', fontWeight:400 }}>(auto-stops ~3s after you finish, or tap ⏹)</span></div>
                     {liveText
                       ? <div style={{ marginTop:8, padding:'8px 10px', background:'var(--dim)', borderRadius:8, fontSize:13, color:'var(--text)', textAlign:'left' }}>{liveText}</div>
                       : <div style={{ marginTop:8, fontSize:12, color:'var(--muted)' }}>Say something…</div>}
