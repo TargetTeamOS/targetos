@@ -126,9 +126,11 @@ export function Admin() {
     try {
       const ext  = file.name.split('.').pop()
       const path = 'branding/org-logo.' + ext
-      const { error } = await supabase.storage.from('targetos-files').upload(path, file, { upsert: true })
+      // Logo lives in a PUBLIC bucket (website-assets) — it's shown in
+      // emails and on the public site. targetos-files is now private.
+      const { error } = await supabase.storage.from('website-assets').upload(path, file, { upsert: true })
       if (error) throw error
-      const { data } = supabase.storage.from('targetos-files').getPublicUrl(path)
+      const { data } = supabase.storage.from('website-assets').getPublicUrl(path)
       await setOrgSettings({ logoUrl: data.publicUrl + '?t=' + Date.now() })
       toast('✅ Logo updated for the whole team')
     } catch(e) { toast('Upload failed: ' + e.message, '#DC2626') }

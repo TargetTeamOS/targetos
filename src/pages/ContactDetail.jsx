@@ -26,6 +26,7 @@ import {
 import { CONTACT_STATUSES, CONTACT_SOURCES, PROPERTY_TYPES, LOCAL_CITIES } from '../lib/constants'
 import { FileAttachments } from '../components/FileAttachments'
 import { uploadFile, listFiles, deleteFile, fmtFileSize, fileIcon } from '../lib/storage'
+import { SignedAudio } from '../components/SignedAudio'
 import { Avatar, Pill, Btn, Loading, Confirm, Field, Spinner } from '../components/UI'
 import { CustomFieldsSection } from '../components/CustomFieldsSection'
 import { BuyerInterest } from '../components/BuyerInterest'
@@ -810,7 +811,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
           {voiceNotes.map(function(n){ return (
             <div key={n.id} style={{ marginBottom:10, paddingBottom:10, borderBottom:'1px solid var(--border)' }}>
               <div style={{ fontSize:11, color:'var(--muted)', marginBottom:4 }}>{new Date(n.created_at).toLocaleString()}</div>
-              <audio controls src={n.audio_url} style={{ width:'100%' }} />
+              <SignedAudio path={n.audio_path} fallbackUrl={n.audio_url} />
               {n.transcript && <div style={{ fontSize:12, color:'var(--muted)', marginTop:4, fontStyle:'italic' }}>“{n.transcript}”</div>}
             </div>
           )})}

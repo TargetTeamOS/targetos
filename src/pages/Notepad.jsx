@@ -8,6 +8,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { uploadFile } from '../lib/storage'
+import { SignedAudio } from '../components/SignedAudio'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { useAudioNote } from '../lib/useAudioNote'
@@ -101,9 +102,9 @@ export function Notepad() {
             <button onClick={()=>del(n)} title="Delete" style={{ border:'none', background:'transparent', cursor:'pointer', fontSize:14, color:'var(--muted)' }}>🗑</button>
           </div>
           {n.body && <div style={{ fontSize:14, color:'var(--text)', whiteSpace:'pre-wrap', marginTop:6 }}>{n.body}</div>}
-          {n.audio_url && (
+          {(n.audio_path || n.audio_url) && (
             <div style={{ marginTop:8 }}>
-              <audio controls src={n.audio_url} style={{ width:'100%' }} />
+              <SignedAudio path={n.audio_path} fallbackUrl={n.audio_url} />
               {n.transcript && n.transcript !== n.body && (
                 <div style={{ fontSize:12, color:'var(--muted)', marginTop:4, fontStyle:'italic' }}>Transcript: {n.transcript}</div>
               )}
