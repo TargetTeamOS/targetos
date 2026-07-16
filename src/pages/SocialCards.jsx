@@ -678,16 +678,18 @@ function SmartCards({ listings, deals }) {
                 </div>
               </label>
               {propSrc && (
-                {listing && propSrc && (
-                  <button onClick={savePhotoToListing} disabled={savingPhoto}
-                    style={{ width:'100%', marginBottom:6, padding:'8px', borderRadius:8, border:'1px solid #10B981', background:'rgba(16,185,129,.08)', color:'#10B981', fontSize:12, fontWeight:700, cursor: savingPhoto?'wait':'pointer', fontFamily:ff }}>
-                    {savingPhoto ? '⏳ Saving…' : '💾 Save photo to this listing (auto-imports next time)'}
+                <>
+                  {listing && (
+                    <button onClick={savePhotoToListing} disabled={savingPhoto}
+                      style={{ marginTop:6, width:'100%', padding:'8px', borderRadius:8, border:'1px solid #10B981', background:'rgba(16,185,129,.08)', color:'#10B981', fontSize:12, fontWeight:700, cursor: savingPhoto?'wait':'pointer', fontFamily:ff }}>
+                      {savingPhoto ? '⏳ Saving…' : '💾 Save photo to this listing (auto-imports next time)'}
+                    </button>
+                  )}
+                  <button onClick={() => { setPropSrc(null); setPropImg(null) }}
+                    style={{ marginTop:6, width:'100%', padding:'5px', borderRadius:6, border:'1px solid #DC262444', background:'#FEF2F2', color:'#DC2626', fontSize:11, cursor:'pointer', fontFamily:ff }}>
+                    Remove photo
                   </button>
-                )}
-                <button onClick={() => { setPropSrc(null); setPropImg(null) }}
-                  style={{ marginTop:6, width:'100%', padding:'5px', borderRadius:6, border:'1px solid #DC262444', background:'#FEF2F2', color:'#DC2626', fontSize:11, cursor:'pointer', fontFamily:ff }}>
-                  Remove photo
-                </button>
+                </>
               )}
             </div>
           </div>
