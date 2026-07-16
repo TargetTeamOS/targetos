@@ -253,47 +253,41 @@ export function startRecording(onResult, onError, opts = {}) {
     return null
   }
 
-  const SILENCE_MS = opts.silenceMs || 6000   // auto-finish after ~6s quiet
+  const SILENCE_MS = opts.silenceMs || 6000
   const rec = new SpeechRecognition()
   rec.lang = 'en-US'
-  rec.continuous = true          // keep listening across pauses…
-  rec.interimResults = true      // …so we can detect activity + reset silence timer
+  rec.continuous = true
+  rec.interimResults = true
   rec.maxAlternatives = 1
 
   let finalText = ''
-  let done = false
+  let delivered = false
   let silenceTimer = null
 
-  const armSilence = () => {
-    clearTimeout(silenceTimer)
-    silenceTimer = setTimeout(() => { try { rec.stop() } catch {} }, SILENCE_MS)
+  function armSilence() {
+    if (silenceTimer) clearTimeout(silenceTimer)
+    silenceTimer = setTimeout(function () { try { rec.stop() } catch (e) {} }, SILENCE_MS)
   }
 
-  rec.onspeechstart = armSilence
-  rec.onaudiostart  = armSilence
-
-  rec.onresult = (e) => {
+  rec.onresult = function (e) {
     let interim = ''
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const t = e.results[i][0].transcript
       if (e.results[i].isFinal) finalText += t + ' '
       else interim += t
     }
-    // any new audio → reset the silence countdown
     armSilence()
-    // stream interim text back if the caller wants live feedback
-    opts.onInterim?.((finalText + interim).trim())
+    if (typeof opts.onInterim === 'function') opts.onInterim((finalText + interim).trim())
   }
 
-  rec.onerror = (e) => {
+  rec.onerror = function (e) {
     if (e.error !== 'no-speech' && e.error !== 'aborted') onError?.(e.error)
-    if (e.error === 'no-speech') { /* let silence timer / onend handle it */ }
   }
 
-  rec.onend = () => {
-    if (done) return
-    done = true
-    clearTimeout(silenceTimer)
+  rec.onend = function () {
+    if (silenceTimer) clearTimeout(silenceTimer)
+    if (delivered) return
+    delivered = true
     const text = finalText.trim()
     if (text) onResult?.(text)
     else onError?.('Didn\'t catch anything — try again')
@@ -301,8 +295,8 @@ export function startRecording(onResult, onError, opts = {}) {
 
   try {
     rec.start()
-    armSilence()   // start the quiet countdown immediately
-  } catch(e) {
+    armSilence()
+  } catch (e) {
     onError?.('Could not start microphone')
   }
 

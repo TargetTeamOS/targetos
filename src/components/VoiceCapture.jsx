@@ -358,13 +358,15 @@ export function VoiceCapture() {
           button is on the right half so it never overflows off-screen. */}
       {open && (() => {
         const PANEL_W = 340
-        const bx = pos.x !== null ? pos.x : 24
-        const openLeft = (bx + PANEL_W + 20) > window.innerWidth
+        const vw = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1024
+        const vh = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 768
+        const bx = pos.x !== null && pos.x !== undefined ? pos.x : 24
+        const openLeft = (bx + PANEL_W + 20) > vw
         const panelLeft = openLeft
-          ? Math.max(12, bx + 52 - PANEL_W)   // align panel's right edge near the button
-          : Math.min(bx, window.innerWidth - PANEL_W - 12)
-        const panelTop = pos.y !== null
-          ? Math.max(12, Math.min(pos.y - 360, window.innerHeight - 420))
+          ? Math.max(12, bx + 52 - PANEL_W)
+          : Math.min(bx, vw - PANEL_W - 12)
+        const panelTop = (pos.y !== null && pos.y !== undefined)
+          ? Math.max(12, Math.min(pos.y - 360, vh - 420))
           : undefined
         return (
         <div style={{ position: 'fixed', left: panelLeft, bottom: pos.y !== null ? undefined : 86, top: panelTop, width: PANEL_W, background: 'var(--panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 899, fontFamily: ff, overflow: 'hidden' }}>
