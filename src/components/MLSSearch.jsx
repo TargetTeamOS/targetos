@@ -5,12 +5,10 @@ import React, { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth }  from '../context/AuthContext'
 import { useApp }   from '../context/AppContext'
+import { authFetch } from '../lib/apiAuth'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const GKEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
-const MLS_USER = import.meta.env.VITE_SIMPLYRETS_USER || 'simplyrets'
-const MLS_PASS = import.meta.env.VITE_SIMPLYRETS_PASS || 'simplyrets'
-const MLS_BASE = 'https://api.simplyrets.com'
 
 const CITIES = [
   'Monsey','Spring Valley','New City','Nanuet','Suffern','Airmont',
@@ -285,7 +283,7 @@ export function MLSSearch({ agents, onImported }) {
   const [importing,setImporting]= useState(null)
   const [total,    setTotal]    = useState(0)
   const [page,     setPage]     = useState(0)
-  const isDemo = MLS_USER === 'simplyrets'
+  const isDemo = String(import.meta.env.VITE_MLS_DEMO_FALLBACK||'') === 'true'
 
   // Shortlist state
   const [shortlist,  setShortlist]  = useState([])  // saved MLS listings
@@ -304,26 +302,30 @@ export function MLSSearch({ agents, onImported }) {
     } catch(e) { console.warn('loadContacts failed:', e.message) }
   }
 
-  async function search(pg = 0) {
+  const nextRef = useRef(null)
+  async function search(pg = 0, nextLink = null) {
     setLoading(true); setSearched(true)
     if (pg === 0) setResults([])
     try {
-      const params = new URLSearchParams({ limit: PER_PAGE, offset: pg * PER_PAGE, status: 'Active' })
-      if (city)     params.set('cities', city)
-      if (propType) params.set('type', propType)
-      if (minPrice) params.set('minprice', minPrice.replace(/\D/g,''))
-      if (maxPrice) params.set('maxprice', maxPrice.replace(/\D/g,''))
-      if (minBeds)  params.set('minbeds', minBeds)
-      if (mlsNum)   params.set('q', mlsNum)
-      else if (query) params.set('q', query)
+      const params = new URLSearchParams({ limit: PER_PAGE })
+      if (nextLink) params.set('next', nextLink)
+      else {
+        if (city)     params.set('cities', city)
+        if (propType) params.set('type', propType)
+        if (minPrice) params.set('minprice', minPrice.replace(/\D/g,''))
+        if (maxPrice) params.set('maxprice', maxPrice.replace(/\D/g,''))
+        if (minBeds)  params.set('minbeds', minBeds)
+        if (mlsNum)   params.set('q', mlsNum)
+        else if (query) params.set('q', query)
+      }
 
-      const auth = btoa(MLS_USER + ':' + MLS_PASS)
-      const res  = await fetch(MLS_BASE + '/properties?' + params, {
-        headers: { 'Authorization': 'Basic ' + auth, 'Accept': 'application/json' }
-      })
+      // Server-side proxy holds the MLS Grid token (never in the browser)
+      const res = await authFetch('/api/mls-search?' + params)
       if (!res.ok) throw new Error('API returned ' + res.status)
-      const data  = await res.json()
-      const tot   = parseInt(res.headers.get('X-Total-Count') || data.length) || data.length
+      const body = await res.json()
+      const data = body.listings || []
+      nextRef.current = body.next || null
+      const tot = body.total ?? (pg * PER_PAGE + data.length + (body.next ? 1 : 0))
       setTotal(tot); setPage(pg)
       if (pg === 0) setResults(data); else setResults(p => [...p, ...data])
     } catch(e) {
@@ -381,7 +383,7 @@ export function MLSSearch({ agents, onImported }) {
           <div style={{ fontSize:17, fontWeight:900, color:'var(--text)', marginBottom:2 }}>🔍 MLS Search</div>
           <div style={{ fontSize:12, color:'var(--muted)' }}>
             Search OneKey MLS · save listings for clients · build showing route · print or import
-            {isDemo && <span style={{ color:'#F5A623', fontWeight:700 }}> · Demo mode — add SimplyRETS credentials to Vercel for live data</span>}
+            {isDemo && <span style={{ color:'#F5A623', fontWeight:700 }}> · Demo mode — sample listings shown when MLS is unreachable</span>}
           </div>
         </div>
         <button onClick={() => { setShowPanel(p => !p); loadContacts() }}
@@ -457,7 +459,7 @@ export function MLSSearch({ agents, onImported }) {
               </div>
               {results.length < total && (
                 <div style={{ textAlign:'center', marginTop:16 }}>
-                  <button onClick={() => search(page+1)} disabled={loading}
+                  <button onClick={() => search(page+1, nextRef.current)} disabled={loading || !nextRef.current}
                     style={{ padding:'9px 24px', borderRadius:9, border:'1px solid var(--border)', background:'var(--panel)', color:'var(--text)', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
                     {loading?'Loading...':'Load more'}
                   </button>
