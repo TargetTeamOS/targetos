@@ -32,6 +32,7 @@ export function VoiceCapture() {
   const audioChunks = useRef([])
   const audioStream = useRef(null)
   const [audioBlob, setAudioBlob] = useState(null)
+  const [liveText, setLiveText] = useState('')
   const dragging = useRef(false)
   const dragStart = useRef(null)
   const lastTouch = useRef(0)
@@ -97,6 +98,7 @@ export function VoiceCapture() {
     setParsed(null)
     setStep('idle')
     setAudioBlob(null)
+    setLiveText('')
     audioChunks.current = []
     // Capture the actual audio in parallel with speech-to-text, so the
     // saved record (contact/task/event/note) keeps a playable recording.
@@ -128,7 +130,13 @@ export function VoiceCapture() {
       },
       (err) => {
         setRecording(false)
+        try { audioRec.current?.stop() } catch {}
         toast('Mic error: ' + err, '#DC2626')
+        setStep('idle')
+      },
+      {
+        silenceMs: 6000,                       // auto-finish after ~6s quiet
+        onInterim: (txt) => setLiveText(txt),  // show words as they're heard
       }
     )
   }
@@ -379,7 +387,14 @@ export function VoiceCapture() {
                   style={{ width: '70px', height: '70px', borderRadius: '50%', background: recording ? '#DC2626' : '#CC2200', border: 'none', color: '#fff', fontSize: '28px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(204,34,0,.3)', animation: recording ? 'pulse 1s infinite' : 'none' }}>
                   {recording ? '⏹' : '🎙'}
                 </button>
-                {recording && <div style={{ marginTop: '12px', color: '#DC2626', fontSize: '12px', fontWeight: 600 }}>Listening...</div>}
+                {recording && (
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={{ color: '#DC2626', fontSize: '12px', fontWeight: 700 }}>● Listening… <span style={{ color:'var(--muted)', fontWeight:400 }}>(auto-stops after a pause, or tap ⏹)</span></div>
+                    {liveText
+                      ? <div style={{ marginTop:8, padding:'8px 10px', background:'var(--dim)', borderRadius:8, fontSize:13, color:'var(--text)', textAlign:'left' }}>{liveText}</div>
+                      : <div style={{ marginTop:8, fontSize:12, color:'var(--muted)' }}>Say something…</div>}
+                  </div>
+                )}
               </div>
             )}
 

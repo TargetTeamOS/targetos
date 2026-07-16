@@ -246,32 +246,62 @@ export async function parseVoiceWithAI(text, authHeaders) {
 }
 
 // ── VOICE RECORDING ──────────────────────────────────────────────
-export function startRecording(onResult, onError) {
+export function startRecording(onResult, onError, opts = {}) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
   if (!SpeechRecognition) {
     onError?.('Voice not supported in this browser. Try Chrome.')
     return null
   }
 
+  const SILENCE_MS = opts.silenceMs || 6000   // auto-finish after ~6s quiet
   const rec = new SpeechRecognition()
   rec.lang = 'en-US'
-  rec.continuous = false
-  rec.interimResults = false
+  rec.continuous = true          // keep listening across pauses…
+  rec.interimResults = true      // …so we can detect activity + reset silence timer
   rec.maxAlternatives = 1
 
+  let finalText = ''
+  let done = false
+  let silenceTimer = null
+
+  const armSilence = () => {
+    clearTimeout(silenceTimer)
+    silenceTimer = setTimeout(() => { try { rec.stop() } catch {} }, SILENCE_MS)
+  }
+
+  rec.onspeechstart = armSilence
+  rec.onaudiostart  = armSilence
+
   rec.onresult = (e) => {
-    const transcript = e.results[0][0].transcript
-    onResult?.(transcript)
+    let interim = ''
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript
+      if (e.results[i].isFinal) finalText += t + ' '
+      else interim += t
+    }
+    // any new audio → reset the silence countdown
+    armSilence()
+    // stream interim text back if the caller wants live feedback
+    opts.onInterim?.((finalText + interim).trim())
   }
 
   rec.onerror = (e) => {
-    if (e.error !== 'no-speech' && e.error !== 'aborted') {
-      onError?.(e.error)
-    }
+    if (e.error !== 'no-speech' && e.error !== 'aborted') onError?.(e.error)
+    if (e.error === 'no-speech') { /* let silence timer / onend handle it */ }
+  }
+
+  rec.onend = () => {
+    if (done) return
+    done = true
+    clearTimeout(silenceTimer)
+    const text = finalText.trim()
+    if (text) onResult?.(text)
+    else onError?.('Didn\'t catch anything — try again')
   }
 
   try {
     rec.start()
+    armSilence()   // start the quiet countdown immediately
   } catch(e) {
     onError?.('Could not start microphone')
   }
