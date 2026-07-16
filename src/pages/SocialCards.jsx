@@ -14,6 +14,14 @@ const DS = 520   // display size
 // ── CARD TYPES matching your actual cards ────────────────────────
 const CARD_TYPES = [
   {
+    id:'for_sale', label:'For Sale', sub:'',
+    color:'#10B981', bgColor:'#FFFFFF',
+    bannerText:'FOR\nSALE',
+    defaultLayers:[
+      { id:'address', text:'', x:540, y:862, size:36, color:'#1B2B4B', bold:true, align:'center', shadow:false },
+    ]
+  },
+  {
     id:'uc_listing', label:'Under Contract', sub:'Listing side',
     color:'#CC2200', bgColor:'#FFFFFF',
     bannerText:'LISTING\nUNDER CONTRACT',
@@ -110,6 +118,13 @@ function SmartCards({ listings, deals }) {
   const [addrLayer, setAddrLayer] = useState({ x:540, y:862, size:36, color:'#1B2B4B', bold:true, align:'center' })
   const [definingAddr, setDefiningAddr] = useState(false)
 
+  // For Sale cards: price + beds/baths text layers, click-positioned
+  // like the address. 'enabled' lets a template opt out of either.
+  const [priceLayer,   setPriceLayer]   = useState({ x:540, y:930, size:44, color:'#10B981', bold:true, align:'center', enabled:true })
+  const [detailsLayer, setDetailsLayer] = useState({ x:540, y:985, size:26, color:'#1B2B4B', bold:false, align:'center', enabled:true })
+  const [definingPrice,   setDefiningPrice]   = useState(false)
+  const [definingDetails, setDefiningDetails] = useState(false)
+
   // Listing selection
   const [source,      setSource]      = useState('listing')  // 'listing' | 'deal'
   const [listingId,   setListingId]   = useState('')
@@ -121,6 +136,16 @@ function SmartCards({ listings, deals }) {
   const deal    = deals.find(d => d.id === dealId) || null
   const record  = listing || deal
   const address = record ? (record.addr || '') : ''
+  const priceText   = record?.list_price ? '$' + Number(record.list_price).toLocaleString() : ''
+  const detailsText = record ? [record.beds && record.beds + ' Bed', record.baths && record.baths + ' Bath', record.sqft && Number(record.sqft).toLocaleString() + ' SqFt'].filter(Boolean).join('  ·  ') : ''
+
+  // Price/details default ON for For Sale cards, OFF otherwise
+  // (loading a saved template overrides this right after)
+  useEffect(function() {
+    setPriceLayer(p => ({ ...p, enabled: cardType === 'for_sale' }))
+    setDetailsLayer(p => ({ ...p, enabled: cardType === 'for_sale' }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardType])
 
   // Load saved templates
   useEffect(function() {
@@ -130,7 +155,20 @@ function SmartCards({ listings, deals }) {
   }, [])
 
   // Redraw whenever anything changes
-  useEffect(function() { draw() }, [tplImg, propImg, photoZone, addrLayer, address, cardType])
+  useEffect(function() { draw() }, [tplImg, propImg, photoZone, addrLayer, priceLayer, detailsLayer, address, priceText, detailsText, cardType])
+
+  // AUTO-IMPORT: selecting a listing pulls its saved photo into the
+  // photo zone automatically (manual upload still available and wins).
+  useEffect(function() {
+    const url = listing?.photo_url
+    if (!url) return
+    const img = new Image()
+    img.crossOrigin = 'anonymous'   // keep canvas exportable
+    img.onload  = function() { setPropImg(img); setPropSrc(url) }
+    img.onerror = function() { /* keep whatever is there */ }
+    img.src = url
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listingId])
 
   function draw() {
     const canvas = canvasRef.current
@@ -167,6 +205,25 @@ function SmartCards({ listings, deals }) {
         ctx.textBaseline = 'middle'
         ctx.textAlign = al.align || 'center'
         ctx.fillText(address, al.x, al.y)
+        ctx.restore()
+      }
+      // For Sale extras: price + beds/baths lines
+      if (priceLayer.enabled && priceText) {
+        ctx.save()
+        ctx.font = (priceLayer.bold ? '900 ' : '500 ') + priceLayer.size + 'px Georgia, serif'
+        ctx.fillStyle = priceLayer.color
+        ctx.textBaseline = 'middle'
+        ctx.textAlign = priceLayer.align || 'center'
+        ctx.fillText(priceText, priceLayer.x, priceLayer.y)
+        ctx.restore()
+      }
+      if (detailsLayer.enabled && detailsText) {
+        ctx.save()
+        ctx.font = (detailsLayer.bold ? '800 ' : '500 ') + detailsLayer.size + 'px Georgia, serif'
+        ctx.fillStyle = detailsLayer.color
+        ctx.textBaseline = 'middle'
+        ctx.textAlign = detailsLayer.align || 'center'
+        ctx.fillText(detailsText, detailsLayer.x, detailsLayer.y)
         ctx.restore()
       }
 
@@ -250,11 +307,36 @@ function SmartCards({ listings, deals }) {
     reader.readAsDataURL(file)
   }
 
+  // Persist the uploaded photo onto the selected listing so every
+  // future card auto-imports it (requires sql/marketing_cards_upgrade.sql).
+  const [savingPhoto, setSavingPhoto] = useState(false)
+  async function savePhotoToListing() {
+    if (!listing || !propSrc) return
+    setSavingPhoto(true)
+    try {
+      const blob = await (await fetch(propSrc)).blob()
+      const ext  = (blob.type.split('/')[1] || 'jpg').replace('jpeg','jpg')
+      const path = 'listings/' + listing.id + '.' + ext
+      // Public bucket so canvas export stays CORS-clean
+      const { error: upErr } = await supabase.storage.from('agent-photos').upload(path, blob, { upsert: true, contentType: blob.type })
+      if (upErr) throw upErr
+      const { data } = supabase.storage.from('agent-photos').getPublicUrl(path)
+      const url = data.publicUrl + '?t=' + Date.now()
+      const { error } = await supabase.from('listings').update({ photo_url: url }).eq('id', listing.id)
+      if (error) throw error
+      toast('✅ Photo saved to ' + (listing.addr || 'listing') + ' — future cards will auto-import it')
+    } catch(e) {
+      toast('Save to listing failed: ' + e.message, '#DC2626')
+    } finally { setSavingPhoto(false) }
+  }
+
   function loadSavedTemplate(tpl) {
     setSelTpl(tpl)
     setCardType(tpl.card_type || 'uc_listing')
     if (tpl.photo_zone) setPhotoZone(tpl.photo_zone)
     if (tpl.addr_layer) setAddrLayer(tpl.addr_layer)
+    if (tpl.price_layer)   setPriceLayer(tpl.price_layer)
+    if (tpl.details_layer) setDetailsLayer(tpl.details_layer)
     if (tpl.bg_image) {
       setTplSrc(tpl.bg_image)
       loadTemplateImage(tpl.bg_image)
@@ -264,13 +346,13 @@ function SmartCards({ listings, deals }) {
 
   // Canvas click for address positioning
   function onCanvasClick(e) {
-    if (!definingAddr) return
+    if (!definingAddr && !definingPrice && !definingDetails) return
     const rect = canvasRef.current.getBoundingClientRect()
     const x = Math.round((e.clientX - rect.left) * (CS / rect.width))
     const y = Math.round((e.clientY - rect.top) * (CS / rect.height))
-    setAddrLayer(prev => ({ ...prev, x, y }))
-    setDefiningAddr(false)
-    toast('Address position set ✓')
+    if (definingAddr)    { setAddrLayer(prev => ({ ...prev, x, y }));    setDefiningAddr(false);    toast('Address position set ✓') }
+    if (definingPrice)   { setPriceLayer(prev => ({ ...prev, x, y }));   setDefiningPrice(false);   toast('Price position set ✓') }
+    if (definingDetails) { setDetailsLayer(prev => ({ ...prev, x, y })); setDefiningDetails(false); toast('Beds/baths position set ✓') }
   }
 
   // Canvas drag for photo zone
@@ -312,16 +394,29 @@ function SmartCards({ listings, deals }) {
         bg_image:   tplSrc,
         photo_zone: photoZone,
         addr_layer: addrLayer,
+        price_layer:   priceLayer,
+        details_layer: detailsLayer,
         thumbnail:  canvasRef.current?.toDataURL('image/jpeg', 0.4) || null,
         created_at: new Date().toISOString(),
       }
       const exist = templates.find(t => t.name === tplName.trim())
+      // If sql/marketing_cards_upgrade.sql hasn't run yet, the new
+      // layer columns don't exist — retry without them so template
+      // saving keeps working exactly as before the upgrade.
+      async function withColumnFallback(op) {
+        let r = await op(row)
+        if (r.error && /price_layer|details_layer|column/i.test(r.error.message || '')) {
+          const legacy = { ...row }; delete legacy.price_layer; delete legacy.details_layer
+          r = await op(legacy)
+        }
+        return r
+      }
       if (exist) {
-        const { error } = await supabase.from('card_templates').update(row).eq('id', exist.id)
+        const { error } = await withColumnFallback(rw => supabase.from('card_templates').update(rw).eq('id', exist.id))
         if (error) throw error
         setTemplates(prev => prev.map(t => t.id === exist.id ? {...t,...row} : t))
       } else {
-        const { data, error } = await supabase.from('card_templates').insert(row).select().single()
+        const { data, error } = await withColumnFallback(rw => supabase.from('card_templates').insert(rw).select().single())
         if (error) throw error
         if (data) setTemplates(prev => [data, ...prev])
       }
@@ -476,6 +571,43 @@ function SmartCards({ listings, deals }) {
                 ))}
               </div>
 
+              {/* Price + beds/baths layers (For Sale cards) */}
+              <div style={{ borderTop:'1px solid var(--border)', paddingTop:8, display:'flex', flexDirection:'column', gap:6 }}>
+                <div style={{ fontSize:9, fontWeight:700, color:'var(--muted)', textTransform:'uppercase' }}>For Sale text (auto-filled from listing)</div>
+                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--text)', cursor:'pointer' }}>
+                  <input type="checkbox" checked={!!priceLayer.enabled} onChange={e => setPriceLayer(p => ({...p, enabled:e.target.checked}))} />
+                  Price {priceText ? '(' + priceText + ')' : ''}
+                </label>
+                {priceLayer.enabled && (
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button onClick={() => { setDefiningPrice(true); setDefiningAddr(false); setDefiningDetails(false); setDefiningZone(false) }}
+                      style={{ flex:1, padding:'6px 8px', borderRadius:7, border:'2px solid '+(definingPrice?'#10B981':'var(--border)'), background:definingPrice?'rgba(16,185,129,.08)':'var(--dim)', color:definingPrice?'#10B981':'var(--text)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                      {definingPrice ? '🖱 Click canvas…' : '📍 Position'}
+                    </button>
+                    <input type="number" value={priceLayer.size} onChange={e => setPriceLayer(p => ({...p, size:parseInt(e.target.value)||44}))}
+                      style={{ width:54, padding:'5px 7px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff }} title="Font size" />
+                    <input type="color" value={priceLayer.color} onChange={e => setPriceLayer(p => ({...p, color:e.target.value}))}
+                      style={{ width:38, height:30, borderRadius:6, border:'1px solid var(--border)', cursor:'pointer', padding:2 }} title="Color" />
+                  </div>
+                )}
+                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--text)', cursor:'pointer' }}>
+                  <input type="checkbox" checked={!!detailsLayer.enabled} onChange={e => setDetailsLayer(p => ({...p, enabled:e.target.checked}))} />
+                  Beds / Baths / SqFt {detailsText ? '(' + detailsText + ')' : ''}
+                </label>
+                {detailsLayer.enabled && (
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button onClick={() => { setDefiningDetails(true); setDefiningAddr(false); setDefiningPrice(false); setDefiningZone(false) }}
+                      style={{ flex:1, padding:'6px 8px', borderRadius:7, border:'2px solid '+(definingDetails?'#10B981':'var(--border)'), background:definingDetails?'rgba(16,185,129,.08)':'var(--dim)', color:definingDetails?'#10B981':'var(--text)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                      {definingDetails ? '🖱 Click canvas…' : '📍 Position'}
+                    </button>
+                    <input type="number" value={detailsLayer.size} onChange={e => setDetailsLayer(p => ({...p, size:parseInt(e.target.value)||26}))}
+                      style={{ width:54, padding:'5px 7px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff }} title="Font size" />
+                    <input type="color" value={detailsLayer.color} onChange={e => setDetailsLayer(p => ({...p, color:e.target.value}))}
+                      style={{ width:38, height:30, borderRadius:6, border:'1px solid var(--border)', cursor:'pointer', padding:2 }} title="Color" />
+                  </div>
+                )}
+              </div>
+
               {/* Save template button */}
               <button onClick={() => setShowSaveTpl(true)}
                 style={{ padding:'9px', borderRadius:8, border:'none', background:'#10B981', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, marginTop:4 }}>
@@ -546,6 +678,12 @@ function SmartCards({ listings, deals }) {
                 </div>
               </label>
               {propSrc && (
+                {listing && propSrc && (
+                  <button onClick={savePhotoToListing} disabled={savingPhoto}
+                    style={{ width:'100%', marginBottom:6, padding:'8px', borderRadius:8, border:'1px solid #10B981', background:'rgba(16,185,129,.08)', color:'#10B981', fontSize:12, fontWeight:700, cursor: savingPhoto?'wait':'pointer', fontFamily:ff }}>
+                    {savingPhoto ? '⏳ Saving…' : '💾 Save photo to this listing (auto-imports next time)'}
+                  </button>
+                )}
                 <button onClick={() => { setPropSrc(null); setPropImg(null) }}
                   style={{ marginTop:6, width:'100%', padding:'5px', borderRadius:6, border:'1px solid #DC262444', background:'#FEF2F2', color:'#DC2626', fontSize:11, cursor:'pointer', fontFamily:ff }}>
                   Remove photo
