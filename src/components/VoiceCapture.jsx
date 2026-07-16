@@ -35,19 +35,29 @@ export function VoiceCapture() {
   const dragging = useRef(false)
   const dragStart = useRef(null)
 
-  // ── DRAG ──────────────────────────────────────────────────────
+  // ── DRAG (mouse + touch) ──────────────────────────────────────
+  function getPoint(e) {
+    if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY }
+    return { x: e.clientX, y: e.clientY }
+  }
   function onMouseDown(e) {
     dragging.current = false
-    dragStart.current = { x: e.clientX, y: e.clientY, px: pos.x ?? 24, py: pos.y ?? (window.innerHeight - 70) }
+    const p = getPoint(e)
+    dragStart.current = { x: p.x, y: p.y, px: pos.x ?? 24, py: pos.y ?? (window.innerHeight - 70) }
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('touchmove', onMouseMove, { passive: false })
+    window.addEventListener('touchend', onMouseUp)
   }
 
   function onMouseMove(e) {
-    const dx = e.clientX - dragStart.current.x
-    const dy = e.clientY - dragStart.current.y
+    const p = getPoint(e)
+    const dx = p.x - dragStart.current.x
+    const dy = p.y - dragStart.current.y
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragging.current = true
     if (dragging.current) {
+      if (e.cancelable) e.preventDefault()   // stop page scroll while dragging on touch
       setPos({ x: Math.max(20, Math.min(window.innerWidth - 60, dragStart.current.px + dx)), y: Math.max(20, Math.min(window.innerHeight - 60, dragStart.current.py + dy)) })
     }
   }
@@ -55,6 +65,8 @@ export function VoiceCapture() {
   function onMouseUp() {
     window.removeEventListener('mousemove', onMouseMove)
     window.removeEventListener('mouseup', onMouseUp)
+    window.removeEventListener('touchmove', onMouseMove)
+    window.removeEventListener('touchend', onMouseUp)
     if (!dragging.current) { toggleOpen(); return }
     // Snap to whichever side is nearest, then persist per-user.
     setPos(p => {
@@ -318,19 +330,31 @@ export function VoiceCapture() {
     alignItems:  'center',
     justifyContent: 'center',
     userSelect:  'none',
+    touchAction: 'none',
     animation:   recording ? 'pulse 1s infinite' : 'none',
   }
 
   return (
     <>
       {/* Floating Button */}
-      <div onMouseDown={onMouseDown} style={btnStyle} title="Voice Capture">
+      <div onMouseDown={onMouseDown} onTouchStart={onMouseDown} style={btnStyle} title="Voice Capture">
         {recording ? '⏹' : '🎙'}
       </div>
 
-      {/* Panel */}
-      {open && (
-        <div style={{ position: 'fixed', left: pos.x !== null ? pos.x : 24, bottom: pos.y !== null ? undefined : 86, top: pos.y !== null ? pos.y - 360 : undefined, width: 340, background: 'var(--panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 899, fontFamily: ff, overflow: 'hidden' }}>
+      {/* Panel — always positioned fully on-screen. Opens leftward if the
+          button is on the right half so it never overflows off-screen. */}
+      {open && (() => {
+        const PANEL_W = 340
+        const bx = pos.x !== null ? pos.x : 24
+        const openLeft = (bx + PANEL_W + 20) > window.innerWidth
+        const panelLeft = openLeft
+          ? Math.max(12, bx + 52 - PANEL_W)   // align panel's right edge near the button
+          : Math.min(bx, window.innerWidth - PANEL_W - 12)
+        const panelTop = pos.y !== null
+          ? Math.max(12, Math.min(pos.y - 360, window.innerHeight - 420))
+          : undefined
+        return (
+        <div style={{ position: 'fixed', left: panelLeft, bottom: pos.y !== null ? undefined : 86, top: panelTop, width: PANEL_W, background: 'var(--panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 899, fontFamily: ff, overflow: 'hidden' }}>
 
           {/* Header */}
           <div style={{ background: '#CC2200', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -432,7 +456,8 @@ export function VoiceCapture() {
             )}
           </div>
         </div>
-      )}
+        )
+      })()}
     </>
   )
 }
