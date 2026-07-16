@@ -34,6 +34,7 @@ export function VoiceCapture() {
   const [audioBlob, setAudioBlob] = useState(null)
   const dragging = useRef(false)
   const dragStart = useRef(null)
+  const lastTouch = useRef(0)
 
   // ── DRAG (mouse + touch) ──────────────────────────────────────
   function getPoint(e) {
@@ -42,6 +43,10 @@ export function VoiceCapture() {
     return { x: e.clientX, y: e.clientY }
   }
   function onMouseDown(e) {
+    // On touch, the browser also fires synthetic mouse events ~300ms
+    // later — ignore those so we don't toggle twice (open then close).
+    if (e.type === 'touchstart') lastTouch.current = Date.now()
+    else if (Date.now() - (lastTouch.current || 0) < 700) return
     dragging.current = false
     const p = getPoint(e)
     dragStart.current = { x: p.x, y: p.y, px: pos.x ?? 24, py: pos.y ?? (window.innerHeight - 70) }
@@ -317,12 +322,12 @@ export function VoiceCapture() {
     left:   pos.x,
     bottom: pos.y === null ? 24 : undefined,
     top:    pos.y !== null ? pos.y : undefined,
-    width:     52, height: 52,
+    width:     64, height: 64,
     borderRadius: '50%',
     background:  recording ? '#DC2626' : '#CC2200',
     border:      'none',
     color:       '#fff',
-    fontSize:    '22px',
+    fontSize:    '28px',
     cursor:      'grab',
     zIndex:      900,
     boxShadow:   '0 4px 16px rgba(204,34,0,.4)',
