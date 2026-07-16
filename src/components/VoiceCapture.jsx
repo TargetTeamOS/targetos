@@ -118,7 +118,46 @@ export function VoiceCapture() {
       audioStream.current = stream
       const mr = new MediaRecorder(stream)
       mr.ondataavailable = e => { if (e.data.size) audioChunks.current.push(e.data) }
+
+      // ── REAL silence detection on the actual mic signal ──────────
+      // The browser speech engine is unreliable (esp. Android Chrome) so
+      // the recorder must NOT depend on it. We watch actual audio levels:
+      // stop after SILENCE_STOP_MS of quiet, hard cap at MAX_RECORD_MS.
+      const SILENCE_STOP_MS = 5000   // stop this long after you stop talking
+      const MIN_RECORD_MS   = 2500   // never stop before this
+      const MAX_RECORD_MS   = 120000 // hard cap: 2 minutes
+      let audioCtx = null, levelTimer = null
+      const startedAt = Date.now()
+      let lastLoudAt = Date.now()
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext
+        audioCtx = new AC()
+        const src = audioCtx.createMediaStreamSource(stream)
+        const analyser = audioCtx.createAnalyser()
+        analyser.fftSize = 512
+        src.connect(analyser)
+        const buf = new Uint8Array(analyser.fftSize)
+        levelTimer = setInterval(() => {
+          if (mr.state === 'inactive') { clearInterval(levelTimer); return }
+          analyser.getByteTimeDomainData(buf)
+          let sum = 0
+          for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v }
+          const rms = Math.sqrt(sum / buf.length)
+          const now = Date.now()
+          if (rms > 0.015) lastLoudAt = now // speaking
+          const dur = now - startedAt
+          if ((dur > MIN_RECORD_MS && now - lastLoudAt > SILENCE_STOP_MS) || dur > MAX_RECORD_MS) {
+            try { mr.stop() } catch {}
+          }
+        }, 200)
+      } catch { /* no AudioContext → user taps ⏹ manually; 2-min cap below */ }
+      // Fallback hard cap even without AudioContext
+      const capTimer = setTimeout(() => { try { if (mr.state !== 'inactive') mr.stop() } catch {} }, MAX_RECORD_MS)
+
       mr.onstop = async () => {
+        clearTimeout(capTimer)
+        if (levelTimer) clearInterval(levelTimer)
+        try { audioCtx && audioCtx.close() } catch {}
         audioStream.current?.getTracks().forEach(t => t.stop())
         const blob = audioChunks.current.length ? new Blob(audioChunks.current, { type: 'audio/webm' }) : null
         if (blob) setAudioBlob(blob)
@@ -159,14 +198,15 @@ export function VoiceCapture() {
       setRecording(false)
     })
 
-    // Browser speech recognition — live feedback + fallback text only.
+    // Browser speech recognition — live on-screen preview ONLY.
+    // It must NEVER stop the audio recorder: on Android Chrome the engine
+    // dies within seconds, which used to cut recordings off mid-sentence.
+    // The recorder now stops itself via real audio-level silence detection.
     recRef.current = startRecording(
-      (transcript) => { browserTranscript = transcript; try { audioRec.current?.stop() } catch {} },
-      (err) => { /* browser engine failing is OK — Whisper is primary. Just stop audio. */
-        if (audioRec.current && audioRec.current.state !== 'inactive') { try { audioRec.current.stop() } catch {} }
-      },
+      (transcript) => { browserTranscript = transcript },
+      (err) => { /* browser engine failing is fine — Whisper is primary */ },
       {
-        silenceMs: 6000,
+        silenceMs: 999999, // effectively disabled — recorder owns stopping
         onInterim: (txt) => setLiveText(txt),
       }
     )
@@ -422,7 +462,7 @@ export function VoiceCapture() {
                 </button>
                 {recording && (
                   <div style={{ marginTop: '12px' }}>
-                    <div style={{ color: '#DC2626', fontSize: '12px', fontWeight: 700 }}>● Listening… <span style={{ color:'var(--muted)', fontWeight:400 }}>(auto-stops after a pause, or tap ⏹)</span></div>
+                    <div style={{ color: '#DC2626', fontSize: '12px', fontWeight: 700 }}>● Listening… <span style={{ color:'var(--muted)', fontWeight:400 }}>(auto-stops ~5s after you finish, or tap ⏹)</span></div>
                     {liveText
                       ? <div style={{ marginTop:8, padding:'8px 10px', background:'var(--dim)', borderRadius:8, fontSize:13, color:'var(--text)', textAlign:'left' }}>{liveText}</div>
                       : <div style={{ marginTop:8, fontSize:12, color:'var(--muted)' }}>Say something…</div>}
