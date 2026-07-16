@@ -272,3 +272,28 @@ export function useAuditLog(filters = {}) {
     logs: base.data,
   }
 }
+
+// ── RESPONSIVE: IS MOBILE ────────────────────────────────────────
+// Single source of truth for the mobile breakpoint (<= 768px).
+// Uses matchMedia with a listener so rotation / resize flips the
+// layout live, not just on first render.
+export function useIsMobile(breakpoint = 768) {
+  const query = `(max-width: ${breakpoint}px)`
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(query).matches : false
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mq = window.matchMedia(query)
+    const onChange = e => setIsMobile(e.matches)
+    // Safari < 14 uses addListener
+    if (mq.addEventListener) mq.addEventListener('change', onChange)
+    else mq.addListener(onChange)
+    setIsMobile(mq.matches)
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange)
+      else mq.removeListener(onChange)
+    }
+  }, [query])
+  return isMobile
+}

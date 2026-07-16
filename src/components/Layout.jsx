@@ -8,6 +8,8 @@ import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { Avatar } from './UI'
 import { NotificationBell } from './NotificationBell'
+import { MobileLayout } from './MobileLayout'
+import { useIsMobile } from '../lib/hooks'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -62,10 +64,15 @@ export function Layout({ children }) {
   const location  = useLocation()
   const { agent, isAdmin, signOut } = useAuth()
   const { state, setSidebarCollapsed, setTheme } = useApp()
+  const isMobile = useIsMobile()
   const collapsed = state.collapsed
   const custom = state.custom || {}
 
   const role = agent?.role || 'agent'
+
+  // Phones/narrow screens get the bottom-nav mobile shell instead of
+  // the desktop sidebar. (Fixes: desktop layout showing on mobile.)
+  if (isMobile) return <MobileLayout>{children}</MobileLayout>
 
   const go = (id) => navigate('/' + id)
   const isActive = (id) => location.pathname === '/' + id || (id === '' && location.pathname === '/')

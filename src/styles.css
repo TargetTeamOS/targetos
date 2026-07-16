@@ -186,7 +186,7 @@ button { font-family: 'Inter', system-ui, sans-serif; cursor: pointer; }
 
 /* ── MOBILE ──────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .sidebar { display: none; }
+  .app-sidebar { display: none; }
   .main-content { padding: 12px; }
   .hide-mobile { display: none !important; }
 }

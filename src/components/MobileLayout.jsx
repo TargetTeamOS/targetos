@@ -13,17 +13,17 @@ const BOTTOM_NAV = [
 const MORE_NAV = [
   { id: '/listings',    icon: '🏡', label: 'Listings'        },
   { id: '/pipeline',    icon: '📈', label: 'Pipeline'        },
-  { id: '/tc',          icon: '🎯', label: 'TC Board'        },
+  { id: '/tc',          icon: '🎯', label: 'TC Board',     roles: ['admin','secretary'] },
   { id: '/transactions',icon: '📋', label: 'Transactions'    },
   { id: '/offers',      icon: '📝', label: 'Offers'          },
-  { id: '/gifts',       icon: '🎁', label: 'Gifts'           },
+  { id: '/gifts',       icon: '🎁', label: 'Gifts',        roles: ['admin','secretary'] },
   { id: '/calls',       icon: '📞', label: 'Calls'           },
   { id: '/openhouse',   icon: '🏠', label: 'Open House'      },
   { id: '/listingprep', icon: '📋', label: 'Listing Prep'    },
-  { id: '/signs',       icon: '🪧', label: 'Signs'           },
+  { id: '/signs',       icon: '🪧', label: 'Signs',        roles: ['admin','secretary'] },
   { id: '/calendar',    icon: '📅', label: 'Calendar'        },
   { id: '/announcements',icon:'📣', label: 'Announcements'   },
-  { id: '/email',       icon: '✉',  label: 'Email'           },
+  { id: '/email',       icon: '✉',  label: 'Email',        roles: ['admin','secretary'] },
   { id: '/marketing',   icon: '🎨', label: 'Marketing'       },
   { id: '/notepad',     icon: '📝', label: 'Notepad'         },
   { id: '/settings',    icon: '⚙',  label: 'Settings'        },
@@ -36,6 +36,8 @@ export function MobileLayout({ children }) {
   const [showMore, setShowMore] = useState(false)
 
   const activePath = location.pathname
+  const role = agent?.role || 'agent'
+  const moreNav = MORE_NAV.filter(item => !item.roles || item.roles.includes(role))
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100vh', background:'var(--bg)', fontFamily:'Inter,system-ui,sans-serif' }}>
@@ -65,7 +67,7 @@ export function MobileLayout({ children }) {
             onClick={e => e.stopPropagation()}>
             <div style={{ width:'36px', height:'4px', background:'var(--border)', borderRadius:'99px', margin:'0 auto 16px' }}/>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'8px' }}>
-              {MORE_NAV.map(item => (
+              {moreNav.map(item => (
                 <button key={item.id} onClick={() => { navigate(item.id); setShowMore(false) }}
                   style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'5px', padding:'12px 6px', background: activePath.startsWith(item.id) ? 'rgba(204,34,0,.1)' : 'var(--dim)', border:"1px solid " + (activePath.startsWith(item.id)?'rgba(204,34,0,.3)':'var(--border)'), borderRadius:'12px', cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
                   <span style={{ fontSize:'20px' }}>{item.icon}</span>
