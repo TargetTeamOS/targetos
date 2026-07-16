@@ -11,7 +11,7 @@ import { authFetch } from '../lib/apiAuth'
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useFeature } from '../lib/features'
 import { useApp } from '../context/AppContext'
@@ -1054,6 +1054,29 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
 export function ContactDetail() {
   const { id }    = useParams()
   const navigate  = useNavigate()
+  const location  = useLocation()
+
+  // ── PREV / NEXT CONTACT (July 2026) ─────────────────────────────
+  // Walks the same list the user came from: the Contacts page passes
+  // its visible row order via navigation state; when the page is
+  // opened directly (deep link, refresh), fall back to the default
+  // Contacts ordering (last activity, newest first).
+  const [navIds, setNavIds] = useState(() => Array.isArray(location.state?.ids) ? location.state.ids : null)
+  useEffect(() => {
+    if (Array.isArray(location.state?.ids)) { setNavIds(location.state.ids); return }
+    if (navIds) return
+    supabase.from('contacts').select('id')
+      .order('last_activity', { ascending:false, nullsFirst:false })
+      .order('created_at',    { ascending:false })
+      .limit(1000)
+      .then(({ data }) => setNavIds((data || []).map(c => c.id)))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+  const navIdx  = navIds ? navIds.indexOf(id) : -1
+  const prevId  = navIdx > 0 ? navIds[navIdx - 1] : null
+  const nextId  = (navIdx >= 0 && navIdx < (navIds?.length || 0) - 1) ? navIds[navIdx + 1] : null
+  function goSibling(cid) { if (cid) navigate('/contacts/' + cid, { state: { ids: navIds } }) }
   const { agent, isAdmin, canManage } = useAuth()
   const cols3On = useFeature('contact_3col', agent)
   const { toast } = useApp()
@@ -1344,6 +1367,14 @@ export function ContactDetail() {
         <button onClick={() => navigate('/contacts')}
           style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:18, color:'var(--muted)', fontFamily:ff, lineHeight:1, padding:0, flexShrink:0 }}
           title="Back to Contacts">←</button>
+        <div style={{ display:'flex', gap:2, flexShrink:0 }}>
+          <button onClick={()=>goSibling(prevId)} disabled={!prevId}
+            style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:'7px 0 0 7px', cursor: prevId?'pointer':'default', fontSize:13, color: prevId?'var(--text)':'var(--border)', fontFamily:ff, padding:'4px 9px' }}
+            title="Previous contact">‹</button>
+          <button onClick={()=>goSibling(nextId)} disabled={!nextId}
+            style={{ background:'var(--panel)', border:'1px solid var(--border)', borderLeft:'none', borderRadius:'0 7px 7px 0', cursor: nextId?'pointer':'default', fontSize:13, color: nextId?'var(--text)':'var(--border)', fontFamily:ff, padding:'4px 9px' }}
+            title="Next contact">›</button>
+        </div>
         <div style={{ width:40, height:40, borderRadius:'50%', background:statusColor, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, flexShrink:0 }}>
           {initials((f.first_name||'')+' '+(f.last_name||''))}
         </div>

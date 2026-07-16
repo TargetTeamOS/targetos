@@ -585,7 +585,7 @@ export function Contacts() {
                     {initials(c.first_name + ' ' + (c.last_name || ''))}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
+                    <span onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail', { state: { ids: contacts.map(x => x.id) } }) }}
                       style={{ fontWeight: 700, fontSize: '14px', color: 'var(--brand)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
                       {c.first_name} {c.last_name}
                     </span>
@@ -643,7 +643,7 @@ export function Contacts() {
                     {initials(c.first_name + ' ' + (c.last_name || ''))}
                   </div>
                   <div style={{ minWidth:0 }}>
-                    <span onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail') }}
+                    <span onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail', { state: { ids: contacts.map(x => x.id) } }) }}
                       style={{ fontWeight:700, fontSize:'13px', color:'var(--brand)', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', cursor:'pointer' }}>
                       {c.first_name} {c.last_name}
                     </span>
@@ -805,7 +805,7 @@ export function Contacts() {
           agents={agents}
           isAdmin={isAdmin || canManage}
           onEdit={() => { openContact(popupContact); setPopupContact(null) }}
-          onOpenFull={() => navigate('/contacts/' + popupContact.id + '/detail')}
+          onOpenFull={() => navigate('/contacts/' + popupContact.id + '/detail', { state: { ids: contacts.map(x => x.id) } })}
           onClose={() => setPopupContact(null)}
           onFieldsChange={fields => setPopupFields(fields)}
         />
