@@ -56,6 +56,7 @@ import { MyListings }            from './pages/MyListings'
 import { Segments }       from './pages/Segments'
 import { Reports }        from './pages/Reports'
 import { ReportBuilder }  from './pages/ReportBuilder'
+import { Notepad }        from './pages/Notepad'
 
 // ── ERROR BOUNDARY ───────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -187,6 +188,7 @@ function AppShell() {
           <Route path="/my-listings"          element={<MyListings />} />
           <Route path="/reports"            element={<Reports />} />
           <Route path="/reportbuilder"      element={<ReportBuilder />} />
+          <Route path="/notepad"            element={<Notepad />} />
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />
         </Routes>

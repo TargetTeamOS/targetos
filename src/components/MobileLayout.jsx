@@ -25,6 +25,7 @@ const MORE_NAV = [
   { id: '/announcements',icon:'📣', label: 'Announcements'   },
   { id: '/email',       icon: '✉',  label: 'Email'           },
   { id: '/marketing',   icon: '🎨', label: 'Marketing'       },
+  { id: '/notepad',     icon: '📝', label: 'Notepad'         },
   { id: '/settings',    icon: '⚙',  label: 'Settings'        },
 ]
 

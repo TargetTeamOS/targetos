@@ -23,6 +23,7 @@ const NAV = [
   { id: 'performance',   label: 'Performance',    icon: '📈', roles: ['admin','secretary'] },
   { id: 'reports',       label: 'Reports',        icon: '📉', roles: ['admin','secretary'] },
   { id: 'reportbuilder', label: 'Report Builder', icon: '📧', roles: ['admin'] },
+  { id: 'notepad',       label: 'Notepad',        icon: '📝', roles: ['admin','secretary','agent'] },
 
   // ── BOARD 2: TC BOARD ────────────────────────────────────────────
   { id: 'tc',            label: 'TC Board',       icon: '🎯', roles: ['admin','secretary'] },
