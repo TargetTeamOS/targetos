@@ -136,6 +136,28 @@ function ListingCard({ listing, selected, onSelect, onToggleIvr, agents, onShowi
 
 // ── LISTING DRAWER ────────────────────────────────────────────
 function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowing }) {
+  // ── TRANSACTION PROGRESS (July 2026) ────────────────────────────
+  // Shows the TC steps the coordinator marked 👁 agent-visible for
+  // this listing — the assigned agent (and admins) can follow where
+  // their signed listing stands without access to the full TC board.
+  const [tcSteps, setTcSteps] = useState(null)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const { data: tcDeal } = await supabase.from('tc_deals').select('id, tc_phase').eq('linked_listing_id', listing.id).maybeSingle()
+        if (!tcDeal) { if (alive) setTcSteps([]); return }
+        const { data: tasks, error } = await supabase.from('tc_tasks')
+          .select('id, title, status, due_date, tc_phase')
+          .eq('tc_deal_id', tcDeal.id).eq('agent_visible', true)
+          .order('due_date', { ascending: true })
+        if (error) throw error
+        if (alive) setTcSteps(tasks || [])
+      } catch(e) { if (alive) setTcSteps([]) }   // pre-migration or no access → hide quietly
+    })()
+    return () => { alive = false }
+  }, [listing.id])
+
   const [form, setForm] = useState({ ...listing })
   const [tab,  setTab]  = useState('info')
   const [showings, setShowings] = useState([])
@@ -202,6 +224,20 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
 
           {tab==='info' && (
             <div>
+
+              {/* Transaction Progress — TC steps marked 👁 for this listing */}
+              {tcSteps && tcSteps.length > 0 && (
+                <div style={{ background:'var(--dim)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', marginBottom:12 }}>
+                  <div style={{ fontSize:12, fontWeight:800, color:'var(--text)', marginBottom:8 }}>📋 Transaction Progress <span style={{ fontWeight:400, color:'var(--muted)', fontSize:10 }}>({tcSteps.filter(t=>t.status==='done').length}/{tcSteps.length} done)</span></div>
+                  {tcSteps.map(t => (
+                    <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0', fontSize:12 }}>
+                      <span style={{ color: t.status==='done' ? '#10B981' : 'var(--muted)', fontWeight:900, flexShrink:0 }}>{t.status==='done' ? '✓' : '○'}</span>
+                      <span style={{ flex:1, color:'var(--text)', textDecoration: t.status==='done' ? 'line-through' : 'none', opacity: t.status==='done' ? .6 : 1 }}>{t.title}</span>
+                      {t.due_date && <span style={{ color:'var(--muted)', fontSize:10, flexShrink:0 }}>{new Date(t.due_date).toLocaleDateString()}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ marginBottom:10 }}>
                 <Lbl c="Address"/>
                 {form.id && <BoardLinks listingId={form.id} />}

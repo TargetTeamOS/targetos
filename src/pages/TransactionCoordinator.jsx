@@ -97,6 +97,19 @@ const PC = { urgent:'#DC2626', high:'#F97316', normal:'#3B82F6', low:'#94A3B8' }
 
 // ── TASK ROW ──────────────────────────────────────────────────────
 function TaskRow({ task, agents, onCheck, onEdit }) {
+  // Agent visibility: 👁 = the assigned listing agent sees this step
+  // on their listing (Listings board → Transaction Progress).
+  async function toggleAgentVisible(e) {
+    e.stopPropagation()
+    try {
+      const { error } = await supabase.from('tc_tasks').update({ agent_visible: !task.agent_visible }).eq('id', task.id)
+      if (error) throw error
+      task.agent_visible = !task.agent_visible   // optimistic; list refreshes on next load
+      e.target.closest('button').style.opacity = task.agent_visible ? 1 : 0.35
+      e.target.closest('button').title = task.agent_visible ? 'Visible to the listing agent — click to hide' : 'Hidden from the listing agent — click to show'
+    } catch(err) { alert('Run sql/listing_lifecycle.sql first: ' + err.message) }
+  }
+
   const done    = task.status === 'done'
   const overdue = !done && task.due_date && new Date(task.due_date) < new Date()
   const agent   = agents.find(a => a.id === task.agent_id)
@@ -111,6 +124,13 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
       opacity: done ? .55 : 1,
       transition:'opacity .15s',
     }}>
+      {/* 👁 agent visibility */}
+      <button onClick={toggleAgentVisible}
+        title={task.agent_visible ? 'Visible to the listing agent — click to hide' : 'Hidden from the listing agent — click to show'}
+        style={{ border:'none', background:'none', cursor:'pointer', fontSize:13, padding:0, flexShrink:0, opacity: task.agent_visible ? 1 : 0.35 }}>
+        👁
+      </button>
+
       {/* Check circle */}
       <div onClick={() => onCheck(task)}
         style={{ width:20, height:20, borderRadius:'50%', flexShrink:0, cursor:done?'default':'pointer',

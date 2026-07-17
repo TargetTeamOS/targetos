@@ -8,6 +8,7 @@ import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { useListingPrep, useListings, useAgents } from '../lib/hooks'
 import { fmtDate } from '../lib/utils'
@@ -83,6 +84,33 @@ export function ListingPrep() {
     } catch(e) {
       toast('Save failed: ' + e.message, '#DC2626')
     } finally { setSaving(false) }
+  }
+
+  // ── SIGNED → GO LIVE (July 2026) ────────────────────────────────
+  // One click promotes a signed prep into a real row on the Listings
+  // board (visible to the whole team) and links the two, so the prep
+  // shows where it went and can't be promoted twice.
+  const [goingLive, setGoingLive] = useState(false)
+  async function goLive() {
+    if (!selected) return
+    if (selected.listing_id) { toast('Already live on the Listings board', '#F5A623'); return }
+    if (!form.listing_addr?.trim()) { toast('Address required first', '#DC2626'); return }
+    setGoingLive(true)
+    try {
+      const { data: newListing, error } = await supabase.from('listings').insert({
+        addr:       form.listing_addr,
+        agent_id:   form.agent_id || agent?.id || null,
+        status:     'Active',
+        source:     'Listing Prep',
+        created_at: new Date().toISOString(),
+      }).select().single()
+      if (error) throw error
+      // Link back (column may not exist pre-migration — non-fatal)
+      await supabase.from('listing_prep').update({ listing_id: newListing.id }).eq('id', selected.id).then(()=>{}).catch(()=>{})
+      setSelected(p => ({ ...p, listing_id: newListing.id }))
+      toast('🎉 Listing is LIVE — now on the Listings board for the whole team')
+    } catch(e) { toast('Go live failed: ' + e.message, '#DC2626') }
+    finally { setGoingLive(false) }
   }
 
   async function deletePrep() {
@@ -164,7 +192,11 @@ export function ListingPrep() {
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>}
           <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
-          <Btn onClick={savePrep} loading={saving}>{selected ? 'Save' : 'Create Prep'}</Btn>
+                    <button onClick={goLive} disabled={goingLive || !!selected?.listing_id}
+            style={{ padding:'9px 14px', borderRadius:8, border:'none', background: selected?.listing_id ? 'var(--dim)' : '#10B981', color: selected?.listing_id ? 'var(--muted)' : '#fff', fontSize:12, fontWeight:800, cursor: selected?.listing_id ? 'default' : 'pointer', fontFamily:'Inter,system-ui,sans-serif' }}>
+            {selected?.listing_id ? '✓ Live on Listings board' : goingLive ? '⏳ Going live…' : '✍️ Signed — Go Live'}
+          </button>
+<Btn onClick={savePrep} loading={saving}>{selected ? 'Save' : 'Create Prep'}</Btn>
         </ModalActions>
       </Modal>
 

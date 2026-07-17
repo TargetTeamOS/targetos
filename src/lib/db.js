@@ -311,6 +311,23 @@ listings: {
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('listings').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('listings').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    // ── LIFECYCLE PROPAGATION (July 2026) ─────────────────────────
+    // The listing is the source of truth: address and price changes
+    // flow to the linked Production deal and TC deal automatically,
+    // so an update here reflects everywhere the listing appears.
+    // Never blocks the save; TC already syncs the other direction.
+    try {
+      const sync = {}
+      if (data.addr !== undefined && data.addr !== before?.addr) sync.addr = data.addr
+      if (data.list_price !== undefined && data.list_price !== before?.list_price) sync.list_price = data.list_price
+      if (Object.keys(sync).length) {
+        const dealSync = {}
+        if (sync.addr) dealSync.addr = sync.addr
+        if (dealSync.addr) await supabase.from('deals').update(dealSync).eq('listing_id', id).then(()=>{}).catch(()=>{})
+        const tcSync = { ...(sync.addr ? { addr: sync.addr } : {}), ...(sync.list_price !== undefined ? { list_price: sync.list_price } : {}) }
+        if (Object.keys(tcSync).length) await supabase.from('tc_deals').update(tcSync).eq('linked_listing_id', id).then(()=>{}).catch(()=>{})
+      }
+    } catch(e) { console.warn('[lifecycle] listing sync skipped:', e.message) }
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'listings', id, before, result, result.addr || 'Listing')
     fireTrigger('listingUpdated', result, data)
