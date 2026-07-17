@@ -34,7 +34,7 @@ export function invalidateCache() {
 
 // ── MAIN DISPATCHER ───────────────────────────────────────────────
 // Call this after any record is created or updated
-export async function dispatch(triggerType, record, previousRecord = null) {
+export async function dispatch(triggerType, record, previousRecord = null, meta = {}) {
   try {
     const automations = await getActiveAutomations()
     const matching    = automations.filter(a => a.trigger_type === triggerType)
@@ -46,6 +46,15 @@ export async function dispatch(triggerType, record, previousRecord = null) {
 
     // Load agents once if needed for actions
     const { data: agents } = await supabase.from('agents').select('id,name,email,role,color')
+
+    // Resolve names the record itself doesn't carry: the assigned
+    // agent (db updates return no join) and WHO made the change.
+    if (!triggerData.agent_name && triggerData.agent_id) {
+      triggerData.agent_name = agents?.find(a => a.id === triggerData.agent_id)?.name || ''
+    }
+    triggerData.changed_by = meta.actingAgentId
+      ? (agents?.find(a => a.id === meta.actingAgentId)?.name || 'Unknown user')
+      : 'System / automation'
 
     for (const automation of matching) {
       // Check trigger-specific conditions (e.g. to_stage, from_stage)
@@ -110,6 +119,7 @@ function buildTriggerData(triggerType, record, prev) {
     list_price:   record.list_price || 0,
     listing_addr: record.addr || '',
     // Meta
+    changed_by:   '',   // filled in dispatch() from meta.actingAgentId
     trigger_type: triggerType,
     created_at:   record.created_at,
   }
@@ -176,13 +186,13 @@ export const trigger = {
     if (!prev?.source && record.source) dispatch('contact_source_added', record, prev)
   },
   dealCreated: (record) => dispatch('deal_created', record),
-  dealUpdated: (record, prev) => {
+  dealUpdated: (record, prev, meta = {}) => {
     if (prev?.stage !== record.stage) {
-      dispatch('deal_stage_change', record, prev)
-      if (record.stage === 'Offer Accapted')    dispatch('offer_accepted',      record, prev)
-      if (record.stage === 'Closed')            dispatch('deal_closed',         record, prev)
-      if (record.stage === 'Under Contract')    dispatch('deal_under_contract', record, prev)
-      if (record.stage === 'Deal Fell Through') dispatch('deal_fell_through',   record, prev)
+      dispatch('deal_stage_change', record, prev, meta)
+      if (record.stage === 'Offer Accapted')    dispatch('offer_accepted',      record, prev, meta)
+      if (record.stage === 'Closed')            dispatch('deal_closed',         record, prev, meta)
+      if (record.stage === 'Under Contract')    dispatch('deal_under_contract', record, prev, meta)
+      if (record.stage === 'Deal Fell Through') dispatch('deal_fell_through',   record, prev, meta)
     }
     dispatch('closing_soon', record, prev)
   },
@@ -194,13 +204,13 @@ export const trigger = {
     if (!prev?.agent_id && record.agent_id) dispatch('task_assigned', record, prev)
   },
   listingCreated: (record) => dispatch('listing_created', record),
-  listingUpdated: (record, prev) => {
+  listingUpdated: (record, prev, meta = {}) => {
     if (prev?.status !== record.status) {
-      dispatch('listing_status_change', record, prev)
-      if (record.status === 'Sold')    dispatch('listing_sold',    record, prev)
-      if (record.status === 'Expired') dispatch('listing_expired', record, prev)
+      dispatch('listing_status_change', record, prev, meta)
+      if (record.status === 'Sold')    dispatch('listing_sold',    record, prev, meta)
+      if (record.status === 'Expired') dispatch('listing_expired', record, prev, meta)
     }
-    if (prev?.list_price && record.list_price < prev.list_price) dispatch('listing_price_reduced', record, prev)
+    if (prev?.list_price && record.list_price < prev.list_price) dispatch('listing_price_reduced', record, prev, meta)
   },
   openHouseCreated: (record) => dispatch('open_house_created', record),
   visitorAdded:     (record) => dispatch('oh_visitor_added', record),

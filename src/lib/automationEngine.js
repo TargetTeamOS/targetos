@@ -321,7 +321,10 @@ async function executeAction(action, context, triggerData, agents) {
         'Eli Hoffman':        'eli@targetreteam.com',
         'Avraham Weinberger': 'avraham@targetreteam.com',
       }
-      const toEmail = agentRecord?.email || AGENT_EMAIL_MAP[agentRecord?.name] || 'office@targetreteam.com'
+      // cfg.to_email: a literal address (interpolated) beats agent
+      // resolution — used by system alerts like the stage-change email.
+      const literalTo = cfg.to_email ? interpolate(cfg.to_email, context).trim() : ''
+      const toEmail = literalTo || agentRecord?.email || AGENT_EMAIL_MAP[agentRecord?.name] || 'office@targetreteam.com'
       const emailSubject = interpolate(cfg.subject || 'TargetOS Automation Alert', context)
       const emailBody    = interpolate(cfg.body    || '', context)
       const emailBodyHtml = emailBody.replace(/\n/g, '<br>')

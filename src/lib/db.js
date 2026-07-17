@@ -280,7 +280,7 @@ deals: {
     const result = await run(supabase.from('deals').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'deals', id, before, result, result.addr || 'Deal')
-    fireTrigger('dealUpdated', result, before)
+    fireTrigger('dealUpdated', result, before, { actingAgentId })
     // ── LIFECYCLE: deal stage mirrors EVERYWHERE (July 2026) ────────
     // Every stage change on the Production board updates the linked
     // listing's status (My Listings / All Listings) AND the linked TC
@@ -350,7 +350,7 @@ listings: {
     } catch(e) { console.warn('[lifecycle] listing sync skipped:', e.message) }
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'listings', id, before, result, result.addr || 'Listing')
-    fireTrigger('listingUpdated', result, data)
+    fireTrigger('listingUpdated', result, before, { actingAgentId })  // was passing 'data' as prev — status changes never detected
     return result
   },
   async delete(id, agentId) {
