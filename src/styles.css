@@ -5,6 +5,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&display=swap');
 
 /* ── CSS VARIABLES — LIGHT THEME (default) ─────────────────── */
 :root {
@@ -240,3 +241,34 @@ input[type=date], input[type=time], input[type=number] { color-scheme: light }
   /* Phones: stack the three panels, normal page scroll */
   .contact-3col { grid-template-columns: 1fr !important; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   PULSE — the friendly layout (Monday.com-inspired), July 2026.
+   Layered on top of any theme via [data-skin="pulse"]. Color/radius
+   variables are set from AppContext (JS) so they beat inline vars;
+   this block handles everything CSS can own: the complete font
+   takeover (!important beats inline styles), comfortable type scale,
+   soft cards, lively buttons, and a clean white sidebar.
+   ═══════════════════════════════════════════════════════════════ */
+[data-skin="pulse"] body { zoom: 1.05; }
+[data-skin="pulse"] *:not(code):not(pre) {
+  font-family: 'Figtree', 'Inter', system-ui, sans-serif !important;
+  letter-spacing: -0.1px;
+}
+[data-skin="pulse"] button {
+  transition: transform .08s ease, filter .12s ease, box-shadow .12s ease;
+}
+[data-skin="pulse"] button:hover:not(:disabled) { filter: brightness(0.96); }
+[data-skin="pulse"] button:active:not(:disabled) { transform: scale(0.98); }
+[data-skin="pulse"] input, [data-skin="pulse"] select, [data-skin="pulse"] textarea {
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+[data-skin="pulse"] input:focus, [data-skin="pulse"] select:focus, [data-skin="pulse"] textarea:focus {
+  outline: none; border-color: #6C6CFF !important; box-shadow: 0 0 0 3px rgba(108,108,255,.12);
+}
+/* White Monday-style sidebar: dark friendly text, brand pill active */
+[data-skin="pulse"] .app-sidebar { border-right: 1px solid #E4E7EF; box-shadow: 2px 0 12px rgba(23,25,53,.04); }
+[data-skin="pulse"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+[data-skin="pulse"] ::-webkit-scrollbar-thumb { background: #D4D8E3; border-radius: 6px; border: 2px solid var(--bg); }
+[data-skin="pulse"] ::-webkit-scrollbar-thumb:hover { background: #B9BFCE; }

@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth }  from '../context/AuthContext'
 import { useApp }   from '../context/AppContext'
+import { useFeature } from '../lib/features'
 import { supabase } from '../lib/supabase'
 import { db }       from '../lib/db'
 import { loadPrefs, savePrefs, PREF_DEFAULTS } from '../lib/userPrefs'
@@ -92,7 +93,7 @@ function PhoneSetup() {
 
 export function Settings() {
   const { agent, refreshAgent, isAdmin } = useAuth()
-  const { state, setTheme, setCustom, toast } = useApp()
+  const { state, setTheme, setSkin, setCustom, toast } = useApp()
 
   const [tab, setTab] = useState('profile')
   const [prefs, setPrefs] = useState(null)
@@ -187,6 +188,15 @@ export function Settings() {
     finally { setSavingPwd(false) }
   }
 
+  const pulseAllowed = useFeature('skin_pulse', agent)
+
+  // Enforcement: if access to Pulse is revoked while it's active,
+  // fall back to Classic automatically.
+  useEffect(() => {
+    if ((state.skin || 'classic') === 'pulse' && !pulseAllowed) setSkin('classic')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pulseAllowed])
+
   const TABS = [
     { id:'profile',       label:'Profile'         },
     { id:'appearance',    label:'Appearance'       },
@@ -264,6 +274,25 @@ export function Settings() {
                     {t.label}{state.theme===t.id?' ✓':''}
                   </div>
                 </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Layout: Classic vs Pulse (access controlled in Admin → Features) */}
+          <div style={CARD}>
+            <SectionTitle>Layout</SectionTitle>
+            <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+              {[
+                { id:'classic', name:'Classic', desc:'The original TargetOS look — dense, dark sidebar, Inter.', locked:false },
+                { id:'pulse',   name:'⚡ Pulse', desc:'Friendly & airy — bigger type, soft cards, white sidebar. Inspired by the boards you know and love.', locked:!pulseAllowed },
+              ].map(sk => (
+                <button key={sk.id} onClick={() => { if (sk.locked) { toast('Ask your admin for access to Pulse (Admin → Features)', '#F5A623'); return } setSkin(sk.id) }}
+                  style={{ flex:'1 1 220px', textAlign:'left', padding:'14px 16px', borderRadius:12, cursor: sk.locked?'not-allowed':'pointer', fontFamily:ff, opacity: sk.locked?0.55:1,
+                    border:'2px solid ' + ((state.skin||'classic')===sk.id ? 'var(--brand)' : 'var(--border)'),
+                    background: (state.skin||'classic')===sk.id ? 'rgba(204,34,0,.05)' : 'var(--panel)' }}>
+                  <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', marginBottom:4 }}>{sk.name} {(state.skin||'classic')===sk.id && <span style={{ color:'var(--brand)', fontSize:11 }}>· current</span>}{sk.locked && ' 🔒'}</div>
+                  <div style={{ fontSize:11, color:'var(--muted)', lineHeight:1.5 }}>{sk.desc}</div>
+                </button>
               ))}
             </div>
           </div>

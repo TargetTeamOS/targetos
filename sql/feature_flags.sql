@@ -43,3 +43,8 @@ insert into feature_flags (key, label, description) values
   ('voice_capture',   'Voice Lead Capture',      'Mic button for voice-to-contact capture (Whisper transcription).'),
   ('contact_3col',    'Contact Page 3-Column Scroll', 'Independent scrolling columns on the contact page (off = classic whole-page scroll).')
 on conflict (key) do nothing;
+
+-- Pulse layout (July 2026): who may switch to the Monday-style skin
+insert into feature_flags (key, label, description) values
+  ('skin_pulse', 'Pulse Layout', 'The friendly Monday-style layout. Users with access can switch between Classic and Pulse in Settings → Appearance.')
+on conflict (key) do nothing;

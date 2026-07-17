@@ -34,6 +34,7 @@ function loadCustom() {
 
 const initialState = {
   theme:     lsGet('tos_theme', 'light'),
+  skin:      lsGet('tos_skin', 'classic'),   // 'classic' | 'pulse'
   collapsed: lsGet('tos_sidebar', false),
   toast:     null,
   custom:    loadCustom(),
@@ -42,6 +43,7 @@ const initialState = {
 function reducer(state, action) {
   switch (action.type) {
     case 'SET_THEME':     return { ...state, theme: action.theme }
+    case 'SET_SKIN':      return { ...state, skin: action.skin }
     case 'SET_COLLAPSED': return { ...state, collapsed: action.collapsed }
     case 'SET_TOAST':     return { ...state, toast: action.toast }
     case 'SET_CUSTOM':    return { ...state, custom: { ...state.custom, ...action.custom } }
@@ -95,11 +97,37 @@ export function AppProvider({ children }) {
 
   // Persist
   useEffect(() => { lsSet('tos_theme', state.theme) }, [state.theme])
+  useEffect(() => { lsSet('tos_skin', state.skin) }, [state.skin])
   useEffect(() => { lsSet('tos_sidebar', state.collapsed) }, [state.collapsed])
   useEffect(() => {
     lsSet('tos_custom', JSON.stringify(state.custom))
     applyCustom(state.custom)
   }, [state.custom])
+
+  // Apply skin (visual personality layered on top of the theme).
+  // 'pulse' — the Monday.com-inspired friendly layout: Figtree font,
+  // airy spacing, soft borders, white sidebar. Variables are set via
+  // JS because applyCustom writes inline vars that beat stylesheets.
+  useEffect(() => {
+    const root = document.documentElement
+    root.setAttribute('data-skin', state.skin)
+    if (state.skin === 'pulse') {
+      root.style.setProperty('--bg', '#F6F7FB')
+      root.style.setProperty('--dim', '#F5F6F8')
+      root.style.setProperty('--hov', '#EEF1F7')
+      root.style.setProperty('--border', '#E4E7EF')
+      root.style.setProperty('--inp', '#FFFFFF')
+      root.style.setProperty('--sidebar', '#FFFFFF')
+      root.style.setProperty('--sb-text', '#535768')
+      root.style.setProperty('--radius', '12px')
+      root.style.setProperty('--radius-sm', '8px')
+      root.style.setProperty('--radius-lg', '16px')
+      root.style.setProperty('--shadow', '0 4px 12px rgba(23,25,53,0.06)')
+    } else {
+      ;['--bg','--dim','--hov','--border','--inp','--sidebar','--sb-text','--shadow'].forEach(v => root.style.removeProperty(v))
+      applyCustom(state.custom || {})
+    }
+  }, [state.skin, state.theme])
 
   // Apply theme
   useEffect(() => {
@@ -153,6 +181,7 @@ export function AppProvider({ children }) {
   }, [])
 
   const setTheme          = useCallback((t) => dispatch({ type: 'SET_THEME', theme: t }), [])
+  const setSkin           = useCallback((sk) => dispatch({ type: 'SET_SKIN', skin: sk }), [])
   const setSidebarCollapsed = useCallback((v) => dispatch({ type: 'SET_COLLAPSED', collapsed: v }), [])
   const setCustom         = useCallback((c) => dispatch({ type: 'SET_CUSTOM', custom: c }), [])
   const resetCustom       = useCallback(() => dispatch({ type: 'RESET_CUSTOM' }), [])
@@ -165,7 +194,7 @@ export function AppProvider({ children }) {
   const toast = useCallback((msg, color) => showToast(msg, color), [showToast])
 
   return (
-    <AppContext.Provider value={{ state, setTheme, setSidebarCollapsed, setCustom, setOrgSettings, resetCustom, showToast, toast }}>
+    <AppContext.Provider value={{ state, setTheme, setSkin, setSidebarCollapsed, setCustom, setOrgSettings, resetCustom, showToast, toast }}>
       {children}
     </AppContext.Provider>
   )
