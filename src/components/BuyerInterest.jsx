@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { AddressAutocomplete } from './AddressAutocomplete'
 import { useApp } from '../context/AppContext'
 import { fmt$ } from '../lib/utils'
 
@@ -118,7 +119,11 @@ export function BuyerInterest({ contactId, agentId }) {
       {addingShow && (
         <div style={{ background:'var(--dim)', borderRadius:10, padding:12, marginBottom:12, border:'1px solid var(--border)' }}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
-            <div style={{ gridColumn:'span 2' }}>{inp(form.address, v=>setForm(p=>({...p,address:v})), 'Property address *')}</div>
+            <div style={{ gridColumn:'span 2' }}>
+              <AddressAutocomplete value={form.address} onChange={v=>setForm(p=>({...p,address:v}))}
+                onSelect={sel=>setForm(p=>({...p, address: sel.full || sel.street}))}
+                placeholder="Property address * (start typing — Google will match)" />
+            </div>
             {inp(form.price, v=>setForm(p=>({...p,price:v})), 'List price', 'text')}
             {inp(form.mls_number, v=>setForm(p=>({...p,mls_number:v})), 'MLS # (optional)')}
             {inp(form.showing_date, v=>setForm(p=>({...p,showing_date:v})), 'Showing date', 'date')}
