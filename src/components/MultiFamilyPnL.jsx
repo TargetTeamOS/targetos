@@ -169,14 +169,93 @@ export function MultiFamilyPnL() {
       (c.cap != null ? row('Cap rate', pct(c.cap), pct(c.capPot), true) : '') + '</table>' +
       finBlock +
       '<div style="margin-top:26px;padding-top:10px;border-top:1px solid #ddd;font-size:10.5px;color:#999">' +
-      'Prepared by ' + (agent?.name || 'Target Team') + ' · ' + new Date().toLocaleDateString() +
-      ' · Target Team · Keller Williams Valley Realty · 845.424.1014<br/>' +
+      'Target Team · Keller Williams Valley Realty · 845.424.1014<br/>' +
       'Estimates for discussion purposes only — not a guarantee of income, expenses, or returns. Buyer to verify all figures.</div>' +
       '<script>window.onload=function(){window.print()}</' + 'script></body></html>'
 
     const w = window.open('', '_blank')
     if (!w) { alert('Popup blocked — allow popups to generate the report'); return }
     w.document.write(html); w.document.close()
+  }
+
+  // ── JPEG for WhatsApp status / social (July 2026) ────────────────
+  // Draws the full analysis to a 1080-wide canvas (dynamic height) and
+  // downloads a JPEG — everything that's filled in, nothing that isn't.
+  function generateJpeg() {
+    const c = calc
+    const P2 = c.hasPotential
+    const rows = []   // {type:'header'|'section'|'row'|'total', l, a, b}
+    units.forEach(u => { if (num(u.rent) || u.desc)
+      rows.push({ type:'row', l: 'Unit ' + u.label + (u.vacant ? ' (Vacant)' : '') + (u.desc ? ' — ' + u.desc : ''), a: $(num(u.rent)), b: $(num(u.potential) || num(u.rent)) }) })
+    const rentRows = rows.length
+    rows.push({ type:'total', l:'Monthly income', a:$(c.monthlyCur), b:$(c.monthlyPot) })
+    rows.push({ type:'total', l:'Annual income',  a:$(c.annualCur),  b:$(c.annualPot) })
+    if (c.expLines.length) {
+      rows.push({ type:'section', l:'Annual Expenses' })
+      c.expLines.forEach(e => rows.push({ type:'row', l:e.label, a:e.display || $(e.amt), b:e.display || $(e.amtPot) }))
+      rows.push({ type:'total', l:'Total expenses', a:$(c.totalExp), b:$(c.totalExpPot) })
+    }
+    rows.push({ type:'section', l:'Returns' })
+    rows.push({ type:'total', l:'Net operating income', a:$(c.noi), b:$(c.noiPot) })
+    if (c.cap != null) rows.push({ type:'total', l:'Cap rate', a:pct(c.cap), b:pct(c.capPot) })
+    if (c.fin) {
+      rows.push({ type:'section', l:'Financing (' + num(downPct) + '% down · ' + num(rate) + '%)' })
+      rows.push({ type:'row', l:'Total cash in', a:$(c.fin.totalIn), b:$(c.fin.totalIn) })
+      rows.push({ type:'row', l:'Monthly mortgage', a:$(c.fin.mMort), b:$(c.fin.mMort) })
+      rows.push({ type:'row', l:'Monthly profit', a:$(c.fin.mProfit), b:$(c.fin.mProfitPot) })
+      rows.push({ type:'total', l:'Cash-on-cash', a:pct(c.fin.cocRate), b:pct(c.fin.cocRatePot) })
+    }
+
+    const W = 1080, PAD = 60, ROW = 46, SEC = 74
+    const headerH = 300
+    const bodyH = rows.reduce((h, r) => h + (r.type === 'section' ? SEC : ROW), 0) + 40
+    const H = headerH + bodyH + 120
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H
+    const x = cv.getContext('2d')
+    x.fillStyle = '#FFFFFF'; x.fillRect(0, 0, W, H)
+    // Header
+    x.fillStyle = '#1B2B4B'; x.fillRect(0, 0, W, 150)
+    x.fillStyle = '#CC2200'; x.fillRect(0, 150, W, 8)
+    x.fillStyle = '#FFFFFF'; x.font = '900 44px Arial'; x.fillText('TARGET TEAM', PAD, 78)
+    x.font = '600 20px Arial'; x.fillStyle = 'rgba(255,255,255,.75)'
+    x.fillText('K E L L E R   W I L L I A M S   V A L L E Y   R E A L T Y', PAD, 112)
+    x.fillStyle = '#111111'; x.font = '800 34px Arial'
+    x.fillText((addr || 'Investment Property Analysis').slice(0, 52), PAD, 215)
+    x.font = '600 24px Arial'; x.fillStyle = '#555555'
+    x.fillText([propType, c.ask ? 'Asking ' + $(c.ask) : ''].filter(Boolean).join('  ·  '), PAD, 254)
+    // Column headers
+    const colA = P2 ? W - 480 : W - 320, colB = W - 250
+    let y = headerH
+    x.font = '800 22px Arial'; x.fillStyle = '#1B2B4B'
+    x.fillText('Rent Roll', PAD, y - 14)
+    if (P2) { x.font = '700 19px Arial'; x.fillStyle = '#888'
+      x.fillText('Current', colA, y - 14); x.fillText('Potential', colB, y - 14) }
+    rows.forEach(r => {
+      if (r.type === 'section') {
+        y += SEC
+        x.fillStyle = '#1B2B4B'; x.font = '800 26px Arial'; x.fillText(r.l, PAD, y - 22)
+        return
+      }
+      y += ROW
+      if (r.type === 'total') { x.fillStyle = '#F6F7FB'; x.fillRect(PAD - 14, y - 32, W - 2 * PAD + 28, 42) }
+      x.fillStyle = '#222222'; x.font = (r.type === 'total' ? '800 ' : '500 ') + '22px Arial'
+      x.fillText(String(r.l).slice(0, 58), PAD, y)
+      x.textAlign = 'right'
+      x.fillText(r.a, P2 ? colA + 110 : W - PAD, y)
+      if (P2) { x.fillStyle = r.type === 'total' ? '#0B7A45' : '#222222'; x.fillText(r.b, W - PAD, y) }
+      x.textAlign = 'left'
+      x.strokeStyle = '#EEEEEE'; x.beginPath(); x.moveTo(PAD, y + 10); x.lineTo(W - PAD, y + 10); x.stroke()
+    })
+    // Footer
+    y = H - 60
+    x.fillStyle = '#999999'; x.font = '500 17px Arial'
+    x.fillText('Target Team · Keller Williams Valley Realty · 845.424.1014', PAD, y)
+    x.fillText('Estimates only — buyer to verify all figures.', PAD, y + 26)
+
+    const a = document.createElement('a')
+    a.download = (addr ? addr.replace(/[^a-z0-9]+/gi, '_') : 'investment_analysis') + '.jpg'
+    a.href = cv.toDataURL('image/jpeg', 0.92)
+    a.click()
   }
 
   const P = calc.hasPotential
@@ -278,9 +357,13 @@ export function MultiFamilyPnL() {
         </div>
         <button onClick={generateReport}
           style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: '#CC2200', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: ff }}>
-          🖨 Generate Branded Report
+          🖨 Branded Report (PDF)
         </button>
-        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6, textAlign: 'center' }}>Only filled-in units and checked expenses appear. Print dialog opens → Save as PDF.</div>
+        <button onClick={generateJpeg}
+          style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: '#1B2B4B', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: ff, marginTop: 8 }}>
+          📸 JPEG — post on status
+        </button>
+        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6, textAlign: 'center' }}>Only filled-in units and checked expenses appear in both.</div>
       </div>
     </div>
   )
