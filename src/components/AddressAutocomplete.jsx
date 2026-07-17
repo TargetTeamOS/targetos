@@ -47,7 +47,7 @@ function ensureMapsLoaded(cb) {
 
   const script    = document.createElement('script')
   script.id       = '__gmaps__'
-  script.src      = 'https://maps.googleapis.com/maps/api/js?key=' + KEY + '&libraries=places'
+  script.src      = 'https://maps.googleapis.com/maps/api/js?key=' + KEY + '&libraries=places,drawing,geometry'
   script.async    = true
   script.defer    = true
   script.onload   = () => { _state = 'ready'; _cbs.forEach(f => f()); _cbs.length = 0 }
@@ -63,6 +63,8 @@ function ensureMapsLoaded(cb) {
 }
 
 // ── Component ───────────────────────────────────────────────────
+export { ensureMapsLoaded }
+
 export function AddressAutocomplete({
   value       = '',
   onChange,

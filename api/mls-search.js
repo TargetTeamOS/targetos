@@ -51,7 +51,23 @@ function normalize(rec) {
       type: rec.PropertySubType || rec.PropertyType || '',
       yearBuilt: rec.YearBuilt || null,
       garageSpaces: rec.GarageSpaces || null,
+      lotSizeAcres: rec.LotSizeAcres || null,
+      lotSizeSqft: rec.LotSizeSquareFeet || null,
+      stories: rec.StoriesTotal || null,
+      heating: Array.isArray(rec.Heating) ? rec.Heating.join(', ') : rec.Heating || '',
+      cooling: Array.isArray(rec.Cooling) ? rec.Cooling.join(', ') : rec.Cooling || '',
     },
+    tax: {
+      annualAmount: rec.TaxAnnualAmount || null,
+      assessedValue: rec.TaxAssessedValue || null,
+      year: rec.TaxYear || null,
+      parcelNumber: rec.ParcelNumber || '',
+      lot: rec.TaxLot || '',
+      block: rec.TaxBlock || '',
+    },
+    zoning: rec.Zoning || rec.ZoningDescription || '',
+    hoa: { fee: rec.AssociationFee || null, frequency: rec.AssociationFeeFrequency || '' },
+    daysOnMarket: rec.DaysOnMarket ?? null,
     mls: { status: rec.StandardStatus || rec.MlsStatus || 'Active' },
     school: { district: rec.HighSchoolDistrict || rec.ElementarySchoolDistrict || '' },
     agent: { firstName: rec.ListAgentFirstName || '', lastName: rec.ListAgentLastName || '' },
@@ -121,7 +137,18 @@ module.exports = async function handler(req, res) {
     if (q.minprice) filters.push('ListPrice ge ' + parseInt(q.minprice, 10))
     if (q.maxprice) filters.push('ListPrice le ' + parseInt(q.maxprice, 10))
     if (q.minbeds)  filters.push('BedroomsTotal ge ' + parseInt(q.minbeds, 10))
+    if (q.minbaths) filters.push('BathroomsTotalInteger ge ' + parseInt(q.minbaths, 10))
+    if (q.minsqft)  filters.push('LivingArea ge ' + parseInt(q.minsqft, 10))
+    if (q.maxsqft)  filters.push('LivingArea le ' + parseInt(q.maxsqft, 10))
+    if (q.minyear)  filters.push('YearBuilt ge ' + parseInt(q.minyear, 10))
+    if (q.maxdom)   filters.push('DaysOnMarket le ' + parseInt(q.maxdom, 10))
     if (q.type)     filters.push("PropertyType eq '" + esc(q.type) + "'")
+    // Map / draw-an-area search: bounding box on coordinates. The
+    // client refines circles/polygons precisely; this narrows upstream.
+    if (q.latmin && q.latmax && q.lngmin && q.lngmax) {
+      filters.push('Latitude ge ' + parseFloat(q.latmin), 'Latitude le ' + parseFloat(q.latmax),
+                   'Longitude ge ' + parseFloat(q.lngmin), 'Longitude le ' + parseFloat(q.lngmax))
+    }
     // Free-text: match MLS number exactly, else search address
     if (q.q) {
       const term = esc(q.q)

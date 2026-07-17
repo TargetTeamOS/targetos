@@ -1,8 +1,9 @@
 // TargetOS V2 — MLS Search Hub
 // Search OneKey MLS → shortlist listings for a client →
 // connect to contact → build showing route → download/print/save
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { ensureMapsLoaded } from './AddressAutocomplete'
 import { useAuth }  from '../context/AuthContext'
 import { useApp }   from '../context/AppContext'
 import { authFetch } from '../lib/apiAuth'
@@ -35,7 +36,7 @@ function mlsFullAddr(l) {
 }
 
 // ── LISTING CARD ──────────────────────────────────────────────────
-function MLSCard({ listing, saved, onSave, onUnsave, onImport, importing }) {
+function MLSCard({ listing, saved, onSave, onUnsave, onImport, importing, flood, onFloodLookup }) {
   const [expanded, setExpanded] = useState(false)
   const photos = listing.photos || []
   const price  = fmt$(listing.listPrice)
@@ -81,9 +82,36 @@ function MLSCard({ listing, saved, onSave, onUnsave, onImport, importing }) {
                 ['County', listing.address?.county],
                 ['School Dist.', listing.school?.district],
                 ['List Date', listing.listDate ? new Date(listing.listDate).toLocaleDateString() : null],
+                ['Days on Market', listing.daysOnMarket != null ? listing.daysOnMarket + ' days' : null],
+                ['Lot Size', listing.property?.lotSizeAcres ? listing.property.lotSizeAcres + ' acres' : (listing.property?.lotSizeSqft ? Number(listing.property.lotSizeSqft).toLocaleString() + ' sqft lot' : null)],
+                ['Stories', listing.property?.stories],
+                ['Heating', listing.property?.heating],
+                ['Cooling', listing.property?.cooling],
+                ['Zoning', listing.zoning],
+                ['Annual Taxes', listing.tax?.annualAmount ? '$' + Number(listing.tax.annualAmount).toLocaleString() + (listing.tax.year ? ' (' + listing.tax.year + ')' : '') : null],
+                ['Assessed Value', listing.tax?.assessedValue ? '$' + Number(listing.tax.assessedValue).toLocaleString() : null],
+                ['Parcel #', listing.tax?.parcelNumber],
+                ['Tax Lot/Block', [listing.tax?.lot, listing.tax?.block].filter(Boolean).join(' / ') || null],
+                ['HOA', listing.hoa?.fee ? '$' + Number(listing.hoa.fee).toLocaleString() + (listing.hoa.frequency ? '/' + listing.hoa.frequency : '') : null],
               ].filter(([,v]) => v).map(([k,v]) => (
                 <div key={k}><div style={{ fontSize:9, fontWeight:700, color:'var(--muted)', textTransform:'uppercase' }}>{k}</div><div style={{ fontSize:11, color:'var(--text)' }}>{v}</div></div>
               ))}
+            </div>
+
+            {/* FEMA flood zone — free public lookup by coordinates */}
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:7 }}>
+              {flood && flood !== 'loading'
+                ? <div style={{ fontSize:11, padding:'5px 9px', borderRadius:6, background: /^Zone [AV]/.test(flood) ? '#FEF2F2' : 'var(--dim)', color: /^Zone [AV]/.test(flood) ? '#DC2626' : 'var(--text)', fontWeight:600 }}>
+                    🌊 FEMA: {flood === 'error' ? 'Lookup failed — try again' : flood}
+                  </div>
+                : <button onClick={() => onFloodLookup && onFloodLookup(listing)} disabled={flood === 'loading'}
+                    style={{ fontSize:11, padding:'5px 10px', borderRadius:6, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', cursor:'pointer', fontFamily:'Inter,sans-serif', fontWeight:600 }}>
+                    {flood === 'loading' ? '⏳ Checking FEMA…' : '🌊 Check flood zone (FEMA)'}
+                  </button>}
+              {listing.tax?.parcelNumber && listing.address?.county === 'Rockland' && (
+                <a href="https://propertyrecordsearch.rocklandcountyny.gov" target="_blank" rel="noreferrer"
+                  style={{ fontSize:11, color:'var(--brand)', fontWeight:600 }}>Tax records ↗</a>
+              )}
             </div>
             {listing.remarks && <div style={{ fontSize:11, color:'var(--muted)', lineHeight:1.5, padding:'7px 9px', background:'var(--dim)', borderRadius:6, marginBottom:6 }}>{listing.remarks.slice(0,280)}{listing.remarks.length>280?'...':''}</div>}
             {listing.agent?.firstName && <div style={{ fontSize:10, color:'var(--muted)' }}>Listed by: <strong>{listing.agent.firstName} {listing.agent.lastName}</strong>{listing.office?.name?' · '+listing.office.name:''}</div>}
@@ -276,6 +304,20 @@ export function MLSSearch({ agents, onImported }) {
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [minBeds,  setMinBeds]  = useState('')
+  const [minBaths, setMinBaths] = useState('')
+  const [minSqft,  setMinSqft]  = useState('')
+  const [maxSqft,  setMaxSqft]  = useState('')
+  const [minYear,  setMinYear]  = useState('')
+  const [maxDom,   setMaxDom]   = useState('')
+
+  // ── MAP + DRAW-AN-AREA (July 2026) ─────────────────────────────
+  const [showMap, setShowMap]   = useState(false)
+  const mapDivRef  = useRef(null)
+  const mapRef     = useRef(null)
+  const markersRef = useRef([])
+  const circleRef  = useRef(null)
+  const drawMgrRef = useRef(null)
+  const [drawnArea, setDrawnArea] = useState(null)  // {lat,lng,radiusMeters}
   const [mlsNum,   setMlsNum]   = useState('')
   const [results,  setResults]  = useState([])
   const [loading,  setLoading]  = useState(false)
@@ -303,6 +345,86 @@ export function MLSSearch({ agents, onImported }) {
   }
 
   const nextRef = useRef(null)
+
+  // Map init / markers / circle drawing
+  useEffect(() => {
+    if (!showMap || mapRef.current) return
+    ensureMapsLoaded(() => {
+      if (!window.google?.maps || !mapDivRef.current || mapRef.current) return
+      const map = new window.google.maps.Map(mapDivRef.current, {
+        center: { lat: 41.11, lng: -74.05 }, zoom: 11,
+        mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
+      })
+      mapRef.current = map
+      const dm = new window.google.maps.drawing.DrawingManager({
+        drawingControl: false,
+        circleOptions: { fillColor: '#CC2200', fillOpacity: 0.08, strokeColor: '#CC2200', strokeWeight: 2, editable: true },
+      })
+      dm.setMap(map)
+      drawMgrRef.current = dm
+      window.google.maps.event.addListener(dm, 'circlecomplete', circle => {
+        if (circleRef.current) circleRef.current.setMap(null)
+        circleRef.current = circle
+        dm.setDrawingMode(null)
+        const apply = () => setDrawnArea({ lat: circle.getCenter().lat(), lng: circle.getCenter().lng(), radiusMeters: circle.getRadius() })
+        apply()
+        circle.addListener('radius_changed', apply)
+        circle.addListener('center_changed', apply)
+      })
+    })
+  }, [showMap])
+
+  // Sync result pins onto the map
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !window.google?.maps) return
+    markersRef.current.forEach(m => m.setMap(null))
+    markersRef.current = []
+    const bounds = new window.google.maps.LatLngBounds()
+    let any = false
+    results.forEach((l, i) => {
+      if (!l.geo?.lat || !l.geo?.lng) return
+      any = true
+      const pos = { lat: l.geo.lat, lng: l.geo.lng }
+      bounds.extend(pos)
+      const marker = new window.google.maps.Marker({ map, position: pos, label: { text: String(i + 1), color: '#fff', fontSize: '11px', fontWeight: '800' } })
+      const iw = new window.google.maps.InfoWindow({ content:
+        '<div style="font-family:Inter,sans-serif;font-size:12px;max-width:200px">' +
+        '<strong>' + mlsAddr(l) + '</strong><br/>' +
+        (l.listPrice ? '$' + Number(l.listPrice).toLocaleString() : '') +
+        ' · ' + (l.property?.bedrooms || '?') + 'bd ' + (l.property?.bathsFull || '?') + 'ba</div>' })
+      marker.addListener('click', () => iw.open({ map, anchor: marker }))
+      markersRef.current.push(marker)
+    })
+    if (any && !drawnArea) map.fitBounds(bounds, 60)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, showMap])
+
+  function startDrawCircle() {
+    if (!drawMgrRef.current) return
+    drawMgrRef.current.setDrawingMode(window.google.maps.drawing.OverlayType.CIRCLE)
+  }
+  function clearDrawnArea() {
+    if (circleRef.current) { circleRef.current.setMap(null); circleRef.current = null }
+    setDrawnArea(null)
+  }
+
+  // ── FEMA flood zone lookup (free public NFHL API, per property) ──
+  const [floodInfo, setFloodInfo] = useState({})  // mlsId -> zone string | 'loading' | 'error'
+  async function lookupFlood(l) {
+    if (!l.geo?.lat || !l.geo?.lng) { setFloodInfo(p => ({ ...p, [l.mlsId]: 'No coordinates' })); return }
+    setFloodInfo(p => ({ ...p, [l.mlsId]: 'loading' }))
+    try {
+      const url = 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query?' +
+        new URLSearchParams({ geometry: l.geo.lng + ',' + l.geo.lat, geometryType: 'esriGeometryPoint',
+          inSR: '4326', spatialRel: 'esriSpatialRelIntersects', outFields: 'FLD_ZONE,ZONE_SUBTY', returnGeometry: 'false', f: 'json' })
+      const r = await fetch(url)
+      const d = await r.json()
+      const feat = d.features?.[0]?.attributes
+      setFloodInfo(p => ({ ...p, [l.mlsId]: feat ? ('Zone ' + feat.FLD_ZONE + (feat.ZONE_SUBTY ? ' — ' + feat.ZONE_SUBTY : '')) : 'Not in a mapped flood zone' }))
+    } catch(e) { setFloodInfo(p => ({ ...p, [l.mlsId]: 'error' })) }
+  }
+
   async function search(pg = 0, nextLink = null) {
     setLoading(true); setSearched(true)
     if (pg === 0) setResults([])
@@ -315,6 +437,18 @@ export function MLSSearch({ agents, onImported }) {
         if (minPrice) params.set('minprice', minPrice.replace(/\D/g,''))
         if (maxPrice) params.set('maxprice', maxPrice.replace(/\D/g,''))
         if (minBeds)  params.set('minbeds', minBeds)
+        if (minBaths) params.set('minbaths', minBaths)
+        if (minSqft)  params.set('minsqft', minSqft.replace(/\D/g,''))
+        if (maxSqft)  params.set('maxsqft', maxSqft.replace(/\D/g,''))
+        if (minYear)  params.set('minyear', minYear)
+        if (maxDom)   params.set('maxdom', maxDom)
+        if (drawnArea) {
+          // circle → bounding box for the server; precise refine below
+          const dLat = drawnArea.radiusMeters / 111320
+          const dLng = drawnArea.radiusMeters / (111320 * Math.cos(drawnArea.lat * Math.PI / 180))
+          params.set('latmin', (drawnArea.lat - dLat).toFixed(6)); params.set('latmax', (drawnArea.lat + dLat).toFixed(6))
+          params.set('lngmin', (drawnArea.lng - dLng).toFixed(6)); params.set('lngmax', (drawnArea.lng + dLng).toFixed(6))
+        }
         if (mlsNum)   params.set('q', mlsNum)
         else if (query) params.set('q', query)
       }
@@ -323,7 +457,15 @@ export function MLSSearch({ agents, onImported }) {
       const res = await authFetch('/api/mls-search?' + params)
       if (!res.ok) throw new Error('API returned ' + res.status)
       const body = await res.json()
-      const data = body.listings || []
+      let data = body.listings || []
+      if (drawnArea && window.google?.maps?.geometry) {
+        const center = new window.google.maps.LatLng(drawnArea.lat, drawnArea.lng)
+        data = data.filter(l => {
+          if (!l.geo?.lat || !l.geo?.lng) return true
+          const d = window.google.maps.geometry.spherical.computeDistanceBetween(center, new window.google.maps.LatLng(l.geo.lat, l.geo.lng))
+          return d <= drawnArea.radiusMeters
+        })
+      }
       nextRef.current = body.next || null
       const tot = body.total ?? (pg * PER_PAGE + data.length + (body.next ? 1 : 0))
       setTotal(tot); setPage(pg)
@@ -418,8 +560,41 @@ export function MLSSearch({ agents, onImported }) {
                 <input key="max" value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} placeholder="Max price" style={inp} />,
                 <select key="beds" value={minBeds} onChange={e=>setMinBeds(e.target.value)} style={inp}><option value="">Any beds</option>{[1,2,3,4,5,6].map(n=><option key={n} value={n}>{n}+ beds</option>)}</select>,
                 <input key="mls" value={mlsNum} onChange={e=>setMlsNum(e.target.value)} placeholder="MLS #" style={inp} />,
+                <select key="baths" value={minBaths} onChange={e=>setMinBaths(e.target.value)} style={inp}><option value="">Any baths</option>{[1,2,3,4,5].map(n=><option key={n} value={n}>{n}+ baths</option>)}</select>,
+                <input key="minsq" value={minSqft} onChange={e=>setMinSqft(e.target.value)} placeholder="Min SqFt" style={inp} />,
+                <input key="maxsq" value={maxSqft} onChange={e=>setMaxSqft(e.target.value)} placeholder="Max SqFt" style={inp} />,
+                <input key="year" value={minYear} onChange={e=>setMinYear(e.target.value)} placeholder="Built after (year)" style={inp} />,
+                <select key="dom" value={maxDom} onChange={e=>setMaxDom(e.target.value)} style={inp}><option value="">Any days on market</option>{[3,7,14,30,60,90].map(n=><option key={n} value={n}>≤ {n} days on market</option>)}</select>,
               ].map((el,i) => <div key={i}>{el}</div>)}
             </div>
+
+            {/* Map + draw-an-area */}
+            <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, flexWrap:'wrap' }}>
+              <button onClick={()=>setShowMap(v=>!v)}
+                style={{ padding:'7px 14px', borderRadius:8, border:'1px solid var(--border)', background: showMap?'rgba(204,34,0,.08)':'var(--dim)', color: showMap?'var(--brand)':'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'Inter,sans-serif' }}>
+                🗺 {showMap ? 'Hide map' : 'Show map'}
+              </button>
+              {showMap && (
+                <>
+                  <button onClick={startDrawCircle}
+                    style={{ padding:'7px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'Inter,sans-serif' }}>
+                    ⭕ Draw search area
+                  </button>
+                  {drawnArea && (
+                    <>
+                      <span style={{ fontSize:12, color:'#10B981', fontWeight:700 }}>
+                        ✓ Area set ({(drawnArea.radiusMeters/1609.34).toFixed(1)} mi radius) — searches limited to the circle
+                      </span>
+                      <button onClick={clearDrawnArea}
+                        style={{ padding:'5px 10px', borderRadius:8, border:'1px solid #DC262444', background:'#FEF2F2', color:'#DC2626', fontSize:11, cursor:'pointer', fontFamily:'Inter,sans-serif' }}>
+                        ✕ Clear area
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            {showMap && <div ref={mapDivRef} style={{ height:380, borderRadius:12, border:'1px solid var(--border)', marginTop:10 }} />}
           </div>
 
           {/* Loading */}
@@ -454,6 +629,8 @@ export function MLSSearch({ agents, onImported }) {
                     onUnsave={removeFromShortlist}
                     onImport={importListing}
                     importing={importing===r.mlsId}
+                    flood={floodInfo[r.mlsId]}
+                    onFloodLookup={lookupFlood}
                   />
                 ))}
               </div>
