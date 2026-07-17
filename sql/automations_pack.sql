@@ -84,7 +84,7 @@ insert into automations (id, name, description, active, trigger_type, action_nod
 -- each automation fires at most once per record.
 create table if not exists automation_fires (
   id uuid primary key default gen_random_uuid(),
-  automation_id text not null,
+  automation_id uuid not null,
   record_id uuid not null,
   fired_at timestamptz not null default now(),
   unique (automation_id, record_id)
