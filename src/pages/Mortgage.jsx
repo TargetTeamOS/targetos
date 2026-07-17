@@ -1,12 +1,14 @@
 // TargetOS V2 — Mortgage & P&L Calculator
 // Mortgage calculator, closing costs estimator, agent P&L, and deal analyzer
 import React, { useState, useMemo } from 'react'
+import { MultiFamilyPnL } from '../components/MultiFamilyPnL'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 const TABS = [
   { id:'mortgage',    label:'🏦 Mortgage',       desc:'Monthly payment calculator' },
   { id:'lookups',     label:'🏛 Tax & Zoning',   desc:'Town/village tax portals, phones & zoning maps' },
+  { id:'multifam',    label:'🏢 Multi-Family P&L', desc:'Rent roll, expenses, cap rate — branded investor report' },
   { id:'closing',     label:'📋 Closing Costs',  desc:'Buyer & seller net sheets' },
   { id:'pnl',         label:'💰 Agent P&L',       desc:'Commission & profit breakdown' },
   { id:'deal',        label:'📊 Deal Analyzer',   desc:'Full deal side-by-side' },
@@ -1422,6 +1424,7 @@ export function Mortgage() {
 
       {tab === 'mortgage' && <MortgageCalc />}
       {tab === 'lookups'  && <TaxZoningLookups />}
+      {tab === 'multifam' && <MultiFamilyPnL />}
       {tab === 'closing'  && <ClosingCosts />}
       {tab === 'pnl'      && <AgentPnL />}
       {tab === 'deal'        && <DealAnalyzer />}
