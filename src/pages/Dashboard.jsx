@@ -2497,13 +2497,13 @@ export function Dashboard() {
                 title="Refresh">↻</button>
               <Btn size="sm" variant="secondary" onClick={() => setShowGoals(true)}>🎯 Goals</Btn>
               {isAdmin && <Btn size="sm" variant="secondary" onClick={() => setShowAgentView(true)}>👥 Agent Views</Btn>}
-              <Btn size="sm" variant="secondary" onClick={() => setShowCustomWidget(true)}>🔲 Add Widget</Btn>
-              <Btn size="sm" variant="secondary" onClick={() => setShowWidgetMgr(true)}>⚙️ Customize</Btn>
+              {isAdmin && <Btn size="sm" variant="secondary" onClick={() => setShowCustomWidget(true)}>🔲 Add Widget</Btn>}
+              {isAdmin && <Btn size="sm" variant="secondary" onClick={() => setShowWidgetMgr(true)}>⚙️ Customize</Btn>}
             </>
           )}
 
-          {/* Edit Mode controls */}
-          {editMode ? (
+          {/* Edit Mode controls — admin only */}
+          {isAdmin && (editMode ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: '10px' }}>
               <span style={{ fontSize: '12px', color: '#92400E', fontWeight: 600 }}>🎛 Edit Mode — drag widgets to reorder</span>
               <Btn size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Btn>
@@ -2513,7 +2513,7 @@ export function Dashboard() {
             </div>
           ) : (
             <Btn size="sm" variant="secondary" onClick={() => { setEditMode(true); setPendingWidgets(null) }}>🎛 Edit Layout</Btn>
-          )}
+          ))}
         </div>
       </div>
 
