@@ -75,6 +75,7 @@ function ContactSearch({ value, onChange, onSelect, placeholder, filter }) {
   const [results, setResults] = useState([])
   const [open,    setOpen]    = useState(false)
   const ref = useRef(null)
+  const { agent: me, isAdmin } = useAuth()
 
   useEffect(() => { setQ(value || '') }, [value])
 
@@ -82,12 +83,23 @@ function ContactSearch({ value, onChange, onSelect, placeholder, filter }) {
     if (q.length < 2) { setResults([]); return }
     const t = setTimeout(async () => {
       let query = supabase.from('contacts')
-        .select('id,first_name,last_name,phone,email,company,address,type')
+        .select('id,first_name,last_name,phone,email,company,address,type,is_private,agent_id')
         .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`)
-        .limit(6)
+        .limit(12)
       if (filter) query = query.eq('type', filter)
-      const { data } = await query
-      setResults(data || [])
+      let { data, error } = await query
+      if (error && /is_private|column/i.test(error.message || '')) {
+        // sql/private_contacts.sql not run yet — search without the flag
+        let q2 = supabase.from('contacts')
+          .select('id,first_name,last_name,phone,email,company,address,type,agent_id')
+          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`)
+          .limit(12)
+        if (filter) q2 = q2.eq('type', filter)
+        data = (await q2).data
+      }
+      // PRIVACY: other agents' private contacts never appear in search
+      const visible = (data || []).filter(c => isAdmin || !c.is_private || (me?.id && c.agent_id === me.id))
+      setResults(visible.slice(0, 6))
       setOpen(true)
     }, 250)
     return () => clearTimeout(t)

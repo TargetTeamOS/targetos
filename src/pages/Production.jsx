@@ -30,6 +30,7 @@ import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { FileAttachments } from '../components/FileAttachments'
 import { RecordActivity } from '../pages/ActivityLog'
 import { ClickToCall } from '../components/ClickToCall'
+import ContactPicker from '../components/ContactPicker'
 import { FilterBar } from '../components/FilterBar'
 import { ImportExport } from '../components/ImportExport'
 import { loadFieldDefs, saveFieldDefs, getFieldsForEntity, labelToKey, FIELD_TYPES, invalidateFieldCache } from '../lib/customFields'
@@ -1150,7 +1151,16 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
             <div>
               <SectionHdr>Client Information</SectionHdr>
               <Grid2>
-                <Field label="Client Name"><Inp k="client_name" placeholder="John Smith" /></Field>
+                <Field label="Client Name">
+                  <Inp k="client_name" placeholder="John Smith" />
+                  <div style={{ marginTop:6 }}>
+                    <ContactPicker placeholder="🔍 Link from Contacts board…" agentId={form.agent_id}
+                      onSelect={c => setForm(prev => ({ ...prev,
+                        client_name:  ((c.first_name||'')+' '+(c.last_name||'')).trim() || prev.client_name,
+                        client_email: c.email || prev.client_email,
+                        client_phone: c.phone || prev.client_phone }))} />
+                  </div>
+                </Field>
                 <Field label="Client Legal Name"><Inp k="client_legal_name" placeholder="For closing docs" /></Field>
                 <Field label="Client Phone">
                 <div style={{ display:'flex', gap:8, alignItems:'center' }}>

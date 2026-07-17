@@ -1408,6 +1408,13 @@ export function ContactDetail() {
                 backgroundRepeat:'no-repeat', backgroundPosition:'right 9px center' }}>
               {CONTACT_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
+            {(isAdmin || f.agent_id === agent?.id) && (
+              <button onClick={() => saveField('is_private', !f.is_private)}
+                title={f.is_private ? 'Private: hidden from other agents in contact search. Click to make visible.' : 'Visible to all agents in contact search. Click to make private.'}
+                style={{ border:'1px solid '+(f.is_private?'#F5A623':'var(--border)'), background: f.is_private?'rgba(245,166,35,.12)':'transparent', color: f.is_private?'#B45309':'var(--muted)', borderRadius:99, padding:'3px 10px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
+                {f.is_private ? '🔒 Private' : '🔓 Shared'}
+              </button>
+            )}
           </div>
           <div style={{ fontSize:11, color:'var(--muted)', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
             {[f.phone, f.email, f.source && ('via '+f.source),

@@ -10,10 +10,12 @@ import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
 import { Btn } from './UI'
+import { useAuth } from '../context/AuthContext'
 
 const contactName = c => ((c.first_name || '') + ' ' + (c.last_name || '')).trim() || c.email || c.phone || 'Unnamed'
 
 export default function ContactPicker({ onSelect, placeholder = 'Search contacts…', agentId = null }) {
+  const { agent: me, isAdmin } = useAuth()
   const [q, setQ]           = useState('')
   const [results, setResults] = useState([])
   const [openList, setOpenList] = useState(false)
@@ -28,12 +30,24 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
     timer.current = setTimeout(async () => {
       try {
         const like = '%' + q.replace(/[%_]/g, '') + '%'
-        const { data } = await supabase
+        let query = supabase
           .from('contacts')
-          .select('id, first_name, last_name, email, phone')
+          .select('id, first_name, last_name, email, phone, is_private, agent_id')
           .or('first_name.ilike.' + like + ',last_name.ilike.' + like + ',email.ilike.' + like + ',phone.ilike.' + like)
-          .limit(8)
-        setResults(data || [])
+          .limit(12)
+        let { data, error } = await query
+        if (error && /is_private|column/i.test(error.message || '')) {
+          // sql/private_contacts.sql not run yet — search without the flag
+          const r = await supabase.from('contacts')
+            .select('id, first_name, last_name, email, phone, agent_id')
+            .or('first_name.ilike.' + like + ',last_name.ilike.' + like + ',email.ilike.' + like + ',phone.ilike.' + like)
+            .limit(12)
+          data = r.data
+        }
+        // PRIVACY: non-admins never see other agents' private contacts
+        // in pickers — they simply don't match, as if they don't exist.
+        const visible = (data || []).filter(c => isAdmin || !c.is_private || (me?.id && c.agent_id === me.id))
+        setResults(visible.slice(0, 8))
         setOpenList(true)
       } catch { setResults([]) }
     }, 250)
