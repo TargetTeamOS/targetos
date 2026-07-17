@@ -153,10 +153,115 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
     </div>
   )
 
-  // Google Maps route URL (traffic-aware directions)
+  // Google Maps route URL (traffic-aware directions) — uses the
+  // optimized stop order once the optimizer has run.
+  const [route, setRoute] = useState(null)   // {order:[idx], legs:[{addr,mins,trafficMins}], totalMins, trafficTotalMins}
+  const [optimizing, setOptimizing] = useState(false)
+  const [startAddr, setStartAddr] = useState('')
+
+  function orderedList() {
+    return route ? route.order.map(i => shortlist[i]).filter(Boolean) : shortlist
+  }
   function routeUrl() {
-    const addrs = shortlist.map(l => encodeURIComponent(mlsFullAddr(l))).join('/')
-    return 'https://www.google.com/maps/dir/' + addrs + '/?travelmode=driving'
+    const stops = orderedList().map(l => encodeURIComponent(mlsFullAddr(l)))
+    const pre = startAddr ? [encodeURIComponent(startAddr)] : []
+    return 'https://www.google.com/maps/dir/' + pre.concat(stops).join('/') + '/?travelmode=driving'
+  }
+
+  // ── FASTEST SHOWING ROUTE with live traffic (July 2026) ─────────
+  // Google Directions with optimizeWaypoints reorders the stops for
+  // the shortest drive; departureTime=now adds live traffic times.
+  function optimizeRoute() {
+    if (shortlist.length < 2 && !startAddr) { toast('Add at least 2 listings (or a start address)', '#F5A623'); return }
+    setOptimizing(true)
+    ensureMapsLoaded(() => {
+      if (!window.google?.maps) { setOptimizing(false); toast('Maps unavailable — check VITE_GOOGLE_MAPS_KEY', '#DC2626'); return }
+      const svc = new window.google.maps.DirectionsService()
+      const addrs = shortlist.map(l => mlsFullAddr(l))
+      const origin = startAddr || addrs[0]
+      const rest   = startAddr ? addrs : addrs.slice(1)
+      const destination = rest[rest.length - 1]
+      const waypoints = rest.slice(0, -1).map(a => ({ location: a, stopover: true }))
+      svc.route({
+        origin, destination, waypoints, optimizeWaypoints: true,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+        drivingOptions: { departureTime: new Date(), trafficModel: 'bestGuess' },
+      }, (result, status) => {
+        setOptimizing(false)
+        if (status !== 'OK' || !result?.routes?.[0]) { toast('Route failed: ' + status, '#DC2626'); return }
+        const r = result.routes[0]
+        // Map waypoint_order back to shortlist indexes
+        const baseIdx = startAddr ? shortlist.map((_, i) => i) : shortlist.map((_, i) => i).slice(1)
+        const midOrder = r.waypoint_order.map(w => baseIdx[w])
+        const order = (startAddr ? [] : [0]).concat(midOrder).concat([baseIdx[baseIdx.length - 1]])
+        const legs = r.legs.map(leg => ({
+          addr: leg.end_address,
+          mins: Math.round(leg.duration.value / 60),
+          trafficMins: leg.duration_in_traffic ? Math.round(leg.duration_in_traffic.value / 60) : null,
+        }))
+        const total = legs.reduce((a, l) => a + l.mins, 0)
+        const trafficTotal = legs.reduce((a, l) => a + (l.trafficMins ?? l.mins), 0)
+        setRoute({ order: [...new Set(order)], legs, totalMins: total, trafficTotalMins: trafficTotal })
+        logClientActivity('showing_route_built', { stops: shortlist.length, total_mins_traffic: trafficTotal })
+        toast('✅ Fastest route found — ' + trafficTotal + ' min drive with current traffic')
+      })
+    })
+  }
+
+  // ── SHARE with the client + LOG on their page ───────────────────
+  async function logClientActivity(action, metadata = {}) {
+    if (!clientId) return
+    try {
+      await supabase.from('activity_log').insert({
+        table_name: 'contacts', record_id: clientId, action, agent_id: agentId || null,
+        metadata: { ...metadata, listings: shortlist.map(l => mlsFullAddr(l)) },
+        created_at: new Date().toISOString(),
+      })
+    } catch(e) { /* timeline logging must never block sharing */ }
+  }
+
+  function clientOf() { return contacts.find(c => c.id === clientId) }
+  function shortlistText() {
+    return 'Hi' + (clientOf()?.first_name ? ' ' + clientOf().first_name : '') + '! Here are the properties we picked out:\n' +
+      orderedList().map((l, i) => (i + 1) + '. ' + mlsFullAddr(l) + ' — ' + fmt$(l.listPrice) +
+        (l.property?.bedrooms ? ' (' + l.property.bedrooms + 'bd/' + (l.property?.bathsFull || '?') + 'ba)' : '')).join('\n') +
+      '\n\nDriving route: ' + routeUrl() + '\n— ' + 'Target Team · KW Valley Realty'
+  }
+
+  const [sharing, setSharing] = useState(false)
+  async function shareSms() {
+    const c = clientOf()
+    if (!c?.phone) { toast('Selected client has no phone number', '#F5A623'); return }
+    setSharing(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await authFetch('/api/send-sms', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}) },
+        body: JSON.stringify({ to: c.phone, body: shortlistText(), contactId: clientId, agentId }) })
+      if (!res.ok) throw new Error('SMS failed (' + res.status + ')')
+      await logClientActivity('mls_listings_shared_sms', { route_url: routeUrl() })
+      toast('✅ Texted ' + (c.first_name || 'client') + ' the listings + route')
+    } catch(e) { toast(e.message, '#DC2626') } finally { setSharing(false) }
+  }
+  async function shareEmail() {
+    const c = clientOf()
+    if (!c?.email) { toast('Selected client has no email', '#F5A623'); return }
+    setSharing(true)
+    try {
+      const rows = orderedList().map((l, i) =>
+        '<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>' + (i + 1) + '. ' + mlsFullAddr(l) + '</strong><br/><span style="color:#666;font-size:12px">' +
+        [l.property?.bedrooms && l.property.bedrooms + ' bd', l.property?.bathsFull && l.property.bathsFull + ' ba', l.property?.area && Number(l.property.area).toLocaleString() + ' sqft'].filter(Boolean).join(' · ') +
+        '</span></td><td style="padding:8px;border-bottom:1px solid #eee;font-weight:800">' + fmt$(l.listPrice) + '</td></tr>').join('')
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await authFetch('/api/send-email', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}) },
+        body: JSON.stringify({ to: c.email,
+          subject: '🏠 ' + orderedList().length + ' properties picked for you — Target Team',
+          html: '<div style="font-family:Arial,sans-serif"><p>Hi ' + (c.first_name || '') + ',</p><p>Here are the properties we selected' + (route ? ' — in the fastest driving order (' + route.trafficTotalMins + ' min total with current traffic)' : '') + ':</p><table style="width:100%;border-collapse:collapse">' + rows + '</table><p style="margin-top:16px"><a href="' + routeUrl() + '" style="background:#10B981;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:700">🗺 Open the driving route</a></p><p style="color:#888;font-size:12px">Target Team · KW Valley Realty · 845.424.1014</p></div>' }) })
+      if (!res.ok) throw new Error('Email failed (' + res.status + ')')
+      await logClientActivity('mls_listings_shared_email', { route_url: routeUrl() })
+      toast('✅ Emailed ' + (c.first_name || 'client') + ' the listings + route')
+    } catch(e) { toast(e.message, '#DC2626') } finally { setSharing(false) }
   }
 
   // Print / download shortlist
@@ -227,8 +332,51 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
           </button>
           <a href={routeUrl()} target="_blank" rel="noopener noreferrer"
             style={{ padding:'6px 12px', borderRadius:8, border:'none', background:'#10B981', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, textDecoration:'none', display:'flex', alignItems:'center', gap:5 }}>
-            🗺 Route (Traffic)
+            🗺 Open Route
           </a>
+        </div>
+      </div>
+
+      {/* Fastest showing route (live traffic) */}
+      <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', padding:14, marginBottom:12 }}>
+        <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', marginBottom:8 }}>🚗 Fastest Showing Route <span style={{ fontWeight:400, color:'var(--muted)', fontSize:11 }}>(live traffic)</span></div>
+        <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+          <input value={startAddr} onChange={e=>setStartAddr(e.target.value)} placeholder="Start from (optional — office, agent home…)"
+            style={{ flex:1, padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff }} />
+          <button onClick={optimizeRoute} disabled={optimizing}
+            style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'#1B2B4B', color:'#fff', fontSize:12, fontWeight:700, cursor: optimizing?'wait':'pointer', fontFamily:ff, whiteSpace:'nowrap' }}>
+            {optimizing ? '⏳ Optimizing…' : '⚡ Find fastest order'}
+          </button>
+        </div>
+        {route && (
+          <div style={{ background:'var(--dim)', borderRadius:8, padding:'10px 12px' }}>
+            <div style={{ fontSize:12, fontWeight:800, color:'#10B981', marginBottom:6 }}>
+              Total: {route.trafficTotalMins} min driving with current traffic ({orderedList().length} stops)
+            </div>
+            {route.legs.map((leg, i) => (
+              <div key={i} style={{ display:'flex', gap:8, fontSize:11, color:'var(--text)', padding:'3px 0' }}>
+                <span style={{ fontWeight:800, color:'var(--brand)', flexShrink:0 }}>{i+1}.</span>
+                <span style={{ flex:1 }}>{leg.addr}</span>
+                <span style={{ color:'var(--muted)', flexShrink:0 }}>{leg.trafficMins ?? leg.mins} min drive</span>
+              </div>
+            ))}
+            <div style={{ fontSize:10, color:'var(--muted)', marginTop:6 }}>Stops reordered for the shortest total drive. "Open Route" and shares use this order.</div>
+          </div>
+        )}
+      </div>
+
+      {/* Share with client */}
+      <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', padding:14, marginBottom:12 }}>
+        <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', marginBottom:8 }}>📤 Share with Client <span style={{ fontWeight:400, color:'var(--muted)', fontSize:11 }}>(select the client below first — everything is logged on their page)</span></div>
+        <div style={{ display:'flex', gap:6 }}>
+          <button onClick={shareSms} disabled={sharing || !clientId}
+            style={{ flex:1, padding:'9px', borderRadius:8, border:'none', background: clientId?'#1B2B4B':'var(--dim)', color: clientId?'#fff':'var(--muted)', fontSize:12, fontWeight:700, cursor: clientId&&!sharing?'pointer':'default', fontFamily:ff }}>
+            💬 Text listings + route
+          </button>
+          <button onClick={shareEmail} disabled={sharing || !clientId}
+            style={{ flex:1, padding:'9px', borderRadius:8, border:'none', background: clientId?'#CC2200':'var(--dim)', color: clientId?'#fff':'var(--muted)', fontSize:12, fontWeight:700, cursor: clientId&&!sharing?'pointer':'default', fontFamily:ff }}>
+            ✉️ Email listings + route
+          </button>
         </div>
       </div>
 
