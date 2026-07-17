@@ -6,11 +6,108 @@ const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 const TABS = [
   { id:'mortgage',    label:'🏦 Mortgage',       desc:'Monthly payment calculator' },
+  { id:'lookups',     label:'🏛 Tax & Zoning',   desc:'Town/village tax portals, phones & zoning maps' },
   { id:'closing',     label:'📋 Closing Costs',  desc:'Buyer & seller net sheets' },
   { id:'pnl',         label:'💰 Agent P&L',       desc:'Commission & profit breakdown' },
   { id:'deal',        label:'📊 Deal Analyzer',   desc:'Full deal side-by-side' },
   { id:'investment',  label:'🏘 Investment',      desc:'Cash on cash return & cap rate' },
 ]
+
+
+// ═══════════════════════════════════════════════════════════════
+// TAX & ZONING LOOKUPS (July 2026)
+// One place for every town/village tax portal, collector phone/email
+// and zoning map the team uses. Searchable. Maintained here — send
+// corrections/additions to be added.
+// ═══════════════════════════════════════════════════════════════
+const MUNI_LOOKUPS = [
+  { town:'Ramapo', tax:'https://ramapo.municipaltaxpayments.com/', phone:'845-357-5100',
+    zoning:'https://www.ramapo.gov/page/zoning-code-and-map-135.html', zoningLabel:'Ramapo zoning code & map',
+    villages:[
+      { name:'Suffern',        tax:'https://www.msbpay.com/VillageOfSuffernTaxWater/AccountDetails?WS', phone:'845-357-2600', email:'taxcollector@suffernny.gov', zoning:'https://www.ramapo.org/page/zoning-code-and-map-135.html' },
+      { name:'Airmont',        tax:'https://airmont.municipaltaxpayments.com/', zoning:'https://www.airmont.org/download/airmont-zoning-adopted-20160201.pdf' },
+      { name:'Chestnut Ridge', tax:'https://chestnutridge.municipaltaxpayments.com/', zoning:'https://chestnutridgevillage.org/wp-content/uploads/2022/07/Official-Zoning-Maps-2022.pdf', extra:{ label:'Interactive zoning (Zoneomics)', url:'http://zoneomics.com/zoning-maps/new-york/chestnut-ridge' } },
+      { name:'Montebello',     tax:'https://egov.basgov.com/villageofmontebello/' },
+    ]},
+  { town:'Clarkstown', tax:'https://egov.basgov.com/clarkstown/',
+    villages:[
+      { name:'Spring Valley', tax:'https://springvalley.municipaltaxpayments.com/', phone:'1-877-690-3729', zoning:'https://www.villagespringvalley.org/media/PlanningBoard/SpringValley_Zoning_Jan_2022.pdf' },
+    ]},
+  { town:'Haverstraw', tax:'https://egov.basgov.com/TownofHaverstraw/', phone:'(845) 942-3720', email:'drose@townofhaverstraw.org',
+    extra:{ label:'Village of Haverstraw tax search', url:'https://villageofhaverstraw-ny.com/#/WildfireSearch' },
+    villages:[
+      { name:'West Haverstraw', tax:'https://egov.basgov.com/westhaverstraw/', phone:'(845) 947-2800', zoning:'https://www.rocklandgis.com/portal/apps/sites/#/data/documents/31493d93792a49ff9dc0d5f27ca00cfc/explore', zoningLabel:'Zoning (Rockland GIS)' },
+    ]},
+  { town:'Orangetown', tax:'https://egov.basgov.com/orangetown/', phone:'845-359-5100 x5004',
+    villages:[
+      { name:'Nyack', tax:'https://wipp.edmundsassoc.com/Wipp/?wippid=NYAK', phone:'845-358-0548 Ext. 7', email:'clerktreasurer@nyack-ny.gov', zoning:'https://ny0087.zoninghub.com/zoningmap.aspx' },
+    ]},
+  { town:'Stony Point', phone:'(845) 786-2716 ext. 116', email:'mlemoine@townofstonypoint.org', villages:[] },
+  { town:'Yonkers', tax:'https://yonkers.municipaltaxpayments.com/', villages:[] },
+  { town:'Thompson (Sullivan Co.)', tax:'https://www.taxlookup.net/tax/search.aspx?jurisdiction=thompson&year=2026',
+    villages:[
+      { name:'Monticello', tax:'https://taxlookup.net/search.aspx?jurisdiction=monticellovill&year=2024', zoning:'https://townofthompson.com/wp-content/uploads/2020/10/Monticello_Zoning_2020.pdf' },
+    ]},
+]
+const ROCKLAND_GIS = 'https://www.rocklandgis.com/portal/apps/sites/#/data'
+
+function LinkChip({ href, label, color }) {
+  if (!href) return null
+  return <a href={href} target="_blank" rel="noopener noreferrer"
+    style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'5px 11px', borderRadius:99, background:(color||'#CC2200')+'14', color:color||'var(--brand)', fontSize:11.5, fontWeight:700, textDecoration:'none', border:'1px solid '+(color||'#CC2200')+'33' }}>
+    {label} ↗</a>
+}
+
+function TaxZoningLookups() {
+  const [q, setQ] = useState('')
+  const ql = q.toLowerCase()
+  const list = MUNI_LOOKUPS.filter(t =>
+    !ql || t.town.toLowerCase().includes(ql) || t.villages.some(v => v.name.toLowerCase().includes(ql)))
+  return (
+    <div style={{ fontFamily:'Inter,system-ui,sans-serif' }}>
+      <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:14, flexWrap:'wrap' }}>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search town or village…"
+          style={{ flex:'1 1 240px', padding:'9px 13px', borderRadius:9, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13 }} />
+        <LinkChip href={ROCKLAND_GIS} label="🗺 Rockland County GIS" color="#1B2B4B" />
+      </div>
+      {list.map(t => (
+        <div key={t.town} style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px', marginBottom:10 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+            <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', flex:'0 0 auto' }}>🏛 {t.town}</div>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              <LinkChip href={t.tax} label="💵 Tax lookup" />
+              <LinkChip href={t.zoning} label={'📐 ' + (t.zoningLabel || 'Zoning map')} color="#1B2B4B" />
+              {t.extra && <LinkChip href={t.extra.url} label={t.extra.label} color="#6D28D9" />}
+            </div>
+            <div style={{ marginLeft:'auto', display:'flex', gap:12, fontSize:11.5, color:'var(--muted)', flexWrap:'wrap' }}>
+              {t.phone && <a href={'tel:' + t.phone.replace(/[^\d+]/g,'')} style={{ color:'var(--text)', fontWeight:600, textDecoration:'none' }}>📞 {t.phone}</a>}
+              {t.email && <a href={'mailto:' + t.email} style={{ color:'var(--text)', fontWeight:600, textDecoration:'none' }}>✉️ {t.email}</a>}
+            </div>
+          </div>
+          {t.villages.length > 0 && (
+            <div style={{ marginTop:10, borderTop:'1px dashed var(--border)', paddingTop:8, display:'flex', flexDirection:'column', gap:7 }}>
+              {t.villages.map(v => (
+                <div key={v.name} style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', paddingLeft:14 }}>
+                  <div style={{ fontSize:12.5, fontWeight:700, color:'var(--text)', minWidth:120 }}>· {v.name}</div>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                    <LinkChip href={v.tax} label="💵 Tax" />
+                    <LinkChip href={v.zoning} label={'📐 ' + (v.zoningLabel || 'Zoning')} color="#1B2B4B" />
+                    {v.extra && <LinkChip href={v.extra.url} label={v.extra.label} color="#6D28D9" />}
+                  </div>
+                  <div style={{ marginLeft:'auto', display:'flex', gap:12, fontSize:11.5, flexWrap:'wrap' }}>
+                    {v.phone && <a href={'tel:' + v.phone.replace(/[^\d+]/g,'')} style={{ color:'var(--text)', fontWeight:600, textDecoration:'none' }}>📞 {v.phone}</a>}
+                    {v.email && <a href={'mailto:' + v.email} style={{ color:'var(--text)', fontWeight:600, textDecoration:'none' }}>✉️ {v.email}</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>Missing a town, wrong number, dead link? Tell Yanky and it gets added here for everyone.</div>
+    </div>
+  )
+}
 
 function fmt$(n) {
   if (!n && n !== 0) return ''
@@ -1324,6 +1421,7 @@ export function Mortgage() {
       </div>
 
       {tab === 'mortgage' && <MortgageCalc />}
+      {tab === 'lookups'  && <TaxZoningLookups />}
       {tab === 'closing'  && <ClosingCosts />}
       {tab === 'pnl'      && <AgentPnL />}
       {tab === 'deal'        && <DealAnalyzer />}
