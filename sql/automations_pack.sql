@@ -7,7 +7,7 @@
 -- 1. Voicemail → email with audio attached (handled server-side in
 --    the voicemail webhook; this row is its on/off switch + config)
 insert into automations (id, name, description, active, trigger_type, action_nodes) values (
-  'sys-voicemail-email', '📬 Voicemail → Yanky (audio attached)',
+  'a0000000-0000-4000-8000-000000000001', '📬 Voicemail → Yanky (audio attached)',
   'Emails every voicemail with the audio file attached, caller phone/name, and transcript. Edit to_email/cc_email in the action config.',
   true, 'voicemail_received',
   '[{"id":"a1","type":"send_email","config":{"to_email":"yanky@targetreteam.com","cc_email":""}}]'::jsonb
@@ -15,7 +15,7 @@ insert into automations (id, name, description, active, trigger_type, action_nod
 
 -- 2. Under contract → secretary gets the open TC task list (cc Yanky)
 insert into automations (id, name, description, active, trigger_type, action_nodes) values (
-  'sys-uc-secretary-tasks', '📋 Under Contract → Secretary task list',
+  'a0000000-0000-4000-8000-000000000002', '📋 Under Contract → Secretary task list',
   'When a deal goes Under Contract, the secretary gets the open TC tasks (each linked) — cc Yanky.',
   true, 'deal_under_contract',
   '[{"id":"a1","type":"send_email","config":{"to_role":"secretary","cc_email":"yanky@targetreteam.com",
@@ -25,7 +25,7 @@ insert into automations (id, name, description, active, trigger_type, action_nod
 
 -- 3. Sold → secretary gets the task list (cc Yanky)
 insert into automations (id, name, description, active, trigger_type, action_nodes) values (
-  'sys-sold-secretary-tasks', '🏁 Sold → Secretary task list',
+  'a0000000-0000-4000-8000-000000000003', '🏁 Sold → Secretary task list',
   'When a deal Closes, the secretary gets the remaining TC tasks (each linked) — cc Yanky.',
   true, 'deal_closed',
   '[{"id":"a1","type":"send_email","config":{"to_role":"secretary","cc_email":"yanky@targetreteam.com",
@@ -35,7 +35,7 @@ insert into automations (id, name, description, active, trigger_type, action_nod
 
 -- 4. Under contract → gift board entry
 insert into automations (id, name, description, active, trigger_type, action_nodes) values (
-  'sys-uc-gift', '🎁 Under Contract → Gift board',
+  'a0000000-0000-4000-8000-000000000004', '🎁 Under Contract → Gift board',
   'Creates a Gifts entry when a deal goes Under Contract: client name, client home address (from Contacts when on file), side, client type.',
   true, 'deal_under_contract',
   '[{"id":"a1","type":"create_gift","config":{"notes":"UNDER CONTRACT · Property: {{addr}} · Side: {{side}}"}}]'::jsonb
@@ -43,7 +43,7 @@ insert into automations (id, name, description, active, trigger_type, action_nod
 
 -- 5. Sold → gift board entry
 insert into automations (id, name, description, active, trigger_type, action_nodes) values (
-  'sys-sold-gift', '🎁 Sold → Gift board',
+  'a0000000-0000-4000-8000-000000000005', '🎁 Sold → Gift board',
   'Creates a Gifts entry when a deal Closes: client name, client home address (from Contacts when on file), side, deal type.',
   true, 'deal_closed',
   '[{"id":"a1","type":"create_gift","config":{"notes":"SOLD 🎉 · Property: {{addr}} · Side: {{side}}"}}]'::jsonb
@@ -51,7 +51,7 @@ insert into automations (id, name, description, active, trigger_type, action_nod
 
 -- 6. One week before closing → commission-bill task + email (cc Yanky)
 insert into automations (id, name, description, active, trigger_type, trigger_config, action_nodes) values (
-  'sys-closing-commission', '💵 1 week to closing → Commission bill',
+  'a0000000-0000-4000-8000-000000000006', '💵 1 week to closing → Commission bill',
   'Seven days before the expected closing date: creates a task for the secretary and emails secretary + Yanky about sending the commission bill.',
   true, 'closing_soon', '{"days": 7}'::jsonb,
   '[{"id":"a1","type":"create_task","config":{"assign_to":"secretary","title":"💵 Send commission bill — {{addr}}","due_days":2,"priority":"high","notes":"Closing expected {{close_date}}. Client: {{client_name}} · Agent: {{agent_name}} · Production ${{production}}"}},
@@ -62,7 +62,7 @@ insert into automations (id, name, description, active, trigger_type, trigger_co
 
 -- 7. New contact → Yanky gets the full details
 insert into automations (id, name, description, active, trigger_type, action_nodes) values (
-  'sys-contact-created-email', '👤 New contact → Yanky',
+  'a0000000-0000-4000-8000-000000000007', '👤 New contact → Yanky',
   'Every contact created anywhere in the system emails Yanky the full details.',
   true, 'new_contact',
   '[{"id":"a1","type":"send_email","config":{"to_email":"yanky@targetreteam.com",
@@ -72,7 +72,7 @@ insert into automations (id, name, description, active, trigger_type, action_nod
 
 -- 8. Photography scheduled → agent readiness email
 insert into automations (id, name, description, active, trigger_type, action_nodes) values (
-  'sys-photography-agent', '📸 Photography scheduled → Agent',
+  'a0000000-0000-4000-8000-000000000008', '📸 Photography scheduled → Agent',
   'When a shoot is scheduled on the TC board, the deal''s agent gets the time + address with a house-readiness reminder.',
   true, 'photography_scheduled',
   '[{"id":"a1","type":"send_email","config":{

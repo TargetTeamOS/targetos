@@ -51,7 +51,7 @@ module.exports = async function handler(req, res) {
     // (fetched from Twilio, <8MB) + phone, caller, transcript.
     try {
       const { data: auto } = await supabase.from('automations')
-        .select('active, action_nodes').eq('id', 'sys-voicemail-email').maybeSingle()
+        .select('active, action_nodes').eq('id', 'a0000000-0000-4000-8000-000000000001').maybeSingle()  // '📬 Voicemail → Yanky' row
       if (auto?.active && process.env.RESEND_API_KEY) {
         const cfg = auto.action_nodes?.[0]?.config || {}
         const to  = cfg.to_email || 'yanky@targetreteam.com'
