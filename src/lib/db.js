@@ -281,20 +281,26 @@ deals: {
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'deals', id, before, result, result.addr || 'Deal')
     fireTrigger('dealUpdated', result, before)
-    // ── LIFECYCLE: deal stage drives the linked listing (July 2026) ─
-    // Fell through → the listing pops back to Active on My Listings /
-    // All Listings automatically (available again for everyone).
-    // Closed → the listing is marked Sold. Never blocks the save.
+    // ── LIFECYCLE: deal stage mirrors EVERYWHERE (July 2026) ────────
+    // Every stage change on the Production board updates the linked
+    // listing's status (My Listings / All Listings) AND the linked TC
+    // deal's phase — so every board shows the listing's actual stage.
+    // Fell Through releases the listing back to Active for everyone.
+    // Never blocks the save.
     try {
-      const listingId = result.listing_id || before?.listing_id
-      if (listingId && data.stage && data.stage !== before?.stage) {
-        const stageToListing = { 'Deal Fell Through': 'Active', 'Closed': 'Sold' }
-        const newStatus = stageToListing[data.stage]
-        if (newStatus) {
+      if (data.stage && data.stage !== before?.stage) {
+        const { stageToListingStatus, stageToTcPhase } = await import('./tcPhaseMap')
+        const listingId = result.listing_id || before?.listing_id
+        const newStatus = stageToListingStatus[data.stage]
+        if (listingId && newStatus) {
           await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listingId)
         }
+        const newPhase = stageToTcPhase[data.stage]
+        if (newPhase) {
+          await supabase.from('tc_deals').update({ tc_phase: newPhase, updated_at: new Date().toISOString() }).eq('linked_deal_id', id).then(()=>{}).catch(()=>{})
+        }
       }
-    } catch(e) { console.warn('[lifecycle] deal→listing sync skipped:', e.message) }
+    } catch(e) { console.warn('[lifecycle] deal→boards sync skipped:', e.message) }
     return result
   },
   async delete(id, agentId) {

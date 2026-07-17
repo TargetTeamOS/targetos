@@ -25,3 +25,26 @@ export const phaseToStatus = {
   under_contract: 'Under Contract',
   closed:         'Sold',
 }
+
+// ── INVERSE: Production deal stage → everywhere else (July 2026) ──
+// The deal's stage is mirrored onto the linked listing (Listings
+// boards) and the linked TC deal, so every board shows the listing's
+// actual current stage. 'Deal Fell Through' releases the listing back
+// to Active — available again for the whole team.
+export const stageToListingStatus = {
+  'Negotiations':      'Active',
+  'Offer Accapted':    'Accepted offer',
+  'Under Shtar':       'Under Contract',
+  'Under Contract':    'Under Contract',
+  'Closed':            'Sold',
+  'Deal Fell Through': 'Active',
+}
+
+export const stageToTcPhase = {
+  'Negotiations':      'active',
+  'Offer Accapted':    'offer',
+  'Under Shtar':       'under_contract',
+  'Under Contract':    'under_contract',
+  'Closed':            'closed',
+  'Deal Fell Through': 'active',
+}
