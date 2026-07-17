@@ -206,6 +206,16 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
             created_at: new Date().toISOString(),
           })
         } catch (e) { console.warn('photo calendar sync failed:', e.message) }
+        // Automations: photography_scheduled trigger (manageable in the
+        // Automations board — e.g. "email the agent: get the house ready")
+        try {
+          const { trigger } = await import('../lib/automationDispatcher')
+          trigger.photographyScheduled({
+            id: deal.linked_deal_id || deal.id, deal_id: deal.linked_deal_id || deal.id,
+            addr: deal.addr || '', agent_id: deal.agent_id || null,
+            photo_when: when, photographer: photographer ? contactName(photographer) : '',
+          })
+        } catch {}
         toast?.('Photography scheduled — agent notified')
       }
     } catch (e) {

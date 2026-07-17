@@ -56,6 +56,22 @@ export async function dispatch(triggerType, record, previousRecord = null, meta 
       ? (agents?.find(a => a.id === meta.actingAgentId)?.name || 'Unknown user')
       : 'System / automation'
 
+    // Deal triggers: enrich with the linked TC deal's OPEN tasks as a
+    // linked list ({{tc_open_tasks}}) so emails can include each task.
+    if (triggerData.deal_id && ['deal_stage_change','deal_under_contract','deal_closed','offer_accepted','closing_soon'].includes(triggerType)) {
+      try {
+        const { data: tcDeal } = await supabase.from('tc_deals').select('id').eq('linked_deal_id', triggerData.deal_id).maybeSingle()
+        if (tcDeal) {
+          const { data: tasks } = await supabase.from('tc_tasks')
+            .select('id,title,due_date,status').eq('tc_deal_id', tcDeal.id).neq('status', 'done')
+            .order('due_date', { ascending: true }).limit(40)
+          triggerData.tc_open_tasks = (tasks || []).length
+            ? tasks.map(t => '• <a href="https://app.targetreteam.com/tc#task-' + t.id + '">' + t.title + '</a>' + (t.due_date ? ' (due ' + t.due_date + ')' : '')).join('\n')
+            : '(no open TC tasks yet — they appear once the TC deal is set up)'
+        } else triggerData.tc_open_tasks = '(no TC deal linked yet)'
+      } catch { triggerData.tc_open_tasks = '' }
+    }
+
     for (const automation of matching) {
       // Check trigger-specific conditions (e.g. to_stage, from_stage)
       if (!matchesTriggerConfig(automation, record, previousRecord)) continue
@@ -87,6 +103,13 @@ function buildTriggerData(triggerType, record, prev) {
   const isDealTrigger     = ['deal_created','deal_stage_change','offer_accepted','deal_closed','deal_under_contract','deal_fell_through','closing_soon'].includes(triggerType)
   const isTaskTrigger     = ['task_created','task_completed','task_overdue'].includes(triggerType)
   const isListingTrigger  = ['listing_status_change'].includes(triggerType)
+  const isPhotoTrigger    = triggerType === 'photography_scheduled'
+  if (isPhotoTrigger) return {
+    deal_id: record.deal_id || record.id || null,
+    addr: record.addr || '', agent_id: record.agent_id || null,
+    photo_when: record.photo_when || '', photographer: record.photographer || '',
+    trigger_type: triggerType, changed_by: '',
+  }
 
   return {
     // Common
@@ -197,6 +220,7 @@ export const trigger = {
     dispatch('closing_soon', record, prev)
   },
   taskCreated: (record) => dispatch('task_created', record),
+  photographyScheduled: (record) => dispatch('photography_scheduled', record),
   taskUpdated: (record, prev) => {
     if (record.status === 'done' && prev?.status !== 'done') dispatch('task_completed', record, prev)
     if (record.due_date && new Date(record.due_date) < new Date() && record.status !== 'done') dispatch('task_overdue', record, prev)

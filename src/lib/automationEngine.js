@@ -103,6 +103,35 @@ async function executeAction(action, context, triggerData, agents) {
       break
     }
 
+    case 'create_gift': {
+      // Creates a Gifts-board entry from the deal: client, property,
+      // side, deal type, plus the client's HOME address / homeowner-vs-
+      // investor type looked up from Contacts by email/phone when found.
+      let homeAddr = '', clientType = ''
+      try {
+        const em = triggerData.client_email, ph = triggerData.client_phone
+        if (em || ph) {
+          let cq = supabase.from('contacts').select('address, type').limit(1)
+          cq = em ? cq.eq('email', em) : cq.eq('phone', ph)
+          const { data: cRows } = await cq
+          if (cRows?.[0]) { homeAddr = cRows[0].address || ''; clientType = cRows[0].type || '' }
+        }
+      } catch {}
+      await supabase.from('gifts').insert({
+        client_name: triggerData.client_name || '',
+        address:     homeAddr || triggerData.addr || '',
+        phone:       triggerData.client_phone || null,
+        deal_id:     triggerData.deal_id || null,
+        agent_id:    triggerData.agent_id || null,
+        status:      'Pending',
+        notes:       interpolate(cfg.notes || 'Property: {{addr}} · Side: {{side}} · Stage: {{stage}}', context)
+                     + (clientType ? ' · Client type: ' + clientType : '')
+                     + (homeAddr ? '' : ' · (client home address not on file — property address used)'),
+        created_at:  new Date().toISOString(), updated_at: new Date().toISOString(),
+      })
+      break
+    }
+
     case 'send_notification': {
       const agentId = resolveAgent(cfg.notify, triggerData, agents)
       if (agentId) {
@@ -324,7 +353,9 @@ async function executeAction(action, context, triggerData, agents) {
       // cfg.to_email: a literal address (interpolated) beats agent
       // resolution — used by system alerts like the stage-change email.
       const literalTo = cfg.to_email ? interpolate(cfg.to_email, context).trim() : ''
-      const toEmail = literalTo || agentRecord?.email || AGENT_EMAIL_MAP[agentRecord?.name] || 'office@targetreteam.com'
+      const roleAgent = cfg.to_role ? agents.find(a => a.role === cfg.to_role) : null
+      const roleEmail = roleAgent ? (roleAgent.email || AGENT_EMAIL_MAP[roleAgent.name]) : ''
+      const toEmail = literalTo || roleEmail || agentRecord?.email || AGENT_EMAIL_MAP[agentRecord?.name] || 'office@targetreteam.com'
       const emailSubject = interpolate(cfg.subject || 'TargetOS Automation Alert', context)
       const emailBody    = interpolate(cfg.body    || '', context)
       const emailBodyHtml = emailBody.replace(/\n/g, '<br>')
@@ -345,7 +376,9 @@ async function executeAction(action, context, triggerData, agents) {
           'Content-Type': 'application/json',
           ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
         },
-        body: JSON.stringify({ from: 'TargetOS <office@targetreteam.com>', to: [toEmail], subject: emailSubject, html, reply_to: 'yanky@targetreteam.com' }),
+        body: JSON.stringify({ from: 'TargetOS <office@targetreteam.com>', to: [toEmail],
+          ...(cfg.cc_email ? { cc: interpolate(cfg.cc_email, context).split(',').map(x => x.trim()).filter(Boolean) } : {}),
+          subject: emailSubject, html, reply_to: 'yanky@targetreteam.com' }),
       })
       const emailResult = await emailRes.json()
       if (!emailRes.ok) throw new Error('Email failed: ' + (emailResult.error || 'Unknown'))
@@ -364,6 +397,11 @@ async function executeAction(action, context, triggerData, agents) {
 function resolveAgent(value, triggerData, agents) {
   if (!value || value === 'trigger_agent') return triggerData.agent_id
   if (value === 'all_agents') return null
+  // Role names resolve to the first active agent with that role
+  if (['secretary', 'admin', 'agent'].includes(value)) {
+    const a = (agents || []).find(x => x.role === value)
+    if (a) return a.id
+  }
   // If it's a UUID, return directly
   if (value?.length === 36) return value
   return triggerData.agent_id
