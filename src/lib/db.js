@@ -281,6 +281,20 @@ deals: {
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'deals', id, before, result, result.addr || 'Deal')
     fireTrigger('dealUpdated', result, before)
+    // ── LIFECYCLE: deal stage drives the linked listing (July 2026) ─
+    // Fell through → the listing pops back to Active on My Listings /
+    // All Listings automatically (available again for everyone).
+    // Closed → the listing is marked Sold. Never blocks the save.
+    try {
+      const listingId = result.listing_id || before?.listing_id
+      if (listingId && data.stage && data.stage !== before?.stage) {
+        const stageToListing = { 'Deal Fell Through': 'Active', 'Closed': 'Sold' }
+        const newStatus = stageToListing[data.stage]
+        if (newStatus) {
+          await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listingId)
+        }
+      }
+    } catch(e) { console.warn('[lifecycle] deal→listing sync skipped:', e.message) }
     return result
   },
   async delete(id, agentId) {
