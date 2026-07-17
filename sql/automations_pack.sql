@@ -79,3 +79,16 @@ insert into automations (id, name, description, active, trigger_type, action_nod
      "subject":"📸 Photography scheduled — {{addr}}",
      "body":"Photography has been scheduled:\n\n🏠 {{addr}}\n🗓 {{photo_when}}\n📷 Photographer: {{photographer}}\n\n⚠️ Please make sure the house is READY for photography — lights on, clutter away, curtains open, cars off the driveway."}}]'::jsonb
 ) on conflict (id) do nothing;
+
+-- Dedupe log for time-based automations (closing_soon daily cron):
+-- each automation fires at most once per record.
+create table if not exists automation_fires (
+  id uuid primary key default gen_random_uuid(),
+  automation_id text not null,
+  record_id uuid not null,
+  fired_at timestamptz not null default now(),
+  unique (automation_id, record_id)
+);
+alter table automation_fires enable row level security;
+drop policy if exists af_read on automation_fires;
+create policy af_read on automation_fires for select to authenticated using (true);

@@ -109,12 +109,19 @@ async function executeAction(action, context, triggerData, agents) {
       // investor type looked up from Contacts by email/phone when found.
       let homeAddr = '', clientType = ''
       try {
-        const em = triggerData.client_email, ph = triggerData.client_phone
+        const em = triggerData.client_email, ph = triggerData.client_phone, nm = (triggerData.client_name || '').trim()
         if (em || ph) {
           let cq = supabase.from('contacts').select('address, type').limit(1)
           cq = em ? cq.eq('email', em) : cq.eq('phone', ph)
           const { data: cRows } = await cq
           if (cRows?.[0]) { homeAddr = cRows[0].address || ''; clientType = cRows[0].type || '' }
+        }
+        // Last resort: exact full-name match (only if unambiguous)
+        if (!homeAddr && nm && nm.includes(' ')) {
+          const [first, ...rest] = nm.split(' ')
+          const { data: byName } = await supabase.from('contacts').select('address, type')
+            .ilike('first_name', first).ilike('last_name', rest.join(' ')).limit(2)
+          if (byName?.length === 1) { homeAddr = byName[0].address || ''; clientType = clientType || byName[0].type || '' }
         }
       } catch {}
       await supabase.from('gifts').insert({

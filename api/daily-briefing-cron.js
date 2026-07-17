@@ -142,6 +142,77 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ ok: false, error: e.message })
   }
 
-  console.info('[daily-briefing-cron] sent:', sent, 'skipped:', skipped, 'failed:', failed)
-  return res.status(200).json({ ok: true, sent, skipped, failed, errors })
+  // ── CLOSING-SOON AUTOMATIONS, evaluated DAILY (July 2026) ────────
+  // The client-side engine only fires closing_soon when a deal gets
+  // edited inside the window; this cron closes that gap — every deal
+  // approaching its close date fires exactly once per automation,
+  // deduped via automation_fires. Supports the two actions the
+  // commission-bill rule uses: create_task + send_email (to_role/cc).
+  let closingFired = 0
+  try {
+    const { data: autos } = await supabase.from('automations')
+      .select('*').eq('active', true).eq('trigger_type', 'closing_soon')
+    if (autos?.length) {
+      const { data: agents } = await supabase.from('agents').select('id,name,email,role')
+      const today = new Date()
+      for (const auto of autos) {
+        const days = parseInt(auto.trigger_config?.days) || 7
+        const winEnd = new Date(today); winEnd.setDate(winEnd.getDate() + days)
+        const { data: deals } = await supabase.from('deals')
+          .select('*')
+          .not('stage', 'in', '("Closed","Deal Fell Through")')
+          .gte('close_date', today.toISOString().slice(0, 10))
+          .lte('close_date', winEnd.toISOString().slice(0, 10))
+        for (const deal of (deals || [])) {
+          const { data: already } = await supabase.from('automation_fires')
+            .select('id').eq('automation_id', auto.id).eq('record_id', deal.id).limit(1)
+          if (already?.length) continue
+          const agentRow = agents?.find(a => a.id === deal.agent_id)
+          const ctx = {
+            addr: deal.addr || '', client_name: deal.client_name || '',
+            agent_name: agentRow?.name || '', close_date: deal.close_date || '',
+            production: deal.production != null ? Number(deal.production).toLocaleString() : '',
+            gci: deal.gci != null ? Number(deal.gci).toLocaleString() : '',
+          }
+          const fill = t => String(t || '').replace(/\{\{(\w+)\}\}/g, (_, k) => ctx[k] ?? '')
+          for (const action of (auto.action_nodes || [])) {
+            const cfg = action.config || {}
+            try {
+              if (action.type === 'create_task') {
+                const roleAgent = ['secretary','admin'].includes(cfg.assign_to) ? agents?.find(a => a.role === cfg.assign_to) : null
+                const due = new Date(); due.setDate(due.getDate() + (parseInt(cfg.due_days) || 1))
+                await supabase.from('tasks').insert({
+                  title: fill(cfg.title || 'Follow up'), notes: fill(cfg.notes || ''),
+                  agent_id: roleAgent?.id || deal.agent_id || null, created_by: null,
+                  deal_id: deal.id, due_date: due.toISOString().slice(0, 10),
+                  priority: cfg.priority || 'normal', status: 'pending',
+                  created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+                })
+              }
+              if (action.type === 'send_email') {
+                const roleAgent = cfg.to_role ? agents?.find(a => a.role === cfg.to_role) : null
+                const to = (cfg.to_email && fill(cfg.to_email)) || roleAgent?.email || 'office@targetreteam.com'
+                await fetch('https://api.resend.com/emails', {
+                  method: 'POST',
+                  headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    from: 'TargetOS <office@targetreteam.com>', to: [to],
+                    ...(cfg.cc_email ? { cc: String(cfg.cc_email).split(',').map(x => x.trim()).filter(Boolean) } : {}),
+                    subject: fill(cfg.subject || 'TargetOS alert'),
+                    html: '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">' + fill(cfg.body || '').replace(/\n/g, '<br/>') + '</div>',
+                  }),
+                })
+              }
+            } catch (e) { console.warn('[closing-cron] action failed:', e.message) }
+          }
+          await supabase.from('automation_fires').insert({ automation_id: auto.id, record_id: deal.id })
+          await supabase.from('automations').update({ last_fired: new Date().toISOString(), fire_count: (auto.fire_count || 0) + 1 }).eq('id', auto.id)
+          closingFired++
+        }
+      }
+    }
+  } catch (e) { console.warn('[closing-cron] skipped:', e.message) }
+
+  console.info('[daily-briefing-cron] sent:', sent, 'skipped:', skipped, 'failed:', failed, 'closing_fired:', closingFired)
+  return res.status(200).json({ ok: true, sent, skipped, failed, closingFired, errors })
 }

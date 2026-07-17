@@ -116,7 +116,7 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
   const pc      = PC[task.priority] || '#94A3B8'
 
   return (
-    <div style={{
+    <div id={"task-" + task.id} style={{
       display:'flex', alignItems:'center', gap:10,
       padding:'7px 14px',
       borderBottom:'1px solid var(--border)',
@@ -608,6 +608,29 @@ export function TransactionCoordinator() {
 
   // Contract-to-close service: weekly check-in tasks from now (or AO
   // date) until close date, capped at 12 weeks. Fired once when the
+
+  // ── #task-ID deep links (July 2026) ─────────────────────────────
+  // Emails link each task as /tc#task-<id>: expand its deal, scroll
+  // to the row, and flash it.
+  useEffect(() => {
+    const h = window.location.hash
+    if (!h.startsWith('#task-') || !tasks.length) return
+    const taskId = h.slice(6)
+    const t = tasks.find(x => String(x.id) === taskId)
+    if (!t) return
+    setExpanded(prev => ({ ...prev, [t.tc_deal_id]: true }))
+    setTimeout(() => {
+      const el = document.getElementById('task-' + taskId)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.style.transition = 'background .4s'
+        el.style.background = 'rgba(204,34,0,.14)'
+        setTimeout(() => { el.style.background = '' }, 2600)
+      }
+    }, 350)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks.length])
+
   // toggle flips on; tasks are normal tc_tasks (editable/deletable).
   async function generateC2CTasks(deal) {
     try {
