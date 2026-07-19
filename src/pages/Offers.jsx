@@ -21,6 +21,7 @@ import { usePageView, LastVisited } from '../components/PageViewTracking'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { ContactPeek } from '../components/ContactPeek'
 import { useApp }  from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
@@ -76,6 +77,7 @@ function ContactSearch({ value, onChange, onSelect, placeholder, filter }) {
   const [open,    setOpen]    = useState(false)
   const ref = useRef(null)
   const { agent: me, isAdmin } = useAuth()
+  const [peekId, setPeekId] = useState(null)
 
   useEffect(() => { setQ(value || '') }, [value])
 
@@ -120,11 +122,15 @@ function ContactSearch({ value, onChange, onSelect, placeholder, filter }) {
           {results.map(c => (
             <div key={c.id}
               onMouseDown={() => { onSelect(c); setQ([c.first_name,c.last_name].filter(Boolean).join(' ')); setOpen(false) }}
-              style={{ padding:'8px 12px', cursor:'pointer', fontSize:12, borderBottom:'1px solid var(--border)' }}
+              style={{ padding:'8px 12px', cursor:'pointer', fontSize:12, borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8 }}
               onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
               onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <div style={{ fontWeight:700, color:'var(--text)' }}>{c.first_name} {c.last_name}{c.company?' — '+c.company:''}</div>
-              <div style={{ color:'var(--muted)', fontSize:11 }}>{[c.phone,c.email].filter(Boolean).join(' · ')}</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:700, color:'var(--text)' }}>{c.first_name} {c.last_name}{c.company?' — '+c.company:''}</div>
+                <div style={{ color:'var(--muted)', fontSize:11 }}>{[c.phone,c.email].filter(Boolean).join(' · ')}</div>
+              </div>
+              <button onMouseDown={e => { e.stopPropagation(); e.preventDefault(); setPeekId(c.id) }} title="Verify — phone, email, address, past deals"
+                style={{ border:'none', background:'none', fontSize:13, cursor:'pointer', padding:4, flexShrink:0, opacity:.7 }}>👁</button>
             </div>
           ))}
           <div onMouseDown={() => { onSelect(null); setOpen(false) }}
@@ -133,6 +139,7 @@ function ContactSearch({ value, onChange, onSelect, placeholder, filter }) {
           </div>
         </div>
       )}
+      {peekId && <ContactPeek contactId={peekId} onClose={() => setPeekId(null)} onSelect={c => { onSelect(c); setQ([c.first_name,c.last_name].filter(Boolean).join(' ')); setOpen(false) }} />}
     </div>
   )
 }
@@ -890,7 +897,7 @@ export function Offers() {
                 <span style={SL}>Buyer Email</span>
                 <input value={form.buyer_email||''} onChange={e=>set('buyer_email',e.target.value)} placeholder="buyer@email.com" style={S} />
                 <span style={SL}>Buyer Address</span>
-                <input value={form.buyer_address||''} onChange={e=>set('buyer_address',e.target.value)} placeholder="Home address" style={S} />
+                <AddressAutocomplete value={form.buyer_address||''} onChange={v=>set('buyer_address',v)} onSelect={sel=>set('buyer_address', sel.full || sel.street)} placeholder="Home address" />
               </div>
 
               {/* SELLER */}
@@ -1047,7 +1054,7 @@ export function Offers() {
                 />
                 {form.purchaser_attorney_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2 }}>✓ Linked to contact</div>}
                 <span style={SL}>Address</span>
-                <input value={form.purchaser_attorney_address||''} onChange={e=>set('purchaser_attorney_address',e.target.value)} placeholder="Attorney address" style={S} />
+                <AddressAutocomplete value={form.purchaser_attorney_address||''} onChange={v=>set('purchaser_attorney_address',v)} onSelect={sel=>set('purchaser_attorney_address', sel.full || sel.street)} placeholder="Attorney address" />
                 <span style={SL}>Tel</span>
                 <input value={form.purchaser_attorney_tel||''} onChange={e=>set('purchaser_attorney_tel',e.target.value)} placeholder="(845) 555-1234" style={S} />
                 <span style={SL}>Email</span>
@@ -1067,7 +1074,7 @@ export function Offers() {
                 />
                 {form.seller_attorney_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2 }}>✓ Linked to contact</div>}
                 <span style={SL}>Address</span>
-                <input value={form.seller_attorney_address||''} onChange={e=>set('seller_attorney_address',e.target.value)} placeholder="Attorney address" style={S} />
+                <AddressAutocomplete value={form.seller_attorney_address||''} onChange={v=>set('seller_attorney_address',v)} onSelect={sel=>set('seller_attorney_address', sel.full || sel.street)} placeholder="Attorney address" />
                 <span style={SL}>Tel</span>
                 <input value={form.seller_attorney_tel||''} onChange={e=>set('seller_attorney_tel',e.target.value)} placeholder="(845) 555-1234" style={S} />
                 <span style={SL}>Email</span>

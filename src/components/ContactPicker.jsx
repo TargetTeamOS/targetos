@@ -11,11 +11,13 @@ import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
 import { Btn } from './UI'
 import { useAuth } from '../context/AuthContext'
+import { ContactPeek } from './ContactPeek'
 
 const contactName = c => ((c.first_name || '') + ' ' + (c.last_name || '')).trim() || c.email || c.phone || 'Unnamed'
 
 export default function ContactPicker({ onSelect, placeholder = 'Search contacts…', agentId = null }) {
   const { agent: me, isAdmin } = useAuth()
+  const [peekId, setPeekId] = useState(null)
   const [q, setQ]           = useState('')
   const [results, setResults] = useState([])
   const [openList, setOpenList] = useState(false)
@@ -96,13 +98,18 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
                           boxShadow: '0 8px 24px rgba(0,0,0,.12)', maxHeight: 240, overflowY: 'auto' }}>
               {results.map(c => (
                 <div key={c.id} onClick={() => pick(c)}
-                     style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text)' }}>{contactName(c)}</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{[c.email, c.phone].filter(Boolean).join(' · ') || '—'}</div>
+                     style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text)' }}>{contactName(c)}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{[c.email, c.phone].filter(Boolean).join(' · ') || '—'}</div>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); setPeekId(c.id) }} title="Verify — phone, email, address, past deals"
+                    style={{ border: 'none', background: 'none', fontSize: 14, cursor: 'pointer', padding: 4, flexShrink: 0, opacity: .7 }}>👁</button>
                 </div>
               ))}
             </div>
           )}
+          {peekId && <ContactPeek contactId={peekId} onClose={() => setPeekId(null)} onSelect={pick} />}
           {openList && q.length >= 2 && results.length === 0 && (
             <div style={{ position: 'absolute', zIndex: 30, top: '100%', left: 0, right: 0, marginTop: 4,
                           background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8,

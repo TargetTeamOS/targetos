@@ -31,6 +31,7 @@ import { SignedAudio } from '../components/SignedAudio'
 import { Avatar, Pill, Btn, Loading, Confirm, Field, Spinner } from '../components/UI'
 import { CustomFieldsSection } from '../components/CustomFieldsSection'
 import { BuyerInterest } from '../components/BuyerInterest'
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { EmailCompose }  from '../components/EmailCompose'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
@@ -73,7 +74,11 @@ function InlineField({ label, value, onChange, type = 'text', options = null, pl
     <div style={{ marginBottom: '10px' }}>
       <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '3px' }}>{label}</div>
       {editing ? (
-        options ? (
+        type === 'address' ? (
+          <AddressAutocomplete value={draft || ''} onChange={setDraft}
+            onSelect={sel => { const v = sel.full || sel.street; setDraft(v); setEditing(false); if (v !== value) onChange(v) }}
+            placeholder="Start typing — Google will match" />
+        ) : options ? (
           <select ref={ref} value={draft || ''} onChange={e => setDraft(e.target.value)} onBlur={commit}
             style={{ width: '100%', padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--brand)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, outline: 'none' }}>
             <option value="">—</option>
@@ -1483,7 +1488,7 @@ export function ContactDetail() {
 
           {/* ADDRESS */}
           <Section title="Address" icon="📍">
-            <InlineField label="Street Address" value={f.address} onChange={v => saveField('address', v)} placeholder="123 Main St" />
+            <InlineField label="Street Address" type="address" value={f.address} onChange={v => saveField('address', v)} placeholder="123 Main St" />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <InlineField label="City" value={f.city} onChange={v => saveField('city', v)} options={LOCAL_CITIES} placeholder="City" />
               <InlineField label="Zip" value={f.zip} onChange={v => saveField('zip', v)} placeholder="10952" />
@@ -1545,7 +1550,7 @@ export function ContactDetail() {
 
           {/* SELLER INFO */}
           <Section title="Seller Info" icon="🏠" defaultOpen={!!(f.property_addr || f.asking_price || f.reason_selling)}>
-            <InlineField label="Property Address" value={f.property_addr} onChange={v => saveField('property_addr', v)} placeholder="Property they're selling" />
+            <InlineField label="Property Address" type="address" value={f.property_addr} onChange={v => saveField('property_addr', v)} placeholder="Property they're selling" />
             <InlineField label="Asking Price" value={f.asking_price} onChange={v => saveField('asking_price', parseNum(v))} type="number" prefix="$" placeholder="Their asking price" />
             <InlineField label="Reason for Selling" value={f.reason_selling} onChange={v => saveField('reason_selling', v)} multiline placeholder="Why are they selling?" />
           </Section>

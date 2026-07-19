@@ -2,6 +2,7 @@
 // Mortgage calculator, closing costs estimator, agent P&L, and deal analyzer
 import React, { useState, useMemo } from 'react'
 import { MultiFamilyPnL } from '../components/MultiFamilyPnL'
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -409,8 +410,7 @@ function MortgageCalc() {
         </Section>
         <Section title="Property (optional)">
           <Field label="Address / Label">
-            <input value={address} onChange={e=>setAddress(e.target.value)} placeholder="e.g. 15 Oak Lane, Monsey NY"
-              style={{ ...inp(), marginBottom:0 }} />
+            <AddressAutocomplete value={address} onChange={setAddress} onSelect={sel=>setAddress(sel.full || sel.street)} placeholder="e.g. 15 Oak Lane, Monsey NY" />
           </Field>
         </Section>
         <Section title="Monthly Extras">

@@ -1,6 +1,7 @@
 // TargetOS V2 — Website Builder (CRM Admin)
 // Edit every section of the public website from here
 import React, { useState, useEffect, useRef } from 'react'
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { useNavigate } from 'react-router-dom'
 import { useApp }  from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
@@ -143,7 +144,7 @@ export function WebsiteBuilder() {
           <F label="Tagline"><I value={sec.tagline} onChange={v=>setField('settings','tagline',v)} placeholder="Of KW Valley Realty" /></F>
           <F label="Phone"><I value={sec.phone} onChange={v=>setField('settings','phone',v)} placeholder="845.424.1014" /></F>
           <F label="Email"><I value={sec.email} onChange={v=>setField('settings','email',v)} placeholder="info@targetreteam.com" type="email" /></F>
-          <F label="Office Address"><I value={sec.address} onChange={v=>setField('settings','address',v)} placeholder="Monsey, NY" /></F>
+          <F label="Office Address"><AddressAutocomplete value={sec.address} onChange={v=>setField('settings','address',v)} onSelect={s2=>setField('settings','address', s2.full || s2.street)} placeholder="Monsey, NY" /></F>
           <F label="Facebook handle"><I value={sec.facebook} onChange={v=>setField('settings','facebook',v)} placeholder="thetargetteam" /></F>
           <F label="Instagram handle"><I value={sec.instagram} onChange={v=>setField('settings','instagram',v)} placeholder="thetargetteam" /></F>
           <div />
