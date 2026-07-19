@@ -19,7 +19,7 @@ import {
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-const BLANK = { title: '', body: '', type: 'info', pinned: false }
+const BLANK = { title: '', body: '', type: 'info', pinned: false, show_on_tv: false, celebrate: false }
 
 export function Announcements() {
   const navigate = useNavigate()
@@ -111,6 +111,7 @@ export function Announcements() {
                 <span style={{ fontSize: '16px' }}>{typeIcon(a.type)}</span>
                 <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>{a.title}</div>
                 {a.pinned && <Pill label="Pinned" color="#F5A623" />}
+                {a.show_on_tv && <Pill label={a.celebrate ? '📺🎉 TV + Confetti' : '📺 On TV'} color="#38BDF8" />}
               </div>
               <div style={{ fontSize: '11px', color: 'var(--muted)', flexShrink: 0, marginLeft: '12px' }}>{fmtDateTime(a.created_at)}</div>
             </div>
@@ -137,6 +138,10 @@ export function Announcements() {
         </Field>
         <Field label="">
           <Toggle value={form.pinned} onChange={v => set('pinned', v)} label="Pin to top" />
+          <Toggle value={form.show_on_tv} onChange={v => set('show_on_tv', v)} label="📺 Show on office TV (pops up on the board)" />
+          {form.show_on_tv && (
+            <Toggle value={form.celebrate} onChange={v => set('celebrate', v)} label="🎉 Celebrate — full-screen confetti on the TV" />
+          )}
         </Field>
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>}

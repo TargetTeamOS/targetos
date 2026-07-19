@@ -29,6 +29,10 @@ export function TVBoard() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
   const [clock, setClock] = useState(new Date())
+  const [popup, setPopup] = useState(null)          // announcement currently shown
+  const [confettiOn, setConfettiOn] = useState(false)
+  const [slideIndex, setSlideIndex] = useState(0)   // image rotator
+  const [rotatePane, setRotatePane] = useState(0)   // mixed-mode pane cycler
 
   const qs = window.location.href.split('?')[1] || ''
   const token = new URLSearchParams(qs).get('token') || ''
@@ -39,6 +43,17 @@ export function TVBoard() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'load failed')
       setData(j); setErr('')
+      // Announcement popup: every refresh cycle (60s), surface the
+      // newest active TV announcement for popup_seconds. Celebrations
+      // fire the confetti cannon.
+      const anns = j.announcements || []
+      if (anns.length) {
+        const a = anns[0]
+        setPopup(a)
+        if (a.celebrate) { setConfettiOn(true) }
+        const holdMs = ((j.display && j.display.popup_seconds) || 15) * 1000
+        setTimeout(() => { setPopup(null); setConfettiOn(false) }, holdMs)
+      }
     } catch (e) { setErr(e.message) }
   }
 
@@ -48,6 +63,16 @@ export function TVBoard() {
     const clockTimer = setInterval(() => setClock(new Date()), 1000)
     return () => { clearInterval(dataTimer); clearInterval(clockTimer) }
   }, [])
+
+  // image + pane rotation
+  useEffect(() => {
+    const secs = (data && data.display && data.display.rotate_seconds) || 45
+    const t = setInterval(() => {
+      setSlideIndex(i => i + 1)
+      setRotatePane(p => p + 1)
+    }, secs * 1000)
+    return () => clearInterval(t)
+  }, [data && data.display && data.display.rotate_seconds])
 
   const wrap = { minHeight: '100vh', background: '#0B1220', color: '#E2E8F0', fontFamily: ff, padding: '3vh 3vw', boxSizing: 'border-box' }
 
@@ -67,7 +92,10 @@ export function TVBoard() {
   const big = { fontSize: '5.5vh', fontWeight: 800, lineHeight: 1.1, marginTop: '0.6vh' }
   const sub = { fontSize: '2vh', color: '#7DD3FC', fontWeight: 600 }
 
-  return (
+  const display = data.display || { mode: 'dashboard' }
+  const images = display.images || []
+
+  const dashboardPane = (
     <div style={wrap}>
       {/* header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '2.5vh' }}>
@@ -142,4 +170,113 @@ export function TVBoard() {
       </div>
     </div>
   )
+
+  const slidesPane = display.slides_url ? (
+    <iframe
+      title="Office Slides"
+      src={display.slides_url}
+      style={{ position: 'fixed', inset: 0, width: '100vw', height: '100vh', border: 'none', background: '#000' }}
+      allowFullScreen
+    />
+  ) : dashboardPane
+
+  const imagesPane = images.length ? (
+    <div style={{ position: 'fixed', inset: 0, background: '#000' }}>
+      <img
+        src={images[slideIndex % images.length]}
+        alt=""
+        style={{ width: '100vw', height: '100vh', objectFit: 'contain' }}
+      />
+    </div>
+  ) : dashboardPane
+
+  // rotate mode cycles through whichever panes are configured
+  const rotationPanes = [dashboardPane]
+  if (display.slides_url) rotationPanes.push(slidesPane)
+  if (images.length) rotationPanes.push(imagesPane)
+
+  let content = dashboardPane
+  if (display.mode === 'slides') content = slidesPane
+  else if (display.mode === 'images') content = imagesPane
+  else if (display.mode === 'rotate') content = rotationPanes[rotatePane % rotationPanes.length]
+
+  const typeColors = { info: '#38BDF8', alert: '#F59E0B', success: '#00c875', deal: '#A78BFA' }
+
+  return (
+    <div>
+      {content}
+
+      {/* ── ANNOUNCEMENT POPUP ── */}
+      {popup && (
+        <div style={{
+          position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(2,6,18,0.72)', zIndex: 50, animation: 'tvFadeIn .4s ease',
+        }}>
+          <div style={{
+            background: '#0F1B33', border: '2px solid ' + (popup.celebrate ? '#FACC15' : (typeColors[popup.type] || '#38BDF8')),
+            borderRadius: '26px', padding: '5vh 5vw', maxWidth: '78vw', textAlign: 'center',
+            boxShadow: '0 0 90px ' + (popup.celebrate ? 'rgba(250,204,21,0.35)' : 'rgba(56,189,248,0.25)'),
+            animation: 'tvPopIn .5s cubic-bezier(.2,1.4,.4,1)',
+          }}>
+            <div style={{ fontSize: '7vh', marginBottom: '1.5vh' }}>
+              {popup.celebrate ? '🎉' : ({ info: 'ℹ️', alert: '⚠️', success: '✅', deal: '🏠' }[popup.type] || '📣')}
+            </div>
+            <div style={{ fontSize: '5.4vh', fontWeight: 800, color: '#F8FAFC', fontFamily: ff, lineHeight: 1.15 }}>{popup.title}</div>
+            {popup.body && <div style={{ fontSize: '2.8vh', color: '#94A3B8', fontFamily: ff, marginTop: '2vh', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{popup.body}</div>}
+          </div>
+        </div>
+      )}
+
+      {confettiOn && <Confetti />}
+
+      <style>{'@keyframes tvFadeIn { from { opacity: 0 } to { opacity: 1 } } @keyframes tvPopIn { from { transform: scale(.6); opacity: 0 } to { transform: scale(1); opacity: 1 } }'}</style>
+    </div>
+  )
 }
+
+// ── Full-screen confetti cannon (no libraries) ────────────────────
+function Confetti() {
+  useEffect(() => {
+    const canvas = document.getElementById('tv-confetti')
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+    const colors = ['#FACC15', '#00c875', '#38BDF8', '#F472B6', '#A78BFA', '#FB923C', '#F8FAFC']
+    const N = 220
+    const parts = []
+    for (let i = 0; i < N; i++) {
+      parts.push({
+        x: Math.random() * canvas.width,
+        y: -20 - Math.random() * canvas.height * 0.5,
+        w: 8 + Math.random() * 8,
+        h: 12 + Math.random() * 10,
+        vy: 2.2 + Math.random() * 3.5,
+        vx: -1.5 + Math.random() * 3,
+        rot: Math.random() * Math.PI,
+        vr: -0.12 + Math.random() * 0.24,
+        color: colors[i % colors.length],
+      })
+    }
+    let running = true
+    function frame() {
+      if (!running) return
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      for (const p of parts) {
+        p.y += p.vy; p.x += p.vx + Math.sin(p.y / 40); p.rot += p.vr
+        if (p.y > canvas.height + 30) { p.y = -20; p.x = Math.random() * canvas.width }
+        ctx.save()
+        ctx.translate(p.x, p.y)
+        ctx.rotate(p.rot)
+        ctx.fillStyle = p.color
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h)
+        ctx.restore()
+      }
+      requestAnimationFrame(frame)
+    }
+    frame()
+    return () => { running = false }
+  }, [])
+  return <canvas id="tv-confetti" style={{ position: 'fixed', inset: 0, zIndex: 60, pointerEvents: 'none' }} />
+}
+

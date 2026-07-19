@@ -174,6 +174,73 @@ export function ConnectorsPanel() {
 
             {meta.kind === 'display' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {/* ── Display settings (admin) ── */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <select
+                    value={d.mode !== undefined ? d.mode : (row.config && row.config.mode) || 'dashboard'}
+                    onChange={e => setDraft(prev => Object.assign({}, prev, { [row.id]: Object.assign({}, d, { mode: e.target.value }) }))}
+                    style={Object.assign({}, inputStyle, { width: 'auto', minWidth: '210px' })}
+                  >
+                    <option value="dashboard">Dashboard only (stats board)</option>
+                    <option value="slides">Google Slides only</option>
+                    <option value="images">My images only</option>
+                    <option value="rotate">Rotate: dashboard + slides + images</option>
+                  </select>
+                  <input
+                    type="number" min="10" max="600"
+                    value={d.rotate_seconds !== undefined ? d.rotate_seconds : (row.config && row.config.rotate_seconds) || 45}
+                    onChange={e => setDraft(prev => Object.assign({}, prev, { [row.id]: Object.assign({}, d, { rotate_seconds: e.target.value }) }))}
+                    style={Object.assign({}, inputStyle, { width: '90px' })}
+                  />
+                  <span style={{ fontSize: '12px', color: '#64748B', fontFamily: ff }}>sec per rotation</span>
+                  <input
+                    type="number" min="5" max="120"
+                    value={d.popup_seconds !== undefined ? d.popup_seconds : (row.config && row.config.popup_seconds) || 15}
+                    onChange={e => setDraft(prev => Object.assign({}, prev, { [row.id]: Object.assign({}, d, { popup_seconds: e.target.value }) }))}
+                    style={Object.assign({}, inputStyle, { width: '90px' })}
+                  />
+                  <span style={{ fontSize: '12px', color: '#64748B', fontFamily: ff }}>sec popup stays up</span>
+                </div>
+                <input
+                  value={d.slides_url !== undefined ? d.slides_url : (row.config && row.config.slides_url) || ''}
+                  onChange={e => setDraft(prev => Object.assign({}, prev, { [row.id]: Object.assign({}, d, { slides_url: e.target.value }) }))}
+                  placeholder="Google Slides 'Publish to web' link (see steps below)"
+                  style={inputStyle}
+                />
+                <textarea
+                  value={d.images_text !== undefined ? d.images_text : ((row.config && row.config.images) || []).join('\n')}
+                  onChange={e => setDraft(prev => Object.assign({}, prev, { [row.id]: Object.assign({}, d, { images_text: e.target.value }) }))}
+                  placeholder="Custom image URLs — one per line (listing photos, team pics, flyers)"
+                  rows={3}
+                  style={Object.assign({}, inputStyle, { resize: 'vertical' })}
+                />
+                <button
+                  onClick={async () => {
+                    setBusy(row.id)
+                    try {
+                      await post({
+                        action: 'save_display_config',
+                        mode: d.mode !== undefined ? d.mode : (row.config && row.config.mode) || 'dashboard',
+                        slides_url: d.slides_url !== undefined ? d.slides_url : (row.config && row.config.slides_url) || '',
+                        images: (d.images_text !== undefined ? d.images_text : ((row.config && row.config.images) || []).join('\n')).split('\n').map(x => x.trim()).filter(Boolean),
+                        rotate_seconds: d.rotate_seconds !== undefined ? d.rotate_seconds : (row.config && row.config.rotate_seconds) || 45,
+                        popup_seconds: d.popup_seconds !== undefined ? d.popup_seconds : (row.config && row.config.popup_seconds) || 15,
+                      })
+                      setDraft(prev => Object.assign({}, prev, { [row.id]: {} }))
+                      await load()
+                    } catch (e) { setErr(e.message) }
+                    setBusy('')
+                  }}
+                  disabled={busy === row.id}
+                  style={Object.assign({}, btnStyle, { background: '#0F172A', color: '#fff', alignSelf: 'flex-start' })}
+                >{busy === row.id ? 'Saving…' : 'Save display settings'}</button>
+                <div style={{ fontSize: '12px', color: '#475569', fontFamily: ff, background: '#F8FAFC', borderRadius: '10px', padding: '10px 14px', lineHeight: 1.7 }}>
+                  <b>Setup steps:</b><br />
+                  1. <b>TV:</b> click "Show TV link" below → Copy → open it in the TV's browser (smart TV, Fire Stick, or any spare laptop on the screen) → full-screen it. Changes here apply within a minute — no touching the TV again.<br />
+                  2. <b>Google Slides:</b> open your deck → File → Share → <b>Publish to web</b> → under Link, set auto-advance + "Start slideshow as soon as the player loads" → Publish → paste that link above and pick a mode with slides.<br />
+                  3. <b>Images:</b> paste direct image links (right-click a photo → Copy image address), one per line.<br />
+                  4. <b>Pop-ups:</b> post in <b>Announcements</b> with "📺 Show on office TV" — it pops over whatever is playing every minute for the duration set above, for 3 days. Turn on "🎉 Celebrate" for full-screen confetti (accepted offers, closings, records).
+                </div>
                 {secretShown[row.id] ? (
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <input readOnly value={window.location.origin + '/tv?token=' + secretShown[row.id]} style={Object.assign({}, inputStyle, { color: '#475569' })} />

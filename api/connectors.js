@@ -81,6 +81,21 @@ module.exports = async function handler(req, res) {
       return
     }
 
+    if (action === 'save_display_config') {
+      const integ = await getIntegration('display')
+      if (!integ) { res.status(404).json({ error: 'run the display SQL first' }); return }
+      const config = Object.assign({}, integ.config || {})
+      if (body.mode !== undefined)           config.mode = ['dashboard','slides','images','rotate'].includes(body.mode) ? body.mode : 'dashboard'
+      if (body.slides_url !== undefined)     config.slides_url = String(body.slides_url).trim()
+      if (body.images !== undefined)         config.images = Array.isArray(body.images) ? body.images.map(u => String(u).trim()).filter(Boolean).slice(0, 30) : []
+      if (body.rotate_seconds !== undefined) config.rotate_seconds = Math.max(10, Math.min(600, Number(body.rotate_seconds) || 45))
+      if (body.popup_seconds !== undefined)  config.popup_seconds = Math.max(5, Math.min(120, Number(body.popup_seconds) || 15))
+      if (body.announce_days !== undefined)  config.announce_days = Math.max(1, Math.min(30, Number(body.announce_days) || 3))
+      await patchIntegration('display', { config })
+      res.status(200).json({ ok: true, config })
+      return
+    }
+
     if (action === 'teamchat_test') {
       const { notifyTeamChat } = require('./_lib/connectors')
       const r = await notifyTeamChat('✅ TargetOS is connected — this is a test notification.')

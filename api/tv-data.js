@@ -29,7 +29,17 @@ module.exports = async function handler(req, res) {
     const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
     const today = now.toISOString().slice(0, 10)
 
+    const cfg = integ.config || {}
+    const announceDays = Number(cfg.announce_days) || 3
+    const announceSince = new Date(Date.now() - announceDays * 86400000).toISOString()
+
     const client = sb()
+    const { data: tvAnnouncements } = await client.from('announcements')
+      .select('id, title, body, type, celebrate, created_at')
+      .eq('show_on_tv', true)
+      .gte('created_at', announceSince)
+      .order('created_at', { ascending: false })
+      .limit(5)
     const { data: deals, error } = await client.from('deals')
       .select('id, addr, side, stage, production, gci, ao_date, close_date, agent_id, agents(name, color)')
       .gte('created_at', (year - 1) + '-01-01') // enough history for YTD + pipeline
@@ -60,6 +70,14 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200
     res.end(JSON.stringify({
       generated_at: new Date().toISOString(),
+      display: {
+        mode: cfg.mode || 'dashboard',
+        slides_url: cfg.slides_url || '',
+        images: Array.isArray(cfg.images) ? cfg.images : [],
+        rotate_seconds: Number(cfg.rotate_seconds) || 45,
+        popup_seconds: Number(cfg.popup_seconds) || 15,
+      },
+      announcements: tvAnnouncements || [],
       stats: {
         accepted_mtd: acceptedMTD.length,
         accepted_mtd_volume: acceptedMTD.reduce((s, d) => s + num(d.production), 0),

@@ -96,3 +96,17 @@ set secrets = jsonb_build_object('webhook_secret', encode(gen_random_bytes(18), 
     status = 'connected'
 where id = 'display' and (secrets->>'webhook_secret') is null;
 select id, name, status from integrations order by id;
+
+-- ═══ v5 (7/19 late): TV announcements + display settings ═══
+alter table announcements add column if not exists show_on_tv boolean default false;
+alter table announcements add column if not exists celebrate  boolean default false;
+-- default display settings (only fills blanks)
+update integrations
+set config = config || jsonb_build_object(
+  'mode', coalesce(config->>'mode', 'dashboard'),
+  'rotate_seconds', coalesce((config->>'rotate_seconds')::int, 45),
+  'popup_seconds',  coalesce((config->>'popup_seconds')::int, 15),
+  'announce_days',  coalesce((config->>'announce_days')::int, 3)
+)
+where id = 'display';
+select 'tv announcements ready' as status;
