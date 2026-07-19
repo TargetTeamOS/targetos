@@ -10,7 +10,7 @@
 const crypto = require('crypto')
 const { getIntegration, patchIntegration, logEvent, baseUrl, upsertAgentAccount, findAccountByState } = require('./_lib/connectors')
 
-const SCOPE = 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read'
+const SCOPE = 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read https://graph.microsoft.com/Calendars.ReadWrite'
 
 module.exports = async function handler(req, res) {
   try {

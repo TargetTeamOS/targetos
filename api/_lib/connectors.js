@@ -50,7 +50,7 @@ async function freshMicrosoftToken(integ) {
     client_secret: s.client_secret || '',
     grant_type: 'refresh_token',
     refresh_token: s.refresh_token,
-    scope: 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read',
+    scope: 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read https://graph.microsoft.com/Calendars.ReadWrite',
   })
   const r = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
     method: 'POST',
@@ -157,7 +157,7 @@ async function freshAccountToken(provider, account) {
     grant_type: 'refresh_token',
     refresh_token: s.refresh_token,
   }
-  if (isMs) params.scope = 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read'
+  if (isMs) params.scope = 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read https://graph.microsoft.com/Calendars.ReadWrite'
   const r = await fetch(isMs
     ? 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
     : 'https://oauth2.googleapis.com/token', {

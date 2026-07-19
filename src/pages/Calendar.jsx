@@ -67,6 +67,24 @@ export function Calendar() {
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
+  async function pushToExternalCalendar(ev) {
+    try {
+      const { supabase } = await import('../lib/supabase')
+      const { data } = await supabase.auth.getSession()
+      const token = data && data.session ? data.session.access_token : ''
+      const r = await fetch('/api/calendar-push', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}),
+        body: JSON.stringify(ev),
+      })
+      const j = await r.json()
+      if (j && j.ok) toast('📅 Synced to ' + (j.provider === 'google' ? 'Google Calendar' : 'Outlook'))
+      // silently skip when no account is connected
+    } catch (e) {
+      console.warn('[calendar] external sync skipped: ' + e.message)
+    }
+  }
+
   async function saveEvent() {
     if (!form.title.trim()) { toast('Title required', '#DC2626'); return }
     setSaving(true)
@@ -79,6 +97,9 @@ export function Calendar() {
         await add({ ...form, agent_id: form.agent_id || agent?.id })
         toast('✅ Event added')
         closePanel()
+        // Mirror to the agent's real calendar (Outlook/Google) if
+        // connected — fire-and-forget, a failure never blocks the save.
+        pushToExternalCalendar({ ...form, agent_id: form.agent_id || agent?.id })
       }
     } catch(e) {
       toast('Save failed: ' + e.message, '#DC2626')
