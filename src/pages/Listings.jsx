@@ -13,6 +13,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth }  from '../context/AuthContext'
 import { useFeature } from '../lib/features'
+import { LISTING_STATUSES } from '../lib/constants'
+import { BulkEditBar } from '../components/BulkEditBar'
 import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
@@ -72,13 +74,19 @@ function Badge({ label, color, size = 11 }) {
 }
 
 // ── LISTING CARD ──────────────────────────────────────────────
-function ListingCard({ listing, selected, onSelect, onToggleIvr, agents, onShowings }) {
+function ListingCard({ listing, selected, onSelect, onToggleIvr, agents, onShowings, checked, onCheck }) {
   const a     = agents.find(x => x.id === listing.agent_id)
   const sc    = statusColor(listing.status)
   const price = listing.list_price ? fmt$(listing.list_price) : '—'
 
   return (
-    <div onClick={() => onSelect(listing)}
+    <div onClick={() => onSelect(listing)} style={{ position: 'relative' }}>
+      {onCheck && (
+        <input type="checkbox" checked={!!checked}
+          onClick={e => e.stopPropagation()} onChange={e => { e.stopPropagation(); onCheck(listing.id) }}
+          style={{ position: 'absolute', top: 10, left: 10, zIndex: 5, width: 16, height: 16, cursor: 'pointer', accentColor: '#CC2200' }} />
+      )}
+      <div
       style={{ background:'var(--panel)', borderRadius:10, border:"1.5px solid " + (selected ? '#CC2200' : 'var(--border)'), padding:'14px 16px', cursor:'pointer', transition:'all .15s', position:'relative' }}
       onMouseEnter={e => { if (!selected) e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)' }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}>
@@ -130,6 +138,7 @@ function ListingCard({ listing, selected, onSelect, onToggleIvr, agents, onShowi
           📞 Available on phone — Press 3
         </div>
       )}
+    </div>
     </div>
   )
 }
@@ -551,9 +560,12 @@ function RoutePlanner({ listings, onClose }) {
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════
 export function Listings() {
+  const [bulkIds, setBulkIds] = useState([])
+  const toggleBulk = id => setBulkIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
   const navigate    = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage, can } = useAuth()
+  const canBulkEdit = useFeature('bulk_edit', agent)
   const mlsOn = useFeature('mls_search', agent)
   usePageView('listings')
   const { toast }   = useApp()
@@ -873,7 +885,8 @@ export function Listings() {
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px,1fr))', gap:12 }}>
           {filtered.map(l => (
             <ListingCard key={l.id} listing={l} selected={selected?.id===l.id} agents={agents}
-              onSelect={setSelected} onToggleIvr={toggleIvr} onShowings={l2=>{setSelected(l2);}} />
+              onSelect={setSelected} onToggleIvr={toggleIvr} onShowings={l2=>{setSelected(l2);}}
+              checked={bulkIds.includes(l.id)} onCheck={canBulkEdit ? toggleBulk : undefined} />
           ))}
         </div>
       ) : (
@@ -888,7 +901,8 @@ export function Listings() {
               </div>
               {g.items.map(l => (
                 <ListingCard key={l.id} listing={l} selected={selected?.id===l.id} agents={agents}
-                  onSelect={setSelected} onToggleIvr={toggleIvr} onShowings={l2=>setSelected(l2)} />
+                  onSelect={setSelected} onToggleIvr={toggleIvr} onShowings={l2=>setSelected(l2)}
+                  checked={bulkIds.includes(l.id)} onCheck={canBulkEdit ? toggleBulk : undefined} />
               ))}
             </div>
           ))}
@@ -896,6 +910,14 @@ export function Listings() {
       )}
 
       {/* Listing Detail Drawer */}
+      {canBulkEdit && (
+        <BulkEditBar selectedIds={bulkIds} table="listings" agents={agents}
+          fields={[
+            { key:'status',   label:'Status', type:'select', options:(LISTING_STATUSES||[]).map(x=>({value:x.value||x,label:x.label||x})) },
+            { key:'agent_id', label:'Assigned Agent', type:'agent' },
+          ]}
+          onDone={() => { setBulkIds([]); load() }} onClear={() => setBulkIds([])} />
+      )}
       {selected && (
         <ListingDrawer
           listing={selected}

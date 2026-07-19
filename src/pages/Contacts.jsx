@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabase'
 import { ImportExport } from '../components/ImportExport'
 import { FilterBar }        from '../components/FilterBar'
 import { BulkEditBar }      from '../components/BulkEditBar'
+import { useFeature }        from '../lib/features'
 import { DuplicateDetector } from '../components/DuplicateDetector'
 import { ScoreBadge }       from '../lib/leadScoring.jsx'
 import { RecordActivityFeed as RecordActivity } from '../components/RecordActivityFeed'
@@ -296,6 +297,7 @@ export function Contacts() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [selectedIds,  setSelectedIds]  = useState([])
   const [bulkDel,      setBulkDel]      = useState(false)
+  const canBulkEdit = useFeature('bulk_edit', agent)
   const [popupContact, setPopupContact] = useState(null)   // quick info popup
   const [popupDeals,   setPopupDeals]   = useState([])     // deals for popup
   const [popupFields,  setPopupFields]  = useState(['phone','email','source','status','agent']) // configurable
@@ -569,11 +571,12 @@ export function Contacts() {
       {loading && <Loading />}
 
       {/* Bulk edit bar — appears when contacts are selected */}
-      <BulkEditBar
+      {canBulkEdit && <BulkEditBar
         selectedIds={selectedIds}
         table="contacts"
         agents={agents}
         fields={[
+          { key:'type',   label:'Role (Buyer/Seller/Attorney…)', type:'select', options:CONTACT_TYPES.map(t=>({value:t,label:t})) },
           { key:'status', label:'Status', type:'select', options:(CONTACT_STATUSES||[]).map(s=>({value:s.value||s,label:s.label||s})) },
           { key:'agent_id', label:'Assigned Agent', type:'agent' },
           { key:'source',   label:'Source', type:'select', options:(CONTACT_SOURCES||[]).map(s=>({value:s,label:s})) },
@@ -581,7 +584,7 @@ export function Contacts() {
         ]}
         onDone={() => { setSelectedIds([]); refetch() }}
         onClear={() => setSelectedIds([])}
-      />
+      />}
 
       {!loading && filtered.length === 0 && (
         <Empty icon="👥" title="No contacts yet" sub="Add your first lead using the button above or voice capture." action={<Btn onClick={openAdd}>+ Add Contact</Btn>} />

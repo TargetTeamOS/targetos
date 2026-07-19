@@ -48,3 +48,11 @@ on conflict (key) do nothing;
 insert into feature_flags (key, label, description) values
   ('skin_pulse', 'Pulse Layout', 'The friendly Monday-style layout. Users with access can switch between Classic and Pulse in Settings → Appearance.')
 on conflict (key) do nothing;
+
+-- Bulk edit (July 2026): admins always have it; add specific agents in
+-- Admin → Features to grant others. The dummy UUID keeps the allowlist
+-- non-empty so it stays admin-only until you choose people.
+insert into feature_flags (key, label, description, allowed_agent_ids) values
+  ('bulk_edit', 'Bulk Edit', 'Multi-select records on boards and update a field for all at once. Admins always have it; grant specific agents here.',
+   array['00000000-0000-0000-0000-000000000000']::uuid[])
+on conflict (key) do nothing;

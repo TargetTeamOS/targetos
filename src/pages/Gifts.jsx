@@ -12,6 +12,8 @@ import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { useGifts, useAgents } from '../lib/hooks'
 import { fmtDate, matchSearch } from '../lib/utils'
+import { useFeature } from '../lib/features'
+import { BulkEditBar } from '../components/BulkEditBar'
 import { GIFT_STATUSES, GIFT_LABELS, CLOSING_GIFT_STATUSES } from '../lib/constants'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import {
@@ -34,11 +36,14 @@ export function Gifts() {
   const { toast } = useApp()
 
   const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
-  const { gifts, loading, add, update, remove } = useGifts(filters)
+  const { gifts, loading, add, update, remove, refetch } = useGifts(filters)
   const { agents } = useAgents()
 
   const [search,  setSearch]  = useState('')
   const [statusF, setStatusF] = useState('')
+  const [bulkIds, setBulkIds] = useState([])
+  const toggleBulk = id => setBulkIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const canBulkEdit = useFeature('bulk_edit', agent)
   const [selected,setSelected] = useState(null)
   const [form,    setForm]    = useState(BLANK)
   const [saving,  setSaving]  = useState(false)
@@ -153,6 +158,12 @@ export function Gifts() {
                   style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>
+                  {canBulkEdit && (
+                    <td style={{ padding: '11px 8px', width: 30 }} onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={bulkIds.includes(g.id)} onChange={() => toggleBulk(g.id)}
+                        style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#CC2200' }} />
+                    </td>
+                  )}
                   <td style={{ padding: '11px 12px', fontWeight: 600, color: 'var(--text)' }}>{g.client_name}</td>
                   <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{g.address}{g.unit ? " #" + (g.unit) : ''}</td>
                   <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{g.phone || '—'}</td>
@@ -232,6 +243,14 @@ export function Gifts() {
       </Modal>
 
       <Confirm open={confirmDelete} message="Delete this gift record?" onConfirm={deleteGift} onCancel={() => setConfirmDelete(false)} />
+      {canBulkEdit && (
+        <BulkEditBar selectedIds={bulkIds} table="gifts" agents={agents}
+          fields={[
+            { key:'status',   label:'Status', type:'select', options:(GIFT_STATUSES||[]).map(x=>({value:x.value||x,label:x.label||x})) },
+            { key:'agent_id', label:'Assigned Agent', type:'agent' },
+          ]}
+          onDone={() => { setBulkIds([]); refetch && refetch() }} onClear={() => setBulkIds([])} />
+      )}
     </div>
   )
 }
