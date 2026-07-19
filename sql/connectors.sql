@@ -87,3 +87,12 @@ insert into integrations (id, name) values
   ('mailchimp','Mailchimp')
 on conflict (id) do nothing;
 select id, name, status from integrations order by id;
+
+-- ═══ v4 (7/19 late): Office TV display board ═══
+insert into integrations (id, name) values ('display', 'Office TV Board')
+on conflict (id) do nothing;
+update integrations
+set secrets = jsonb_build_object('webhook_secret', encode(gen_random_bytes(18), 'hex')),
+    status = 'connected'
+where id = 'display' and (secrets->>'webhook_secret') is null;
+select id, name, status from integrations order by id;

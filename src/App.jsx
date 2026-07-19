@@ -57,6 +57,7 @@ import { Segments }       from './pages/Segments'
 import { Reports }        from './pages/Reports'
 import { ReportBuilder }  from './pages/ReportBuilder'
 import { Notepad }        from './pages/Notepad'
+import { TVBoard } from './pages/TVBoard'
 
 // ── ERROR BOUNDARY ───────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -235,6 +236,9 @@ function LocationAwareTools() {
 function RootRouter() {
   const { pathname } = useLocation()
   // Public routes skip auth entirely
+  if (pathname === '/tv') {
+    return <TVBoard />
+  }
   if (pathname.startsWith('/public/')) {
     return (
       <Routes>

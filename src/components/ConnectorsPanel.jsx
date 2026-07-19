@@ -11,6 +11,7 @@ const CARD_META = {
   google:    { icon: '🟢', blurb: 'Gmail sending + Google Sheets export through the connected Google account.', kind: 'oauth' },
   zapier:    { icon: '⚡', blurb: 'Two-way: automations can push to any Zap (send_webhook action), and Zaps can create contacts or notes here via the inbound URL below.', kind: 'webhook' },
   apination: { icon: '🔄', blurb: 'Brivity and other real-estate systems sync through API Nation. Point the API Nation workflow at the inbound URL below.', kind: 'webhook' },
+  display:   { icon: '📺', blurb: 'Office TV board: live accepted offers, pipeline, closings, and agent leaderboard. Open the link below full-screen on any smart TV or Fire Stick browser — no login, no ScreenCloud subscription needed.', kind: 'display' },
   teamchat:  { icon: '📣', blurb: 'Internal notifications to a Slack or Teams channel: new lead, offer accepted, closing soon. Paste an incoming-webhook URL from either platform.', kind: 'teamchat' },
   mailchimp: { icon: '📨', blurb: 'Push contacts into your Mailchimp audience for listing blasts and newsletters. Automations can add contacts with tags; open/click tracking lives in Mailchimp.', kind: 'mailchimp' },
 }
@@ -167,6 +168,26 @@ export function ConnectorsPanel() {
                       style={Object.assign({}, btnStyle, { background: '#F1F5F9', color: '#334155' })}
                     >Disconnect</button>
                   )}
+                </div>
+              </div>
+            )}
+
+            {meta.kind === 'display' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {secretShown[row.id] ? (
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input readOnly value={window.location.origin + '/tv?token=' + secretShown[row.id]} style={Object.assign({}, inputStyle, { color: '#475569' })} />
+                    <button onClick={() => copy(window.location.origin + '/tv?token=' + secretShown[row.id], row.id + '-url')}
+                      style={Object.assign({}, btnStyle, { background: '#0F172A', color: '#fff', whiteSpace: 'nowrap' })}
+                    >{copied === row.id + '-url' ? 'Copied ✓' : 'Copy TV link'}</button>
+                  </div>
+                ) : (
+                  <button onClick={() => revealSecret(row.id)} disabled={busy === row.id}
+                    style={Object.assign({}, btnStyle, { background: '#2563EB', color: '#fff', alignSelf: 'flex-start' })}
+                  >Show TV link</button>
+                )}
+                <div style={{ fontSize: '12px', color: '#64748B', fontFamily: ff }}>
+                  Anyone with this link can see deal addresses and team stats (no client names). Keep it internal.
                 </div>
               </div>
             )}
