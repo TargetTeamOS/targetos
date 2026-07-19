@@ -153,3 +153,14 @@ select 'tv playlist ready' as status;
 -- ═══ v7 (7/19 late): hourly scheduling per playlist item ═══
 alter table tv_playlist add column if not exists hours int[];
 select 'hourly scheduling ready' as status;
+
+-- ═══ v8 (7/19 late): seed the 4 Target Team card frames as ready templates ═══
+insert into card_templates (name, card_type, bg_image, photo_zone, created_at)
+select * from (values
+  ('Coming Soon (Team frame)',    'for_sale',     '/social-templates/coming-soon.jpg',    '{"x":18,"y":250,"w":1044,"h":640}'::jsonb, now()),
+  ('Sold (Team frame)',           'sold_listing', '/social-templates/sold.jpg',           '{"x":18,"y":240,"w":1044,"h":650}'::jsonb, now()),
+  ('Under Contract (Team frame)', 'uc_listing',   '/social-templates/under-contract.jpg', '{"x":18,"y":240,"w":1044,"h":650}'::jsonb, now()),
+  ('Listing Sold (Team frame)',   'sold_listing', '/social-templates/listing-sold.jpg',   '{"x":18,"y":240,"w":1044,"h":650}'::jsonb, now())
+) as v(name, card_type, bg_image, photo_zone, created_at)
+where not exists (select 1 from card_templates where card_templates.name = v.name);
+select name from card_templates order by created_at desc limit 6;

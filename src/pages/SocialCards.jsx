@@ -117,6 +117,9 @@ function SmartCards({ listings, deals }) {
   // Address layer position
   const [addrLayer, setAddrLayer] = useState({ x:540, y:862, size:36, color:'#1B2B4B', bold:true, align:'center' })
   const [definingAddr, setDefiningAddr] = useState(false)
+  const [pin,         setPin]         = useState(null)   // {x,y} canvas coords — unit pin for condos/developments
+  const [pinLabel,    setPinLabel]    = useState('')
+  const [definingPin, setDefiningPin] = useState(false)
 
   // For Sale cards: price + beds/baths text layers, click-positioned
   // like the address. 'enabled' lets a template opt out of either.
@@ -155,7 +158,7 @@ function SmartCards({ listings, deals }) {
   }, [])
 
   // Redraw whenever anything changes
-  useEffect(function() { draw() }, [tplImg, propImg, photoZone, addrLayer, priceLayer, detailsLayer, eraseZones, address, priceText, detailsText, cardType])
+  useEffect(function() { draw() }, [tplImg, propImg, photoZone, addrLayer, priceLayer, detailsLayer, eraseZones, address, priceText, detailsText, cardType, pin, pinLabel])
 
   // AUTO-IMPORT: selecting a listing pulls its saved photo into the
   // photo zone automatically (manual upload still available and wins).
@@ -235,6 +238,34 @@ function SmartCards({ listings, deals }) {
         ctx.textBaseline = 'middle'
         ctx.textAlign = detailsLayer.align || 'center'
         ctx.fillText(detailsText, detailsLayer.x, detailsLayer.y)
+        ctx.restore()
+      }
+
+      // 📍 Unit pin (condos / developments) — exports with the card
+      if (pin) {
+        const px = pin.x, py = pin.y
+        ctx.save()
+        ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3
+        ctx.fillStyle = '#E11D48'
+        ctx.beginPath()
+        ctx.arc(px, py - 34, 22, Math.PI, 0)
+        ctx.bezierCurveTo(px + 22, py - 17, px + 8, py - 9, px, py)
+        ctx.bezierCurveTo(px - 8, py - 9, px - 22, py - 17, px - 22, py - 34)
+        ctx.fill()
+        ctx.shadowColor = 'transparent'
+        ctx.fillStyle = '#FFFFFF'
+        ctx.beginPath(); ctx.arc(px, py - 34, 9, 0, Math.PI * 2); ctx.fill()
+        if (pinLabel) {
+          ctx.font = 'bold 26px ' + ff
+          const tw = ctx.measureText(pinLabel).width
+          const bx = px - tw / 2 - 12, by = py - 100
+          ctx.fillStyle = '#0F2A47'
+          if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, tw + 24, 40, 9); ctx.fill() }
+          else ctx.fillRect(bx, by, tw + 24, 40)
+          ctx.fillStyle = '#FFFFFF'
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+          ctx.fillText(pinLabel, bx + 12, by + 28)
+        }
         ctx.restore()
       }
 
@@ -442,10 +473,11 @@ function SmartCards({ listings, deals }) {
 
   // Canvas click for address positioning
   function onCanvasClick(e) {
-    if (!definingAddr && !definingPrice && !definingDetails) return
+    if (!definingAddr && !definingPrice && !definingDetails && !definingPin) return
     const rect = canvasRef.current.getBoundingClientRect()
     const x = Math.round((e.clientX - rect.left) * (CS / rect.width))
     const y = Math.round((e.clientY - rect.top) * (CS / rect.height))
+    if (definingPin) { setPin({ x, y }); setDefiningPin(false); toast('📍 Unit pin placed — drag the label text below') ; return }
     if (definingAddr)    { setAddrLayer(prev => ({ ...prev, x, y }));    setDefiningAddr(false);    toast('Address position set ✓') }
     if (definingPrice)   { setPriceLayer(prev => ({ ...prev, x, y }));   setDefiningPrice(false);   toast('Price position set ✓') }
     if (definingDetails) { setDetailsLayer(prev => ({ ...prev, x, y })); setDefiningDetails(false); toast('Beds/baths position set ✓') }
@@ -652,6 +684,30 @@ function SmartCards({ listings, deals }) {
                 {definingAddr ? '🖱 Click on canvas to set address position...' : '📍 Set address position — click on the preview →'}
               </button>
 
+              {/* Unit pin — condos / developments */}
+              <div style={{ border:'1px solid var(--border)', borderRadius:9, padding:'10px 12px', display:'flex', flexDirection:'column', gap:6 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.04em' }}>📍 Unit pin (condo / development)</div>
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                  <button onClick={() => { setDefiningPin(!definingPin); setDefiningZone(false); setDefiningAddr(false) }}
+                    style={{ padding:'8px 12px', borderRadius:8, border:'none', background:definingPin?'#E11D48':'#2563EB', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                    {definingPin ? '🖱 Click the preview on the unit… (cancel)' : (pin ? 'Move pin' : 'Place pin')}
+                  </button>
+                  {pin && (
+                    <button onClick={() => { setPin(null); setPinLabel('') }}
+                      style={{ padding:'8px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+                {pin && (
+                  <input value={pinLabel} onChange={e => setPinLabel(e.target.value.toUpperCase())} placeholder="Pin label — e.g. UNIT 14B"
+                    style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff }} />
+                )}
+                <div style={{ fontSize:10, color:'var(--muted)', fontFamily:ff }}>
+                  Tip: use the development's site map as the property photo, then pin the exact unit.
+                </div>
+              </div>
+
               {/* Address style */}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
                 <div>
@@ -819,7 +875,7 @@ function SmartCards({ listings, deals }) {
           {definingZone ? '🟥 Drag to draw the photo zone' : definingAddr ? '🔵 Click to place the address' : 'Preview — 1080×1080 export'}
         </div>
         <div style={{ position:'relative', boxShadow:'0 8px 40px rgba(0,0,0,.22)', borderRadius:12, overflow:'hidden',
-          cursor: definingZone ? 'crosshair' : definingAddr ? 'cell' : 'default' }}>
+          cursor: definingZone ? 'crosshair' : (definingAddr || definingPin) ? 'cell' : 'default' }}>
           <canvas
             ref={canvasRef}
             width={CS} height={CS}
