@@ -147,7 +147,7 @@ export function Gifts() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
             <thead>
               <tr style={{ background: 'var(--dim)' }}>
-                {['Client','Address','Phone','Status','Label','Contract Date','Sending Date','Tracking'].map(h => (
+                {(canBulkEdit ? [' '] : []).concat(['Client','Address','Phone','Status','Label','Contract Date','Sending Date','Tracking']).map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
