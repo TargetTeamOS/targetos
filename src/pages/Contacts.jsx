@@ -109,7 +109,9 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
               {(c.first_name?.[0]||'') + (c.last_name?.[0]||'')}
             </div>
             <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:'16px', fontWeight:800, color:'var(--text)' }}>{c.first_name} {c.last_name}</div>
+              <div style={{ fontSize:'16px', fontWeight:800, color:'var(--text)', display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>{c.first_name} {c.last_name}
+                {c.type && <span style={{ fontSize:'10px', padding:'2px 9px', borderRadius:'12px', background:(CONTACT_TYPE_COLORS[c.type]||'#94A3B8')+'22', color:CONTACT_TYPE_COLORS[c.type]||'#94A3B8', fontWeight:800, textTransform:'uppercase', letterSpacing:'.03em' }}>{c.type}</span>}
+              </div>
               {c.status && <span style={{ fontSize:'11px', padding:'1px 7px', borderRadius:'10px', background:sc+'22', color:sc, fontWeight:700 }}>{c.status}</span>}
             </div>
             <div style={{ display:'flex', gap:'4px' }}>
