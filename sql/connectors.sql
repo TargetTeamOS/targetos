@@ -155,6 +155,16 @@ alter table tv_playlist add column if not exists hours int[];
 select 'hourly scheduling ready' as status;
 
 -- ═══ v8 (7/19 late): seed the 4 Target Team card frames as ready templates ═══
+-- (repair first: live card_templates may predate these columns)
+alter table card_templates add column if not exists card_type     text;
+alter table card_templates add column if not exists bg_image      text;
+alter table card_templates add column if not exists photo_zone    jsonb;
+alter table card_templates add column if not exists addr_layer    jsonb;
+alter table card_templates add column if not exists price_layer   jsonb;
+alter table card_templates add column if not exists details_layer jsonb;
+alter table card_templates add column if not exists erase_zones   jsonb;
+alter table card_templates add column if not exists thumbnail     text;
+alter table listings add column if not exists photo_url text;
 insert into card_templates (name, card_type, bg_image, photo_zone, created_at)
 select * from (values
   ('Coming Soon (Team frame)',    'for_sale',     '/social-templates/coming-soon.jpg',    '{"x":18,"y":250,"w":1044,"h":640}'::jsonb, now()),
