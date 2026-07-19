@@ -347,22 +347,20 @@ async function executeAction(action, context, triggerData, agents) {
     case 'send_email': {
       const agentId = resolveAgent(cfg.to, triggerData, agents)
       const agentRecord = agents.find(a => a.id === agentId)
-      const AGENT_EMAIL_MAP = {
-        'Lazer Farkas':       'lazer@targetreteam.com',
-        'Mendy Jankovits':    'mendy@targetreteam.com',
-        'Isaac Leibowitz':    'isaac@targetreteam.com',
-        'Yanky Lichtenstein': 'yanky@targetreteam.com',
-        'Gitty Fogel':        'office@targetreteam.com',
-        'Joel Rottenstein':   'joel@targetreteam.com',
-        'Eli Hoffman':        'eli@targetreteam.com',
-        'Avraham Weinberger': 'avraham@targetreteam.com',
-      }
+      // Email source of truth = agents.email (DB, admin-editable).
+      // Hardcoded AGENT_EMAIL_MAP removed 7/19/26 after backfill SQL
+      // (sql/agent_email_backfill.sql). If an agent row is missing an
+      // email, we warn and fall back to office@ (monitored) — fix the
+      // agent record in Admin→Users, not here.
       // cfg.to_email: a literal address (interpolated) beats agent
       // resolution — used by system alerts like the stage-change email.
       const literalTo = cfg.to_email ? interpolate(cfg.to_email, context).trim() : ''
       const roleAgent = cfg.to_role ? agents.find(a => a.role === cfg.to_role) : null
-      const roleEmail = roleAgent ? (roleAgent.email || AGENT_EMAIL_MAP[roleAgent.name]) : ''
-      const toEmail = literalTo || roleEmail || agentRecord?.email || AGENT_EMAIL_MAP[agentRecord?.name] || 'office@targetreteam.com'
+      const roleEmail = roleAgent ? (roleAgent.email || '') : ''
+      const toEmail = literalTo || roleEmail || agentRecord?.email || 'office@targetreteam.com'
+      if (!literalTo && !roleEmail && agentRecord && !agentRecord.email) {
+        console.warn(`[automation] agent "${agentRecord.name}" has no email in DB — sent to office@ fallback. Fix in Admin→Users.`)
+      }
       const emailSubject = interpolate(cfg.subject || 'TargetOS Automation Alert', context)
       const emailBody    = interpolate(cfg.body    || '', context)
       const emailBodyHtml = emailBody.replace(/\n/g, '<br>')
