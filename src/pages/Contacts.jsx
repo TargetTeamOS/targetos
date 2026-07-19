@@ -21,7 +21,7 @@ import { ScoreBadge }       from '../lib/leadScoring.jsx'
 import { RecordActivityFeed as RecordActivity } from '../components/RecordActivityFeed'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { fmt$, fmtDate, fmtPhone, initials, matchSearch } from '../lib/utils'
-import { CONTACT_TYPES, CONTACT_STATUSES, CONTACT_SOURCES } from '../lib/constants'
+import { CONTACT_TYPES, CONTACT_TYPE_COLORS, CONTACT_STATUSES, CONTACT_SOURCES } from '../lib/constants'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Tabs, SectionTitle,
@@ -88,7 +88,7 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
       case 'source':    return c.source    ? <span style={{ fontSize:'12px', color:'var(--muted)' }}>{c.source}</span> : null
       case 'agent':     return agent       ? <div style={{ display:'flex', alignItems:'center', gap:'5px' }}><div style={{ width:18, height:18, borderRadius:'50%', background:agent.color||'#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'8px', fontWeight:800, color:'#fff' }}>{agent.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div><span style={{ fontSize:'12px', color:'var(--muted)' }}>{agent.name}</span></div> : null
       case 'address':   return c.address   ? <span style={{ fontSize:'12px', color:'var(--muted)' }}>{[c.address, c.city, c.state].filter(Boolean).join(', ')}</span> : null
-      case 'type':      return c.type      ? <span style={{ fontSize:'12px', color:'var(--muted)' }}>{c.type}</span> : null
+      case 'type':      return c.type      ? <span style={{ fontSize:'11px', padding:'2px 9px', borderRadius:'12px', background:(CONTACT_TYPE_COLORS[c.type]||'#94A3B8')+'22', color:CONTACT_TYPE_COLORS[c.type]||'#94A3B8', fontWeight:800, textTransform:'uppercase', letterSpacing:'.03em' }}>{c.type}</span> : null
       case 'budget_max':return c.budget_max? <span style={{ fontSize:'12px', fontWeight:700, color:'#10B981' }}>{'Up to $' + Number(c.budget_max).toLocaleString()}</span> : null
       case 'notes':     return c.notes     ? <span style={{ fontSize:'11px', color:'var(--muted)', fontStyle:'italic' }}>{String(c.notes).slice(0,80)}{String(c.notes).length>80?'…':''}</span> : null
       case 'tags':      return c.tags?.length ? <div style={{ display:'flex', gap:'3px', flexWrap:'wrap' }}>{c.tags.slice(0,4).map(t => <span key={t} style={{ fontSize:'10px', padding:'1px 6px', borderRadius:'10px', background:'var(--dim)', color:'var(--muted)', border:'1px solid var(--border)' }}>{t}</span>)}</div> : null
@@ -298,6 +298,8 @@ export function Contacts() {
   const [popupDeals,   setPopupDeals]   = useState([])     // deals for popup
   const [popupFields,  setPopupFields]  = useState(['phone','email','source','status','agent']) // configurable
   const [viewMode,     setViewMode]     = useState('grid') // 'grid' | 'list'
+  const [groupByRole,  setGroupByRole]  = useState(() => { try { return localStorage.getItem('tos_contacts_group') === '1' } catch { return false } })
+  useEffect(() => { try { localStorage.setItem('tos_contacts_group', groupByRole ? '1' : '0') } catch {} }, [groupByRole])
 
   // Auto-open from URL param
   useEffect(() => {
@@ -439,6 +441,15 @@ export function Contacts() {
     return result
   }, [contacts, statusF, agentF, sourceF, typeF, dateRange, search, tagFilter, sortKey, sortDir])
 
+  // Role-grouped ordering: contacts sorted by CONTACT_TYPES order, then name
+  const displayList = React.useMemo(() => {
+    if (!groupByRole) return filtered
+    const order = t => { const i = CONTACT_TYPES.indexOf(t); return i === -1 ? 999 : i }
+    return [...filtered].sort((a, b) => order(a.type) - order(b.type) || String(a.first_name||'').localeCompare(String(b.first_name||'')))
+  }, [filtered, groupByRole])
+  const roleHeader = (c, idx, arr) => groupByRole && (idx === 0 || (arr[idx-1].type || '') !== (c.type || ''))
+  const roleCount  = t => displayList.filter(x => (x.type || '') === (t || '')).length
+
   const statusColor = (s) => CONTACT_STATUSES.find(x => x.value === s)?.color || '#94A3B8'
 
   async function bulkDelete() {
@@ -491,6 +502,12 @@ export function Contacts() {
                   {icon}
                 </button>
               ))}
+            
+              <button onClick={() => setGroupByRole(v => !v)}
+                title="Group contacts by role"
+                style={{ marginLeft: 6, padding: '5px 12px', borderRadius: 6, border: '1px solid ' + (groupByRole ? 'var(--brand)' : 'var(--border)'), background: groupByRole ? 'rgba(204,34,0,.07)' : 'transparent', color: groupByRole ? 'var(--brand)' : 'var(--muted)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+                👥 By role
+              </button>
             </div>
             <HeaderCallButton />
             <Btn onClick={openAdd}>+ Add Contact</Btn>
@@ -565,14 +582,23 @@ export function Contacts() {
         <Empty icon="👥" title="No contacts yet" sub="Add your first lead using the button above or voice capture." action={<Btn onClick={openAdd}>+ Add Contact</Btn>} />
       )}
 
-      {/* Contact Grid / List */}
+      {/* Contact Grid / List — grouped by role when enabled */}
       {!loading && filtered.length > 0 && viewMode === 'grid' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-          {filtered.map(c => {
+          {displayList.map((c, idx, arr) => {
             const isSelected = selectedIds.includes(c.id)
             const isPopup    = popupContact?.id === c.id
             return (
-              <div key={c.id} onClick={() => setPopupContact(c)}
+              <React.Fragment key={c.id}>
+              {roleHeader(c, idx, arr) && (
+                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 2px 0' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: CONTACT_TYPE_COLORS[c.type] || '#94A3B8' }} />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>{c.type || 'No role set'}</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>({roleCount(c.type)})</span>
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                </div>
+              )}
+              <div onClick={() => setPopupContact(c)}
                 style={{ background: isSelected ? 'rgba(204,34,0,.04)' : 'var(--panel)', borderRadius: 'var(--radius)', border: isSelected ? '2px solid #CC220044' : isPopup ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s', position: 'relative' }}
                 onMouseEnter={e => { if (!isSelected) e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
                 onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
@@ -608,6 +634,7 @@ export function Contacts() {
                   </div>
                 )}
               </div>
+              </React.Fragment>
             )
           })}
         </div>
@@ -622,12 +649,20 @@ export function Contacts() {
               <div key={i} style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', padding:'0 6px' }}>{h}</div>
             ))}
           </div>
-          {filtered.map((c, idx) => {
+          {displayList.map((c, idx, arr) => {
             const isSelected = selectedIds.includes(c.id)
             const isPopup    = popupContact?.id === c.id
             const sc         = statusColor(c.status)
             return (
-              <div key={c.id}
+              <React.Fragment key={c.id}>
+              {roleHeader(c, idx, arr) && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--dim)', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: CONTACT_TYPE_COLORS[c.type] || '#94A3B8' }} />
+                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)' }}>{c.type || 'No role set'}</span>
+                  <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>({roleCount(c.type)})</span>
+                </div>
+              )}
+              <div
                 style={{ display:'grid', gridTemplateColumns:'32px 2fr 1.4fr 1.4fr 1fr 1fr 1fr 100px', gap:0, padding:'9px 12px', borderBottom: idx < filtered.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(204,34,0,.03)' : isPopup ? 'rgba(204,34,0,.02)' : 'transparent', cursor:'pointer', transition:'background .1s', alignItems:'center' }}
                 onClick={() => setPopupContact(c)}
                 onMouseEnter={e => { if(!isSelected) e.currentTarget.style.background='var(--hov)' }}
@@ -688,6 +723,7 @@ export function Contacts() {
                   </button>
                 </div>
               </div>
+              </React.Fragment>
             )
           })}
         </div>

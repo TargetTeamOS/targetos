@@ -1413,12 +1413,16 @@ export function ContactDetail() {
                 backgroundRepeat:'no-repeat', backgroundPosition:'right 9px center' }}>
               {CONTACT_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
-            <select value={f.type || ''} onChange={e => saveField('type', e.target.value)}
-              title="Who is this contact?"
-              style={{ border:'1px solid '+(CONTACT_TYPE_COLORS[f.type]||'var(--border)'), background:(CONTACT_TYPE_COLORS[f.type]||'#94A3B8')+'18', color:CONTACT_TYPE_COLORS[f.type]||'var(--muted)', borderRadius:99, padding:'3px 10px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
-              <option value="">Role…</option>
-              {CONTACT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <label title="Who is this contact?" style={{ position:'relative', display:'inline-flex', alignItems:'center', gap:6, border:'1.5px solid '+(CONTACT_TYPE_COLORS[f.type]||'var(--border)'), background:(CONTACT_TYPE_COLORS[f.type]||'#94A3B8')+'15', borderRadius:99, padding:'4px 12px', cursor:'pointer', flexShrink:0 }}>
+              <span style={{ width:8, height:8, borderRadius:'50%', background:CONTACT_TYPE_COLORS[f.type]||'#94A3B8', flexShrink:0 }} />
+              <span style={{ fontSize:11, fontWeight:800, color:CONTACT_TYPE_COLORS[f.type]||'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em' }}>{f.type || 'Set role'}</span>
+              <span style={{ fontSize:8, color:CONTACT_TYPE_COLORS[f.type]||'var(--muted)' }}>▾</span>
+              <select value={f.type || ''} onChange={e => saveField('type', e.target.value)}
+                style={{ position:'absolute', inset:0, opacity:0, cursor:'pointer', width:'100%' }}>
+                <option value="">No role</option>
+                {CONTACT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
             {(isAdmin || f.agent_id === agent?.id) && (
               <button onClick={() => saveField('is_private', !f.is_private)}
                 title={f.is_private ? 'Private: hidden from other agents in contact search. Click to make visible.' : 'Visible to all agents in contact search. Click to make private.'}
