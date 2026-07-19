@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { InstallPrompt } from './InstallPrompt'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
@@ -41,6 +42,7 @@ export function MobileLayout({ children }) {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100vh', background:'var(--bg)', fontFamily:'Inter,system-ui,sans-serif' }}>
+      <InstallPrompt />
 
       {/* Top bar */}
       <div style={{ background:'var(--sidebar)', padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, boxShadow:'0 2px 8px rgba(0,0,0,.15)' }}>
