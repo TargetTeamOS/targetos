@@ -24,7 +24,7 @@ import {
   fmtDate, fmtDateTime, fmtPhone, fmt$, initials,
   phoneHref, getDaysAgo, getDaysUntil, parseNum, today
 } from '../lib/utils'
-import { CONTACT_STATUSES, CONTACT_SOURCES, PROPERTY_TYPES, LOCAL_CITIES } from '../lib/constants'
+import { CONTACT_TYPES, CONTACT_TYPE_COLORS, CONTACT_STATUSES, CONTACT_SOURCES, PROPERTY_TYPES, LOCAL_CITIES } from '../lib/constants'
 import { FileAttachments } from '../components/FileAttachments'
 import { uploadFile, listFiles, deleteFile, fmtFileSize, fileIcon } from '../lib/storage'
 import { SignedAudio } from '../components/SignedAudio'
@@ -1412,6 +1412,12 @@ export function ContactDetail() {
                 backgroundImage:'url("data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 width=%2710%27 height=%2710%27 fill=%27none%27 stroke=%27gray%27 stroke-width=%272%27><path d=%27M2 3.5L5 6.5L8 3.5%27/></svg>")',
                 backgroundRepeat:'no-repeat', backgroundPosition:'right 9px center' }}>
               {CONTACT_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <select value={f.type || ''} onChange={e => saveField('type', e.target.value)}
+              title="Who is this contact?"
+              style={{ border:'1px solid '+(CONTACT_TYPE_COLORS[f.type]||'var(--border)'), background:(CONTACT_TYPE_COLORS[f.type]||'#94A3B8')+'18', color:CONTACT_TYPE_COLORS[f.type]||'var(--muted)', borderRadius:99, padding:'3px 10px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
+              <option value="">Role…</option>
+              {CONTACT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
             {(isAdmin || f.agent_id === agent?.id) && (
               <button onClick={() => saveField('is_private', !f.is_private)}

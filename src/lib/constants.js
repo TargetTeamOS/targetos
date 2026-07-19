@@ -166,7 +166,15 @@ export const LISTING_PROPERTY_TYPES = [
 export const LISTING_DEAL_TYPES = ['MLS', 'Off Market']
 
 // ── CONTACT STATUSES ─────────────────────────────────────────────
-export const CONTACT_TYPES = ['Client', 'Attorney', 'Mortgage Broker', 'Title Company', 'Vendor', 'Other']
+export const CONTACT_TYPES = ['Buyer', 'Seller', 'Client', 'Agent', 'Attorney', 'Mortgage Broker', 'Photographer', 'Appraiser', 'Inspector', 'Title Company', 'Vendor', 'Other']
+
+// Badge colors so a contact's ROLE is visible at a glance everywhere
+export const CONTACT_TYPE_COLORS = {
+  'Buyer': '#0EA5E9', 'Seller': '#F97316', 'Client': '#10B981', 'Agent': '#1B2B4B',
+  'Attorney': '#8B5CF6', 'Mortgage Broker': '#B45309', 'Photographer': '#EC4899',
+  'Appraiser': '#0891B2', 'Inspector': '#65A30D', 'Title Company': '#6B7280',
+  'Vendor': '#78716C', 'Other': '#94A3B8',
+}
 
 export const CONTACT_STATUSES = [
   { value: 'New',              label: 'New',              color: '#0EA5E9' },

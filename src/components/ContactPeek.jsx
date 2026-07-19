@@ -6,6 +6,7 @@
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { CONTACT_TYPE_COLORS } from '../lib/constants'
 
 const ff = 'Inter,system-ui,sans-serif'
 
@@ -58,7 +59,10 @@ export function ContactPeek({ contactId, onClose, onSelect }) {
                   {[(c.first_name || ''), (c.last_name || '')].join(' ').trim() || 'Unnamed'}
                   {c.is_private && ' 🔒'}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--muted, #666)' }}>{[c.type, c.status].filter(Boolean).join(' · ')}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted, #666)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {c.type && <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 8px', borderRadius: 99, background: (CONTACT_TYPE_COLORS[c.type]||'#94A3B8')+'22', color: CONTACT_TYPE_COLORS[c.type]||'#94A3B8', textTransform: 'uppercase' }}>{c.type}</span>}
+                  {c.status && <span>{c.status}</span>}
+                </div>
               </div>
               <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 18, color: 'var(--muted, #888)', cursor: 'pointer' }}>✕</button>
             </div>

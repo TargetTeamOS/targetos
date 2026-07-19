@@ -27,7 +27,7 @@ import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
 import { useOffers, useAgents } from '../lib/hooks'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
-import { OFFER_STATUSES } from '../lib/constants'
+import { OFFER_STATUSES, CONTACT_TYPE_COLORS } from '../lib/constants'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
@@ -126,7 +126,9 @@ function ContactSearch({ value, onChange, onSelect, placeholder, filter }) {
               onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
               onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontWeight:700, color:'var(--text)' }}>{c.first_name} {c.last_name}{c.company?' — '+c.company:''}</div>
+                <div style={{ fontWeight:700, color:'var(--text)', display:'flex', alignItems:'center', gap:6 }}>{c.first_name} {c.last_name}{c.company?' — '+c.company:''}
+                  {c.type && <span style={{ fontSize:9.5, fontWeight:800, padding:'1px 7px', borderRadius:99, background:(CONTACT_TYPE_COLORS[c.type]||'#94A3B8')+'22', color:CONTACT_TYPE_COLORS[c.type]||'#94A3B8', textTransform:'uppercase', letterSpacing:'.03em' }}>{c.type}</span>}
+                </div>
                 <div style={{ color:'var(--muted)', fontSize:11 }}>{[c.phone,c.email].filter(Boolean).join(' · ')}</div>
               </div>
               <button onMouseDown={e => { e.stopPropagation(); e.preventDefault(); setPeekId(c.id) }} title="Verify — phone, email, address, past deals"

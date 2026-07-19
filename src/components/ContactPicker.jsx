@@ -12,6 +12,7 @@ import { db } from '../lib/db'
 import { Btn } from './UI'
 import { useAuth } from '../context/AuthContext'
 import { ContactPeek } from './ContactPeek'
+import { CONTACT_TYPE_COLORS } from '../lib/constants'
 
 const contactName = c => ((c.first_name || '') + ' ' + (c.last_name || '')).trim() || c.email || c.phone || 'Unnamed'
 
@@ -34,14 +35,14 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
         const like = '%' + q.replace(/[%_]/g, '') + '%'
         let query = supabase
           .from('contacts')
-          .select('id, first_name, last_name, email, phone, is_private, agent_id')
+          .select('id, first_name, last_name, email, phone, type, is_private, agent_id')
           .or('first_name.ilike.' + like + ',last_name.ilike.' + like + ',email.ilike.' + like + ',phone.ilike.' + like)
           .limit(12)
         let { data, error } = await query
         if (error && /is_private|column/i.test(error.message || '')) {
           // sql/private_contacts.sql not run yet — search without the flag
           const r = await supabase.from('contacts')
-            .select('id, first_name, last_name, email, phone, agent_id')
+            .select('id, first_name, last_name, email, phone, type, agent_id')
             .or('first_name.ilike.' + like + ',last_name.ilike.' + like + ',email.ilike.' + like + ',phone.ilike.' + like)
             .limit(12)
           data = r.data
@@ -100,7 +101,9 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
                 <div key={c.id} onClick={() => pick(c)}
                      style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, color: 'var(--text)' }}>{contactName(c)}</div>
+                    <div style={{ fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>{contactName(c)}
+                      {c.type && <span style={{ fontSize: 9.5, fontWeight: 800, padding: '1px 7px', borderRadius: 99, background: (CONTACT_TYPE_COLORS[c.type]||'#94A3B8')+'22', color: CONTACT_TYPE_COLORS[c.type]||'#94A3B8', textTransform: 'uppercase', letterSpacing: '.03em' }}>{c.type}</span>}
+                    </div>
                     <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{[c.email, c.phone].filter(Boolean).join(' · ') || '—'}</div>
                   </div>
                   <button onClick={e => { e.stopPropagation(); setPeekId(c.id) }} title="Verify — phone, email, address, past deals"
