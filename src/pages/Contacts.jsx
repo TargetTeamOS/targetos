@@ -300,7 +300,8 @@ export function Contacts() {
   const [popupDeals,   setPopupDeals]   = useState([])     // deals for popup
   const [popupFields,  setPopupFields]  = useState(['phone','email','source','status','agent']) // configurable
   const [viewMode,     setViewMode]     = useState('grid') // 'grid' | 'list'
-  const [groupByRole,  setGroupByRole]  = useState(() => { try { return localStorage.getItem('tos_contacts_group') === '1' } catch { return false } })
+  const [groupByRole,  setGroupByRole]  = useState(() => { try { return localStorage.getItem('tos_contacts_group') !== '0' } catch { return true } })
+  const [collapsed,    setCollapsed]    = useState({})   // role -> true
   useEffect(() => { try { localStorage.setItem('tos_contacts_group', groupByRole ? '1' : '0') } catch {} }, [groupByRole])
 
   // Auto-open from URL param
@@ -450,6 +451,8 @@ export function Contacts() {
     return [...filtered].sort((a, b) => order(a.type) - order(b.type) || String(a.first_name||'').localeCompare(String(b.first_name||'')))
   }, [filtered, groupByRole])
   const roleHeader = (c, idx, arr) => groupByRole && (idx === 0 || (arr[idx-1].type || '') !== (c.type || ''))
+  const roleHidden = c => groupByRole && collapsed[c.type || '']
+  const toggleRole = t => setCollapsed(p => ({ ...p, [t || '']: !p[t || ''] }))
   const roleCount  = t => displayList.filter(x => (x.type || '') === (t || '')).length
 
   const statusColor = (s) => CONTACT_STATUSES.find(x => x.value === s)?.color || '#94A3B8'
@@ -593,13 +596,15 @@ export function Contacts() {
             return (
               <React.Fragment key={c.id}>
               {roleHeader(c, idx, arr) && (
-                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 2px 0' }}>
+                <div onClick={() => toggleRole(c.type)} style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 2px 0', cursor: 'pointer', userSelect: 'none' }}>
+                  <span style={{ fontSize: 10, color: CONTACT_TYPE_COLORS[c.type] || '#94A3B8', transform: collapsed[c.type || ''] ? 'rotate(-90deg)' : 'none', transition: 'transform .15s' }}>▼</span>
                   <span style={{ width: 10, height: 10, borderRadius: '50%', background: CONTACT_TYPE_COLORS[c.type] || '#94A3B8' }} />
-                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>{c.type || 'No role set'}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: CONTACT_TYPE_COLORS[c.type] || 'var(--text)' }}>{c.type || 'No role set'}</span>
                   <span style={{ fontSize: 11, color: 'var(--muted)' }}>({roleCount(c.type)})</span>
-                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                  <div style={{ flex: 1, height: 2, borderRadius: 2, background: (CONTACT_TYPE_COLORS[c.type] || '#94A3B8') + '33' }} />
                 </div>
               )}
+              {!roleHidden(c) && (
               <div onClick={() => setPopupContact(c)}
                 style={{ background: isSelected ? 'rgba(204,34,0,.04)' : 'var(--panel)', borderRadius: 'var(--radius)', border: isSelected ? '2px solid #CC220044' : isPopup ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s', position: 'relative' }}
                 onMouseEnter={e => { if (!isSelected) e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
@@ -636,6 +641,7 @@ export function Contacts() {
                   </div>
                 )}
               </div>
+              )}
               </React.Fragment>
             )
           })}
@@ -658,12 +664,13 @@ export function Contacts() {
             return (
               <React.Fragment key={c.id}>
               {roleHeader(c, idx, arr) && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--dim)', borderBottom: '1px solid var(--border)' }}>
-                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: CONTACT_TYPE_COLORS[c.type] || '#94A3B8' }} />
-                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)' }}>{c.type || 'No role set'}</span>
+                <div onClick={() => toggleRole(c.type)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: (CONTACT_TYPE_COLORS[c.type] || '#94A3B8') + '0E', borderBottom: '1px solid var(--border)', borderLeft: '3px solid ' + (CONTACT_TYPE_COLORS[c.type] || '#94A3B8'), cursor: 'pointer', userSelect: 'none' }}>
+                  <span style={{ fontSize: 9, color: CONTACT_TYPE_COLORS[c.type] || '#94A3B8', transform: collapsed[c.type || ''] ? 'rotate(-90deg)' : 'none', transition: 'transform .15s' }}>▼</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: CONTACT_TYPE_COLORS[c.type] || 'var(--text)' }}>{c.type || 'No role set'}</span>
                   <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>({roleCount(c.type)})</span>
                 </div>
               )}
+              {!roleHidden(c) && (
               <div
                 style={{ display:'grid', gridTemplateColumns:'32px 2fr 1.4fr 1.4fr 1fr 1fr 1fr 100px', gap:0, padding:'9px 12px', borderBottom: idx < filtered.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(204,34,0,.03)' : isPopup ? 'rgba(204,34,0,.02)' : 'transparent', cursor:'pointer', transition:'background .1s', alignItems:'center' }}
                 onClick={() => setPopupContact(c)}
@@ -725,6 +732,7 @@ export function Contacts() {
                   </button>
                 </div>
               </div>
+              )}
               </React.Fragment>
             )
           })}
