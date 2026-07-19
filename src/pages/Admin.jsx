@@ -18,6 +18,7 @@ import {
 } from '../components/UI'
 import { FeatureFlagsPanel } from '../components/FeatureFlagsPanel'
 import { ContactLayoutEditor } from '../components/ContactLayoutEditor'
+import { ConnectorsPanel } from '../components/ConnectorsPanel'
 
 // Shared helper — every admin-users call needs the current session's
 // access token now that the endpoint actually checks auth (July 2026).
@@ -344,6 +345,7 @@ export function Admin() {
         { id:'customize',   label:'Customize' },
         { id:'rules',       label:'Data Rules' },
         { id:'features',    label:'Features' },
+        { id:'connectors',  label:'Connectors' },
         { id:'system',      label:'System' },
       ]} active={tab} onChange={setTab} />
 
@@ -698,6 +700,17 @@ export function Admin() {
 
       {/* ── SYSTEM TAB ── */}
       {tab==='features' && <FeatureFlagsPanel agents={agents} />}
+
+      {tab==='connectors' && (
+
+        <div style={{ paddingTop: '10px' }}>
+
+          <ConnectorsPanel />
+
+        </div>
+
+      )}
+
 
       {tab==='system' && (
         <div style={{display:'flex',flexDirection:'column',gap:10}}>

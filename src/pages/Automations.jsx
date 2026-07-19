@@ -120,6 +120,7 @@ const ACTION_GROUPS = [
       { id: 'notify_all_agents',    label: 'Notify all agents',            icon: '📢', sentence: 'notify all agents' },
       { id: 'notify_admin',         label: 'Notify admin',                 icon: '👑', sentence: 'notify the admin' },
       { id: 'send_sms',             label: 'Send SMS (Twilio)',             icon: '💬', sentence: 'send an SMS to {agent}' },
+      { id: 'send_webhook',         label: 'Send to Zapier (webhook)',      icon: '⚡', sentence: 'push data to a webhook' },
     ],
   },
   {
@@ -493,6 +494,24 @@ function SentenceBuilder({ form, onChange, agents }) {
                 ✕
               </button>
             </SentenceLine>
+
+            {/* Extended config for webhook */}
+            {action.type === 'send_webhook' && (
+              <div style={{ marginLeft: '28px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <input
+                  value={cfg.url || ''}
+                  onChange={e => updateActionConfig(idx, 'url', e.target.value)}
+                  placeholder="Webhook URL: paste a Zapier Catch Hook (https://hooks.zapier.com/...)"
+                  style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '13px', color: '#1E293B', fontFamily: ff, background: '#F8FAFC', outline: 'none' }}
+                />
+                <input
+                  value={cfg.payload || ''}
+                  onChange={e => updateActionConfig(idx, 'payload', e.target.value)}
+                  placeholder="Optional message... use {{contact_name}}, {{stage}}, {{addr}}"
+                  style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '13px', color: '#1E293B', fontFamily: ff, background: '#F8FAFC', outline: 'none' }}
+                />
+              </div>
+            )}
 
             {/* Extended config for email/notification */}
             {(action.type === 'send_email' || action.type === 'send_notification') && (

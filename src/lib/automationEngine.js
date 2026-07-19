@@ -344,6 +344,34 @@ async function executeAction(action, context, triggerData, agents) {
       break
     }
 
+    case 'send_webhook': {
+      // Pushes trigger data to an external URL — paste a Zapier "Catch
+      // Hook" URL (or any endpoint) into cfg.url when building the
+      // automation. cfg.payload (optional) is an interpolated message.
+      const hookUrl = (cfg.url || '').trim()
+      if (!hookUrl || !hookUrl.startsWith('https://')) {
+        console.warn('[AutomationEngine] send_webhook skipped — cfg.url missing or not https')
+        break
+      }
+      try {
+        await fetch(hookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: 'TargetOS',
+            event: context.trigger_type || 'automation',
+            message: interpolate(cfg.payload || '', context),
+            data: triggerData,
+            sent_at: new Date().toISOString(),
+          }),
+        })
+        console.log('[AutomationEngine] webhook sent → ' + hookUrl.split('/').slice(0, 3).join('/'))
+      } catch (e) {
+        console.warn('[AutomationEngine] webhook failed: ' + e.message)
+      }
+      break
+    }
+
     case 'send_email': {
       const agentId = resolveAgent(cfg.to, triggerData, agents)
       const agentRecord = agents.find(a => a.id === agentId)
