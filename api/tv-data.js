@@ -99,6 +99,8 @@ module.exports = async function handler(req, res) {
         images: Array.isArray(cfg.images) ? cfg.images : [],
         rotate_seconds: Number(cfg.rotate_seconds) || 45,
         popup_seconds: Number(cfg.popup_seconds) || 15,
+        board_title: cfg.board_title || '',
+        panels: cfg.panels || {},
       },
       announcements: (tvAnnouncements || []).map(a => ({
         id: a.id, title: a.title, body: a.body, type: a.type, celebrate: a.celebrate,

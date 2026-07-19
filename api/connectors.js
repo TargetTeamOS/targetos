@@ -91,6 +91,8 @@ module.exports = async function handler(req, res) {
       if (body.rotate_seconds !== undefined) config.rotate_seconds = Math.max(10, Math.min(600, Number(body.rotate_seconds) || 45))
       if (body.popup_seconds !== undefined)  config.popup_seconds = Math.max(5, Math.min(120, Number(body.popup_seconds) || 15))
       if (body.announce_days !== undefined)  config.announce_days = Math.max(1, Math.min(30, Number(body.announce_days) || 3))
+      if (body.board_title !== undefined)    config.board_title = String(body.board_title).slice(0, 60)
+      if (body.panels !== undefined && typeof body.panels === 'object') config.panels = body.panels
       await patchIntegration('display', { config })
       res.status(200).json({ ok: true, config })
       return

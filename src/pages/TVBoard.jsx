@@ -98,39 +98,42 @@ export function TVBoard() {
 
   const display = data.display || { mode: 'dashboard' }
   const images = display.images || []
+  const panels = display.panels || {}
+  const showPanel = k => panels[k] !== false
+  const boardTitle = display.board_title || ''
 
   const dashboardPane = (
     <div style={wrap}>
       {/* header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '2.5vh' }}>
-        <div style={{ fontSize: '3.2vh', fontWeight: 800 }}>🎯 TARGET TEAM <span style={{ color: '#38BDF8' }}>LIVE BOARD</span></div>
+        <div style={{ fontSize: '3.2vh', fontWeight: 800 }}>{boardTitle ? '🎯 ' + boardTitle : (<>🎯 TARGET TEAM <span style={{ color: '#38BDF8' }}>LIVE BOARD</span></>)}</div>
         <div style={{ fontSize: '2.6vh', fontWeight: 600, color: '#94A3B8' }}>
           {clock.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · {clock.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
         </div>
       </div>
 
       {/* stat row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.4vw', marginBottom: '2.5vh' }}>
-        <div style={card}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.4vw', marginBottom: '2.5vh' }}>
+        {showPanel('accepted_mtd') && <div style={card}>
           <div style={label}>Offers Accepted — This Month</div>
           <div style={Object.assign({}, big, { color: '#00c875' })}>{s.accepted_mtd}</div>
           <div style={sub}>{money(s.accepted_mtd_volume)} volume</div>
-        </div>
-        <div style={card}>
+        </div>}
+        {showPanel('pipeline') && <div style={card}>
           <div style={label}>Active Pipeline</div>
           <div style={Object.assign({}, big, { color: '#38BDF8' })}>{s.pipeline_count}</div>
           <div style={sub}>{money(s.pipeline_volume)} in play</div>
-        </div>
-        <div style={card}>
+        </div>}
+        {showPanel('closed_ytd') && <div style={card}>
           <div style={label}>Closed — Year to Date</div>
           <div style={Object.assign({}, big, { color: '#FACC15' })}>{s.closed_ytd}</div>
           <div style={sub}>{money(s.closed_ytd_volume)} closed volume</div>
-        </div>
+        </div>}
       </div>
 
       {/* three columns */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.1fr 1fr', gap: '1.4vw' }}>
-        <div style={card}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.4vw' }}>
+        {showPanel('recent') && <div style={card}>
           <div style={Object.assign({}, label, { marginBottom: '1.4vh' })}>🎉 Recently Accepted</div>
           {(data.recent_accepted || []).map((d, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '1.1vh 0', borderBottom: '1px solid #1E293B', fontSize: '2vh' }}>
@@ -139,9 +142,9 @@ export function TVBoard() {
             </div>
           ))}
           {!(data.recent_accepted || []).length && <div style={{ color: '#475569', fontSize: '2vh' }}>Nothing yet — go get one.</div>}
-        </div>
+        </div>}
 
-        <div style={card}>
+        {showPanel('closing_soon') && <div style={card}>
           <div style={Object.assign({}, label, { marginBottom: '1.4vh' })}>📅 Closing Soon (30 days)</div>
           {(data.closing_soon || []).map((d, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.1vh 0', borderBottom: '1px solid #1E293B', fontSize: '2vh' }}>
@@ -153,9 +156,9 @@ export function TVBoard() {
             </div>
           ))}
           {!(data.closing_soon || []).length && <div style={{ color: '#475569', fontSize: '2vh' }}>No closings scheduled in the next 30 days.</div>}
-        </div>
+        </div>}
 
-        <div style={card}>
+        {showPanel('leaderboard') && <div style={card}>
           <div style={Object.assign({}, label, { marginBottom: '1.4vh' })}>🏆 Agent Leaderboard — YTD</div>
           {(data.leaderboard || []).map((a, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.8vw', padding: '1.1vh 0', borderBottom: '1px solid #1E293B', fontSize: '2.1vh' }}>
@@ -166,7 +169,7 @@ export function TVBoard() {
             </div>
           ))}
           {!(data.leaderboard || []).length && <div style={{ color: '#475569', fontSize: '2vh' }}>Leaderboard fills as deals close this year.</div>}
-        </div>
+        </div>}
       </div>
 
       <div style={{ marginTop: '2vh', fontSize: '1.5vh', color: '#334155', textAlign: 'right' }}>

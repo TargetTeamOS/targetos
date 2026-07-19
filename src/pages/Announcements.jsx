@@ -14,8 +14,10 @@ import { fmtDateTime } from '../lib/utils'
 import { ANNOUNCEMENT_TYPES } from '../lib/constants'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
-  ModalActions, Loading, Empty, Confirm, Toggle, Avatar
+  ModalActions, Loading, Empty, Confirm, Toggle, Avatar, Tabs
 } from '../components/UI'
+import { TVStudio } from '../components/TVStudio'
+import { TVDashboardControls, TVPreview } from '../components/TVDashboardControls'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -25,6 +27,7 @@ export function Announcements() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage } = useAuth()
+  const [pageTab, setPageTab] = useState('posts')
   const { toast } = useApp()
 
   const { announcements, loading, add, update, remove } = useAnnouncements()
@@ -94,12 +97,31 @@ export function Announcements() {
         actions={canManage && <Btn onClick={() => { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); navigate('/announcements/new') }}>+ Post Announcement</Btn>}
       />
 
-      {loading && <Loading />}
-      {!loading && announcements.length === 0 && (
+      {canManage && (
+        <Tabs tabs={[
+          { id:'posts',     label:'📣 Posts' },
+          { id:'playlist',  label:'📺 TV Playlist' },
+          { id:'dashboard', label:'📊 TV Dashboard' },
+          { id:'preview',   label:'👁 Preview' },
+        ]} active={pageTab} onChange={setPageTab} />
+      )}
+
+      {pageTab === 'playlist' && canManage && (
+        <div style={{ paddingTop: '10px' }}><TVStudio /></div>
+      )}
+      {pageTab === 'dashboard' && canManage && (
+        <div style={{ paddingTop: '10px' }}><TVDashboardControls /></div>
+      )}
+      {pageTab === 'preview' && canManage && (
+        <div style={{ paddingTop: '10px' }}><TVPreview /></div>
+      )}
+
+      {pageTab === 'posts' && loading && <Loading />}
+      {pageTab === 'posts' && !loading && announcements.length === 0 && (
         <Empty icon="📣" title="No announcements" sub={canManage ? "Post your first announcement." : "Check back soon."} />
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {pageTab === 'posts' && <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {announcements.map(a => (
           <div key={a.id}
             onClick={() => canManage && (navigate('/announcements/' + a.id), setSelected(a), setForm({ ...BLANK, ...a }))}
@@ -124,7 +146,7 @@ export function Announcements() {
             )}
           </div>
         ))}
-      </div>
+      </div>}
 
       <Modal open={!!(selected || urlId === 'new')} onClose={closePanel} title={selected ? 'Edit Announcement' : 'New Announcement'} width={500}>
         <Field label="Title" required>
