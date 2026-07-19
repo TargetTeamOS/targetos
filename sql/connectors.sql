@@ -149,3 +149,7 @@ create policy tv_media_read on storage.objects
 for select using (bucket_id = 'tv-media');
 
 select 'tv playlist ready' as status;
+
+-- ═══ v7 (7/19 late): hourly scheduling per playlist item ═══
+alter table tv_playlist add column if not exists hours int[];
+select 'hourly scheduling ready' as status;

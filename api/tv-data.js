@@ -52,8 +52,10 @@ module.exports = async function handler(req, res) {
     const nyNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
     const dayKey = ['sun','mon','tue','wed','thu','fri','sat'][nyNow.getDay()]
     const hhmm = String(nyNow.getHours()).padStart(2, '0') + ':' + String(nyNow.getMinutes()).padStart(2, '0')
+    const nyHour = nyNow.getHours()
     const playlist = (playlistRows || []).filter(item => {
       if (Array.isArray(item.days) && item.days.length && !item.days.includes(dayKey)) return false
+      if (Array.isArray(item.hours) && item.hours.length && !item.hours.includes(nyHour)) return false
       const st = item.start_time ? String(item.start_time).slice(0, 5) : null
       const en = item.end_time   ? String(item.end_time).slice(0, 5)   : null
       if (st && en) {

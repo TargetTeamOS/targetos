@@ -114,6 +114,19 @@ export function TVStudio() {
     setUploading(false)
   }
 
+  function toggleHour(item, hour) {
+    const hours = Array.isArray(item.hours) ? [...item.hours] : []
+    const next = hours.includes(hour) ? hours.filter(h => h !== hour) : [...hours, hour].sort((a, b) => a - b)
+    patch(item.id, { hours: next.length ? next : null })
+  }
+
+  function hourLabel(h) {
+    if (h === 0) return '12a'
+    if (h < 12) return h + 'a'
+    if (h === 12) return '12p'
+    return (h - 12) + 'p'
+  }
+
   function toggleDay(item, day) {
     const days = Array.isArray(item.days) ? [...item.days] : []
     const next = days.includes(day) ? days.filter(d => d !== day) : [...days, day]
@@ -191,6 +204,27 @@ export function TVStudio() {
                 style={Object.assign({}, inputStyle, { width: '110px' })} />
               <span style={{ fontSize: '11px', color: '#94A3B8', fontFamily: ff }}>(no days/times selected = always)</span>
             </div>
+            {/* hourly grid */}
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '12px', color: '#64748B', fontFamily: ff, marginRight: '2px' }}>Hours:</span>
+              {Array.from({ length: 24 }, (_, h) => {
+                const explicit = Array.isArray(item.hours) && item.hours.length
+                const active = !explicit || item.hours.includes(h)
+                return (
+                  <button key={h} onClick={() => toggleHour(item, h)}
+                    title={hourLabel(h) + ' – ' + hourLabel((h + 1) % 24)}
+                    style={{ border: '1px solid ' + (explicit && active ? '#7C3AED' : '#E2E8F0'), background: explicit && active ? '#EDE9FE' : (!explicit ? '#F8FAFC' : '#fff'), color: explicit && active ? '#6D28D9' : '#94A3B8', borderRadius: '5px', padding: '2px 4px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', fontFamily: ff, minWidth: '26px' }}>
+                    {hourLabel(h)}
+                  </button>
+                )
+              })}
+              {Array.isArray(item.hours) && item.hours.length ? (
+                <button onClick={() => patch(item.id, { hours: null })}
+                  style={{ border: 'none', background: 'none', color: '#2563EB', fontSize: '11px', cursor: 'pointer', fontFamily: ff, fontWeight: 600 }}>clear (all hours)</button>
+              ) : (
+                <span style={{ fontSize: '11px', color: '#94A3B8', fontFamily: ff }}>none selected = every hour</span>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -237,7 +271,7 @@ export function TVStudio() {
         <b>How it works:</b><br />
         1. <b>TV:</b> Copy the link above → open in the TV/Fire Stick browser → full-screen once. Every change here reaches the TV within ~1 minute.<br />
         2. <b>Playlist:</b> items play top-to-bottom in a loop, each for its own seconds. Use ▲▼ to reorder, the checkbox to pause an item without deleting it.<br />
-        3. <b>Scheduling:</b> click day pills and set from/to times per item — e.g. open-house flyer only Sun 11:00–14:00. Nothing selected = plays always. Times are office time (New York).<br />
+        3. <b>Scheduling:</b> per item, click day pills, pick specific hours in the hour grid (e.g. 9a–5p business hours, or lunch-only), and/or set exact from/to times. All selected conditions must match; nothing selected = plays always. Times are office time (New York).<br />
         4. <b>Google Slides:</b> in Slides: File → Share → Publish to web → set auto-advance + "start slideshow when player loads" → Publish → paste that link.<br />
         5. <b>Announcement pop-ups:</b> post in Announcements with "📺 Show on office TV" — set how many seconds it stays on screen and until what date it keeps popping (once per minute). "🎉 Celebrate" adds full-screen confetti. Pop-ups appear over whatever is playing.<br />
         6. Empty playlist = the stats dashboard runs full-time.
