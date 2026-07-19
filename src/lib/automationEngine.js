@@ -344,6 +344,47 @@ async function executeAction(action, context, triggerData, agents) {
       break
     }
 
+    case 'notify_team_chat': {
+      // Posts to the connected Slack/Teams webhook via the API route
+      // (the webhook URL is server-side only).
+      try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const authToken = sessionData && sessionData.session ? sessionData.session.access_token : ''
+        await fetch('/api/team-notify', {
+          method: 'POST',
+          headers: Object.assign({ 'Content-Type': 'application/json' }, authToken ? { Authorization: 'Bearer ' + authToken } : {}),
+          body: JSON.stringify({ text: interpolate(cfg.message || 'TargetOS automation fired', context) }),
+        })
+      } catch (e) {
+        console.warn('[AutomationEngine] team chat notify failed: ' + e.message)
+      }
+      break
+    }
+
+    case 'add_to_mailchimp': {
+      // Upserts the trigger's contact into the Mailchimp audience.
+      try {
+        const email = triggerData.email || triggerData.contact_email || context.contact_email || ''
+        if (!email) { console.warn('[AutomationEngine] add_to_mailchimp skipped — no email on trigger'); break }
+        const { data: sessionData } = await supabase.auth.getSession()
+        const authToken = sessionData && sessionData.session ? sessionData.session.access_token : ''
+        await fetch('/api/mailchimp-sync', {
+          method: 'POST',
+          headers: Object.assign({ 'Content-Type': 'application/json' }, authToken ? { Authorization: 'Bearer ' + authToken } : {}),
+          body: JSON.stringify({
+            action: 'upsert_contact',
+            email,
+            first_name: triggerData.first_name || '',
+            last_name: triggerData.last_name || '',
+            tags: cfg.tag ? ['TargetOS', String(cfg.tag)] : ['TargetOS'],
+          }),
+        })
+      } catch (e) {
+        console.warn('[AutomationEngine] mailchimp add failed: ' + e.message)
+      }
+      break
+    }
+
     case 'send_webhook': {
       // Pushes trigger data to an external URL — paste a Zapier "Catch
       // Hook" URL (or any endpoint) into cfg.url when building the

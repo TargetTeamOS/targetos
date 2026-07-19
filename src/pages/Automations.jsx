@@ -121,6 +121,8 @@ const ACTION_GROUPS = [
       { id: 'notify_admin',         label: 'Notify admin',                 icon: '👑', sentence: 'notify the admin' },
       { id: 'send_sms',             label: 'Send SMS (Twilio)',             icon: '💬', sentence: 'send an SMS to {agent}' },
       { id: 'send_webhook',         label: 'Send to Zapier (webhook)',      icon: '⚡', sentence: 'push data to a webhook' },
+      { id: 'notify_team_chat',     label: 'Post to Slack/Teams',           icon: '📣', sentence: 'post to the team channel' },
+      { id: 'add_to_mailchimp',     label: 'Add to Mailchimp',              icon: '📨', sentence: 'add the contact to Mailchimp' },
     ],
   },
   {
@@ -494,6 +496,28 @@ function SentenceBuilder({ form, onChange, agents }) {
                 ✕
               </button>
             </SentenceLine>
+
+            {/* Extended config for team chat / mailchimp */}
+            {action.type === 'notify_team_chat' && (
+              <div style={{ marginLeft: '28px', marginBottom: '8px' }}>
+                <input
+                  value={cfg.message || ''}
+                  onChange={e => updateActionConfig(idx, 'message', e.target.value)}
+                  placeholder="Message... use {{contact_name}}, {{stage}}, {{addr}}"
+                  style={{ width: '100%', padding: '7px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '13px', color: '#1E293B', fontFamily: ff, background: '#F8FAFC', outline: 'none' }}
+                />
+              </div>
+            )}
+            {action.type === 'add_to_mailchimp' && (
+              <div style={{ marginLeft: '28px', marginBottom: '8px' }}>
+                <input
+                  value={cfg.tag || ''}
+                  onChange={e => updateActionConfig(idx, 'tag', e.target.value)}
+                  placeholder="Optional tag: e.g. Open House, Buyer, Lakefront"
+                  style={{ width: '100%', padding: '7px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '13px', color: '#1E293B', fontFamily: ff, background: '#F8FAFC', outline: 'none' }}
+                />
+              </div>
+            )}
 
             {/* Extended config for webhook */}
             {action.type === 'send_webhook' && (

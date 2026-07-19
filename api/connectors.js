@@ -61,13 +61,31 @@ module.exports = async function handler(req, res) {
       if (body.client_id !== undefined)     config.client_id = String(body.client_id).trim()
       if (body.send_as !== undefined)       config.send_as = String(body.send_as).trim() // 'self' | 'office'
       if (body.client_secret)               secrets.client_secret = String(body.client_secret).trim()
-      const ready = config.client_id && secrets.client_secret
+      if (body.audience_id !== undefined)   config.audience_id = String(body.audience_id).trim()
+      if (body.api_key)                     secrets.api_key = String(body.api_key).trim()
+      if (body.webhook_url)                 secrets.webhook_url = String(body.webhook_url).trim()
+      let ready = config.client_id && secrets.client_secret
+      if (id === 'teamchat')  ready = !!secrets.webhook_url
+      if (id === 'mailchimp') ready = !!(secrets.api_key && config.audience_id)
+      if ((id === 'teamchat' || id === 'mailchimp') && ready) {
+        await patchIntegration(id, { config, secrets, status: 'connected', last_error: null })
+        res.status(200).json({ ok: true, status: 'connected' })
+        return
+      }
       await patchIntegration(id, {
         config, secrets,
         status: integ.status === 'connected' ? 'connected' : (ready ? 'needs_connect' : 'not_configured'),
         last_error: null,
       })
       res.status(200).json({ ok: true, status: ready ? 'needs_connect' : 'not_configured' })
+      return
+    }
+
+    if (action === 'teamchat_test') {
+      const { notifyTeamChat } = require('./_lib/connectors')
+      const r = await notifyTeamChat('✅ TargetOS is connected — this is a test notification.')
+      if (r.skipped) { res.status(400).json({ error: 'webhook URL not saved yet' }); return }
+      res.status(r.ok ? 200 : 502).json(r.ok ? { ok: true } : { error: 'webhook post failed — check the URL' })
       return
     }
 

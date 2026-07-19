@@ -80,3 +80,10 @@ alter table integration_accounts enable row level security;
 
 -- VERIFY
 select 'integration_accounts ready' as status;
+
+-- ═══ v3 (7/19 late): Team Chat + Mailchimp connectors ═══
+insert into integrations (id, name) values
+  ('teamchat', 'Slack / Teams Notifications'),
+  ('mailchimp','Mailchimp')
+on conflict (id) do nothing;
+select id, name, status from integrations order by id;

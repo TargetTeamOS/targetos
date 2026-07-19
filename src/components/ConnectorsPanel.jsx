@@ -11,6 +11,8 @@ const CARD_META = {
   google:    { icon: '🟢', blurb: 'Gmail sending + Google Sheets export through the connected Google account.', kind: 'oauth' },
   zapier:    { icon: '⚡', blurb: 'Two-way: automations can push to any Zap (send_webhook action), and Zaps can create contacts or notes here via the inbound URL below.', kind: 'webhook' },
   apination: { icon: '🔄', blurb: 'Brivity and other real-estate systems sync through API Nation. Point the API Nation workflow at the inbound URL below.', kind: 'webhook' },
+  teamchat:  { icon: '📣', blurb: 'Internal notifications to a Slack or Teams channel: new lead, offer accepted, closing soon. Paste an incoming-webhook URL from either platform.', kind: 'teamchat' },
+  mailchimp: { icon: '📨', blurb: 'Push contacts into your Mailchimp audience for listing blasts and newsletters. Automations can add contacts with tags; open/click tracking lives in Mailchimp.', kind: 'mailchimp' },
 }
 
 function StatusPill({ status }) {
@@ -165,6 +167,74 @@ export function ConnectorsPanel() {
                       style={Object.assign({}, btnStyle, { background: '#F1F5F9', color: '#334155' })}
                     >Disconnect</button>
                   )}
+                </div>
+              </div>
+            )}
+
+            {meta.kind === 'teamchat' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <input
+                  type="password"
+                  value={d.webhook_url || ''}
+                  onChange={e => setDraft(prev => Object.assign({}, prev, { [row.id]: Object.assign({}, d, { webhook_url: e.target.value }) }))}
+                  placeholder={row.status === 'connected' ? 'Webhook saved ✓ (paste to replace)' : 'Incoming webhook URL (Slack or Teams)'}
+                  style={inputStyle}
+                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={async () => { setBusy(row.id); try { await post({ action: 'save_credentials', id: row.id, webhook_url: d.webhook_url }); setDraft(prev => Object.assign({}, prev, { [row.id]: {} })); await load() } catch (e) { setErr(e.message) } setBusy('') }}
+                    disabled={busy === row.id || !d.webhook_url}
+                    style={Object.assign({}, btnStyle, { background: '#0F172A', color: '#fff' })}>Save</button>
+                  {row.status === 'connected' && (
+                    <button onClick={async () => { setBusy(row.id); try { await post({ action: 'teamchat_test', id: row.id }); setErr('') } catch (e) { setErr(e.message) } setBusy('') }}
+                      disabled={busy === row.id}
+                      style={Object.assign({}, btnStyle, { background: '#2563EB', color: '#fff' })}>Send test message</button>
+                  )}
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748B', fontFamily: ff }}>
+                  Slack: channel → Integrations → Incoming Webhooks. Teams: channel → Connectors → Incoming Webhook. Then use the "Post to Slack/Teams" action in any automation.
+                </div>
+              </div>
+            )}
+
+            {meta.kind === 'mailchimp' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="password"
+                    value={d.api_key || ''}
+                    onChange={e => setDraft(prev => Object.assign({}, prev, { [row.id]: Object.assign({}, d, { api_key: e.target.value }) }))}
+                    placeholder={row.status === 'connected' ? 'API key saved ✓' : 'Mailchimp API key (ends in -us21 etc.)'}
+                    style={inputStyle}
+                  />
+                  <input
+                    value={d.audience_id !== undefined ? d.audience_id : (row.config && row.config.audience_id) || ''}
+                    onChange={e => setDraft(prev => Object.assign({}, prev, { [row.id]: Object.assign({}, d, { audience_id: e.target.value }) }))}
+                    placeholder="Audience ID"
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={async () => { setBusy(row.id); try { await post({ action: 'save_credentials', id: row.id, api_key: d.api_key, audience_id: d.audience_id }); setDraft(prev => Object.assign({}, prev, { [row.id]: {} })); await load() } catch (e) { setErr(e.message) } setBusy('') }}
+                    disabled={busy === row.id || (!d.api_key && d.audience_id === undefined)}
+                    style={Object.assign({}, btnStyle, { background: '#0F172A', color: '#fff' })}>Save</button>
+                  {row.status === 'connected' && (
+                    <button onClick={async () => {
+                      setBusy(row.id)
+                      try {
+                        const h = await authHeaders()
+                        const r = await fetch('/api/mailchimp-sync', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, h), body: JSON.stringify({ action: 'sync_all' }) })
+                        const j = await r.json()
+                        if (!r.ok) throw new Error(j.error || 'sync failed')
+                        setErr('')
+                        alert('Mailchimp sync: ' + j.synced + ' contacts synced' + (j.failed ? ', ' + j.failed + ' failed' : ''))
+                      } catch (e) { setErr(e.message) }
+                      setBusy('')
+                    }} disabled={busy === row.id}
+                      style={Object.assign({}, btnStyle, { background: '#2563EB', color: '#fff' })}>{busy === row.id ? 'Syncing…' : 'Sync all contacts'}</button>
+                  )}
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748B', fontFamily: ff }}>
+                  Mailchimp → Account → Extras → API keys. Audience ID: Audience → Settings → "Audience name and defaults". Contacts get the tag "TargetOS".
                 </div>
               </div>
             )}

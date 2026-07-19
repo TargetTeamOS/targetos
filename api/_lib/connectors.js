@@ -190,3 +190,55 @@ module.exports.upsertAgentAccount = upsertAgentAccount
 module.exports.findAccountByState = findAccountByState
 module.exports.freshAccountToken = freshAccountToken
 module.exports.agentIdFromAuthUser = agentIdFromAuthUser
+
+// ── Team chat (Slack or Teams incoming webhook) ───────────────────
+// Both platforms accept POST {"text": "..."} on incoming webhooks.
+async function notifyTeamChat(text) {
+  const integ = await getIntegration('teamchat')
+  const hook = ((integ && integ.secrets) || {}).webhook_url || ''
+  if (!hook) return { ok: false, skipped: true }
+  const r = await fetch(hook, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: String(text).slice(0, 3000) }),
+  })
+  return { ok: r.ok }
+}
+
+// ── Mailchimp ─────────────────────────────────────────────────────
+function mailchimpBase(apiKey) {
+  const dc = String(apiKey).split('-')[1]
+  if (!dc) throw new Error('Mailchimp API key looks wrong — it should end in a datacenter like -us21')
+  return 'https://' + dc + '.api.mailchimp.com/3.0'
+}
+
+async function mailchimpUpsert(apiKey, audienceId, member) {
+  const crypto = require('crypto')
+  const email = String(member.email || '').trim().toLowerCase()
+  if (!email) throw new Error('email required')
+  const hash = crypto.createHash('md5').update(email).digest('hex')
+  const base = mailchimpBase(apiKey)
+  const auth = 'Basic ' + Buffer.from('anystring:' + apiKey).toString('base64')
+  const r = await fetch(base + '/lists/' + audienceId + '/members/' + hash, {
+    method: 'PUT',
+    headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email_address: email,
+      status_if_new: 'subscribed',
+      merge_fields: { FNAME: member.first_name || '', LNAME: member.last_name || '' },
+    }),
+  })
+  const j = await r.json()
+  if (!r.ok) throw new Error('Mailchimp upsert failed: ' + (j.detail || r.status))
+  if (Array.isArray(member.tags) && member.tags.length) {
+    await fetch(base + '/lists/' + audienceId + '/members/' + hash + '/tags', {
+      method: 'POST',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags: member.tags.map(t => ({ name: String(t), status: 'active' })) }),
+    })
+  }
+  return j
+}
+
+module.exports.notifyTeamChat = notifyTeamChat
+module.exports.mailchimpUpsert = mailchimpUpsert
