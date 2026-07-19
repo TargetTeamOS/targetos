@@ -44,6 +44,31 @@ module.exports = async function handler(req, res) {
     const { lookupContact } = require('./_lib/phone')
     const contact = await lookupContact(supabase, From || '')
 
+    // FIX (July 2026): if no calls row matched this CallSid (webhook
+    // race, forwarded-leg SID, or the inbound insert failed), the
+    // voicemail used to be silently DROPPED. Insert a row instead —
+    // a voicemail must never be lost.
+    if (!call || !call.id) {
+      const { error: vmInsErr } = await supabase.from('calls').insert({
+        twilio_call_sid: CallSid || null,
+        direction:       'inbound',
+        from_number:     From || null,
+        contact_id:      contact?.id || null,
+        contact_name:    contact ? ((contact.first_name || '') + ' ' + (contact.last_name || '')).trim() : null,
+        agent_id:        contact?.agent_id || null,
+        is_voicemail:    true,
+        voicemail_url:   fullRecordingUrl,
+        voicemail_transcript: transcriptText,
+        transcript:      transcriptText,
+        transcript_language: transcriptLang,
+        duration:        RecordingDuration ? parseInt(RecordingDuration, 10) : null,
+        outcome:         'Voicemail',
+        created_at:      new Date().toISOString(),
+      })
+      if (vmInsErr) console.error('[voicemail] fallback insert FAILED — voicemail lost:', vmInsErr.message)
+      else console.info('[voicemail] no calls row for', CallSid, '— inserted fallback row')
+    }
+
     // ── VOICEMAIL EMAIL ALERT (July 2026) ─────────────────────────
     // Controlled by the 'sys-voicemail-email' row on the Automations
     // board: toggle it off there and this stops; edit its config

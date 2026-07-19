@@ -79,16 +79,23 @@ module.exports = async function handler(req, res) {
         RecordingStatusCallback: (process.env.BASE_URL || 'https://app.targetreteam.com') + '/api/twilio-status',
         RecordingStatusCallbackEvent: 'completed',
       })
-      fetch(recUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64'),
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: params.toString(),
-      }).then(async r => {
+      // MUST be awaited: Vercel freezes the lambda when the response
+      // returns, killing un-awaited requests — recordings never started.
+      // Timeout race keeps call answering snappy even if Twilio is slow.
+      try {
+        const r = await Promise.race([
+          fetch(recUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64'),
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: params.toString(),
+          }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('recording-start timeout')), 2500)),
+        ])
         if (!r.ok) console.warn('[inbound] full-call recording failed to start:', r.status, (await r.text()).slice(0, 200))
-      }).catch(e => console.warn('[inbound] full-call recording error:', e.message))
+      } catch (e) { console.warn('[inbound] full-call recording error:', e.message) }
     }
   }
 

@@ -121,6 +121,22 @@ module.exports = async function handler(req, res) {
           const { data } = await supabase.from('calls').update(upd).eq('twilio_call_sid', CallSid).select('agent_id, contact_name, from_number').maybeSingle()
           updatedCall = data
         }
+        // FIX (July 2026): a completed RECORDING with no matching calls
+        // row was silently discarded. Insert a minimal row so the
+        // recording is never lost (it links to the contact on view).
+        if (!updatedCall && upd.recording_url && CallSid) {
+          const { error: recInsErr } = await supabase.from('calls').insert({
+            twilio_call_sid: CallSid,
+            direction: 'inbound',
+            recording_url: upd.recording_url,
+            recording_sid: upd.recording_sid || null,
+            duration: upd.duration || null,
+            outcome: upd.outcome || 'Completed',
+            created_at: new Date().toISOString(),
+          })
+          if (recInsErr) console.error('[status] recording fallback insert failed:', recInsErr.message)
+          else console.info('[status] recording arrived with no calls row for', CallSid, '— inserted fallback')
+        }
         if (upd.outcome === 'No Answer' && updatedCall?.agent_id) {
           notifyAgent(supabase, updatedCall.agent_id, 'callMissed', {
             title: 'Missed call',
