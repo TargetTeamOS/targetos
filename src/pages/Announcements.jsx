@@ -19,7 +19,7 @@ import {
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-const BLANK = { title: '', body: '', type: 'info', pinned: false, show_on_tv: false, celebrate: false }
+const BLANK = { title: '', body: '', type: 'info', pinned: false, show_on_tv: false, celebrate: false, tv_popup_seconds: 15, tv_until: '' }
 
 export function Announcements() {
   const navigate = useNavigate()
@@ -140,7 +140,20 @@ export function Announcements() {
           <Toggle value={form.pinned} onChange={v => set('pinned', v)} label="Pin to top" />
           <Toggle value={form.show_on_tv} onChange={v => set('show_on_tv', v)} label="📺 Show on office TV (pops up on the board)" />
           {form.show_on_tv && (
-            <Toggle value={form.celebrate} onChange={v => set('celebrate', v)} label="🎉 Celebrate — full-screen confetti on the TV" />
+            <>
+              <Toggle value={form.celebrate} onChange={v => set('celebrate', v)} label="🎉 Celebrate — full-screen confetti on the TV" />
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Stays on screen</span>
+                <input type="number" min="5" max="120" value={form.tv_popup_seconds || 15}
+                  onChange={e => set('tv_popup_seconds', Number(e.target.value) || 15)}
+                  style={{ width: '70px', padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', background: 'var(--panel)', color: 'var(--text)' }} />
+                <span style={{ fontSize: '13px', color: 'var(--muted)' }}>seconds · pops up until</span>
+                <input type="date" value={form.tv_until ? String(form.tv_until).slice(0,10) : ''}
+                  onChange={e => set('tv_until', e.target.value ? e.target.value + 'T23:59:59' : null)}
+                  style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', background: 'var(--panel)', color: 'var(--text)' }} />
+                <span style={{ fontSize: '12px', color: 'var(--muted)' }}>(blank = 3 days)</span>
+              </div>
+            </>
           )}
         </Field>
         <ModalActions>

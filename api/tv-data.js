@@ -34,12 +34,35 @@ module.exports = async function handler(req, res) {
     const announceSince = new Date(Date.now() - announceDays * 86400000).toISOString()
 
     const client = sb()
-    const { data: tvAnnouncements } = await client.from('announcements')
-      .select('id, title, body, type, celebrate, created_at')
+    const nowIso = new Date().toISOString()
+    const { data: annRows } = await client.from('announcements')
+      .select('id, title, body, type, celebrate, created_at, tv_until, tv_popup_seconds')
       .eq('show_on_tv', true)
-      .gte('created_at', announceSince)
+      .gte('created_at', new Date(Date.now() - 30 * 86400000).toISOString())
       .order('created_at', { ascending: false })
-      .limit(5)
+      .limit(10)
+    const tvAnnouncements = (annRows || []).filter(a => {
+      if (a.tv_until) return a.tv_until >= nowIso            // explicit run-until wins
+      return a.created_at >= announceSince                    // else default window
+    }).slice(0, 5)
+
+    // ── playlist: only items scheduled for right now (America/New_York) ──
+    const { data: playlistRows } = await client.from('tv_playlist')
+      .select('*').eq('enabled', true).order('position').limit(50)
+    const nyNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
+    const dayKey = ['sun','mon','tue','wed','thu','fri','sat'][nyNow.getDay()]
+    const hhmm = String(nyNow.getHours()).padStart(2, '0') + ':' + String(nyNow.getMinutes()).padStart(2, '0')
+    const playlist = (playlistRows || []).filter(item => {
+      if (Array.isArray(item.days) && item.days.length && !item.days.includes(dayKey)) return false
+      const st = item.start_time ? String(item.start_time).slice(0, 5) : null
+      const en = item.end_time   ? String(item.end_time).slice(0, 5)   : null
+      if (st && en) {
+        if (st <= en) { if (hhmm < st || hhmm > en) return false }
+        else { if (hhmm < st && hhmm > en) return false }      // overnight window
+      } else if (st && hhmm < st) return false
+      else if (en && hhmm > en) return false
+      return true
+    }).map(i => ({ id: i.id, type: i.type, title: i.title, src: i.src, duration_seconds: Math.max(5, Number(i.duration_seconds) || 30) }))
     const { data: deals, error } = await client.from('deals')
       .select('id, addr, side, stage, production, gci, ao_date, close_date, agent_id, agents(name, color)')
       .gte('created_at', (year - 1) + '-01-01') // enough history for YTD + pipeline
@@ -77,7 +100,12 @@ module.exports = async function handler(req, res) {
         rotate_seconds: Number(cfg.rotate_seconds) || 45,
         popup_seconds: Number(cfg.popup_seconds) || 15,
       },
-      announcements: tvAnnouncements || [],
+      announcements: (tvAnnouncements || []).map(a => ({
+        id: a.id, title: a.title, body: a.body, type: a.type, celebrate: a.celebrate,
+        created_at: a.created_at,
+        popup_seconds: Number(a.tv_popup_seconds) || Number(cfg.popup_seconds) || 15,
+      })),
+      playlist,
       stats: {
         accepted_mtd: acceptedMTD.length,
         accepted_mtd_volume: acceptedMTD.reduce((s, d) => s + num(d.production), 0),

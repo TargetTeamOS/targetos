@@ -51,7 +51,7 @@ export function TVBoard() {
         const a = anns[0]
         setPopup(a)
         if (a.celebrate) { setConfettiOn(true) }
-        const holdMs = ((j.display && j.display.popup_seconds) || 15) * 1000
+        const holdMs = (Number(a.popup_seconds) || (j.display && j.display.popup_seconds) || 15) * 1000
         setTimeout(() => { setPopup(null); setConfettiOn(false) }, holdMs)
       }
     } catch (e) { setErr(e.message) }
@@ -64,15 +64,19 @@ export function TVBoard() {
     return () => { clearInterval(dataTimer); clearInterval(clockTimer) }
   }, [])
 
-  // image + pane rotation
+  // playlist player: each item runs for ITS OWN duration, then advances.
+  // Falls back to legacy fixed rotation when no playlist is configured.
+  const playlist = (data && data.playlist) || []
   useEffect(() => {
+    if (playlist.length) {
+      const item = playlist[rotatePane % playlist.length]
+      const t = setTimeout(() => setRotatePane(p => p + 1), (item.duration_seconds || 30) * 1000)
+      return () => clearTimeout(t)
+    }
     const secs = (data && data.display && data.display.rotate_seconds) || 45
-    const t = setInterval(() => {
-      setSlideIndex(i => i + 1)
-      setRotatePane(p => p + 1)
-    }, secs * 1000)
+    const t = setInterval(() => { setSlideIndex(i => i + 1); setRotatePane(p => p + 1) }, secs * 1000)
     return () => clearInterval(t)
-  }, [data && data.display && data.display.rotate_seconds])
+  }, [rotatePane, playlist.length, data && data.display && data.display.rotate_seconds])
 
   const wrap = { minHeight: '100vh', background: '#0B1220', color: '#E2E8F0', fontFamily: ff, padding: '3vh 3vw', boxSizing: 'border-box' }
 
@@ -196,7 +200,24 @@ export function TVBoard() {
   if (images.length) rotationPanes.push(imagesPane)
 
   let content = dashboardPane
-  if (display.mode === 'slides') content = slidesPane
+  if (playlist.length) {
+    const item = playlist[rotatePane % playlist.length]
+    if (item.type === 'slides' && item.src) {
+      content = (
+        <iframe title={item.title || 'Slides'} src={item.src} allowFullScreen
+          style={{ position: 'fixed', inset: 0, width: '100vw', height: '100vh', border: 'none', background: '#000' }} />
+      )
+    } else if (item.type === 'image' && item.src) {
+      content = (
+        <div style={{ position: 'fixed', inset: 0, background: '#000' }}>
+          <img src={item.src} alt={item.title || ''} style={{ width: '100vw', height: '100vh', objectFit: 'contain' }} />
+        </div>
+      )
+    } else {
+      content = dashboardPane
+    }
+  }
+  else if (display.mode === 'slides') content = slidesPane
   else if (display.mode === 'images') content = imagesPane
   else if (display.mode === 'rotate') content = rotationPanes[rotatePane % rotationPanes.length]
 

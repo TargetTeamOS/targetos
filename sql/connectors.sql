@@ -110,3 +110,42 @@ set config = config || jsonb_build_object(
 )
 where id = 'display';
 select 'tv announcements ready' as status;
+
+-- ═══ v6 (7/19 late): TV Playlist + scheduling + media uploads ═══
+create table if not exists tv_playlist (
+  id         uuid primary key default gen_random_uuid(),
+  position   int not null default 0,
+  type       text not null check (type in ('dashboard','slides','image')),
+  title      text,
+  src        text,                        -- slides URL or image URL/storage path
+  duration_seconds int not null default 30,
+  enabled    boolean not null default true,
+  days       text[],                      -- null = every day; else ['mon','tue',...]
+  start_time time,                        -- null = all day
+  end_time   time,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table tv_playlist enable row level security;
+drop policy if exists tv_playlist_all on tv_playlist;
+create policy tv_playlist_all on tv_playlist
+for all to authenticated using (true) with check (true);
+
+-- per-announcement TV control
+alter table announcements add column if not exists tv_until timestamptz;
+alter table announcements add column if not exists tv_popup_seconds int;
+
+-- storage bucket for uploaded TV media (public read so the TV can show it)
+insert into storage.buckets (id, name, public) values ('tv-media','tv-media', true)
+on conflict (id) do nothing;
+drop policy if exists tv_media_upload on storage.objects;
+create policy tv_media_upload on storage.objects
+for insert to authenticated with check (bucket_id = 'tv-media');
+drop policy if exists tv_media_delete on storage.objects;
+create policy tv_media_delete on storage.objects
+for delete to authenticated using (bucket_id = 'tv-media');
+drop policy if exists tv_media_read on storage.objects;
+create policy tv_media_read on storage.objects
+for select using (bucket_id = 'tv-media');
+
+select 'tv playlist ready' as status;
