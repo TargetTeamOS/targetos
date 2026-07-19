@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase'
 import { db }       from '../lib/db'
 import { loadPrefs, savePrefs, PREF_DEFAULTS } from '../lib/userPrefs'
 import { PageHeader, Field, Input, Btn, Avatar, SectionTitle, Toggle, Tabs } from '../components/UI'
+import { MyEmailAccounts } from '../components/MyEmailAccounts'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const S  = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }
@@ -203,6 +204,7 @@ export function Settings() {
     { id:'notifications', label:'Notifications'    },
     { id:'preferences',   label:'Preferences'      },
     { id:'shortcuts',     label:'Shortcuts'        },
+    { id:'email',         label:'Email Accounts'   },
     { id:'phone',         label:'Browser Phone'    },
   ]
 
@@ -475,6 +477,12 @@ export function Settings() {
       )}
 
       {/* ── PHONE SETUP ── */}
+      {tab === 'email' && (
+        <div style={{ paddingTop: '10px' }}>
+          <MyEmailAccounts />
+        </div>
+      )}
+
       {tab === 'phone' && (
         <div style={CARD}>
           <SectionTitle>Browser Phone Configuration</SectionTitle>

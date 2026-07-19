@@ -6,7 +6,7 @@
 // 'note') so tracking lives in the CRM per Yanky's spec.
 // Body: { provider: 'outlook'|'gmail', to, subject, html|text, contact_id? }
 
-const { getIntegration, freshMicrosoftToken, freshGoogleToken, logEvent, sb } = require('./_lib/connectors')
+const { getIntegration, freshMicrosoftToken, freshGoogleToken, logEvent, sb, getAgentAccount, freshAccountToken, agentIdFromAuthUser } = require('./_lib/connectors')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -45,11 +45,23 @@ module.exports = async function handler(req, res) {
 
     let fromAccount = ''
 
+    // Whose mailbox? The signed-in agent's own connected account wins;
+    // the org-level (office) account is the fallback.
+    let senderAgentId = body.agent_id || null
+    if (!senderAgentId && __user) senderAgentId = await agentIdFromAuthUser(__user.id)
+
     if (provider === 'outlook') {
-      const integ = await getIntegration('outlook')
-      if (!integ || integ.status !== 'connected') { res.status(400).json({ error: 'Outlook is not connected (Admin → Connectors)' }); return }
-      const token = await freshMicrosoftToken(integ)
-      fromAccount = (integ.secrets || {}).account_email || 'Outlook'
+      let token = null
+      const acct = senderAgentId ? await getAgentAccount(senderAgentId, 'outlook') : null
+      if (acct && acct.status === 'connected') {
+        token = await freshAccountToken('outlook', acct)
+        fromAccount = acct.account_email || 'Outlook'
+      } else {
+        const integ = await getIntegration('outlook')
+        if (!integ || integ.status !== 'connected') { res.status(400).json({ error: 'Outlook is not connected — connect your account in Settings, or the office account in Admin → Connectors' }); return }
+        token = await freshMicrosoftToken(integ)
+        fromAccount = (integ.secrets || {}).account_email || 'Outlook'
+      }
       const r = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -69,10 +81,17 @@ module.exports = async function handler(req, res) {
       }
       await logEvent('outlook', 'out', 'email.send', { to, subject, from: fromAccount }, true)
     } else {
-      const integ = await getIntegration('google')
-      if (!integ || integ.status !== 'connected') { res.status(400).json({ error: 'Google is not connected (Admin → Connectors)' }); return }
-      const token = await freshGoogleToken(integ)
-      fromAccount = (integ.secrets || {}).account_email || 'Gmail'
+      let token = null
+      const acct = senderAgentId ? await getAgentAccount(senderAgentId, 'google') : null
+      if (acct && acct.status === 'connected') {
+        token = await freshAccountToken('google', acct)
+        fromAccount = acct.account_email || 'Gmail'
+      } else {
+        const integ = await getIntegration('google')
+        if (!integ || integ.status !== 'connected') { res.status(400).json({ error: 'Google is not connected — connect your account in Settings, or the office account in Admin → Connectors' }); return }
+        token = await freshGoogleToken(integ)
+        fromAccount = (integ.secrets || {}).account_email || 'Gmail'
+      }
       const mimeLines = [
         'To: ' + to,
         'Subject: ' + subject,

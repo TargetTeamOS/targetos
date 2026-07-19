@@ -56,3 +56,27 @@ where id in ('zapier','apination')
 -- VERIFY: should list 4 rows, statuses set, and running as service
 -- role you'll see secrets — the app never will.
 select id, name, status from integrations order by id;
+
+-- ═══════════════════════════════════════════════════════════════
+-- v2 (7/19 late): PER-AGENT email accounts. Each agent connects
+-- their own Outlook/Gmail; sends go out from THEIR mailbox. The
+-- org-level integrations row remains the office fallback.
+-- ═══════════════════════════════════════════════════════════════
+create table if not exists integration_accounts (
+  id            uuid primary key default gen_random_uuid(),
+  agent_id      uuid not null,
+  provider      text not null check (provider in ('outlook','google')),
+  account_email text,
+  status        text not null default 'pending',   -- pending → connected | error
+  secrets       jsonb not null default '{}'::jsonb, -- tokens; server-only
+  last_error    text,
+  updated_at    timestamptz not null default now(),
+  created_at    timestamptz not null default now(),
+  unique (agent_id, provider)
+);
+alter table integration_accounts enable row level security;
+-- NO policies on purpose: browser can never read tokens; all access
+-- goes through /api routes with the service key.
+
+-- VERIFY
+select 'integration_accounts ready' as status;

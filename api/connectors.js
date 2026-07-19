@@ -98,6 +98,28 @@ module.exports = async function handler(req, res) {
       return
     }
 
+    if (action === 'my_accounts') {
+      const agentId = body.agent_id
+      if (!agentId) { res.status(400).json({ error: 'agent_id required' }); return }
+      const { data, error } = await sb().from('integration_accounts')
+        .select('provider, status, account_email, last_error, updated_at')
+        .eq('agent_id', agentId)
+      if (error) throw new Error(error.message)
+      res.status(200).json({ accounts: data || [] })
+      return
+    }
+
+    if (action === 'disconnect_my_account') {
+      const agentId = body.agent_id
+      const provider = body.provider === 'google' ? 'google' : 'outlook'
+      if (!agentId) { res.status(400).json({ error: 'agent_id required' }); return }
+      const { error } = await sb().from('integration_accounts')
+        .delete().eq('agent_id', agentId).eq('provider', provider)
+      if (error) throw new Error(error.message)
+      res.status(200).json({ ok: true })
+      return
+    }
+
     res.status(400).json({ error: 'unknown action' })
   } catch (e) {
     console.error('[connectors] ' + e.message)
