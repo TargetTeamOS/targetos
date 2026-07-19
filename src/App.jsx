@@ -49,7 +49,6 @@ import { CallDiagnostics } from './pages/CallDiagnostics'
 import { Mortgage }      from './pages/Mortgage'
 import { WebsiteBuilder } from './pages/WebsiteBuilder'
 import { PublicHome, PublicListings, PublicListingDetail, PublicAbout, PublicContact } from './pages/PublicSite'
-import { Route as RoutePage } from './pages/Route'
 import TCSettings from './pages/TCSettings'
 import { CustomFields }          from './pages/CustomFields'
 import { TransactionCoordinator } from './pages/TransactionCoordinator'
@@ -181,7 +180,6 @@ function AppShell() {
           <Route path="/call-diagnostics"    element={<CallDiagnostics />} />
           <Route path="/mortgage"            element={<Mortgage />} />
           <Route path="/website"             element={<WebsiteBuilder />} />
-          <Route path="/route"               element={<RoutePage />} />
           <Route path="/segments"           element={<Segments />} />
           <Route path="/custom-fields"      element={<RequirePermission perm="admin.customize"><CustomFields /></RequirePermission>} />
           <Route path="/tc"                 element={<TransactionCoordinator />} />

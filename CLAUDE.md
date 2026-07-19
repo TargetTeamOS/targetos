@@ -12,8 +12,12 @@ Before pushing ANY change, run this sequence in order:
 ```bash
 npm run build                    # must show "✓ built" — zero errors
 node scripts/validate.js         # must show "✅ ALL CHECKS PASSED"
+node scripts/smoke.js            # must show "ALL SMOKE CHECKS PASSED"
+                                 # (verifies every import/export resolves +
+                                 #  /api handlers parse — the bug class the
+                                 #  bundler misses; bit us 3× before this)
 git push origin v2               # push to v2
-git push origin v2:main --force  # deploy to Vercel
+git push origin v2:main          # deploy to Vercel (NO --force — ever)
 ```
 
 **Never push if either command fails. Fix the issue first.**

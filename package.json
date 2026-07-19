@@ -23,7 +23,9 @@
     "start": "vite",
     "test": "vitest run",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke": "node scripts/smoke.js",
+    "preflight": "npm run build && node scripts/validate.js && node scripts/smoke.js"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.0",
