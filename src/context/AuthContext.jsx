@@ -57,6 +57,14 @@ export function AuthProvider({ children }) {
   async function signIn(email, password) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
+    // Record the sign-in for the agent activity dashboard (best-effort).
+    try {
+      const { data: ag } = await supabase.from('agents').select('id').eq('auth_user_id', data.user.id).maybeSingle()
+      if (ag) await supabase.from('audit_log').insert({
+        agent_id: ag.id, table_name: 'auth', record_id: ag.id, action: 'signed_in',
+        metadata: { description: 'Signed in' }, created_at: new Date().toISOString(),
+      })
+    } catch (e) { /* never block login on logging */ }
     return data
   }
 

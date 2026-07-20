@@ -32,6 +32,7 @@ import { Calls }         from './pages/Calls'
 import { OpenHouse }     from './pages/OpenHouse'
 import { SocialCards } from './pages/SocialCards'
 import { AgentPerformance } from './pages/AgentPerformance'
+import { AgentActivity } from './pages/AgentActivity'
 import { Signs }         from './pages/Signs'
 import { Announcements } from './pages/Announcements'
 import { ListingPrep }   from './pages/ListingPrep'
@@ -158,6 +159,7 @@ function AppShell() {
           <Route path="/openhouse/:id"       element={<OpenHouse />} />
           <Route path="/social-cards" element={<SocialCards />} />
           <Route path="/performance" element={<AgentPerformance />} />
+          <Route path="/agent-activity" element={<AgentActivity />} />
           <Route path="/signs"               element={<Signs />} />
           <Route path="/signs/:id"           element={<Signs />} />
           <Route path="/announcements"       element={<Announcements />} />
