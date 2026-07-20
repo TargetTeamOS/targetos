@@ -3,11 +3,12 @@
 // Monthly calendar view + list view. All events with own URLs.
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { useCalendar, useAgents } from '../lib/hooks'
+import { holidaysForYear } from '../lib/holidays'
 import { fmtDate, today } from '../lib/utils'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
@@ -37,6 +38,9 @@ export function Calendar() {
   const [year,  setYear]  = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth())
   const [view,  setView]  = useState('month')
+  const [showHolidays, setShowHolidays] = useState(() => { try { return localStorage.getItem('tos_cal_holidays') !== '0' } catch { return true } })
+  useEffect(() => { try { localStorage.setItem('tos_cal_holidays', showHolidays ? '1' : '0') } catch {} }, [showHolidays])
+  const yearHolidays = useMemo(() => showHolidays ? holidaysForYear(year) : {}, [year, showHolidays])
 
   const startDate = new Date(year, month, 1).toISOString().slice(0,10)
   const endDate   = new Date(year, month + 1, 0).toISOString().slice(0,10)
@@ -141,6 +145,10 @@ export function Calendar() {
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <LastVisited page="calendar" />
             <Tabs tabs={[{id:'month',label:'Month'},{id:'list',label:'List'}]} active={view} onChange={setView} />
+            <button onClick={() => setShowHolidays(v => !v)} title="Show US & Jewish holidays"
+              style={{ padding:'7px 12px', borderRadius:8, border:'1px solid '+(showHolidays?'var(--brand)':'var(--border)'), background: showHolidays?'rgba(204,34,0,.07)':'var(--dim)', color: showHolidays?'var(--brand)':'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+              🎉 Holidays
+            </button>
             <Btn onClick={() => { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); navigate('/calendar/new') }}>+ Add Event</Btn>
           </div>
         }
@@ -187,6 +195,14 @@ export function Calendar() {
                   <div style={{ fontSize: '13px', fontWeight: isToday ? 800 : 500, color: isToday ? '#CC2200' : 'var(--muted)', marginBottom: '4px', display: 'inline-flex', width: '24px', height: '24px', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: isToday ? 'rgba(204,34,0,.15)' : 'transparent' }}>
                     {day}
                   </div>
+                  {(yearHolidays[dateStr] || []).map((h, hi) => (
+                    <div key={'hol'+hi} title={h.name}
+                      style={{ fontSize: '10px', fontWeight: 700, borderRadius: '4px', padding: '1px 5px', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        background: h.kind === 'jewish' ? 'rgba(37,80,145,.14)' : h.kind === 'jewish-minor' ? 'rgba(37,80,145,.07)' : 'rgba(16,185,129,.13)',
+                        color: h.kind === 'us' ? '#0B7A45' : '#225091' }}>
+                      {h.kind === 'us' ? '🇺🇸 ' : '✡️ '}{h.name}
+                    </div>
+                  ))}
                   {dayEvents.slice(0,3).map(ev => (
                     <div key={ev.id}
                       onClick={(e) => { e.stopPropagation(); navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) }}
