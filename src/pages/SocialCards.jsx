@@ -120,6 +120,10 @@ function SmartCards({ listings, deals }) {
   const [pin,         setPin]         = useState(null)   // {x,y} canvas coords — unit pin for condos/developments
   const [pinLabel,    setPinLabel]    = useState('')
   const [definingPin, setDefiningPin] = useState(false)
+  const [CH, setCH] = useState(CS)  // canvas height — square by default, portrait for flyer templates
+  const [layout, setLayout] = useState(null)  // flyer layout (photo_zones + field positions), fractions of W/H
+  const [extraImgs, setExtraImgs] = useState({})       // { b: Image, c: Image, d: Image }
+  const [flyer, setFlyer] = useState({ house_type: '', beds: '', baths: '', sqft: '', info: '' })
   const [photoFit,    setPhotoFit]    = useState('cover')  // 'cover' = fill zone (crop) | 'contain' = fit whole photo
   const [addrBand,    setAddrBand]    = useState(true)     // translucent white strip behind the address
   const [eraseZones,  setEraseZones]  = useState([])   // [{x,y,w,h,color}] — cover baked-in template text before redrawing
@@ -161,7 +165,7 @@ function SmartCards({ listings, deals }) {
   }, [])
 
   // Redraw whenever anything changes
-  useEffect(function() { draw() }, [tplImg, propImg, photoZone, addrLayer, priceLayer, detailsLayer, eraseZones, address, priceText, detailsText, cardType, pin, pinLabel, photoFit, addrBand])
+  useEffect(function() { draw() }, [tplImg, propImg, photoZone, addrLayer, priceLayer, detailsLayer, eraseZones, address, priceText, detailsText, cardType, pin, pinLabel, photoFit, addrBand, CH, layout, extraImgs, flyer])
 
   // AUTO-IMPORT: selecting a listing pulls its saved photo into the
   // photo zone automatically (manual upload still available and wins).
@@ -185,11 +189,11 @@ function SmartCards({ listings, deals }) {
   // All drawing happens in CS (1080) coordinates; for HD export we
   // hand in a scaled context and the same code renders at 2160.
   function drawInto(ctx) {
-    ctx.clearRect(0, 0, CS, CS)
+    ctx.clearRect(0, 0, CS, CH)
 
     if (tplImg) {
       // Draw the full template card as-is
-      ctx.drawImage(tplImg, 0, 0, CS, CS)
+      ctx.drawImage(tplImg, 0, 0, CS, CH)
 
       // Composite the property photo into the photo zone
       if (propImg && photoZone) {
@@ -256,6 +260,67 @@ function SmartCards({ listings, deals }) {
         ctx.textAlign = detailsLayer.align || 'center'
         ctx.fillText(detailsText, detailsLayer.x, detailsLayer.y)
         ctx.restore()
+      }
+
+      // ── FLYER LAYOUT (For Sale portrait) ─────────────────────────
+      if (layout) {
+        const Z = f => ({ x: f.x * CS, y: f.y * CH, w: f.w * CS, h: f.h * CH })
+        const coverInto = (img, zf) => {
+          if (!img) return
+          const z = Z(zf)
+          ctx.save(); ctx.beginPath(); ctx.rect(z.x, z.y, z.w, z.h); ctx.clip()
+          const iw = img.naturalWidth, ih = img.naturalHeight
+          const sc = Math.max(z.w / iw, z.h / ih)
+          ctx.drawImage(img, z.x + (z.w - iw * sc) / 2, z.y + (z.h - ih * sc) / 2, iw * sc, ih * sc)
+          ctx.restore()
+        }
+        if (layout.photo_zones) {
+          coverInto(extraImgs.b, layout.photo_zones[0])
+          coverInto(extraImgs.c, layout.photo_zones[1])
+          coverInto(extraImgs.d, layout.photo_zones[2])
+        }
+        // price in the white box on the navy band
+        if (layout.price_box && priceText) {
+          const z = Z(layout.price_box)
+          ctx.save()
+          let fs = z.h * 0.62
+          ctx.font = '900 ' + fs + 'px ' + ff
+          while (ctx.measureText(priceText).width > z.w - 20 && fs > 14) { fs -= 2; ctx.font = '900 ' + fs + 'px ' + ff }
+          ctx.fillStyle = '#12294B'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillText(priceText, z.x + z.w / 2, z.y + z.h / 2 + 1)
+          ctx.restore()
+        }
+        // spec fields next to the icons
+        if (layout.fields) {
+          ctx.save()
+          ctx.fillStyle = '#12294B'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+          ctx.font = '800 ' + (0.019 * CH) + 'px ' + ff
+          const vals = { house_type: flyer.house_type, beds: flyer.beds, baths: flyer.baths, sqft: flyer.sqft }
+          layout.fields.forEach(fld => {
+            const v = vals[fld.id]
+            if (v) ctx.fillText(String(v), fld.x * CS, fld.y * CH)
+          })
+          ctx.restore()
+        }
+        // additional info — wrapped
+        if (layout.info && flyer.info) {
+          const z = Z(layout.info)
+          ctx.save()
+          const fs = 0.0145 * CH
+          ctx.font = '500 ' + fs + 'px ' + ff
+          ctx.fillStyle = '#333F52'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+          const words = flyer.info.replace(/\n/g, ' \n ').split(' ')
+          let line = '', ly = z.y
+          const flush = () => { if (line) ctx.fillText(line, z.x, ly); ly += fs * 1.45; line = '' }
+          for (const wd of words) {
+            if (wd === '\n') { flush(); continue }
+            const test = line ? line + ' ' + wd : wd
+            if (ctx.measureText(test).width > z.w) { flush(); line = wd } else line = test
+            if (ly > z.y + z.h - fs) break
+          }
+          flush()
+          ctx.restore()
+        }
       }
 
       // 📍 Unit pin (condos / developments) — exports with the card
@@ -336,7 +401,10 @@ function SmartCards({ listings, deals }) {
 
   function loadTemplateImage(src) {
     const img = new Image()
-    img.onload = function() { setTplImg(img) }
+    img.onload = function() {
+      setTplImg(img)
+      setCH(Math.round(CS * img.naturalHeight / img.naturalWidth))
+    }
     img.src = src
   }
 
@@ -481,6 +549,8 @@ function SmartCards({ listings, deals }) {
     if (tpl.price_layer)   setPriceLayer(tpl.price_layer)
     if (tpl.details_layer) setDetailsLayer(tpl.details_layer)
     setEraseZones(Array.isArray(tpl.erase_zones) ? tpl.erase_zones : [])
+    setLayout(tpl.layout || null)
+    setExtraImgs({})
     if (tpl.bg_image) {
       setTplSrc(tpl.bg_image)
       loadTemplateImage(tpl.bg_image)
@@ -493,7 +563,7 @@ function SmartCards({ listings, deals }) {
     if (!definingAddr && !definingPrice && !definingDetails && !definingPin) return
     const rect = canvasRef.current.getBoundingClientRect()
     const x = Math.round((e.clientX - rect.left) * (CS / rect.width))
-    const y = Math.round((e.clientY - rect.top) * (CS / rect.height))
+    const y = Math.round((e.clientY - rect.top) * (CH / rect.height))
     if (definingPin) { setPin({ x, y }); setDefiningPin(false); toast('📍 Unit pin placed — drag the label text below') ; return }
     if (definingAddr)    { setAddrLayer(prev => ({ ...prev, x, y }));    setDefiningAddr(false);    toast('Address position set ✓') }
     if (definingPrice)   { setPriceLayer(prev => ({ ...prev, x, y }));   setDefiningPrice(false);   toast('Price position set ✓') }
@@ -505,7 +575,7 @@ function SmartCards({ listings, deals }) {
     if (!definingZone) return
     const rect = canvasRef.current.getBoundingClientRect()
     const x = Math.round((e.clientX - rect.left) * (CS / rect.width))
-    const y = Math.round((e.clientY - rect.top) * (CS / rect.height))
+    const y = Math.round((e.clientY - rect.top) * (CH / rect.height))
     setZoneStart({ x, y })
     setPhotoZone({ x, y, w: 10, h: 10 })
   }
@@ -513,7 +583,7 @@ function SmartCards({ listings, deals }) {
     if (!definingZone || !zoneStart) return
     const rect = canvasRef.current.getBoundingClientRect()
     const x = Math.round((e.clientX - rect.left) * (CS / rect.width))
-    const y = Math.round((e.clientY - rect.top) * (CS / rect.height))
+    const y = Math.round((e.clientY - rect.top) * (CH / rect.height))
     setPhotoZone({
       x: Math.min(zoneStart.x, x),
       y: Math.min(zoneStart.y, y),
@@ -578,7 +648,7 @@ function SmartCards({ listings, deals }) {
     setTimeout(function() {
       // True HD: render at 2× on an offscreen canvas (2160×2160)
       const off = document.createElement('canvas')
-      off.width = CS * 2; off.height = CS * 2
+      off.width = CS * 2; off.height = CH * 2
       const octx = off.getContext('2d')
       octx.scale(2, 2)
       octx.imageSmoothingQuality = 'high'
@@ -587,7 +657,7 @@ function SmartCards({ listings, deals }) {
       const a = document.createElement('a')
       const addrClean = (address || 'card').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30)
       a.href = url; a.download = 'TargetTeam_' + addrClean + '_HD.jpg'; a.click()
-      toast('✅ Downloaded 2160×2160 HD JPEG')
+      toast('✅ Downloaded HD JPEG (' + (CS*2) + '×' + (CH*2) + ')')
     }, 80)
   }
 
@@ -859,6 +929,38 @@ function SmartCards({ listings, deals }) {
                   <div style={{ fontSize:11, color:'var(--muted)' }}>Gets placed in your defined photo zone</div>
                 </div>
               </label>
+              {layout && layout.photo_zones && (
+                <div style={{ marginTop:8, display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
+                  {['b','c','d'].map((slot, i) => (
+                    <label key={slot} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, padding:'8px 4px', borderRadius:8, border:'2px dashed '+(extraImgs[slot]?'#10B981':'var(--border)'), cursor:'pointer', background:'var(--dim)' }}>
+                      <input type="file" accept="image/*" style={{ display:'none' }}
+                        onChange={e => {
+                          const f = e.target.files && e.target.files[0]
+                          if (!f) return
+                          const rd = new FileReader()
+                          rd.onload = ev => { const im = new Image(); im.onload = () => setExtraImgs(prev => Object.assign({}, prev, { [slot]: im })); im.src = ev.target.result }
+                          rd.readAsDataURL(f)
+                        }} />
+                      <span style={{ fontSize:16 }}>{extraImgs[slot] ? '✓' : '📷'}</span>
+                      <span style={{ fontSize:10, fontWeight:700, color:'var(--muted)', fontFamily:ff }}>Photo {i + 2}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {layout && (
+                <div style={{ marginTop:8, border:'1px solid var(--border)', borderRadius:8, padding:'10px', display:'flex', flexDirection:'column', gap:6 }}>
+                  <div style={{ fontSize:10, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.04em', fontFamily:ff }}>Flyer details</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+                    <input value={flyer.house_type} onChange={e => setFlyer(Object.assign({}, flyer, { house_type: e.target.value }))} placeholder="🏠 Type (Colonial)" style={{ padding:'7px 9px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff }} />
+                    <input value={flyer.beds} onChange={e => setFlyer(Object.assign({}, flyer, { beds: e.target.value }))} placeholder="🛏 Beds (4)" style={{ padding:'7px 9px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff }} />
+                    <input value={flyer.sqft} onChange={e => setFlyer(Object.assign({}, flyer, { sqft: e.target.value }))} placeholder="📏 Sqft (2,400)" style={{ padding:'7px 9px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff }} />
+                    <input value={flyer.baths} onChange={e => setFlyer(Object.assign({}, flyer, { baths: e.target.value }))} placeholder="🛁 Baths (2.5)" style={{ padding:'7px 9px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff }} />
+                  </div>
+                  <textarea value={flyer.info} onChange={e => setFlyer(Object.assign({}, flyer, { info: e.target.value }))} rows={3}
+                    placeholder="Additional info — finished basement, new roof 2024, corner lot…"
+                    style={{ padding:'7px 9px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff, resize:'vertical' }} />
+                </div>
+              )}
               {propSrc && (
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginTop:8 }}>
                   <button onClick={() => setPhotoFit('cover')}
@@ -1143,7 +1245,7 @@ function CustomEditor({ listings }) {
       <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
         <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em' }}>Preview — drag text to reposition</div>
         <div style={{ boxShadow:'0 8px 40px rgba(0,0,0,.22)', borderRadius:12, overflow:'hidden', cursor:dragging?'grabbing':'grab' }}>
-          <canvas ref={canvasRef} width={CS} height={CS} style={{ display:'block', width:DS, height:DS }}
+          <canvas ref={canvasRef} width={CS} height={CH} style={{ display:'block', width:DS, height:DS }}
             onMouseDown={onCanvasMouseDown} onMouseMove={onCanvasMouseMove} onMouseUp={onCanvasMouseUp} onMouseLeave={onCanvasMouseUp} />
         </div>
       </div>
@@ -1314,7 +1416,7 @@ function TemplatesTab({ listings, deals }) {
 
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
               <div style={{ boxShadow:'0 8px 40px rgba(0,0,0,.22)', borderRadius:12, overflow:'hidden' }}>
-                <canvas ref={canvasRef} width={CS} height={CS} style={{ display:'block', width:DS, height:DS }} />
+                <canvas ref={canvasRef} width={CS} height={CH} style={{ display:'block', width:DS, height:DS }} />
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, width:'100%', maxWidth:DS }}>
                 <button onClick={exportJPEG} style={{ padding:'12px', borderRadius:9, background:'#CC2200', color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:ff }}>⬇ JPEG HD</button>

@@ -174,3 +174,17 @@ select * from (values
 ) as v(name, card_type, bg_image, photo_zone, created_at)
 where not exists (select 1 from card_templates where card_templates.name = v.name);
 select name from card_templates order by created_at desc limit 6;
+
+-- ═══ v9 (7/19 late): For Sale flyer template — 4 photos, price box, spec fields ═══
+alter table card_templates add column if not exists layout jsonb;
+insert into card_templates (name, card_type, bg_image, photo_zone, layout, created_at)
+select 'For Sale Flyer (Team frame)', 'for_sale', '/social-templates/for-sale-flyer.jpg',
+  '{"x":16,"y":253,"w":1048,"h":582}'::jsonb,
+  '{
+    "photo_zones":[{"x":0.502,"y":0.515,"w":0.464,"h":0.192},{"x":0.032,"y":0.712,"w":0.452,"h":0.189},{"x":0.502,"y":0.712,"w":0.464,"h":0.189}],
+    "price_box":{"x":0.773,"y":0.4805,"w":0.174,"h":0.0295},
+    "fields":[{"id":"house_type","x":0.082,"y":0.535},{"id":"beds","x":0.30,"y":0.535},{"id":"sqft","x":0.082,"y":0.578},{"id":"baths","x":0.30,"y":0.578}],
+    "info":{"x":0.035,"y":0.605,"w":0.44,"h":0.095}
+  }'::jsonb, now()
+where not exists (select 1 from card_templates where name = 'For Sale Flyer (Team frame)');
+select name from card_templates where name like '%(Team frame)%';
