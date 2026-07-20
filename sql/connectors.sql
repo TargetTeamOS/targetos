@@ -181,10 +181,19 @@ insert into card_templates (name, card_type, bg_image, photo_zone, layout, creat
 select 'For Sale Flyer (Team frame)', 'for_sale', '/social-templates/for-sale-flyer.jpg',
   '{"x":16,"y":253,"w":1048,"h":582}'::jsonb,
   '{
-    "photo_zones":[{"x":0.502,"y":0.515,"w":0.464,"h":0.192},{"x":0.032,"y":0.712,"w":0.452,"h":0.189},{"x":0.502,"y":0.712,"w":0.464,"h":0.189}],
-    "price_box":{"x":0.773,"y":0.4805,"w":0.174,"h":0.0295},
-    "fields":[{"id":"house_type","x":0.082,"y":0.535},{"id":"beds","x":0.30,"y":0.535},{"id":"sqft","x":0.082,"y":0.578},{"id":"baths","x":0.30,"y":0.578}],
-    "info":{"x":0.035,"y":0.605,"w":0.44,"h":0.095}
+    "photo_zones":[{"x":0.5016,"y":0.5131,"w":0.4662,"h":0.1953},{"x":0.0241,"y":0.7084,"w":0.4775,"h":0.1951},{"x":0.5016,"y":0.7084,"w":0.4662,"h":0.1951}],
+    "price_box":{"x":0.7721,"y":0.4777,"w":0.1745,"h":0.0332},
+    "fields":[{"id":"house_type","x":0.088,"y":0.5367},{"id":"beds","x":0.292,"y":0.5367},{"id":"sqft","x":0.088,"y":0.5744},{"id":"baths","x":0.288,"y":0.5744}],
+    "info":{"x":0.030,"y":0.612,"w":0.44,"h":0.088}
   }'::jsonb, now()
 where not exists (select 1 from card_templates where name = 'For Sale Flyer (Team frame)');
 select name from card_templates where name like '%(Team frame)%';
+
+
+-- v9.1: correct the flyer zones (measured from artwork) even if the row was already seeded
+update card_templates set layout = '{
+  "photo_zones":[{"x":0.5016,"y":0.5131,"w":0.4662,"h":0.1953},{"x":0.0241,"y":0.7084,"w":0.4775,"h":0.1951},{"x":0.5016,"y":0.7084,"w":0.4662,"h":0.1951}],
+  "price_box":{"x":0.7721,"y":0.4777,"w":0.1745,"h":0.0332},
+  "fields":[{"id":"house_type","x":0.088,"y":0.5367},{"id":"beds","x":0.292,"y":0.5367},{"id":"sqft","x":0.088,"y":0.5744},{"id":"baths","x":0.288,"y":0.5744}],
+  "info":{"x":0.030,"y":0.612,"w":0.44,"h":0.088}
+}'::jsonb where name = 'For Sale Flyer (Team frame)';
