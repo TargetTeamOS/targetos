@@ -55,7 +55,13 @@ export function Calendar() {
   const startDate = new Date(year, month, 1).toISOString().slice(0,10)
   const endDate   = new Date(year, month + 1, 0).toISOString().slice(0,10)
 
-  const filters = isAdmin || canManage
+  // Calendar visibility (July 2026): agents see ONLY their own
+  // schedule — their events, appointments, tasks, showings, and
+  // photography for their own listings (all auto-created calendar
+  // events carry the listing/deal agent_id). Admins and the secretary
+  // (who coordinates the whole team) see everyone.
+  const seesAll = isAdmin || canManage
+  const filters = seesAll
     ? { from: startDate, to: endDate }
     : { from: startDate, to: endDate, agent_id: agent?.id }
 
@@ -150,7 +156,7 @@ export function Calendar() {
     <div style={{ fontFamily: ff }}>
       <PageHeader
         title="Calendar"
-        sub={events.length + ' events in ' + MONTHS[month] + ' ' + year}
+        sub={(seesAll ? '' : 'Your schedule · ') + events.length + ' events in ' + MONTHS[month] + ' ' + year}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <LastVisited page="calendar" />
