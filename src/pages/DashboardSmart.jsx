@@ -36,8 +36,10 @@ function starterWidgets() {
     { i:'w_hot', title:'Hot Leads', board:'contacts', statuses:['Hot'], dateRange:'all', display:'number', agentScope:'all', color:'#D97706', x:10, y:0, w:2, h:2 },
     { i:'w_tasks', title:'Open Tasks', board:'tasks', statuses:['pending','in_progress'], dateRange:'all', display:'number', agentScope:'mine', color:'#DC2626', x:0, y:2, w:3, h:2 },
     { i:'w_listings', title:'Active Listings', board:'listings', statuses:['Active'], dateRange:'all', display:'number', agentScope:'all', color:'#0891B2', x:8, y:2, w:4, h:2 },
-    { i:'w_recent', title:'Recent Contacts', board:'contacts', statuses:[], dateRange:'month', display:'list', agentScope:'all', color:'#7C3AED', x:0, y:4, w:5, h:4 },
-    { i:'w_dealtable', title:'Deals — Detail', board:'deals', statuses:[], dateRange:'all', display:'table', columns:['addr','stage','gci','ao_date'], agentScope:'all', color:'#2563EB', x:5, y:4, w:7, h:4 },
+    { i:'w_mytasks', title:'My Open Tasks', board:'tasks', statuses:['pending','in_progress'], dateRange:'all', display:'list', agentScope:'mine', color:'#DC2626', x:0, y:4, w:4, h:4 },
+    { i:'w_appts', title:'Upcoming Appointments', board:'appointments', statuses:[], dateRange:'all', display:'list', agentScope:'mine', color:'#059669', x:4, y:4, w:4, h:4 },
+    { i:'w_recent', title:'Recent Contacts', board:'contacts', statuses:[], dateRange:'month', display:'list', agentScope:'mine', color:'#7C3AED', x:8, y:4, w:4, h:4 },
+    { i:'w_dealtable', title:'Deals — Detail', board:'deals', statuses:[], dateRange:'all', display:'table', columns:['addr','stage','gci','ao_date'], agentScope:'all', color:'#2563EB', x:0, y:8, w:12, h:4 },
   ]
 }
 

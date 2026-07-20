@@ -138,4 +138,19 @@ export const BOARD_OPTIONS = [
     chartFields:[],
     numericFields:[],
   },
+  {
+    id:'appointments', label:'Appointments', icon:'📅', table:'calendar_events',
+    statusField:'event_type', nameField:'title', subField:'start_time', valueField:null,
+    dateField:'start_time',
+    groupByOptions:['event_type','agent_id'],
+    statusOptions:['appointment','showing','meeting','closing','open_house','task','other'],
+    extraFilters:[{field:'event_type',label:'Type'},{field:'agent_id',label:'Agent'}],
+    sortOptions:[{field:'start_time',label:'Soonest'},{field:'created_at',label:'Newest'}],
+    displayCols:[
+      {field:'title',label:'Title'},{field:'event_type',label:'Type'},
+      {field:'start_time',label:'When'},{field:'location',label:'Location'},{field:'agent_id',label:'Agent'},
+    ],
+    chartFields:[{field:'event_type',label:'By Type'}],
+    numericFields:[],
+  },
 ]
