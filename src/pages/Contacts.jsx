@@ -77,6 +77,39 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
   const [configMode, setConfigMode] = React.useState(false)
   const [localFields, setLocalFields] = React.useState(fields)
   const ff2 = 'Inter,system-ui,sans-serif'
+  // Self-load richer detail so the popup is complete: past deals +
+  // offers, and last interaction — regardless of what parent passed.
+  const [history, setHistory]   = React.useState(deals.length ? deals.map(d => ({ label: d.addr, sub: d.stage })) : null)
+  const [lastSeen, setLastSeen] = React.useState(null)
+  React.useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const items = []
+      try {
+        const { data: offs } = await supabase.from('offers')
+          .select('listing_addr, status, offer_date, buyer_contact_id, seller_contact_id')
+          .or('buyer_contact_id.eq.' + c.id + ',seller_contact_id.eq.' + c.id)
+          .order('offer_date', { ascending: false }).limit(5)
+        ;(offs || []).forEach(o => items.push({ label: o.listing_addr, sub: 'Offer · ' + (o.status || '') + (o.buyer_contact_id === c.id ? ' · Buyer' : ' · Seller'), date: o.offer_date }))
+      } catch {}
+      try {
+        if (c.email || c.phone) {
+          let dq = supabase.from('deals').select('addr, stage, close_date').limit(5)
+          dq = c.email ? dq.eq('client_email', c.email) : dq.eq('client_phone', c.phone)
+          const { data: dls } = await dq
+          ;(dls || []).forEach(d => items.push({ label: d.addr, sub: 'Deal · ' + (d.stage || ''), date: d.close_date }))
+        }
+      } catch {}
+      if (alive) setHistory(items)
+      try {
+        const { data: act } = await supabase.from('activity_log')
+          .select('action, created_at').eq('table_name', 'contacts').eq('record_id', c.id)
+          .order('created_at', { ascending: false }).limit(1)
+        if (alive && act?.[0]) setLastSeen(act[0])
+      } catch {}
+    })()
+    return () => { alive = false }
+  }, [c.id])
   const STATUS_COLORS = { Hot:'#DC2626',Warm:'#F5A623',Cold:'#3B82F6',Active:'#10B981',New:'#8B5CF6',Nurturing:'#14B8A6',Closed:'#94A3B8',Unresponsive:'#64748B' }
   const sc = STATUS_COLORS[c.status] || '#CC2200'
   const agent = agents.find(a => a.id === c.agent_id)
@@ -164,19 +197,34 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
           })}
         </div>
 
-        {/* Linked deals */}
-        {deals.length > 0 && (
-          <div style={{ padding:'8px 16px 12px', borderTop:'1px solid var(--border)' }}>
-            <div style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'6px' }}>Linked Deals</div>
-            {deals.slice(0,3).map(d => (
-              <div key={d.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0', borderBottom:'1px solid var(--border)' }}>
-                <span style={{ fontSize:'12px', color:'var(--text)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{d.addr}</span>
-                <span style={{ fontSize:'11px', padding:'1px 6px', borderRadius:'10px', background:'#10B98118', color:'#10B981', fontWeight:700, flexShrink:0, marginLeft:8 }}>{d.stage}</span>
+        {/* Home address + last interaction */}
+        <div style={{ padding:'8px 16px 4px', borderTop:'1px solid var(--border)' }}>
+          {c.address && (
+            <div style={{ display:'flex', gap:8, fontSize:'12px', padding:'3px 0' }}>
+              <span style={{ color:'var(--muted)', minWidth:110 }}>🏠 Home address</span>
+              <span style={{ color:'var(--text)', fontWeight:600 }}>{[c.address, c.city, c.state].filter(Boolean).join(', ')}</span>
+            </div>
+          )}
+          {lastSeen && (
+            <div style={{ display:'flex', gap:8, fontSize:'12px', padding:'3px 0' }}>
+              <span style={{ color:'var(--muted)', minWidth:110 }}>🕐 Last interaction</span>
+              <span style={{ color:'var(--text)', fontWeight:600 }}>{String(lastSeen.action||'activity').replace(/_/g,' ')} · {new Date(lastSeen.created_at).toLocaleDateString()}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Past deals & offers */}
+        <div style={{ padding:'6px 16px 12px' }}>
+          <div style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'6px' }}>Past Deals &amp; Offers</div>
+          {history === null ? <div style={{ fontSize:'11px', color:'var(--muted)' }}>Loading…</div>
+            : history.length === 0 ? <div style={{ fontSize:'11px', color:'var(--muted)' }}>None on record</div>
+            : history.slice(0,5).map((h,i) => (
+              <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0', borderBottom:'1px solid var(--border)' }}>
+                <span style={{ fontSize:'12px', color:'var(--text)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:190 }}>{h.label || '—'}</span>
+                <span style={{ fontSize:'10.5px', color:'var(--muted)', flexShrink:0, marginLeft:8 }}>{h.sub}{h.date ? ' · ' + new Date(h.date).toLocaleDateString() : ''}</span>
               </div>
             ))}
-            {deals.length > 3 && <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'4px' }}>+{deals.length-3} more deals</div>}
-          </div>
-        )}
+        </div>
 
         {/* Actions */}
         <div style={{ padding:'10px 16px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px' }}>
@@ -626,6 +674,7 @@ export function Contacts() {
                       style={{ fontWeight: 700, fontSize: '14px', color: 'var(--brand)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
                       {c.first_name} {c.last_name}
                     </span>
+                    {c.type && <span style={{ display:'inline-block', fontSize:'9.5px', padding:'1px 7px', borderRadius:'10px', background:(CONTACT_TYPE_COLORS[c.type]||'#94A3B8')+'22', color:CONTACT_TYPE_COLORS[c.type]||'#94A3B8', fontWeight:800, textTransform:'uppercase', letterSpacing:'.03em', marginTop:'3px' }}>{c.type}</span>}
                     {c.phone && <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px', userSelect:'none' }} data-nolink='1'>{fmtPhone(c.phone)}</div>}
                     {c.email && <div style={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>}
                   </div>
