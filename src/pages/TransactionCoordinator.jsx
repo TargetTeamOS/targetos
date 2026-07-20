@@ -28,6 +28,7 @@ const PHASE_TASKS = DEFAULT_PHASE_TASKS
 import TCSyncHealth from '../components/TCSyncHealth'
 import TCMorningSummary from '../components/TCMorningSummary'
 import { PeoplePanel, DocumentsPanel, PhotographyPanel } from '../components/TCDealPanels'
+import { TCParties, TCEmailLog } from '../components/TCBoardPanels'
 import { TCDealChat } from '../components/TCDealChat'
 import { TCSignPanel, CommissionBillModal } from '../components/TCStage2'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
@@ -178,6 +179,7 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
 
 // ── DEAL CARD ─────────────────────────────────────────────────────
 function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle }) {
+  const [subTab, setSubTab] = useState('tasks')   // tasks | people | photo | email
   const phase    = PHASES.find(p => p.id === deal.tc_phase) || PHASES[0]
   const done     = tasks.filter(t => t.status === 'done').length
   const total    = tasks.length
@@ -257,40 +259,40 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask,
       {/* ── EXPANDED BODY ── */}
       {expanded && (
         <div>
-          {/* Phase switcher */}
-          <div style={{ padding:'10px 16px', background:'var(--dim)', borderBottom:'1px solid var(--border)',
-            display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-            <span style={{ fontSize:10, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', marginRight:4 }}>Move to phase:</span>
-            {PHASES.map(p => (
-              <button key={p.id} onClick={() => onPhaseChange(deal, p.id)}
-                style={{ padding:'4px 11px', borderRadius:99, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff,
-                  border:'1.5px solid '+(deal.tc_phase===p.id?p.color:'var(--border)'),
-                  background: deal.tc_phase===p.id?p.color:'transparent',
-                  color: deal.tc_phase===p.id?'#fff':'var(--muted)',
-                  transition:'all .12s' }}>
-                {p.icon} {p.label}
+          {/* Sub-tabs — keeps the card from dumping everything at once */}
+          <div style={{ display:'flex', gap:2, padding:'8px 12px 0', background:'var(--dim)', borderBottom:'1px solid var(--border)' }}>
+            {[
+              { id:'tasks',  label:'✓ Tasks', n: tasks.filter(t=>t.status!=='done').length },
+              { id:'people', label:'👥 People & Parties' },
+              { id:'photo',  label:'📸 Photography' },
+              { id:'email',  label:'✉️ Email Log' },
+            ].map(t => (
+              <button key={t.id} onClick={e => { e.stopPropagation(); setSubTab(t.id) }}
+                style={{ padding:'7px 13px', border:'none', borderBottom: subTab===t.id ? '2px solid var(--brand)' : '2px solid transparent',
+                  background:'transparent', color: subTab===t.id ? 'var(--brand)' : 'var(--muted)', fontSize:12, fontWeight: subTab===t.id?800:600,
+                  cursor:'pointer', fontFamily:ff, marginBottom:-1 }}>
+                {t.label}{t.n != null && t.n > 0 ? ' (' + t.n + ')' : ''}
               </button>
             ))}
           </div>
 
-          {/* Key info strip */}
-          <div style={{ padding:'8px 16px', display:'flex', gap:20, flexWrap:'wrap', borderBottom:'1px solid var(--border)', background:'var(--dim)' }}>
-            {[
-              { icon:'⚖️', label:'Attorney',       val: deal.attorney_name   || '—' },
-              { icon:'🏦', label:'Mortgage Broker', val: deal.mortgage_broker  || '—' },
-              { icon:'🔍', label:'Inspector',       val: deal.inspector        || '—' },
-              { icon:'📞', label:'Atty Phone',      val: deal.attorney_phone   || '—' },
-              { icon:'📱', label:'Broker Phone',    val: deal.mortgage_phone   || '—' },
-            ].map(info => (
-              <div key={info.label} style={{ minWidth:80 }}>
-                <div style={{ fontSize:9, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>{info.icon} {info.label}</div>
-                <div style={{ fontSize:11, fontWeight:700, color:'var(--text)' }}>{info.val}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* ── TASKS ── */}
+          {/* ── TASKS TAB ── */}
+          {subTab === 'tasks' && (
           <div>
+            {/* Phase switcher */}
+            <div style={{ padding:'10px 16px', background:'var(--dim)', borderBottom:'1px solid var(--border)',
+              display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+              <span style={{ fontSize:10, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', marginRight:4 }}>Move to phase:</span>
+              {PHASES.map(p => (
+                <button key={p.id} onClick={() => onPhaseChange(deal, p.id)}
+                  style={{ padding:'4px 11px', borderRadius:99, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff,
+                    border:'1.5px solid '+(deal.tc_phase===p.id?p.color:'var(--border)'),
+                    background: deal.tc_phase===p.id?p.color:'transparent',
+                    color: deal.tc_phase===p.id?'#fff':'var(--muted)', transition:'all .12s' }}>
+                  {p.icon} {p.label}
+                </button>
+              ))}
+            </div>
             {/* Overdue tasks — always shown first */}
             {overdueTasks.length > 0 && (
               <div>
@@ -340,8 +342,31 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask,
               </div>
             )}
           </div>
+          )}
 
-          {/* Footer actions */}
+          {/* ── PEOPLE & PARTIES TAB ── */}
+          {subTab === 'people' && (
+            <div style={{ padding:'12px 16px' }}>
+              <TCParties deal={deal} agents={agents} />
+            </div>
+          )}
+
+          {/* ── PHOTOGRAPHY TAB ── */}
+          {subTab === 'photo' && (
+            <div style={{ padding:'12px 16px' }}>
+              <PhotographyPanel deal={deal} />
+            </div>
+          )}
+
+          {/* ── EMAIL LOG TAB ── */}
+          {subTab === 'email' && (
+            <div style={{ padding:'12px 16px' }}>
+              <TCEmailLog deal={deal} />
+            </div>
+          )}
+
+          {/* Footer actions — tasks tab only */}
+          {subTab === 'tasks' && (
           <div style={{ padding:'10px 16px', display:'flex', gap:8, flexWrap:'wrap',
             borderTop:'1px solid var(--border)', background:'var(--dim)' }}>
             <button onClick={() => onAddTask(deal)}
@@ -360,6 +385,7 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask,
               </div>
             )}
           </div>
+          )}
         </div>
       )}
     </div>

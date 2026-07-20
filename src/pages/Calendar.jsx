@@ -41,6 +41,8 @@ export function Calendar() {
   const [view,  setView]  = useState('month')
   const [showHolidays, setShowHolidays] = useState(() => { try { return localStorage.getItem('tos_cal_holidays') !== '0' } catch { return true } })
   useEffect(() => { try { localStorage.setItem('tos_cal_holidays', showHolidays ? '1' : '0') } catch {} }, [showHolidays])
+  const [showWeather, setShowWeather] = useState(() => { try { return localStorage.getItem('tos_cal_weather') !== '0' } catch { return true } })
+  useEffect(() => { try { localStorage.setItem('tos_cal_weather', showWeather ? '1' : '0') } catch {} }, [showWeather])
   const yearHolidays = useMemo(() => showHolidays ? holidaysForYear(year) : {}, [year, showHolidays])
 
   const startDate = new Date(year, month, 1).toISOString().slice(0,10)
@@ -150,6 +152,10 @@ export function Calendar() {
               style={{ padding:'7px 12px', borderRadius:8, border:'1px solid '+(showHolidays?'var(--brand)':'var(--border)'), background: showHolidays?'rgba(204,34,0,.07)':'var(--dim)', color: showHolidays?'var(--brand)':'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
               🎉 Holidays
             </button>
+            <button onClick={() => setShowWeather(v => !v)} title="Show weather forecast (next 15 days)"
+              style={{ padding:'7px 12px', borderRadius:8, border:'1px solid '+(showWeather?'var(--brand)':'var(--border)'), background: showWeather?'rgba(204,34,0,.07)':'var(--dim)', color: showWeather?'var(--brand)':'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+              🌦️ Weather
+            </button>
             <Btn onClick={() => { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); navigate('/calendar/new') }}>+ Add Event</Btn>
           </div>
         }
@@ -212,7 +218,7 @@ export function Calendar() {
                     </div>
                   ))}
                   {dayEvents.length > 3 && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>+{dayEvents.length - 3} more</div>}
-                  {showHolidays && dayEvents.length > 0 && (
+                  {showWeather && (
                     <DayWeather address={dayEvents.find(e => e.location)?.location} date={dateStr} />
                   )}
                 </div>
