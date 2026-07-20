@@ -213,3 +213,47 @@ drop policy if exists contact_automations_all on contact_automations;
 create policy contact_automations_all on contact_automations
 for all to authenticated using (true) with check (true);
 select 'contact_automations ready' as status;
+
+-- ═══ v11 (7/19 late): buyer showings (was a leaked in-UI SQL note) ═══
+create table if not exists contact_showings (
+  id uuid primary key default gen_random_uuid(),
+  contact_id uuid references contacts(id),
+  agent_id uuid references agents(id),
+  address text not null, price numeric, mls_number text,
+  showing_date date, showing_time text,
+  interest_level int default 3, feedback text, notes text,
+  created_at timestamptz default now()
+);
+alter table contact_showings enable row level security;
+drop policy if exists contact_showings_all on contact_showings;
+create policy contact_showings_all on contact_showings for all to authenticated using (true) with check (true);
+select 'contact_showings ready' as status;
+
+-- ═══ v12 (7/19 late): create all tables that pages exposed as in-UI SQL notes ═══
+create table if not exists website_content (id uuid default gen_random_uuid() primary key, section text unique not null, content jsonb, updated_at timestamptz default now());
+alter table website_content enable row level security;
+drop policy if exists website_content_all on website_content;
+create policy website_content_all on website_content for all to authenticated using (true) with check (true);
+
+create table if not exists agent_goals (id uuid default gen_random_uuid() primary key, agent_id uuid references agents(id) on delete cascade, year int not null, deals int default 0, gci numeric default 0, production numeric default 0, leads int default 0, updated_at timestamptz default now(), unique(agent_id, year));
+alter table agent_goals enable row level security;
+drop policy if exists agent_goals_all on agent_goals;
+create policy agent_goals_all on agent_goals for all to authenticated using (true) with check (true);
+
+create table if not exists system_settings (id uuid primary key default gen_random_uuid(), key text unique not null, value jsonb, updated_at timestamptz default now());
+alter table system_settings enable row level security;
+drop policy if exists system_settings_all on system_settings;
+create policy system_settings_all on system_settings for all to authenticated using (true) with check (true);
+
+insert into storage.buckets (id, name, public) values ('website-assets','website-assets', true) on conflict (id) do nothing;
+drop policy if exists website_assets_all on storage.objects;
+create policy website_assets_all on storage.objects for all to authenticated using (bucket_id='website-assets') with check (bucket_id='website-assets');
+
+select 'page setup tables ready' as status;
+
+-- ═══ v13: listing_showings (MyListings in-UI SQL note) ═══
+create table if not exists listing_showings (id uuid primary key default gen_random_uuid(), listing_id uuid references listings(id), listing_addr text, agent_id uuid references agents(id), buyer_name text, agent_name text, showing_date date, showing_time text, interest_level int default 3, feedback text, notes text, created_at timestamptz default now());
+alter table listing_showings enable row level security;
+drop policy if exists listing_showings_all on listing_showings;
+create policy listing_showings_all on listing_showings for all to authenticated using (true) with check (true);
+select 'listing_showings ready' as status;

@@ -287,14 +287,6 @@ function GoalsTab({ agents, year, goals, setGoals, agentStats, contacts, savingG
 
   return (
     <div>
-      {/* SQL setup notice */}
-      <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:'12px 16px', marginBottom:20, fontSize:12, color:'var(--muted)', lineHeight:1.7 }}>
-        <strong style={{ color:'var(--text)' }}>One-time Supabase setup:</strong><br/>
-        <code style={{ fontFamily:'monospace', color:'#CC2200', fontSize:11, wordBreak:'break-all' }}>
-          create table if not exists agent_goals (id uuid default gen_random_uuid() primary key, agent_id uuid references agents(id) on delete cascade, year int not null, deals int default 0, gci numeric default 0, production numeric default 0, leads int default 0, updated_at timestamptz default now(), unique(agent_id, year)); alter table agent_goals enable row level security; create policy "Allow all" on agent_goals for all using (true);
-        </code>
-      </div>
-
       <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
         {displayAgents.map(ag => {
           const key     = ag.id + '_' + year

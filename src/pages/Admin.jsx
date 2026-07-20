@@ -667,13 +667,6 @@ export function Admin() {
               </button>
             </div>
           </div>
-          {/* SQL note */}
-          <div style={{padding:'10px 14px',background:'rgba(245,166,35,.08)',border:'1px solid rgba(245,166,35,.3)',borderRadius:8,fontSize:11,color:'#D97706'}}>
-            💡 <strong>SQL required:</strong> Run in Supabase SQL Editor to enable permission saving:
-            <code style={{display:'block',marginTop:6,fontFamily:'monospace',background:'rgba(0,0,0,.06)',padding:'4px 8px',borderRadius:4}}>
-              create table if not exists system_settings (id uuid primary key default gen_random_uuid(), key text unique not null, value jsonb, updated_at timestamptz default now());
-            </code>
-          </div>
         </div>
       )}
 

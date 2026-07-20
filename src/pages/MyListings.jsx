@@ -296,7 +296,7 @@ export function MyListings() {
       loadAll()
     } catch(e) {
       if (e.message?.includes('listing_showings')) {
-        toast('Run SQL migration first — shown below', '#F97316')
+        toast('Couldn\'t save showing — please try again', '#DC2626')
       } else {
         toast('Failed: ' + e.message, '#DC2626')
       }
@@ -453,15 +453,6 @@ export function MyListings() {
         ))}
       </div>
 
-      {/* SQL notice */}
-      {listings.length > 0 && showings.length === 0 && (
-        <div style={{ background: 'rgba(59,130,246,.06)', border: '1px solid rgba(59,130,246,.2)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 11, color: 'var(--muted)' }}>
-          Run SQL to enable showing tracking:
-          <code style={{ display: 'block', marginTop: 4, fontSize: 10, background: 'var(--dim)', padding: '6px 8px', borderRadius: 6 }}>
-            {'create table if not exists listing_showings (id uuid primary key default gen_random_uuid(), listing_id uuid references listings(id), listing_addr text, agent_id uuid references agents(id), buyer_name text, agent_name text, showing_date date, showing_time text, interest_level int default 3, feedback text, notes text, created_at timestamptz default now());'}
-          </code>
-        </div>
-      )}
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>

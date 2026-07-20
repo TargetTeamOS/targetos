@@ -83,11 +83,7 @@ export function BuyerInterest({ contactId, agentId }) {
       setAddingShow(false)
       load()
     } catch(e) {
-      if (e.message?.includes('contact_showings')) {
-        toast('Run SQL migration first — see below', '#F97316')
-      } else {
-        toast('Error: ' + e.message, '#DC2626')
-      }
+      toast('Couldn\'t save showing: ' + (e.message || 'please try again'), '#DC2626')
     } finally { setSaving(false) }
   }
 
@@ -212,14 +208,6 @@ export function BuyerInterest({ contactId, agentId }) {
           })}
         </div>
       )}
-
-      {/* SQL migration note */}
-      <div style={{ marginTop:12, padding:'8px 10px', background:'rgba(59,130,246,.06)', borderRadius:8, border:'1px solid rgba(59,130,246,.2)', fontSize:10, color:'var(--muted)' }}>
-        <strong>SQL needed:</strong> Run in Supabase to enable showings:
-        <code style={{ display:'block', marginTop:4, fontSize:9, background:'var(--dim)', padding:'4px 6px', borderRadius:4 }}>
-          create table if not exists contact_showings (id uuid primary key default gen_random_uuid(), contact_id uuid references contacts(id), agent_id uuid references agents(id), address text not null, price numeric, mls_number text, showing_date date, showing_time text, interest_level int default 3, feedback text, notes text, created_at timestamptz default now());
-        </code>
-      </div>
     </div>
   )
 }
