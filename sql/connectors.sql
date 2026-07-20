@@ -282,3 +282,29 @@ insert into system_settings (key, value) values
   ('dashboard_mls_areas', '{"cities":[],"maxprice":null,"minbeds":null}'::jsonb)
 on conflict (key) do nothing;
 select 'dashboard settings ready' as status;
+
+-- ═══ v16: pinned dashboard filters (custom, auto-updating, shareable) ═══
+create table if not exists dashboard_pins (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null,                 -- agent who created it
+  title text not null,
+  board text not null,                    -- contacts | deals | listings | tasks | offers
+  filters jsonb not null default '{}'::jsonb,  -- {status, source, dateRange, agentScope, ...}
+  color text default '#2563EB',
+  shared_with uuid[],                     -- agent ids who also see it (null/empty = just owner)
+  shared_all boolean default false,       -- visible to everyone
+  position int default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table dashboard_pins enable row level security;
+drop policy if exists dashboard_pins_rw on dashboard_pins;
+-- owner can do anything; others can read if shared_all or in shared_with
+create policy dashboard_pins_rw on dashboard_pins for all to authenticated
+using (
+  owner_id = (select id from agents where auth_user_id = auth.uid() limit 1)
+  or shared_all = true
+  or (select id from agents where auth_user_id = auth.uid() limit 1) = any(shared_with)
+)
+with check (owner_id = (select id from agents where auth_user_id = auth.uid() limit 1));
+select 'dashboard_pins ready' as status;

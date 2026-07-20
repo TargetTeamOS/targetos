@@ -8,6 +8,61 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { authFetch } from '../lib/apiAuth'
+
+// Maps a CRM page name to a pin board. Only these boards support pins.
+const PAGE_TO_BOARD = { contacts:'contacts', deals:'deals', production:'deals', listings:'listings', 'my-listings':'listings', tasks:'tasks', offers:'offers' }
+
+// "Pin to Dashboard" — saves the current filter as a live, auto-updating
+// dashboard tile, optionally shared. Appears in any FilterBar's panel.
+function PinToDashboard({ page, filters }) {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const [shareAll, setShareAll] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
+  const board = PAGE_TO_BOARD[page]
+  if (!board) return null
+
+  async function pin() {
+    if (!title.trim()) return
+    setSaving(true)
+    try {
+      const r = await authFetch('/api/dashboard-pins', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'create', title:title.trim(), board, filters, shared_all:shareAll }) })
+      if (!r.ok) { const j = await r.json(); throw new Error(j.error||'failed') }
+      setDone(true); setTimeout(()=>{ setDone(false); setOpen(false); setTitle('') }, 1400)
+    } catch (e) { alert('Pin failed: ' + e.message) }
+    setSaving(false)
+  }
+
+  const ffx = "'Inter', system-ui, sans-serif"
+  return (
+    <div style={{ marginBottom:10, paddingBottom:10, borderBottom:'1px solid var(--border)' }}>
+      {!open ? (
+        <button onClick={()=>setOpen(true)}
+          style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px dashed var(--brand)', background:'transparent', color:'var(--brand)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ffx }}>
+          📌 Pin this filter to Dashboard
+        </button>
+      ) : done ? (
+        <div style={{ fontSize:12, color:'#059669', fontWeight:600, fontFamily:ffx, textAlign:'center', padding:'6px' }}>✅ Pinned — see it on your dashboard</div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          <input value={title} onChange={e=>setTitle(e.target.value)} autoFocus placeholder="Tile name (e.g. My Hot Buyers)"
+            onKeyDown={e=>{ if(e.key==='Enter') pin() }}
+            style={{ padding:'7px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--bg)', color:'var(--text)', fontSize:12, fontFamily:ffx }} />
+          <label style={{ fontSize:11, color:'var(--muted)', display:'flex', gap:6, alignItems:'center', fontFamily:ffx }}>
+            <input type="checkbox" checked={shareAll} onChange={e=>setShareAll(e.target.checked)} /> Share with the whole team
+          </label>
+          <div style={{ display:'flex', gap:6 }}>
+            <button onClick={pin} disabled={saving||!title.trim()} style={{ flex:1, padding:'6px', borderRadius:7, border:'none', background:'var(--brand)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ffx }}>{saving?'Pinning…':'Pin'}</button>
+            <button onClick={()=>setOpen(false)} style={{ padding:'6px 12px', borderRadius:7, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:ffx }}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -249,6 +304,7 @@ function SavedViewsPanel({ page, currentFilters, onApply }) {
 
   return (
     <div style={{ padding:'10px 14px', borderTop:'1px solid var(--border)', minWidth:240 }}>
+      <PinToDashboard page={page} filters={currentFilters} />
       <div style={{ fontSize:10, fontWeight:800, color:'var(--muted)', textTransform:'uppercase',
         letterSpacing:'.06em', marginBottom:8 }}>Saved Views</div>
       {views.length === 0 && <div style={{ fontSize:11, color:'var(--muted)', marginBottom:8, fontStyle:'italic' }}>No saved views yet</div>}

@@ -15,6 +15,7 @@
 import { ClickToCall } from '../components/ClickToCall'
 import { MarketWidget } from '../components/MarketWidget'
 import { DashboardListingTiles } from '../components/DashboardListingTiles'
+import { DashboardPins } from '../components/DashboardPins'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -74,7 +75,7 @@ class WidgetErrorBoundary extends React.Component {
 // ── WIDGET REGISTRY ───────────────────────────────────────────────
 const WIDGET_DEFS = {
   gci_goal:        { label: 'My GCI Goal',           icon: '🎯', roles: ['admin','secretary','agent'] },
-  team_goal:       { label: 'Team Goal',             icon: '🏆', roles: ['admin','secretary'] },
+  team_goal:       { label: 'Team Goal',             icon: '🏆', roles: ['admin','secretary','agent'] },
   quick_stats:     { label: 'Quick Stats',           icon: '📊', roles: ['admin','secretary','agent'] },
   pipeline:        { label: 'Pipeline by Stage',     icon: '🔀', roles: ['admin','secretary','agent'] },
   todays_tasks:    { label: "Today's Tasks",         icon: '✅', roles: ['admin','secretary','agent'] },
@@ -82,7 +83,7 @@ const WIDGET_DEFS = {
   active_deals:    { label: 'Active Deals',          icon: '💼', roles: ['admin','secretary','agent'] },
   upcoming_close:  { label: 'Upcoming Closings',     icon: '📅', roles: ['admin','secretary','agent'] },
   active_listings: { label: 'Active Listings',       icon: '🏡', roles: ['admin','secretary','agent'] },
-  leaderboard:     { label: 'Team Leaderboard',      icon: '🥇', roles: ['admin','secretary'] },
+  leaderboard:     { label: 'Team Leaderboard',      icon: '🥇', roles: ['admin','secretary','agent'] },
   gci_chart:       { label: 'GCI by Month',          icon: '📈', roles: ['admin','secretary','agent'] },
   open_houses:     { label: 'Open Houses This Week', icon: '🚪', roles: ['admin','secretary','agent'] },
   gifts_pending:   { label: 'Gifts Pending',         icon: '🎁', roles: ['admin','secretary'] },
@@ -2061,7 +2062,7 @@ export function Dashboard() {
     )
 
     // ── TEAM GOAL ──
-    if (w.id === 'team_goal' && (isAdmin || canManage)) return shell(
+    if (w.id === 'team_goal') return shell(
       <div onClick={() => setPopup('team_goal')} style={{ display: 'flex', alignItems: 'center', gap: '14px', cursor: 'pointer' }}>
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <GCIRing value={data.teamGCI} goal={teamGoals.team_gci} color={color} />
@@ -2241,7 +2242,7 @@ export function Dashboard() {
     )
 
     // ── LEADERBOARD ──
-    if (w.id === 'leaderboard' && (isAdmin || canManage)) return shell(
+    if (w.id === 'leaderboard') return shell(
       <div>
         {data.leaderboard?.filter(r => r.gci > 0 || r.closed > 0).slice(0, 6).map((row, i) => (
           <div key={row.agent.id} onClick={() => { setAgentFilter(row.agent.id); setPopup('gci_goal') }}
@@ -2450,6 +2451,9 @@ export function Dashboard() {
 
       {/* ── NEW LISTINGS — MLS watch areas + team, custom timeframe ── */}
       <DashboardListingTiles />
+
+      {/* ── PINNED CUSTOM FILTERS — live, auto-updating ── */}
+      <DashboardPins />
 
       {/* TOP BAR */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
