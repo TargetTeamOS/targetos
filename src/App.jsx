@@ -17,6 +17,7 @@ import { ActiveCallBar } from './components/ClickToCall'
 // Page imports
 import { Dashboard as DashboardOld } from './pages/Dashboard'
 import { Dashboard } from './pages/DashboardV2'
+import { DashboardSmart } from './pages/DashboardSmart'
 import { Contacts }      from './pages/Contacts'
 import { ContactDetail } from './pages/ContactDetail'
 import { Production }    from './pages/Production'
@@ -135,7 +136,8 @@ function AppShell() {
         <ErrorBoundary>
         <Routes>
           {/* Core pages with :id routing */}
-          <Route path="/" element={<DashboardOld />} />
+          <Route path="/" element={<DashboardSmart />} />
+          <Route path="/dashboard-classic" element={<DashboardOld />} />
           <Route path="/dashboard-new" element={<Dashboard />} />
           <Route path="/contacts"            element={<Contacts />} />
           <Route path="/contacts/:id"        element={<Contacts />} />

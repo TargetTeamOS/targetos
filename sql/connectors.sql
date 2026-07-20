@@ -308,3 +308,9 @@ using (
 )
 with check (owner_id = (select id from agents where auth_user_id = auth.uid() limit 1));
 select 'dashboard_pins ready' as status;
+
+-- ═══ v17: ensure dashboard prefs columns exist (smart board layout) ═══
+alter table briefing_prefs add column if not exists dashboard_widgets jsonb;
+alter table briefing_prefs add column if not exists dashboard_layout  jsonb;
+alter table briefing_prefs add column if not exists dashboard_widgets_backup jsonb;
+select 'dashboard prefs columns ready' as status;
