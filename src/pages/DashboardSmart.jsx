@@ -23,7 +23,8 @@ const TIMEFRAMES = [
   { id:'month', label:'30 days' }, { id:'quarter', label:'90 days' }, { id:'ytd', label:'Year to date' },
 ]
 const DISPLAYS = [
-  { id:'number', label:'Number' }, { id:'bar', label:'Bar chart' }, { id:'donut', label:'Donut' },
+  { id:'number', label:'Number' }, { id:'goal', label:'Goal ring' }, { id:'trend', label:'Monthly trend' },
+  { id:'bar', label:'Bar chart' }, { id:'donut', label:'Donut' },
   { id:'list', label:'List' }, { id:'table', label:'Table' },
 ]
 
@@ -45,13 +46,17 @@ function starterWidgets() {
     // charts
     { i:'w_pipe',    title:'Pipeline by Stage',  board:'deals', statuses:[], dateRange:'all', display:'bar', groupBy:'stage', agentScope:'all', color:'#2563EB', x:0, y:4, w:6, h:3 },
     { i:'w_leader',  title:'Leaderboard (Closed YTD)', board:'deals', statuses:['Closed'], dateRange:'ytd', display:'bar', groupBy:'agent_id', agentScope:'all', color:'#059669', x:6, y:4, w:6, h:3 },
+    // goals + trend
+    { i:'w_gcigoal', title:'My GCI Goal',         board:'deals', statuses:['Closed'], dateRange:'ytd', display:'goal', metric:'gci', target:250000, agentScope:'mine', color:'#059669', x:0, y:7, w:4, h:3 },
+    { i:'w_teamgoal',title:'Team GCI Goal',       board:'deals', statuses:['Closed'], dateRange:'ytd', display:'goal', metric:'gci', target:1000000, agentScope:'all', color:'#2563EB', x:4, y:7, w:4, h:3 },
+    { i:'w_trend',   title:'Monthly GCI (6 mo)',  board:'deals', statuses:['Closed'], dateRange:'all', display:'trend', metric:'gci', months:6, agentScope:'all', color:'#059669', x:8, y:7, w:4, h:3 },
     // working lists (per-agent essentials)
-    { i:'w_mytasks', title:'My Open Tasks',      board:'tasks', statuses:['pending','in_progress'], dateRange:'all', display:'list', agentScope:'mine', color:'#DC2626', x:0, y:7, w:4, h:4 },
-    { i:'w_appts',   title:'Upcoming Appointments', board:'appointments', statuses:[], dateRange:'all', display:'list', agentScope:'mine', color:'#059669', x:4, y:7, w:4, h:4 },
-    { i:'w_upclose', title:'Closing Soon',       board:'deals', statuses:['Under Contract','Under Shtar'], dateRange:'all', display:'list', agentScope:'all', color:'#D97706', x:8, y:7, w:4, h:4 },
+    { i:'w_mytasks', title:'My Open Tasks',      board:'tasks', statuses:['pending','in_progress'], dateRange:'all', display:'list', agentScope:'mine', color:'#DC2626', x:0, y:10, w:4, h:4 },
+    { i:'w_appts',   title:'Upcoming Appointments', board:'appointments', statuses:[], dateRange:'all', display:'list', agentScope:'mine', color:'#059669', x:4, y:10, w:4, h:4 },
+    { i:'w_upclose', title:'Closing Soon',       board:'deals', statuses:['Under Contract','Under Shtar'], dateRange:'all', display:'list', agentScope:'all', color:'#D97706', x:8, y:10, w:4, h:4 },
     // detail
-    { i:'w_recent',  title:'Recent Contacts',    board:'contacts', statuses:[], dateRange:'month', display:'list', agentScope:'mine', color:'#7C3AED', x:0, y:11, w:4, h:4 },
-    { i:'w_dealtable',title:'Deals \u2014 Detail', board:'deals', statuses:[], dateRange:'all', display:'table', columns:['addr','stage','gci','ao_date'], agentScope:'all', color:'#2563EB', x:4, y:11, w:8, h:4 },
+    { i:'w_recent',  title:'Recent Contacts',    board:'contacts', statuses:[], dateRange:'month', display:'list', agentScope:'mine', color:'#7C3AED', x:0, y:14, w:4, h:4 },
+    { i:'w_dealtable',title:'Deals \u2014 Detail', board:'deals', statuses:[], dateRange:'all', display:'table', columns:['addr','stage','gci','ao_date'], agentScope:'all', color:'#2563EB', x:4, y:14, w:8, h:4 },
   ]
 }
 export function DashboardSmart() {
@@ -216,12 +221,27 @@ function WidgetBuilder({ initial, onClose, onSave, isAdmin }) {
           {DISPLAYS.map(d => <span key={d.id} onClick={()=>set('display', d.id)} style={chip(cfg.display===d.id)}>{d.label}</span>)}
         </div>
 
-        {cfg.display === 'number' && boardDef?.numericFields?.length > 0 && (
+        {(cfg.display === 'number' || cfg.display === 'goal' || cfg.display === 'trend') && boardDef?.numericFields?.length > 0 && (
           <>
             <div style={L}>Measure</div>
             <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
               <span onClick={()=>set('metric','count')} style={chip(!cfg.metric||cfg.metric==='count')}>Count</span>
               {boardDef.numericFields.map(n => <span key={n.field} onClick={()=>set('metric', n.field)} style={chip(cfg.metric===n.field)}>{n.label}</span>)}
+            </div>
+          </>
+        )}
+        {cfg.display === 'goal' && (
+          <>
+            <div style={L}>Target goal</div>
+            <input type="number" value={cfg.target||''} onChange={e=>set('target', e.target.value)} placeholder="e.g. 500000"
+              style={inp} />
+          </>
+        )}
+        {cfg.display === 'trend' && (
+          <>
+            <div style={L}>Months to show</div>
+            <div style={{ display:'flex', gap:6 }}>
+              {[3,6,12].map(m => <span key={m} onClick={()=>set('months', m)} style={chip((cfg.months||6)===m)}>{m} months</span>)}
             </div>
           </>
         )}

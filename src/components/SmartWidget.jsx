@@ -159,6 +159,64 @@ export function WidgetContent({ config, agentId, isAdmin }) {
     )
   }
 
+  // GOAL RING — measure vs a target you set
+  if (config.display === 'goal') {
+    const val = (config.metric && config.metric !== 'count')
+      ? rows.reduce((s,r)=>s+parseNum(r[config.metric]),0) : count
+    const target = parseNum(config.target) || 0
+    const pct = target > 0 ? Math.min(100, Math.round(val/target*100)) : 0
+    const deg = pct/100*360
+    const disp = (config.metric && config.metric !== 'count') ? fmtMoney(val) : val
+    const tdisp = (config.metric && config.metric !== 'count') ? fmtMoney(target) : target
+    return (
+      <>
+        <div onClick={openDrill} style={{ display:'flex', alignItems:'center', gap:16, height:'100%', cursor:'pointer', fontFamily:ff }}>
+          <div style={{ width:104, height:104, borderRadius:'50%', flexShrink:0, background:`conic-gradient(${color} ${deg}deg, var(--dim) ${deg}deg)`, position:'relative' }}>
+            <div style={{ position:'absolute', inset:12, background:'var(--panel)', borderRadius:'50%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+              <div style={{ fontSize:22, fontWeight:800, color }}>{pct}%</div>
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize:22, fontWeight:800, color:'var(--text)' }}>{disp}</div>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>of {tdisp} goal</div>
+            <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>view {count} →</div>
+          </div>
+        </div>
+        {drillModal}
+      </>
+    )
+  }
+
+  // MONTHLY TREND — metric or count grouped by month
+  if (config.display === 'trend') {
+    const months = config.months || 6
+    const df = BOARD_DATE_FIELD(config.board)
+    const buckets = {}
+    const now = new Date()
+    for (let i = months - 1; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth()-i, 1); buckets[d.toISOString().slice(0,7)] = 0 }
+    for (const r of rows) {
+      const k = String(r[df] || '').slice(0,7)
+      if (k in buckets) buckets[k] += (config.metric && config.metric !== 'count') ? parseNum(r[config.metric]) : 1
+    }
+    const entries = Object.entries(buckets)
+    const max = Math.max(1, ...entries.map(e=>e[1]))
+    const isMoney = config.metric && config.metric !== 'count'
+    return (
+      <>
+        <div onClick={openDrill} style={{ display:'flex', alignItems:'flex-end', gap:6, height:'100%', cursor:'pointer', fontFamily:ff, paddingTop:8 }}>
+          {entries.map(([k,v]) => (
+            <div key={k} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height:'100%', gap:4 }}>
+              <span style={{ fontSize:9, fontWeight:700, color:'var(--muted)' }}>{isMoney ? (v>=1000?'$'+Math.round(v/1000)+'K':'$'+Math.round(v)) : v}</span>
+              <div style={{ width:'70%', background:color, borderRadius:'3px 3px 0 0', height:Math.max(3, v/max*100)+'%', minHeight:3 }} />
+              <span style={{ fontSize:9, color:'var(--muted)' }}>{new Date(k+'-02').toLocaleDateString('en-US',{month:'short'})}</span>
+            </div>
+          ))}
+        </div>
+        {drillModal}
+      </>
+    )
+  }
+
   // LIST
   if (config.display === 'list') {
     return (
