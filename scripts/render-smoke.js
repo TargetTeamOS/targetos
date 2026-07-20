@@ -25,7 +25,7 @@ const PAGES = [
   { name: 'Calendar',      import: "import { Calendar } from './src/pages/Calendar'",           jsx: '<Calendar />' },
   { name: 'TVBoard',       import: "import { TVBoard } from './src/pages/TVBoard'",             jsx: '<TVBoard />' },
   { name: 'AgentActivity', import: "import { AgentActivity } from './src/pages/AgentActivity'", jsx: '<AgentActivity />' },
-  { name: 'Dashboard',     import: "import { Dashboard } from './src/pages/DashboardV2'",         jsx: '<Dashboard />' },
+  { name: 'Dashboard',     import: "import { Dashboard } from './src/pages/Dashboard'",           jsx: '<Dashboard />' },
 ]
 
 const SHIMS = `

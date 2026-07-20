@@ -14,6 +14,7 @@
 
 import { ClickToCall } from '../components/ClickToCall'
 import { MarketWidget } from '../components/MarketWidget'
+import { DashboardListingTiles } from '../components/DashboardListingTiles'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -358,6 +359,11 @@ function getDateRange(rangeId) {
   if (rangeId === 'quarter') { const d = new Date(now); d.setMonth(d.getMonth() - 3); return { from: d.toISOString().slice(0,10), to: today } }
   if (rangeId === 'year')    return { from: now.getFullYear() + '-01-01', to: today }
   if (/^\d{4}$/.test(rangeId)) return { from: rangeId + '-01-01', to: rangeId + '-12-31' }
+  // Custom range: "custom:YYYY-MM-DD:YYYY-MM-DD"
+  if (typeof rangeId === 'string' && rangeId.startsWith('custom:')) {
+    const [, from, to] = rangeId.split(':')
+    if (from && to) return { from, to }
+  }
   return null
 }
 
@@ -575,9 +581,23 @@ function CustomWidgetBuilder({ onSave, onClose, agents }) {
                     </button>
                   )
                 })}
+                <button onClick={function(){ if(!String(dateRange).startsWith('custom:')) setDateRange('custom::') }}
+                  style={{ padding:'4px 10px', borderRadius:99, fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:ff,
+                    border:'1px solid '+(String(dateRange).startsWith('custom:')?'var(--brand)':'var(--border)'), background:String(dateRange).startsWith('custom:')?'rgba(204,34,0,.08)':'transparent', color:String(dateRange).startsWith('custom:')?'var(--brand)':'var(--muted)' }}>
+                  Custom…
+                </button>
               </div>
-
-              {boardDef.statusOptions && boardDef.statusOptions.length > 0 && (
+              {String(dateRange).startsWith('custom:') && (
+                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:12, flexWrap:'wrap' }}>
+                  <input type="date" value={dateRange.split(':')[1]||''}
+                    onChange={e=>{ const p=dateRange.split(':'); setDateRange('custom:'+e.target.value+':'+(p[2]||'')) }}
+                    style={{ padding:'6px 10px', borderRadius:8, border:'1px solid var(--border)', fontSize:12, background:'var(--panel)', color:'var(--text)', fontFamily:ff }} />
+                  <span style={{ fontSize:12, color:'var(--muted)' }}>to</span>
+                  <input type="date" value={dateRange.split(':')[2]||''}
+                    onChange={e=>{ const p=dateRange.split(':'); setDateRange('custom:'+(p[1]||'')+':'+e.target.value) }}
+                    style={{ padding:'6px 10px', borderRadius:8, border:'1px solid var(--border)', fontSize:12, background:'var(--panel)', color:'var(--text)', fontFamily:ff }} />
+                </div>
+              )}
                 <div>
                   <span style={SL}>Filter by stage/status (empty = all)</span>
                   <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
@@ -2427,6 +2447,9 @@ export function Dashboard() {
       <div style={{ marginBottom: 16 }}>
         <MarketWidget />
       </div>
+
+      {/* ── NEW LISTINGS — MLS watch areas + team, custom timeframe ── */}
+      <DashboardListingTiles />
 
       {/* TOP BAR */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
