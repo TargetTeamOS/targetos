@@ -43,11 +43,13 @@ export function Calendar() {
   useEffect(() => { try { localStorage.setItem('tos_cal_holidays', showHolidays ? '1' : '0') } catch {} }, [showHolidays])
   const [showWeather, setShowWeather] = useState(() => { try { return localStorage.getItem('tos_cal_weather') !== '0' } catch { return true } })
   useEffect(() => { try { localStorage.setItem('tos_cal_weather', showWeather ? '1' : '0') } catch {} }, [showWeather])
-  const [calSize, setCalSize] = useState(() => { try { return localStorage.getItem('tos_cal_size') || 'large' } catch { return 'large' } })
+  const [calSize, setCalSize] = useState(() => { try { return localStorage.getItem('tos_cal_size') || 'fit' } catch { return 'fit' } })
   useEffect(() => { try { localStorage.setItem('tos_cal_size', calSize) } catch {} }, [calSize])
+  // Default fits a full month on screen without scrolling; text stays
+  // readable. 'large' trades fit for roomier cells (may scroll).
   const SZ = calSize === 'large'
-    ? { cell: 160, num: 16, ev: 14, evPad: '4px 8px', chip: 11, gap: 4, cellPad: 9 }
-    : { cell: 115, num: 14, ev: 12.5, evPad: '3px 7px', chip: 10, gap: 3, cellPad: 7 }
+    ? { cell: 130, num: 15, ev: 13.5, evPad: '3px 8px', chip: 11, gap: 3, cellPad: 8, max: 5 }
+    : { cell: 92,  num: 14, ev: 12.5, evPad: '2px 7px', chip: 10, gap: 2, cellPad: 6, max: 2 }
   const yearHolidays = useMemo(() => showHolidays ? holidaysForYear(year) : {}, [year, showHolidays])
 
   const startDate = new Date(year, month, 1).toISOString().slice(0,10)
@@ -161,9 +163,9 @@ export function Calendar() {
               style={{ padding:'7px 12px', borderRadius:8, border:'1px solid '+(showWeather?'var(--brand)':'var(--border)'), background: showWeather?'rgba(204,34,0,.07)':'var(--dim)', color: showWeather?'var(--brand)':'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
               🌦️ Weather
             </button>
-            <button onClick={() => setCalSize(s => s === 'large' ? 'compact' : 'large')} title="Toggle calendar size"
+            <button onClick={() => setCalSize(s => s === 'large' ? 'fit' : 'large')} title="Toggle calendar size"
               style={{ padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
-              {calSize === 'large' ? '🔍 Large' : '🔍 Compact'}
+              {calSize === 'large' ? '🔍 Roomy' : '🔍 Fit screen'}
             </button>
             <Btn onClick={() => { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); navigate('/calendar/new') }}>+ Add Event</Btn>
           </div>
@@ -219,7 +221,7 @@ export function Calendar() {
                       {h.kind === 'us' ? '🇺🇸 ' : '✡️ '}{h.name}
                     </div>
                   ))}
-                  {dayEvents.slice(0, calSize==='large'?5:3).map(ev => {
+                  {dayEvents.slice(0, SZ.max).map(ev => {
                     const ec = ev.color || '#CC2200'
                     return (
                     <div key={ev.id}
@@ -229,7 +231,7 @@ export function Calendar() {
                     </div>
                     )
                   })}
-                  {dayEvents.length > (calSize==='large'?5:3) && <div style={{ fontSize: SZ.chip, color: 'var(--muted)', fontWeight:600, marginTop:1 }}>+{dayEvents.length - (calSize==='large'?5:3)} more</div>}
+                  {dayEvents.length > SZ.max && <div style={{ fontSize: SZ.chip, color: 'var(--muted)', fontWeight:600, marginTop:1 }}>+{dayEvents.length - SZ.max} more</div>}
                   {showWeather && (
                     <DayWeather address={dayEvents.find(e => e.location)?.location} date={dateStr} />
                   )}
