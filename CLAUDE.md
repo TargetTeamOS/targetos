@@ -13,6 +13,11 @@ Before pushing ANY change, run this sequence in order:
 npm run build                    # must show "✓ built" — zero errors
 node scripts/validate.js         # must show "✅ ALL CHECKS PASSED"
 node scripts/smoke.js            # must show "ALL SMOKE CHECKS PASSED"
+node scripts/render-smoke.js     # must show "ALL PAGES RENDER" — SSR-mounts
+                                 # every key page; catches mount crashes
+                                 # (TDZ/undefined state) that build+smoke
+                                 # miss. Found the eraseZones Marketing
+                                 # white-screen. `npm run preflight` runs all.
                                  # (verifies every import/export resolves +
                                  #  /api handlers parse — the bug class the
                                  #  bundler misses; bit us 3× before this)

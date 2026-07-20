@@ -25,7 +25,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "smoke": "node scripts/smoke.js",
-    "preflight": "npm run build && node scripts/validate.js && node scripts/smoke.js"
+    "preflight": "npm run build && node scripts/validate.js && node scripts/smoke.js && node scripts/render-smoke.js",
+    "render-smoke": "node scripts/render-smoke.js"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.0",

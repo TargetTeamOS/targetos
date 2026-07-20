@@ -120,6 +120,7 @@ function SmartCards({ listings, deals }) {
   const [pin,         setPin]         = useState(null)   // {x,y} canvas coords — unit pin for condos/developments
   const [pinLabel,    setPinLabel]    = useState('')
   const [definingPin, setDefiningPin] = useState(false)
+  const [eraseZones,  setEraseZones]  = useState([])   // [{x,y,w,h,color}] — cover baked-in template text before redrawing
 
   // For Sale cards: price + beds/baths text layers, click-positioned
   // like the address. 'enabled' lets a template opt out of either.
@@ -354,8 +355,8 @@ function SmartCards({ listings, deals }) {
   // photo and each text element (address / price / beds-baths), with
   // position, size, color, weight and alignment — then we replace them
   // in place. Old text is painted over with the sampled background
-  // color before the new text draws (eraseZones).
-  const [eraseZones, setEraseZones] = useState([])   // [{x,y,w,h,color}]
+  // (eraseZones state is declared with the other layer state above —
+  // it MUST precede the redraw effect or the component crashes on mount)
   const [detecting,  setDetecting]  = useState(false)
 
   function sampleBgColor(img, zone) {
