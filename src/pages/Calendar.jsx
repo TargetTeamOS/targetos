@@ -43,6 +43,11 @@ export function Calendar() {
   useEffect(() => { try { localStorage.setItem('tos_cal_holidays', showHolidays ? '1' : '0') } catch {} }, [showHolidays])
   const [showWeather, setShowWeather] = useState(() => { try { return localStorage.getItem('tos_cal_weather') !== '0' } catch { return true } })
   useEffect(() => { try { localStorage.setItem('tos_cal_weather', showWeather ? '1' : '0') } catch {} }, [showWeather])
+  const [calSize, setCalSize] = useState(() => { try { return localStorage.getItem('tos_cal_size') || 'large' } catch { return 'large' } })
+  useEffect(() => { try { localStorage.setItem('tos_cal_size', calSize) } catch {} }, [calSize])
+  const SZ = calSize === 'large'
+    ? { cell: 150, num: 15, ev: 13, evPad: '4px 8px', chip: 11, gap: 3, cellPad: 8 }
+    : { cell: 108, num: 13, ev: 11.5, evPad: '2px 6px', chip: 10, gap: 2, cellPad: 6 }
   const yearHolidays = useMemo(() => showHolidays ? holidaysForYear(year) : {}, [year, showHolidays])
 
   const startDate = new Date(year, month, 1).toISOString().slice(0,10)
@@ -156,6 +161,10 @@ export function Calendar() {
               style={{ padding:'7px 12px', borderRadius:8, border:'1px solid '+(showWeather?'var(--brand)':'var(--border)'), background: showWeather?'rgba(204,34,0,.07)':'var(--dim)', color: showWeather?'var(--brand)':'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
               🌦️ Weather
             </button>
+            <button onClick={() => setCalSize(s => s === 'large' ? 'compact' : 'large')} title="Toggle calendar size"
+              style={{ padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+              {calSize === 'large' ? '🔍 Large' : '🔍 Compact'}
+            </button>
             <Btn onClick={() => { setSelected(null); setForm({ ...BLANK, agent_id: agent?.id }); navigate('/calendar/new') }}>+ Add Event</Btn>
           </div>
         }
@@ -176,14 +185,14 @@ export function Calendar() {
           {/* Day headers */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '2px solid var(--border)' }}>
             {DAYS.map(d => (
-              <div key={d} style={{ padding: '10px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{d}</div>
+              <div key={d} style={{ padding: '12px', textAlign: 'center', fontSize: '13px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{d}</div>
             ))}
           </div>
           {/* Calendar grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
             {/* Empty cells for first week */}
             {Array.from({ length: firstDay }).map((_, i) => (
-              <div key={"empty-" + (i)} style={{ minHeight: '100px', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--dim)' }} />
+              <div key={"empty-" + (i)} style={{ minHeight: SZ.cell, borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--dim)' }} />
             ))}
             {/* Day cells */}
             {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
@@ -193,31 +202,31 @@ export function Calendar() {
 
               return (
                 <div key={day}
-                  style={{ minHeight: '100px', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '6px', cursor: 'pointer', background: isToday ? 'rgba(204,34,0,.04)' : '' }}
+                  style={{ minHeight: SZ.cell, borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: SZ.cellPad, cursor: 'pointer', background: isToday ? 'rgba(204,34,0,.04)' : '' }}
                   onClick={() => {
                     setSelected(null)
                     setForm({ ...BLANK, start_date: dateStr, agent_id: agent?.id })
                     navigate('/calendar/new')
                   }}>
-                  <div style={{ fontSize: '13px', fontWeight: isToday ? 800 : 500, color: isToday ? '#CC2200' : 'var(--muted)', marginBottom: '4px', display: 'inline-flex', width: '24px', height: '24px', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: isToday ? 'rgba(204,34,0,.15)' : 'transparent' }}>
+                  <div style={{ fontSize: SZ.num, fontWeight: isToday ? 800 : 600, color: isToday ? '#CC2200' : 'var(--text)', marginBottom: '5px', display: 'inline-flex', width: SZ.num+13, height: SZ.num+13, alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: isToday ? 'rgba(204,34,0,.15)' : 'transparent' }}>
                     {day}
                   </div>
                   {(yearHolidays[dateStr] || []).map((h, hi) => (
                     <div key={'hol'+hi} title={h.name}
-                      style={{ fontSize: '10px', fontWeight: 700, borderRadius: '4px', padding: '1px 5px', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      style={{ fontSize: SZ.chip, fontWeight: 700, borderRadius: '4px', padding: '2px 6px', marginBottom: SZ.gap, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         background: h.kind === 'jewish' ? 'rgba(37,80,145,.14)' : h.kind === 'jewish-minor' ? 'rgba(37,80,145,.07)' : 'rgba(16,185,129,.13)',
                         color: h.kind === 'us' ? '#0B7A45' : '#225091' }}>
                       {h.kind === 'us' ? '🇺🇸 ' : '✡️ '}{h.name}
                     </div>
                   ))}
-                  {dayEvents.slice(0,3).map(ev => (
+                  {dayEvents.slice(0, calSize==='large'?5:3).map(ev => (
                     <div key={ev.id}
                       onClick={(e) => { e.stopPropagation(); navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) }}
-                      style={{ fontSize: '11px', fontWeight: 600, color: '#fff', background: ev.color || '#CC2200', borderRadius: '4px', padding: '2px 5px', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      style={{ fontSize: SZ.ev, fontWeight: 600, color: '#fff', background: ev.color || '#CC2200', borderRadius: '5px', padding: SZ.evPad, marginBottom: SZ.gap, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ev.start_time && (ev.start_time.slice(0,5)) + " "}{ev.title}
                     </div>
                   ))}
-                  {dayEvents.length > 3 && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>+{dayEvents.length - 3} more</div>}
+                  {dayEvents.length > (calSize==='large'?5:3) && <div style={{ fontSize: SZ.chip, color: 'var(--muted)', fontWeight:600 }}>+{dayEvents.length - (calSize==='large'?5:3)} more</div>}
                   {showWeather && (
                     <DayWeather address={dayEvents.find(e => e.location)?.location} date={dateStr} />
                   )}
