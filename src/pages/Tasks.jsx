@@ -49,9 +49,14 @@ export function Tasks() {
   const [search,      setSearch]      = useState('')
   const [selectedIds, setSelectedIds] = useState([])
   const [bulkDel,     setBulkDel]     = useState(false)
-  const [statusF, setStatusF] = useState('pending')
-  const [priorF,  setPriorF]  = useState('')
-  const [agentF,  setAgentF]  = useState('')
+  // Filters persist per user: default is NO filter (show all), but if
+  // the user picks one it's remembered across visits until they clear it.
+  const [statusF, setStatusF] = useState(() => { try { return localStorage.getItem('tos_tasks_statusF') ?? '' } catch { return '' } })
+  const [priorF,  setPriorF]  = useState(() => { try { return localStorage.getItem('tos_tasks_priorF') ?? '' } catch { return '' } })
+  const [agentF,  setAgentF]  = useState(() => { try { return localStorage.getItem('tos_tasks_agentF') ?? '' } catch { return '' } })
+  useEffect(() => { try { localStorage.setItem('tos_tasks_statusF', statusF) } catch {} }, [statusF])
+  useEffect(() => { try { localStorage.setItem('tos_tasks_priorF', priorF) } catch {} }, [priorF])
+  useEffect(() => { try { localStorage.setItem('tos_tasks_agentF', agentF) } catch {} }, [agentF])
   const [selected,setSelected] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
   const [form,    setForm]    = useState(BLANK)
