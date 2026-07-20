@@ -15,7 +15,8 @@ import { CommandPalette, useCommandPalette } from './components/CommandPalette'
 import { ActiveCallBar } from './components/ClickToCall'
 
 // Page imports
-import { Dashboard }     from './pages/Dashboard'
+import { Dashboard as DashboardOld } from './pages/Dashboard'
+import { Dashboard } from './pages/DashboardV2'
 import { Contacts }      from './pages/Contacts'
 import { ContactDetail } from './pages/ContactDetail'
 import { Production }    from './pages/Production'
@@ -134,7 +135,8 @@ function AppShell() {
         <ErrorBoundary>
         <Routes>
           {/* Core pages with :id routing */}
-          <Route path="/"                    element={<Dashboard />} />
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/dashboard-classic" element={<DashboardOld />} />
           <Route path="/contacts"            element={<Contacts />} />
           <Route path="/contacts/:id"        element={<Contacts />} />
           <Route path="/contacts/:id/detail" element={<ContactDetail />} />

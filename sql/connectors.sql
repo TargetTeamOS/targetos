@@ -276,3 +276,9 @@ alter table briefing_sends enable row level security;
 drop policy if exists briefing_sends_all on briefing_sends;
 create policy briefing_sends_all on briefing_sends for all to authenticated using (true) with check (true);
 select 'briefing tables ready' as status;
+
+-- ═══ v15: dashboard settings (admin-set MLS watch areas, etc.) ═══
+insert into system_settings (key, value) values
+  ('dashboard_mls_areas', '{"cities":[],"maxprice":null,"minbeds":null}'::jsonb)
+on conflict (key) do nothing;
+select 'dashboard settings ready' as status;
