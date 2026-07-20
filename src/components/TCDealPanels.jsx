@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabase'
 import { notifyAgent } from '../lib/notify'
 import { Btn } from './UI'
 import ContactPicker, { contactName } from './ContactPicker'
-import { WeatherForecast } from './WeatherForecast'
+import { WeatherForecast, fetchForecast } from './WeatherForecast'
 import { ClickToCall } from './ClickToCall'
 
 const inp = { width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, background: 'var(--bg)', color: 'var(--text)' }
@@ -154,6 +154,8 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
   const [loadingP, setLoadingP] = useState(true)
   const [photographer, setPhotographer] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [weatherGate, setWeatherGate] = useState(null)   // { forecast, when } when confirming bad weather
+  const [checkingWx, setCheckingWx] = useState(false)
 
   async function load() {
     setLoadingP(true)
@@ -245,6 +247,22 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
     patch(fields)
   }
 
+  // Weather gate: before marking scheduled, check the forecast for
+  // that day. Bad weather → pop a confirmation showing what's coming
+  // and require an explicit "schedule anyway". Good/unknown → proceed.
+  async function confirmSchedule() {
+    if (!order?.scheduled_at) return
+    setCheckingWx(true)
+    let fc = null
+    try { fc = await fetchForecast(deal.addr, order.scheduled_at) } catch {}
+    setCheckingWx(false)
+    if (fc && fc.ok && fc.bad) {
+      setWeatherGate({ forecast: fc, when: new Date(order.scheduled_at).toLocaleString() })
+      return
+    }
+    patch({ status: 'Scheduled' }, { notifySchedule: true })
+  }
+
   return (
     <div>
       <div style={sectionTitle}>
@@ -307,12 +325,44 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
         <select style={inp} value={order?.status || 'Needs Prep'} onChange={e => patch({ status: e.target.value })}>
           {PHOTO_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <Btn onClick={() => patch({ status: 'Scheduled' }, { notifySchedule: true })}
-             disabled={saving || !order?.scheduled_at}>
-          Mark Scheduled ✓
+        <Btn onClick={() => confirmSchedule()}
+             disabled={saving || checkingWx || !order?.scheduled_at}>
+          {checkingWx ? 'Checking weather…' : 'Mark Scheduled ✓'}
         </Btn>
       </div>
       {order?.scheduled_at && <WeatherForecast address={deal.addr} date={order.scheduled_at} />}
+
+      {/* Bad-weather confirmation gate */}
+      {weatherGate && (
+        <div onClick={() => setWeatherGate(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 3200, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--panel)', borderRadius: 14, padding: 22, width: 'min(420px, 94vw)', fontFamily: 'Inter,system-ui,sans-serif', boxShadow: '0 16px 48px rgba(0,0,0,.35)' }}>
+            <div style={{ fontSize: 40, textAlign: 'center', marginBottom: 6 }}>{weatherGate.forecast.emoji}</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: '#DC2626', textAlign: 'center', marginBottom: 4 }}>⚠️ Bad weather expected</div>
+            <div style={{ fontSize: 13, color: 'var(--text)', textAlign: 'center', marginBottom: 14, lineHeight: 1.5 }}>
+              The forecast for <strong>{weatherGate.when}</strong> at<br/><strong>{deal.addr || 'this property'}</strong> is:
+              <div style={{ marginTop: 8, fontSize: 15, fontWeight: 800, color: '#DC2626' }}>
+                {weatherGate.forecast.label} · {weatherGate.forecast.tmax}°/{weatherGate.forecast.tmin}°F
+                {weatherGate.forecast.pop != null && <div style={{ fontSize: 13, fontWeight: 700 }}>{weatherGate.forecast.pop}% chance of precipitation</div>}
+              </div>
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', textAlign: 'center', marginBottom: 16 }}>
+              Outdoor/exterior photos may not come out well. Do you still want to schedule the shoot for this day?
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setWeatherGate(null)}
+                style={{ flex: 1, padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter,system-ui,sans-serif' }}>
+                Pick another day
+              </button>
+              <button onClick={() => { setWeatherGate(null); patch({ status: 'Scheduled' }, { notifySchedule: true }) }}
+                style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: '#DC2626', color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'Inter,system-ui,sans-serif' }}>
+                Schedule anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
         “Mark Scheduled” notifies the agent and adds the shoot to their calendar. Booking with the photographer happens outside the system — this tracks it.
       </div>

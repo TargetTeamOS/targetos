@@ -34,6 +34,29 @@ async function geocode(address) {
   return null
 }
 
+// ── Programmatic forecast fetch (for confirm-before-scheduling) ──
+// Returns { ok, tooFar, label, emoji, tmax, tmin, pop, bad, warn } or
+// null if it can't determine (missing location / network / past).
+export async function fetchForecast(address, date) {
+  const dayStr = String(date).slice(0, 10)
+  const days = Math.round((new Date(dayStr + 'T12:00:00') - new Date()) / 86400000)
+  if (days < 0) return null
+  if (days > 15) return { tooFar: true }
+  const geo = (await geocode(address)) || { lat: 41.11, lng: -74.05 }
+  try {
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + geo.lat + '&longitude=' + geo.lng +
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&timezone=auto&start_date=' + dayStr + '&end_date=' + dayStr
+    const r = await fetch(url); const j = await r.json()
+    if (!j.daily?.weather_code?.length) return null
+    const code = j.daily.weather_code[0]
+    const [label, emoji, rainRisk] = WMO[code] || ['—', '🌡️', 0]
+    const pop = j.daily.precipitation_probability_max?.[0] ?? null
+    const bad = rainRisk >= 2 || (pop != null && pop >= 50)
+    const warn = rainRisk === 1 || (pop != null && pop >= 30)
+    return { ok: true, label, emoji, tmax: Math.round(j.daily.temperature_2m_max[0]), tmin: Math.round(j.daily.temperature_2m_min[0]), pop, bad, warn }
+  } catch { return null }
+}
+
 export function WeatherForecast({ address, date }) {
   const [state, setState] = useState({ loading: false, data: null, error: null, tooFar: false })
 
