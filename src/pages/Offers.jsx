@@ -22,6 +22,8 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ContactPeek } from '../components/ContactPeek'
+import { useFeature } from '../lib/features'
+import { BulkEditBar } from '../components/BulkEditBar'
 import { useApp }  from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
@@ -228,12 +230,15 @@ export function Offers() {
   const navigate  = useNavigate()
   const { id: urlId } = useParams()
   const { agent, isAdmin, canManage } = useAuth()
+  const [bulkIds, setBulkIds] = useState([])
+  const toggleBulk = id => setBulkIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const canBulkEdit = useFeature('bulk_edit', agent)
   usePageView('offers')
   const { toast } = useApp()
 
   // Agents only see their own offers
   const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
-  const { offers, loading, add, update, remove } = useOffers(filters)
+  const { offers, loading, add, update, remove, refetch } = useOffers(filters)
   const { agents } = useAgents()
 
   const [search,     setSearch]     = useState('')
@@ -779,7 +784,7 @@ export function Offers() {
                   <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:10 }}>
                     {agentF ? agents.find(a=>a.id===agentF)?.name+"'s Offers" : 'All Offers'} ({filtered.length})
                   </div>
-                  <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} />
+                  <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} />
                 </div>
               )}
             </div>
@@ -788,7 +793,7 @@ export function Offers() {
           {(view === 'table' || !(isAdmin||canManage)) && (
             filtered.length === 0
               ? <Empty icon="📝" title="No offers" sub="Track submitted offers here." action={<Btn onClick={openAdd}>+ New Offer</Btn>} />
-              : <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} />
+              : <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} />
           )}
         </>
       )}
@@ -1189,13 +1194,13 @@ export function Offers() {
 }
 
 // ── OFFER TABLE ───────────────────────────────────────────────────
-function OfferTable({ offers, agents, onOpen, statusColor }) {
+function OfferTable({ offers, agents, onOpen, statusColor, canBulkEdit, bulkIds = [], onToggleBulk }) {
   return (
     <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', overflow:'hidden' }}>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
         <thead>
           <tr style={{ background:'var(--dim)' }}>
-            {['Address','MLS#','Buyer','Agent','Status','Purchase Price','Date','In-House','Files'].map(h=>(
+            {(canBulkEdit ? [' '] : []).concat(['Address','MLS#','Buyer','Agent','Status','Purchase Price','Date','In-House','Files']).map(h=>(
               <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
             ))}
           </tr>
@@ -1208,6 +1213,12 @@ function OfferTable({ offers, agents, onOpen, statusColor }) {
                 style={{ borderBottom:'1px solid var(--border)', cursor:'pointer' }}
                 onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
                 onMouseLeave={e=>e.currentTarget.style.background=''}>
+                {canBulkEdit && (
+                  <td style={{ padding:'10px 8px', width:30 }} onClick={e=>e.stopPropagation()}>
+                    <input type="checkbox" checked={bulkIds.includes(o.id)} onChange={()=>onToggleBulk(o.id)}
+                      style={{ width:15, height:15, cursor:'pointer', accentColor:'#CC2200' }} />
+                  </td>
+                )}
                 <td style={{ padding:'10px 12px', fontWeight:600, color:'var(--text)' }}>{o.listing_addr}</td>
                 <td style={{ padding:'10px 12px', color:'var(--muted)', fontSize:11 }}>{o.mls_number||'—'}</td>
                 <td style={{ padding:'10px 12px', color:'var(--muted)' }}>{o.buyer_name||'—'}</td>
@@ -1237,6 +1248,15 @@ function OfferTable({ offers, agents, onOpen, statusColor }) {
             )
           })}</tbody>
       </table>
+      {canBulkEdit && (
+        <BulkEditBar selectedIds={bulkIds} table="offers" agents={agents}
+          allIds={filtered.map(o => o.id)} onSelectAll={ids => setBulkIds(ids)}
+          fields={[
+            { key:'status',          label:'Status', type:'select', options:(OFFER_STATUSES||[]).map(x=>({value:x.value||x,label:x.label||x})) },
+            { key:'buyers_agent_id', label:'Buyer\'s Agent', type:'agent' },
+          ]}
+          onDone={() => { setBulkIds([]); refetch && refetch() }} onClear={() => setBulkIds([])} />
+      )}
     </div>
   )
 }

@@ -12,6 +12,8 @@ import { useApp } from '../context/AppContext'
 import { useTransactions, useAgents } from '../lib/hooks'
 import { fmt$, fmtDate, matchSearch, parseNum } from '../lib/utils'
 import { CTC_STAGES } from '../lib/constants'
+import { useFeature } from '../lib/features'
+import { BulkEditBar } from '../components/BulkEditBar'
 import { FileAttachments } from '../components/FileAttachments'
 import { RecordActivity } from '../pages/ActivityLog'
 import {
@@ -39,8 +41,11 @@ export function Transactions() {
   const { toast } = useApp()
 
   const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
-  const { transactions, loading, add, update, remove } = useTransactions(filters)
+  const { transactions, loading, add, update, remove, refetch } = useTransactions(filters)
   const { agents } = useAgents()
+  const [bulkIds, setBulkIds] = useState([])
+  const toggleBulk = id => setBulkIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const canBulkEdit = useFeature('bulk_edit', agent)
 
   const [search,  setSearch]  = useState('')
   const [ctcF,    setCtcF]    = useState('')
@@ -153,7 +158,7 @@ export function Transactions() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
             <thead>
               <tr style={{ background: 'var(--dim)' }}>
-                {['Address','Client','Agent','CTC Stage','Price','GCI','AO Date','Close Date','Status'].map(h => (
+                {(canBulkEdit ? [' '] : []).concat(['Address','Client','Agent','CTC Stage','Price','GCI','AO Date','Close Date','Status']).map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -164,6 +169,12 @@ export function Transactions() {
                   style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>
+                  {canBulkEdit && (
+                    <td style={{ padding: '11px 8px', width: 30 }} onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={bulkIds.includes(t.id)} onChange={() => toggleBulk(t.id)}
+                        style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#CC2200' }} />
+                    </td>
+                  )}
                   <td style={{ padding: '11px 12px', fontWeight: 600, color: 'var(--text)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.addr}</td>
                   <td style={{ padding: '11px 12px', color: 'var(--muted)' }}>{t.client_name || '—'}</td>
                   <td style={{ padding: '11px 12px' }}>{t.agents ? <Avatar agent={t.agents} size={24} /> : '—'}</td>
@@ -262,6 +273,16 @@ export function Transactions() {
       </Modal>
 
       <Confirm open={confirmDelete} message={"Delete transaction at " + (selected?.addr) + "?"} onConfirm={deleteTx} onCancel={() => setConfirmDelete(false)} />
+      {canBulkEdit && (
+        <BulkEditBar selectedIds={bulkIds} table="transactions" agents={agents}
+          allIds={filtered.map(t => t.id)} onSelectAll={ids => setBulkIds(ids)}
+          fields={[
+            { key:'status',    label:'Status', type:'select', options:STATUSES.map(v=>({value:v,label:v})) },
+            { key:'ctc_stage', label:'Contract-to-Close Stage', type:'select', options:(CTC_STAGES||[]).map(x=>({value:x.value||x,label:x.label||x})) },
+            { key:'agent_id',  label:'Assigned Agent', type:'agent' },
+          ]}
+          onDone={() => { setBulkIds([]); refetch && refetch() }} onClear={() => setBulkIds([])} />
+      )}
     </div>
   )
 }

@@ -575,6 +575,7 @@ export function Contacts() {
         selectedIds={selectedIds}
         table="contacts"
         agents={agents}
+        allIds={filtered.map(c => c.id)} onSelectAll={ids => setSelectedIds(ids)}
         fields={[
           { key:'type',   label:'Role (Buyer/Seller/Attorney…)', type:'select', options:CONTACT_TYPES.map(t=>({value:t,label:t})) },
           { key:'status', label:'Status', type:'select', options:(CONTACT_STATUSES||[]).map(s=>({value:s.value||s,label:s.label||s})) },

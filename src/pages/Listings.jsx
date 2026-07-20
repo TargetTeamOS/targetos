@@ -912,6 +912,7 @@ export function Listings() {
       {/* Listing Detail Drawer */}
       {canBulkEdit && (
         <BulkEditBar selectedIds={bulkIds} table="listings" agents={agents}
+          allIds={filtered.map(l => l.id)} onSelectAll={ids => setBulkIds(ids)}
           fields={[
             { key:'status',   label:'Status', type:'select', options:(LISTING_STATUSES||[]).map(x=>({value:x.value||x,label:x.label||x})) },
             { key:'agent_id', label:'Assigned Agent', type:'agent' },

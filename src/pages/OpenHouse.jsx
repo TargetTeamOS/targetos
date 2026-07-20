@@ -9,6 +9,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { useOpenHouses, useAgents } from '../lib/hooks'
+import { useFeature } from '../lib/features'
+import { BulkEditBar } from '../components/BulkEditBar'
 import { db } from '../lib/db'
 import { fmtDate, fmtPhone } from '../lib/utils'
 import { OH_INTEREST_LEVELS } from '../lib/constants'
@@ -33,8 +35,11 @@ export function OpenHouse() {
   const { toast } = useApp()
 
   const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
-  const { openHouses, loading, add, update, remove } = useOpenHouses(filters)
+  const { openHouses, loading, add, update, remove, refetch } = useOpenHouses(filters)
   const { agents } = useAgents()
+  const [bulkIds, setBulkIds] = useState([])
+  const toggleBulk = id => setBulkIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const canBulkEdit = useFeature('bulk_edit', agent)
 
   const [selected,    setSelected]    = useState(null)
   const [visitors,    setVisitors]    = useState([])
@@ -150,9 +155,14 @@ export function OpenHouse() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
           {openHouses.map(oh => (
             <div key={oh.id} onClick={() => openOH(oh)}
-              style={{ background: 'var(--panel)', borderRadius: 'var(--radius)', border: selected?.id === oh.id ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '16px', cursor: 'pointer', transition: 'box-shadow .15s' }}
+              style={{ position: 'relative', background: 'var(--panel)', borderRadius: 'var(--radius)', border: selected?.id === oh.id ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '16px', cursor: 'pointer', transition: 'box-shadow .15s' }}
               onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
               onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
+              {canBulkEdit && (
+                <input type="checkbox" checked={bulkIds.includes(oh.id)}
+                  onClick={e => e.stopPropagation()} onChange={e => { e.stopPropagation(); toggleBulk(oh.id) }}
+                  style={{ position: 'absolute', top: 12, right: 12, width: 16, height: 16, cursor: 'pointer', accentColor: '#CC2200' }} />
+              )}
               <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)', marginBottom: '6px' }}>{oh.listing_addr}</div>
               <div style={{ fontSize: '13px', color: 'var(--brand)', fontWeight: 600, marginBottom: '4px' }}>📅 {fmtDate(oh.date)}</div>
               {oh.start_time && <div style={{ fontSize: '12px', color: 'var(--muted)' }}>🕐 {oh.start_time} — {oh.end_time || '?'}</div>}
@@ -272,6 +282,12 @@ export function OpenHouse() {
       </Modal>
 
       <Confirm open={confirmDelete} message="Delete this open house?" onConfirm={deleteOH} onCancel={() => setConfirmDelete(false)} />
+      {canBulkEdit && (
+        <BulkEditBar selectedIds={bulkIds} table="open_houses" agents={agents}
+          allIds={openHouses.map(o => o.id)} onSelectAll={ids => setBulkIds(ids)}
+          fields={[{ key:'agent_id', label:'Assigned Agent', type:'agent' }]}
+          onDone={() => { setBulkIds([]); refetch && refetch() }} onClear={() => setBulkIds([])} />
+      )}
     </div>
   )
 }

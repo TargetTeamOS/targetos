@@ -245,6 +245,7 @@ export function Gifts() {
       <Confirm open={confirmDelete} message="Delete this gift record?" onConfirm={deleteGift} onCancel={() => setConfirmDelete(false)} />
       {canBulkEdit && (
         <BulkEditBar selectedIds={bulkIds} table="gifts" agents={agents}
+          allIds={filtered.map(g => g.id)} onSelectAll={ids => setBulkIds(ids)}
           fields={[
             { key:'status',   label:'Status', type:'select', options:(GIFT_STATUSES||[]).map(x=>({value:x.value||x,label:x.label||x})) },
             { key:'agent_id', label:'Assigned Agent', type:'agent' },

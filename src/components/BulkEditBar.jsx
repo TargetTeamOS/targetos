@@ -15,13 +15,14 @@ import { useApp } from '../context/AppContext'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-export function BulkEditBar({ selectedIds = [], table, fields = [], onDone, onClear, agents = [] }) {
+export function BulkEditBar({ selectedIds = [], table, fields = [], onDone, onClear, agents = [], allIds = null, onSelectAll = null }) {
   const { toast } = useApp()
   const [editField, setEditField] = useState('')
   const [editValue, setEditValue] = useState('')
   const [applying,  setApplying]  = useState(false)
 
-  if (!selectedIds.length) return null
+  if (!selectedIds.length && !(allIds && allIds.length)) return null
+  if (!selectedIds.length && allIds && onSelectAll) return null  // bar shows only once something is selected; select-all lives in the bar below
 
   const field = fields.find(f => f.key === editField)
 
@@ -93,7 +94,13 @@ export function BulkEditBar({ selectedIds = [], table, fields = [], onDone, onCl
 
       <div style={{ flex:1 }} />
 
-      <button onClick={onClear}
+      {allIds && onSelectAll && selectedIds.length < allIds.length && (
+          <button onClick={() => onSelectAll(allIds)}
+            style={{ padding:'6px 12px', borderRadius:8, border:'1px solid var(--border)', background:'transparent', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+            Select all {allIds.length}
+          </button>
+        )}
+        <button onClick={onClear}
         style={{ padding:'5px 12px', borderRadius:7, border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'rgba(255,255,255,.5)', fontSize:11, cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
         Clear selection
       </button>
