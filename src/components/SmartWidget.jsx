@@ -1,0 +1,179 @@
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { BOARD_OPTIONS } from '../lib/boardOptions'
+
+// One renderer for every smart-board widget. A widget is a saved query:
+//   { board, statuses[], groupBy, dateRange, agentScope, display, metric, columns[], color, title }
+// display: 'number' | 'bar' | 'donut' | 'list' | 'table'
+// Professional, no emoji, dense. Clicking drills into the records.
+
+const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const parseNum = v => { const n = parseFloat(String(v ?? '').replace(/[^0-9.-]/g,'')); return isNaN(n)?0:n }
+const fmtMoney = n => { const v=parseNum(n); if(v>=1e6) return '$'+(v/1e6).toFixed(2)+'M'; if(v>=1e3) return '$'+Math.round(v/1e3)+'K'; return '$'+Math.round(v) }
+const fmtVal = (v, field) => {
+  if (v == null || v === '') return '—'
+  if (/gci|price|production|volume|commission|amount|value/i.test(field||'')) return fmtMoney(v)
+  if (/date/i.test(field||'') && String(v).length >= 8) return new Date(v).toLocaleDateString()
+  return String(v)
+}
+
+export function BOARD_DATE_FIELD(board) {
+  return { deals:'ao_date', calls:'called_at', offers:'offer_date', open_houses:'date', listings:'list_date', gifts:'sent_date' }[board] || 'created_at'
+}
+
+export function dateRangeToBounds(id) {
+  if (!id || id === 'all') return null
+  const now = new Date(), today = now.toISOString().slice(0,10)
+  if (id==='today') return { from:today, to:today }
+  if (id==='week')  { const d=new Date(now); d.setDate(d.getDate()-7); return { from:d.toISOString().slice(0,10), to:today } }
+  if (id==='month') { const d=new Date(now); d.setMonth(d.getMonth()-1); return { from:d.toISOString().slice(0,10), to:today } }
+  if (id==='quarter'){ const d=new Date(now); d.setMonth(d.getMonth()-3); return { from:d.toISOString().slice(0,10), to:today } }
+  if (id==='ytd')   return { from: now.getFullYear()+'-01-01', to: today }
+  if (/^\d{4}$/.test(id)) return { from:id+'-01-01', to:id+'-12-31' }
+  if (String(id).startsWith('custom:')) { const [,f,t]=id.split(':'); return f&&t?{from:f,to:t}:null }
+  return null
+}
+
+export function WidgetContent({ config, agentId, isAdmin }) {
+  const navigate = useNavigate()
+  const [rows, setRows] = useState([])
+  const [count, setCount] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const boardDef = BOARD_OPTIONS.find(b => b.id === config.board)
+
+  useEffect(() => {
+    if (!boardDef) { setLoading(false); return }
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      try {
+        let q = supabase.from(boardDef.table).select('*')
+        const scope = config.agentScope || (isAdmin ? 'all' : 'mine')
+        if (scope === 'mine' && agentId) q = q.eq('agent_id', agentId)
+        else if (scope !== 'all' && scope !== 'mine') q = q.eq('agent_id', scope)
+        if (config.statuses?.length && boardDef.statusField) q = q.in(boardDef.statusField, config.statuses)
+        // extra multi-select filters: { field: [values] }
+        if (config.filters) for (const [f, vals] of Object.entries(config.filters)) {
+          if (Array.isArray(vals) && vals.length) q = q.in(f, vals)
+        }
+        const dr = dateRangeToBounds(config.dateRange)
+        if (dr) { const df = BOARD_DATE_FIELD(config.board); q = q.gte(df, dr.from).lte(df, dr.to + 'T23:59:59') }
+        q = q.order(config.sortBy || BOARD_DATE_FIELD(config.board), { ascending: false, nullsFirst: false }).limit(500)
+        const { data } = await q
+        if (cancelled) return
+        setRows(data || []); setCount((data || []).length)
+      } catch (e) { if (!cancelled) { setRows([]); setCount(0) } }
+      if (!cancelled) setLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [JSON.stringify(config), agentId])
+
+  if (!boardDef) return <Empty text="Pick a data source" />
+  if (loading) return <div style={{ fontSize:12, color:'var(--muted)', fontFamily:ff, padding:8 }}>Loading…</div>
+
+  const color = config.color || '#2563EB'
+  const goTo = () => navigate({ contacts:'/contacts', deals:'/production', listings:'/my-listings', tasks:'/tasks', offers:'/production', calls:'/calls', gifts:'/gifts' }[config.board] || '/')
+
+  // NUMBER — count or numeric aggregate
+  if (!config.display || config.display === 'number') {
+    let value = count, label = config.metric_label || 'records'
+    if (config.metric && config.metric !== 'count') {
+      const sum = rows.reduce((s,r)=>s+parseNum(r[config.metric]),0)
+      value = fmtMoney(sum); label = (boardDef.numericFields.find(n=>n.field===config.metric)?.label) || config.metric
+    }
+    return (
+      <div onClick={goTo} style={{ height:'100%', display:'flex', flexDirection:'column', justifyContent:'center', cursor:'pointer' }}>
+        <div style={{ fontSize:40, fontWeight:800, color, lineHeight:1, fontFamily:ff }}>{value}</div>
+        <div style={{ fontSize:12, color:'var(--muted)', marginTop:6, fontFamily:ff }}>{label}</div>
+      </div>
+    )
+  }
+
+  // GROUPED (bar / donut)
+  if (config.display === 'bar' || config.display === 'donut') {
+    const gb = config.groupBy || boardDef.statusField
+    const groups = {}
+    for (const r of rows) { const k = r[gb] ?? '—'; groups[k] = (groups[k]||0)+1 }
+    const entries = Object.entries(groups).sort((a,b)=>b[1]-a[1])
+    const max = Math.max(1, ...entries.map(e=>e[1]))
+    const palette = ['#2563EB','#059669','#D97706','#DC2626','#7C3AED','#0891B2','#DB2777','#65A30D']
+    if (config.display === 'bar') {
+      return (
+        <div style={{ display:'flex', flexDirection:'column', gap:6, fontFamily:ff, overflowY:'auto', height:'100%' }}>
+          {entries.map(([k,v],i) => (
+            <div key={k} style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:11, color:'var(--muted)', width:90, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{k}</span>
+              <div style={{ flex:1, background:'var(--dim)', borderRadius:4, height:16, overflow:'hidden' }}>
+                <div style={{ width:(v/max*100)+'%', background:palette[i%palette.length], height:'100%' }} />
+              </div>
+              <span style={{ fontSize:12, fontWeight:700, color:'var(--text)', width:28, textAlign:'right' }}>{v}</span>
+            </div>
+          ))}
+          {!entries.length && <Empty text="No data" />}
+        </div>
+      )
+    }
+    // donut
+    const total = entries.reduce((s,e)=>s+e[1],0) || 1
+    let acc = 0
+    const segs = entries.map(([k,v],i) => { const start=acc/total*360; acc+=v; return { k, v, start, end:acc/total*360, c:palette[i%palette.length] } })
+    const grad = segs.map(s=>`${s.c} ${s.start}deg ${s.end}deg`).join(', ')
+    return (
+      <div style={{ display:'flex', alignItems:'center', gap:14, height:'100%', fontFamily:ff }}>
+        <div style={{ width:96, height:96, borderRadius:'50%', flexShrink:0, background:`conic-gradient(${grad})`, position:'relative' }}>
+          <div style={{ position:'absolute', inset:14, background:'var(--panel)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:800, color:'var(--text)' }}>{total}</div>
+        </div>
+        <div style={{ flex:1, overflowY:'auto', maxHeight:'100%' }}>
+          {segs.map(s => (
+            <div key={s.k} style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, marginBottom:3 }}>
+              <span style={{ width:8, height:8, borderRadius:2, background:s.c }} />
+              <span style={{ color:'var(--muted)', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.k}</span>
+              <span style={{ fontWeight:700, color:'var(--text)' }}>{s.v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // LIST
+  if (config.display === 'list') {
+    return (
+      <div style={{ overflowY:'auto', height:'100%', fontFamily:ff }}>
+        {rows.slice(0, config.limitRows || 50).map(r => (
+          <div key={r.id} onClick={goTo} style={{ padding:'6px 0', borderBottom:'1px solid var(--border)', cursor:'pointer', display:'flex', justifyContent:'space-between', gap:8 }}>
+            <span style={{ fontSize:12, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r[boardDef.nameField] || '—'}</span>
+            <span style={{ fontSize:11, color:'var(--muted)', flexShrink:0 }}>{fmtVal(r[boardDef.statusField], boardDef.statusField)}</span>
+          </div>
+        ))}
+        {!rows.length && <Empty text="No records" />}
+      </div>
+    )
+  }
+
+  // TABLE
+  if (config.display === 'table') {
+    const cols = (config.columns?.length ? config.columns : boardDef.displayCols.slice(0,4).map(c=>c.field))
+    return (
+      <div style={{ overflow:'auto', height:'100%', fontFamily:ff }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <thead><tr>{cols.map(c => <th key={c} style={{ textAlign:'left', padding:'4px 8px', color:'var(--muted)', fontWeight:700, borderBottom:'1px solid var(--border)', whiteSpace:'nowrap' }}>{boardDef.displayCols.find(dc=>dc.field===c)?.label || c}</th>)}</tr></thead>
+          <tbody>
+            {rows.slice(0, config.limitRows || 50).map(r => (
+              <tr key={r.id} onClick={goTo} style={{ cursor:'pointer' }}>
+                {cols.map(c => <td key={c} style={{ padding:'4px 8px', color:'var(--text)', borderBottom:'1px solid var(--border)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:160 }}>{fmtVal(r[c], c)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && <Empty text="No records" />}
+      </div>
+    )
+  }
+  return null
+}
+
+function Empty({ text }) {
+  return <div style={{ fontSize:12, color:'var(--muted)', fontFamily:ff, padding:8, textAlign:'center' }}>{text}</div>
+}

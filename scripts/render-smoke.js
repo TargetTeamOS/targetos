@@ -26,6 +26,7 @@ const PAGES = [
   { name: 'TVBoard',       import: "import { TVBoard } from './src/pages/TVBoard'",             jsx: '<TVBoard />' },
   { name: 'AgentActivity', import: "import { AgentActivity } from './src/pages/AgentActivity'", jsx: '<AgentActivity />' },
   { name: 'Dashboard',     import: "import { Dashboard } from './src/pages/Dashboard'",           jsx: '<Dashboard />' },
+  { name: 'DashboardSmart',import: "import { DashboardSmart } from './src/pages/DashboardSmart'", jsx: '<DashboardSmart />' },
 ]
 
 const SHIMS = `
@@ -69,7 +70,7 @@ const tmpOut = path.join(os.tmpdir(), 'render-smoke.cjs')
 fs.writeFileSync(tmpEntry, entry)
 try {
   execSync(
-    `npx esbuild ${tmpEntry} --bundle --platform=node --loader:.js=jsx --loader:.jsx=jsx --jsx=automatic ` +
+    `npx esbuild ${tmpEntry} --bundle --platform=node --loader:.js=jsx --loader:.jsx=jsx --loader:.css=empty --jsx=automatic ` +
     `--banner:js="${SHIMS.replace(/\n/g, ' ').replace(/"/g, '\\"')}" --outfile=${tmpOut} --log-level=error`,
     { stdio: ['ignore', 'inherit', 'inherit'] }
   )
