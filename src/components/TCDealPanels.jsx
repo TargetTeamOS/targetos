@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase'
 import { notifyAgent } from '../lib/notify'
 import { Btn } from './UI'
 import ContactPicker, { contactName } from './ContactPicker'
+import { WeatherForecast } from './WeatherForecast'
 import { ClickToCall } from './ClickToCall'
 
 const inp = { width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, background: 'var(--bg)', color: 'var(--text)' }
@@ -311,6 +312,7 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
           Mark Scheduled ✓
         </Btn>
       </div>
+      {order?.scheduled_at && <WeatherForecast address={deal.addr} date={order.scheduled_at} />}
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
         “Mark Scheduled” notifies the agent and adds the shoot to their calendar. Booking with the photographer happens outside the system — this tracks it.
       </div>
