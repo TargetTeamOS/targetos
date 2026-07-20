@@ -120,6 +120,8 @@ function SmartCards({ listings, deals }) {
   const [pin,         setPin]         = useState(null)   // {x,y} canvas coords — unit pin for condos/developments
   const [pinLabel,    setPinLabel]    = useState('')
   const [definingPin, setDefiningPin] = useState(false)
+  const [photoFit,    setPhotoFit]    = useState('cover')  // 'cover' = fill zone (crop) | 'contain' = fit whole photo
+  const [addrBand,    setAddrBand]    = useState(true)     // translucent white strip behind the address
   const [eraseZones,  setEraseZones]  = useState([])   // [{x,y,w,h,color}] — cover baked-in template text before redrawing
 
   // For Sale cards: price + beds/baths text layers, click-positioned
@@ -159,7 +161,7 @@ function SmartCards({ listings, deals }) {
   }, [])
 
   // Redraw whenever anything changes
-  useEffect(function() { draw() }, [tplImg, propImg, photoZone, addrLayer, priceLayer, detailsLayer, eraseZones, address, priceText, detailsText, cardType, pin, pinLabel])
+  useEffect(function() { draw() }, [tplImg, propImg, photoZone, addrLayer, priceLayer, detailsLayer, eraseZones, address, priceText, detailsText, cardType, pin, pinLabel, photoFit, addrBand])
 
   // AUTO-IMPORT: selecting a listing pulls its saved photo into the
   // photo zone automatically (manual upload still available and wins).
@@ -177,7 +179,12 @@ function SmartCards({ listings, deals }) {
   function draw() {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')
+    drawInto(canvas.getContext('2d'))
+  }
+
+  // All drawing happens in CS (1080) coordinates; for HD export we
+  // hand in a scaled context and the same code renders at 2160.
+  function drawInto(ctx) {
     ctx.clearRect(0, 0, CS, CS)
 
     if (tplImg) {
@@ -191,9 +198,10 @@ function SmartCards({ listings, deals }) {
         ctx.beginPath()
         ctx.rect(x, y, w, h)
         ctx.clip()
-        // Cover-fit the property photo into the zone
+        // Fill (crop) or Fit (whole photo, white letterbox)
         const iw = propImg.naturalWidth, ih = propImg.naturalHeight
-        const scale = Math.max(w / iw, h / ih)
+        const scale = photoFit === 'contain' ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih)
+        if (photoFit === 'contain') { ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x, y, w, h) }
         const sw = iw * scale, sh = ih * scale
         const ox = x + (w - sw) / 2, oy = y + (h - sh) / 2
         ctx.drawImage(propImg, ox, oy, sw, sh)
@@ -211,12 +219,20 @@ function SmartCards({ listings, deals }) {
         })
       }
 
-      // Draw the address text
+      // Draw the address text (optionally on a see-through white strip)
       if (address) {
         const al = addrLayer
         ctx.save()
         ctx.font = (al.bold ? '800 ' : '500 ') + al.size + 'px Georgia, serif'
-        ctx.fillStyle = al.color
+        if (addrBand) {
+          const bandH = al.size * 1.9
+          const bx = photoZone ? photoZone.x : 0
+          const bw = photoZone ? photoZone.w : CS
+          ctx.fillStyle = 'rgba(255,255,255,0.78)'
+          ctx.fillRect(bx, al.y - bandH / 2, bw, bandH)
+        }
+        const white = ['#fff', '#ffffff', 'white'].includes(String(al.color).toLowerCase())
+        ctx.fillStyle = (addrBand && white) ? '#12294B' : al.color
         ctx.textBaseline = 'middle'
         ctx.textAlign = al.align || 'center'
         ctx.fillText(address, al.x, al.y)
@@ -560,12 +576,18 @@ function SmartCards({ listings, deals }) {
   function exportJPEG() {
     setDefiningZone(false); setDefiningAddr(false)
     setTimeout(function() {
-      draw()
-      const url = canvasRef.current.toDataURL('image/jpeg', 0.96)
+      // True HD: render at 2× on an offscreen canvas (2160×2160)
+      const off = document.createElement('canvas')
+      off.width = CS * 2; off.height = CS * 2
+      const octx = off.getContext('2d')
+      octx.scale(2, 2)
+      octx.imageSmoothingQuality = 'high'
+      drawInto(octx)
+      const url = off.toDataURL('image/jpeg', 0.95)
       const a = document.createElement('a')
       const addrClean = (address || 'card').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30)
-      a.href = url; a.download = 'TargetTeam_' + addrClean + '.jpg'; a.click()
-      toast('✅ Downloaded 1080×1080 JPEG')
+      a.href = url; a.download = 'TargetTeam_' + addrClean + '_HD.jpg'; a.click()
+      toast('✅ Downloaded 2160×2160 HD JPEG')
     }, 80)
   }
 
@@ -837,6 +859,45 @@ function SmartCards({ listings, deals }) {
                   <div style={{ fontSize:11, color:'var(--muted)' }}>Gets placed in your defined photo zone</div>
                 </div>
               </label>
+              {propSrc && (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginTop:8 }}>
+                  <button onClick={() => setPhotoFit('cover')}
+                    style={{ padding:'8px', borderRadius:8, border:'2px solid '+(photoFit==='cover'?'#8B5CF6':'var(--border)'), background:photoFit==='cover'?'rgba(139,92,246,.08)':'var(--dim)', color:photoFit==='cover'?'#8B5CF6':'var(--text)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                    ⛶ Fill zone (crop)
+                  </button>
+                  <button onClick={() => setPhotoFit('contain')}
+                    style={{ padding:'8px', borderRadius:8, border:'2px solid '+(photoFit==='contain'?'#8B5CF6':'var(--border)'), background:photoFit==='contain'?'rgba(139,92,246,.08)':'var(--dim)', color:photoFit==='contain'?'#8B5CF6':'var(--text)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                    🖼 Fit whole photo
+                  </button>
+                </div>
+              )}
+              {propSrc && (
+                <div style={{ marginTop:8, border:'1px solid var(--border)', borderRadius:8, padding:'8px 10px', display:'flex', flexDirection:'column', gap:6 }}>
+                  <div style={{ fontSize:10, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.04em' }}>📍 Unit pin (condo / development)</div>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                    <button onClick={() => { setDefiningPin(!definingPin); setDefiningZone(false); setDefiningAddr(false) }}
+                      style={{ padding:'7px 10px', borderRadius:7, border:'none', background:definingPin?'#E11D48':'#2563EB', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                      {definingPin ? '🖱 Click the card preview on the unit… (cancel)' : (pin ? 'Move pin' : 'Place pin on card')}
+                    </button>
+                    {pin && (
+                      <button onClick={() => { setPin(null); setPinLabel('') }}
+                        style={{ padding:'7px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  {pin && (
+                    <input value={pinLabel} onChange={e => setPinLabel(e.target.value.toUpperCase())} placeholder="Pin label — e.g. UNIT 14B"
+                      style={{ padding:'6px 9px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff }} />
+                  )}
+                </div>
+              )}
+              {propSrc && (
+                <label style={{ marginTop:8, display:'flex', alignItems:'center', gap:8, fontSize:12, fontFamily:ff, color:'var(--text)', cursor:'pointer' }}>
+                  <input type="checkbox" checked={addrBand} onChange={e => setAddrBand(e.target.checked)} />
+                  See-through white strip behind the address
+                </label>
+              )}
               {propSrc && (
                 <>
                   {listing && (
