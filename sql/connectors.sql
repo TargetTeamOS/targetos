@@ -197,3 +197,19 @@ update card_templates set layout = '{
   "fields":[{"id":"house_type","x":0.088,"y":0.5367},{"id":"beds","x":0.292,"y":0.5367},{"id":"sqft","x":0.088,"y":0.5744},{"id":"baths","x":0.288,"y":0.5744}],
   "info":{"x":0.030,"y":0.612,"w":0.44,"h":0.088}
 }'::jsonb where name = 'For Sale Flyer (Team frame)';
+
+-- ═══ v10 (7/19 late): contact-scoped automations ═══
+create table if not exists contact_automations (
+  id            uuid primary key default gen_random_uuid(),
+  contact_id    uuid not null,
+  automation_id uuid not null,
+  status        text not null default 'active',   -- active | stopped
+  applied_by    uuid,
+  applied_at    timestamptz not null default now(),
+  unique (contact_id, automation_id)
+);
+alter table contact_automations enable row level security;
+drop policy if exists contact_automations_all on contact_automations;
+create policy contact_automations_all on contact_automations
+for all to authenticated using (true) with check (true);
+select 'contact_automations ready' as status;

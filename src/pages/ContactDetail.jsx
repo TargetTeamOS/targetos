@@ -19,6 +19,8 @@ import { supabase } from '../lib/supabase'
 import { CallJourney } from '../components/CallJourney'
 import { loadContactLayout, saveContactLayout } from '../lib/contactLayout'
 import { EmailComposeModal } from '../components/EmailComposeModal'
+import { SmsComposeModal } from '../components/SmsComposeModal'
+import { ContactAutomations } from '../components/ContactAutomations'
 import { db } from '../lib/db'
 import {
   fmtDate, fmtDateTime, fmtPhone, fmt$, initials,
@@ -649,7 +651,8 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
 }
 
 function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agents, agent, voiceNotes = [], onRefreshTimeline, layout, editLayout, setLayout }) {
-  const { can } = useAuth()
+  const { can, isAdmin } = useAuth()
+  const canManage = isAdmin || can('admin.automations')
   const canReassign = can('contacts.reassign')
   function onReorder(fromKey, toKey) {
     const order = (layout?.order || []).slice()
@@ -664,6 +667,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
     setLayout({ ...layout, hidden })
   }
   const [composeOpen, setComposeOpen] = React.useState(false)
+  const [smsOpen, setSmsOpen] = React.useState(false)
 
   async function onAssignAgent(newAgentId) {
     if (!canReassign) { toast('You do not have permission to reassign contacts', '#DC2626'); return }
@@ -689,7 +693,6 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
   const [appts,       setAppts]        = React.useState([])
   const [calls,       setCalls]        = React.useState([])
   const [expandedCallId, setExpandedCallId] = React.useState(null)
-  const [gifts,       setGifts]        = React.useState([])
   const [autoPlans,   setAutoPlans]   = React.useState([])
 
   React.useEffect(() => {
@@ -697,7 +700,6 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
     // Load related data
     supabase.from('calendar_events').select('id,title,start_date,start_time,type').eq('contact_id', contactId).order('start_date').limit(10).then(r => setAppts(r.data || []))
     supabase.from('calls').select('id,contact_name,direction,outcome,called_at,notes,twilio_call_sid').eq('contact_id', contactId).order('called_at', { ascending: false }).limit(10).then(r => setCalls(r.data || []))
-    supabase.from('gifts').select('id,client_name,status,description').eq('contact_id', contactId).order('created_at', { ascending: false }).limit(10).then(r => setGifts(r.data || []))
     // Agreements stored as tags/notes for now
     const tags = f.tags || []
     setAgreements(tags.filter(t => ['Buyer Agreement', 'Listing Agreement', 'Referral Agreement'].includes(t)).map(t => ({
@@ -945,45 +947,11 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
         <AddBtn onClick={() => navigate('/calls/new')} label="+ Log Call" />
       </RightSection>
 
-      {/* ── GIFTS ── */}
-      <RightSection hideKey="gifts" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title={"Gifts (" + (gifts.length) + ")"} icon="🎁" color="#EC4899">
-        {gifts.length === 0 && <EmptyState text="No gifts yet" action={{ label: '+ Add Gift', onClick: () => navigate('/gifts/new') }} />}
-        {gifts.map(g => (
-          <div key={g.id} onClick={() => navigate('/gifts/' + g.id)}
-            style={{ display:'flex', alignItems:'center', gap:'8px', padding:'6px 0', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
-            <div style={{ flex:1, fontSize:'12px', color:'var(--text)' }}>{g.description || g.client_name}</div>
-            <Pill label={g.status} color="#EC4899" />
-          </div>
-        ))}
-        <AddBtn onClick={() => navigate('/gifts/new')} label="+ Add Gift" />
-      </RightSection>
 
       {/* ── AUTO PLANS (Automations) ── */}
       <RightSection hideKey="autoplans" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Auto Plans" icon="⚡" color="#CC2200" defaultOpen={false}>
-        <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'10px', lineHeight:1.5 }}>
-          Apply automations to this contact to send emails, create tasks, and follow ups automatically.
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-          {[
-            { label: '🔔 New Lead Follow-Up',   desc: 'Create task · Send email' },
-            { label: '📅 30-Day Nurture',        desc: 'Weekly check-ins for 30 days' },
-            { label: '🏡 Buyer Search Plan',     desc: 'Match listings · Alert on new' },
-            { label: '🎉 Post-Close Follow-Up',  desc: 'Birthday · Anniversary reminders' },
-          ].map(plan => (
-            <div key={plan.label} style={{ padding:'8px 10px', background:'var(--dim)', borderRadius:'7px', border:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
-              <div>
-                <div style={{ fontSize:'12px', fontWeight:600, color:'var(--text)' }}>{plan.label}</div>
-                <div style={{ fontSize:'10px', color:'var(--muted)', marginTop:'1px' }}>{plan.desc}</div>
-              </div>
-              <button
-                onClick={() => navigate('/automations')}
-                style={{ padding:'4px 8px', borderRadius:'5px', border:'1px solid var(--brand)', background:'transparent', color:'var(--brand)', fontSize:'11px', fontWeight:600, cursor:'pointer', fontFamily:'Inter,system-ui,sans-serif', flexShrink:0 }}>
-                Apply
-              </button>
-            </div>
-          ))}
-        </div>
-        <AddBtn onClick={() => navigate('/automations')} label="Manage Automations →" />
+        <ContactAutomations contactId={contactId} canManage={canManage} toast={toast} onRefreshTimeline={onRefreshTimeline} />
+        <AddBtn onClick={() => navigate('/automations')} label="Manage all automations →" />
       </RightSection>
 
       {/* ── LISTING ALERTS ── */}
@@ -1005,18 +973,21 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
         )}
         <Btn size="sm" variant="secondary" style={{ width:'100%' }}
           onClick={async () => {
-            await supabase.from('audit_log').insert({
-              agent_id:   f.agent_id || agent?.id,
-              table_name: 'contacts',
-              record_id:  contactId,
-              action:     'note',
-              field_name: 'email',
-              new_value:  'Listing alert sent to ' + (f.email || f.first_name),
-              metadata:   { description: 'Listing alert email', type: 'email' },
-              created_at: new Date().toISOString(),
-            })
-            toast('✅ Listing alert logged — wire up email to send')
-            onRefreshTimeline?.()
+            if (!f.email) { toast('This contact has no email address', '#DC2626'); return }
+            try {
+              const { sendContactEmail } = await import('../lib/emailService')
+              const areas = (f.locations || []).join(', ') || 'your area'
+              const budget = f.budget_max ? (' up to ' + fmt$(f.budget_max)) : ''
+              const r = await sendContactEmail({
+                contactEmail: f.email, contactName: (f.first_name || '') + ' ' + (f.last_name || ''),
+                subject: 'New listings matching your search in ' + areas,
+                body: 'Hi ' + (f.first_name || 'there') + ',\n\nHere are the latest listings in ' + areas + budget + '. Reply and I\'ll set up private showings for any that catch your eye.\n\nBrowse matches: https://app.targetreteam.com',
+                agentName: agent?.name || 'Target Team', agentEmail: agent?.email || null,
+              })
+              if (r && r.ok === false) throw new Error(r.error || 'send failed')
+              toast('📧 Listing alert sent to ' + (f.first_name || f.email))
+              onRefreshTimeline?.()
+            } catch (e) { toast('Send failed: ' + e.message, '#DC2626') }
           }}>
           📧 Send Listing Alert
         </Btn>
@@ -1036,18 +1007,20 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
         )}
         <Btn size="sm" variant="secondary" style={{ width:'100%' }}
           onClick={async () => {
-            await supabase.from('audit_log').insert({
-              agent_id:   f.agent_id || agent?.id,
-              table_name: 'contacts',
-              record_id:  contactId,
-              action:     'note',
-              field_name: 'email',
-              new_value:  'Market report sent to ' + (f.email || f.first_name),
-              metadata:   { description: 'Market report email', type: 'email' },
-              created_at: new Date().toISOString(),
-            })
-            toast('✅ Market report logged')
-            onRefreshTimeline?.()
+            if (!f.email) { toast('This contact has no email address', '#DC2626'); return }
+            try {
+              const { sendContactEmail } = await import('../lib/emailService')
+              const areas = (f.locations || []).join(', ') || 'your area'
+              const r = await sendContactEmail({
+                contactEmail: f.email, contactName: (f.first_name || '') + ' ' + (f.last_name || ''),
+                subject: 'Your ' + areas + ' market update',
+                body: 'Hi ' + (f.first_name || 'there') + ',\n\nHere\'s the latest market snapshot for ' + areas + ' — recent sales, active inventory, and where prices are trending. Happy to walk you through what it means for your plans.\n\n' + (agent?.name || 'Target Team'),
+                agentName: agent?.name || 'Target Team', agentEmail: agent?.email || null,
+              })
+              if (r && r.ok === false) throw new Error(r.error || 'send failed')
+              toast('📊 Market report sent to ' + (f.first_name || f.email))
+              onRefreshTimeline?.()
+            } catch (e) { toast('Send failed: ' + e.message, '#DC2626') }
           }}>
           📊 Send Market Report
         </Btn>
@@ -1062,6 +1035,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
           action bar (Note/Email/Call/Task/Appointment/SMS) and the
           Deals/Listings sections, so this was a third redundant copy. */}
       <EmailComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} contact={f} agent={agent} toast={toast} />
+      <SmsComposeModal open={smsOpen} onClose={() => setSmsOpen(false)} contact={f} agent={agent} toast={toast} onSent={onRefreshTimeline} />
 
     </div>
   )
@@ -1441,14 +1415,14 @@ export function ContactDetail() {
         <div style={{ marginLeft:'auto', display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
           {f.phone && <ClickToCall phone={f.phone} contactName={(f.first_name||'')+' '+(f.last_name||'')} contactId={id} showLabel />}
           {f.email && (
-            <button onClick={()=>window.open('mailto:'+f.email)} title="Email"
+            <button onClick={()=>setComposeOpen(true)} title="Email (sends from the CRM, logs here)"
               style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}
               onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'} onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
               📧 Email
             </button>
           )}
           {f.phone && (
-            <button onClick={()=>window.open('sms:'+f.phone)} title="Text"
+            <button onClick={()=>setSmsOpen(true)} title="Text (sends via Twilio, logs here)"
               style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}
               onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'} onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
               💬 Text
