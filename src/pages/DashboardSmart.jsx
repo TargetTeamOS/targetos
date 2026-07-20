@@ -30,19 +30,30 @@ const DISPLAYS = [
 // Starter widgets so a fresh board already shows where you stand.
 function starterWidgets() {
   return [
-    { i:'w_gci', title:'Closed GCI (YTD)', board:'deals', statuses:['Closed'], dateRange:'ytd', display:'number', metric:'gci', agentScope:'all', color:'#059669', x:0, y:0, w:3, h:2 },
-    { i:'w_pipe', title:'Pipeline by Stage', board:'deals', statuses:[], dateRange:'all', display:'bar', groupBy:'stage', agentScope:'all', color:'#2563EB', x:3, y:0, w:5, h:3 },
-    { i:'w_active', title:'Active Deals', board:'deals', statuses:['Negotiations','Offer Accapted','Under Shtar','Under Contract'], dateRange:'all', display:'number', agentScope:'all', color:'#2563EB', x:8, y:0, w:2, h:2 },
-    { i:'w_hot', title:'Hot Leads', board:'contacts', statuses:['Hot'], dateRange:'all', display:'number', agentScope:'all', color:'#D97706', x:10, y:0, w:2, h:2 },
-    { i:'w_tasks', title:'Open Tasks', board:'tasks', statuses:['pending','in_progress'], dateRange:'all', display:'number', agentScope:'mine', color:'#DC2626', x:0, y:2, w:3, h:2 },
-    { i:'w_listings', title:'Active Listings', board:'listings', statuses:['Active'], dateRange:'all', display:'number', agentScope:'all', color:'#0891B2', x:8, y:2, w:4, h:2 },
-    { i:'w_mytasks', title:'My Open Tasks', board:'tasks', statuses:['pending','in_progress'], dateRange:'all', display:'list', agentScope:'mine', color:'#DC2626', x:0, y:4, w:4, h:4 },
-    { i:'w_appts', title:'Upcoming Appointments', board:'appointments', statuses:[], dateRange:'all', display:'list', agentScope:'mine', color:'#059669', x:4, y:4, w:4, h:4 },
-    { i:'w_recent', title:'Recent Contacts', board:'contacts', statuses:[], dateRange:'month', display:'list', agentScope:'mine', color:'#7C3AED', x:8, y:4, w:4, h:4 },
-    { i:'w_dealtable', title:'Deals — Detail', board:'deals', statuses:[], dateRange:'all', display:'table', columns:['addr','stage','gci','ao_date'], agentScope:'all', color:'#2563EB', x:0, y:8, w:12, h:4 },
+    // key numbers (top row)
+    { i:'w_gci',     title:'Closed GCI (YTD)',  board:'deals', statuses:['Closed'], dateRange:'ytd', display:'number', metric:'gci', agentScope:'all', color:'#059669', x:0, y:0, w:3, h:2 },
+    { i:'w_pipegci', title:'Pipeline GCI',       board:'deals', statuses:['Negotiations','Offer Accapted','Under Shtar','Under Contract'], dateRange:'all', display:'number', metric:'gci', agentScope:'all', color:'#2563EB', x:3, y:0, w:3, h:2 },
+    { i:'w_closed',  title:'Deals Closed (YTD)', board:'deals', statuses:['Closed'], dateRange:'ytd', display:'number', agentScope:'all', color:'#059669', x:6, y:0, w:2, h:2 },
+    { i:'w_active',  title:'Active Deals',       board:'deals', statuses:['Negotiations','Offer Accapted','Under Shtar','Under Contract'], dateRange:'all', display:'number', agentScope:'all', color:'#2563EB', x:8, y:0, w:2, h:2 },
+    { i:'w_hot',     title:'Hot Leads',          board:'contacts', statuses:['Hot'], dateRange:'all', display:'number', agentScope:'all', color:'#D97706', x:10, y:0, w:2, h:2 },
+    // second number row
+    { i:'w_listings',title:'Active Listings',    board:'listings', statuses:['Active'], dateRange:'all', display:'number', agentScope:'all', color:'#0891B2', x:0, y:2, w:3, h:2 },
+    { i:'w_offers',  title:'Open Offers',        board:'offers', statuses:[], dateRange:'all', display:'number', agentScope:'all', color:'#DB2777', x:3, y:2, w:3, h:2 },
+    { i:'w_gifts',   title:'Gifts Pending',      board:'gifts', statuses:['pending'], dateRange:'all', display:'number', agentScope:'all', color:'#DB2777', x:6, y:2, w:2, h:2 },
+    { i:'w_oh',      title:'Open Houses',        board:'open_houses', statuses:[], dateRange:'all', display:'number', agentScope:'all', color:'#EC4899', x:8, y:2, w:2, h:2 },
+    { i:'w_calls',   title:'Calls (30d)',        board:'calls', statuses:[], dateRange:'month', display:'number', agentScope:'mine', color:'#0EA5E9', x:10, y:2, w:2, h:2 },
+    // charts
+    { i:'w_pipe',    title:'Pipeline by Stage',  board:'deals', statuses:[], dateRange:'all', display:'bar', groupBy:'stage', agentScope:'all', color:'#2563EB', x:0, y:4, w:6, h:3 },
+    { i:'w_leader',  title:'Leaderboard (Closed YTD)', board:'deals', statuses:['Closed'], dateRange:'ytd', display:'bar', groupBy:'agent_id', agentScope:'all', color:'#059669', x:6, y:4, w:6, h:3 },
+    // working lists (per-agent essentials)
+    { i:'w_mytasks', title:'My Open Tasks',      board:'tasks', statuses:['pending','in_progress'], dateRange:'all', display:'list', agentScope:'mine', color:'#DC2626', x:0, y:7, w:4, h:4 },
+    { i:'w_appts',   title:'Upcoming Appointments', board:'appointments', statuses:[], dateRange:'all', display:'list', agentScope:'mine', color:'#059669', x:4, y:7, w:4, h:4 },
+    { i:'w_upclose', title:'Closing Soon',       board:'deals', statuses:['Under Contract','Under Shtar'], dateRange:'all', display:'list', agentScope:'all', color:'#D97706', x:8, y:7, w:4, h:4 },
+    // detail
+    { i:'w_recent',  title:'Recent Contacts',    board:'contacts', statuses:[], dateRange:'month', display:'list', agentScope:'mine', color:'#7C3AED', x:0, y:11, w:4, h:4 },
+    { i:'w_dealtable',title:'Deals \u2014 Detail', board:'deals', statuses:[], dateRange:'all', display:'table', columns:['addr','stage','gci','ao_date'], agentScope:'all', color:'#2563EB', x:4, y:11, w:8, h:4 },
   ]
 }
-
 export function DashboardSmart() {
   const { agent, isAdmin } = useAuth()
   const { toast } = useApp()
