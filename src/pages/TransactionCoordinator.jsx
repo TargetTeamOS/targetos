@@ -20,6 +20,8 @@ import { useApp }     from '../context/AppContext'
 import { supabase }   from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { phaseToStage, phaseToStatus } from '../lib/tcPhaseMap'
+import { logRecordChange } from '../lib/recordActivity'
+import { ActivityPanel } from '../components/ActivityPanel'
 import { DEFAULT_PHASE_TASKS, loadTcSettings } from '../lib/tcSettings'
 
 const PHASE_TASKS = DEFAULT_PHASE_TASKS
@@ -519,6 +521,14 @@ export function TransactionCoordinator() {
     try {
       const r0 = await supabase.from('tc_deals').update({ ...updates, updated_at:new Date().toISOString() }).eq('id', deal.id)
       if (r0.error) throw r0.error
+      // Per-record activity log: TC deals update via raw supabase, so
+      // they bypass db.js's auto-logger — capture who changed what here.
+      try {
+        for (const k of Object.keys(updates)) {
+          if (k === 'updated_at') continue
+          await logRecordChange({ tableName: 'tc_deals', recordId: deal.id, agentId: agent?.id, field: k, oldValue: deal[k], newValue: updates[k], recordName: deal.addr || 'TC Deal' })
+        }
+      } catch (e) { console.warn('TC activity log:', e.message) }
 
       // Keep the Production↔Listings hard link in sync: whenever a TC
       // deal knows both sides, make sure deals.listing_id points at
@@ -1150,6 +1160,9 @@ export function TransactionCoordinator() {
             <TCSignPanel deal={selDeal} toast={toast}
                          onLinked={id => setSelDeal(d => ({ ...d, linked_sign_id: id }))} />
             <TCDealChat dealId={selDeal.id} dealAddr={selDeal.addr} agents={agents} me={agent} toast={toast} />
+            <div style={{ marginTop:12 }}>
+              <ActivityPanel table="tc_deals" recordId={selDeal.id} recordName={selDeal.addr} compact />
+            </div>
             <div style={{ marginTop:12 }}>
               <Btn variant="secondary" onClick={openCommissionBill}>🧾 Commission Bill…</Btn>
             </div>

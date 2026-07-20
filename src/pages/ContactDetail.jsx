@@ -21,6 +21,7 @@ import { loadContactLayout, saveContactLayout } from '../lib/contactLayout'
 import { EmailComposeModal } from '../components/EmailComposeModal'
 import { SmsComposeModal } from '../components/SmsComposeModal'
 import { ContactAutomations } from '../components/ContactAutomations'
+import { ActivityPanel } from '../components/ActivityPanel'
 import { db } from '../lib/db'
 import {
   fmtDate, fmtDateTime, fmtPhone, fmt$, initials,
@@ -1029,6 +1030,11 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relTasks, agent
       {/* ── FILES ── */}
       <RightSection hideKey="files" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Files" icon="📎" color="#14B8A6" defaultOpen={false}>
         <FileAttachments tableName="contacts" recordId={contactId} />
+      </RightSection>
+
+      {/* ── ACTIVITY LOG (who changed what, when) ── */}
+      <RightSection hideKey="activity" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title="Activity Log" icon="🕓" color="#64748B" defaultOpen={false}>
+        <ActivityPanel table="contacts" recordId={contactId} recordName={(f.first_name || '') + ' ' + (f.last_name || '')} compact />
       </RightSection>
 
       {/* Quick Actions panel removed — its actions live in the header

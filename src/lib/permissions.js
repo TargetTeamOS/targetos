@@ -68,6 +68,7 @@ export const DEFAULT_PERMISSIONS = {
   'admin.system':           { admin:true,  secretary:false, agent:false },
   'admin.automations':      { admin:true,  secretary:false, agent:false },
   'admin.audit_log':        { admin:true,  secretary:false, agent:false },
+  'records.activity_log':   { admin:true,  secretary:true,  agent:true  },
   'admin.data_export':      { admin:true,  secretary:false, agent:false },
 
   // --- Settings ---
@@ -84,7 +85,7 @@ export const PERMISSION_GROUPS = [
   { id:'tasks',       label:'Tasks',             icon:'✅', keys:['tasks.view','tasks.view_all','tasks.create','tasks.edit_own','tasks.edit_any','tasks.delete'] },
   { id:'calls',       label:'Phone & Calls',     icon:'📞', keys:['calls.view','calls.view_all','calls.make','calls.recordings','calls.own_recordings','calls.flow_edit'] },
   { id:'reports',     label:'Reports & Analytics',icon:'📊',keys:['reports.view','reports.export','reports.agent_stats'] },
-  { id:'admin',       label:'Administration',    icon:'⚙️', keys:['admin.users','admin.customize','admin.permissions','admin.system','admin.automations','admin.audit_log','admin.data_export'] },
+  { id:'admin',       label:'Administration',    icon:'⚙️', keys:['admin.users','admin.customize','admin.permissions','admin.system','admin.automations','admin.audit_log','records.activity_log','admin.data_export'] },
   { id:'settings',    label:'Settings',          icon:'🔧', keys:['settings.profile','settings.notifications','settings.branding'] },
 ]
 
@@ -133,6 +134,7 @@ export const PERMISSION_LABELS = {
   'admin.system':           'View system status',
   'admin.automations':      'Manage automations',
   'admin.audit_log':        'View audit log',
+  'records.activity_log':   'See per-record activity log (who changed what)',
   'admin.data_export':      'Export all system data',
   'settings.profile':       'Edit own profile',
   'settings.notifications': 'Edit notification preferences',
