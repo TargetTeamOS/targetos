@@ -13,6 +13,7 @@ import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { FilterBar } from '../components/FilterBar'
 import { useAgents } from '../lib/hooks'
+import { CallDiagnostics } from './CallDiagnostics'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -40,6 +41,7 @@ const SYSTEM_TABS = [
   { id: 'extensions', label: '📞 Extensions' },
   { id: 'routing',    label: 'Routing Rules' },
   { id: 'settings',   label: '🔌 Twilio Setup' },
+  { id: 'diagnostics',label: '🩺 Diagnostics' },
 ]
 const SYSTEM_TAB_IDS = SYSTEM_TABS.map(t => t.id)
 
@@ -1321,6 +1323,7 @@ export function Calls() {
       {tab === 'flow'       && <CallFlowEmbed />}
       {tab === 'listings'   && <ListingsSearchSettings />}
       {tab === 'settings'   && <TwilioSettings />}
+      {tab === 'diagnostics'&& <CallDiagnostics />}
 
       {/* Call Detail Drawer */}
       {selected && (
