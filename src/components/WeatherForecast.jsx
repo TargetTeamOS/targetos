@@ -103,3 +103,36 @@ export function WeatherForecast({ address, date }) {
     </>
   ))
 }
+
+// ── Compact badge for calendar day cells ────────────────────────
+// Small icon + temp + rain% for a day that has events. Falls back to
+// Rockland County (the team's area) when an event has no address.
+export function DayWeather({ address, date }) {
+  const [d, setD] = useState(null)
+  useEffect(() => {
+    const dayStr = String(date).slice(0, 10)
+    const days = Math.round((new Date(dayStr + 'T12:00:00') - new Date()) / 86400000)
+    if (days < 0 || days > 15) { setD(null); return }
+    let alive = true
+    ;(async () => {
+      const geo = (await geocode(address)) || { lat: 41.11, lng: -74.05 } // Rockland fallback
+      try {
+        const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + geo.lat + '&longitude=' + geo.lng +
+          '&daily=weather_code,temperature_2m_max,precipitation_probability_max&temperature_unit=fahrenheit&timezone=auto&start_date=' + dayStr + '&end_date=' + dayStr
+        const r = await fetch(url); const j = await r.json()
+        if (alive && j.daily?.weather_code?.length) setD({
+          code: j.daily.weather_code[0], tmax: Math.round(j.daily.temperature_2m_max[0]), pop: j.daily.precipitation_probability_max?.[0] ?? null })
+      } catch {}
+    })()
+    return () => { alive = false }
+  }, [address, date])
+  if (!d) return null
+  const [, emoji, rainRisk] = WMO[d.code] || ['', '🌡️', 0]
+  const bad = rainRisk >= 2 || (d.pop != null && d.pop >= 50)
+  return (
+    <div title={'Forecast: ' + (d.pop != null ? d.pop + '% precip, ' : '') + d.tmax + '°F'}
+      style={{ fontSize: 10, marginTop: 2, color: bad ? '#DC2626' : 'var(--muted)', fontWeight: bad ? 700 : 500 }}>
+      {emoji} {d.tmax}°{d.pop != null && d.pop >= 30 ? ' · ' + d.pop + '%💧' : ''}
+    </div>
+  )
+}

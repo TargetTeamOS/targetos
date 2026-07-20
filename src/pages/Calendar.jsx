@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { useCalendar, useAgents } from '../lib/hooks'
 import { holidaysForYear } from '../lib/holidays'
+import { DayWeather } from '../components/WeatherForecast'
 import { fmtDate, today } from '../lib/utils'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
@@ -211,6 +212,9 @@ export function Calendar() {
                     </div>
                   ))}
                   {dayEvents.length > 3 && <div style={{ fontSize: '10px', color: 'var(--muted)' }}>+{dayEvents.length - 3} more</div>}
+                  {showHolidays && dayEvents.length > 0 && (
+                    <DayWeather address={dayEvents.find(e => e.location)?.location} date={dateStr} />
+                  )}
                 </div>
               )
             })}
