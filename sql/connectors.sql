@@ -257,3 +257,22 @@ alter table listing_showings enable row level security;
 drop policy if exists listing_showings_all on listing_showings;
 create policy listing_showings_all on listing_showings for all to authenticated using (true) with check (true);
 select 'listing_showings ready' as status;
+
+-- ═══ v14: daily briefing tables (were in a separate un-run migration) ═══
+create table if not exists briefing_sends (
+  id uuid primary key default gen_random_uuid(),
+  agent_id uuid not null, sent_date date not null, source text,
+  created_at timestamptz not null default now(), unique (agent_id, sent_date)
+);
+create index if not exists idx_briefing_sends_date on briefing_sends (sent_date);
+create table if not exists briefing_prefs (
+  agent_id uuid primary key, enabled boolean default false, send_time text default '07:00',
+  sections jsonb, email_style jsonb, custom_message text, updated_at timestamptz default now()
+);
+alter table briefing_prefs enable row level security;
+drop policy if exists briefing_prefs_all on briefing_prefs;
+create policy briefing_prefs_all on briefing_prefs for all to authenticated using (true) with check (true);
+alter table briefing_sends enable row level security;
+drop policy if exists briefing_sends_all on briefing_sends;
+create policy briefing_sends_all on briefing_sends for all to authenticated using (true) with check (true);
+select 'briefing tables ready' as status;

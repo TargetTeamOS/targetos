@@ -59,6 +59,7 @@ module.exports = async function handler(req, res) {
     return res.status(401).json({ ok: false, error: 'unauthorized' })
   }
 
+  const force = /[?&]force=1/.test(req.url || '')
   const supabase = getSupabase()
   if (!supabase) return res.status(200).json({ ok: false, error: 'no supabase client' })
 
@@ -95,13 +96,16 @@ module.exports = async function handler(req, res) {
         // Send only in the agent's chosen 30-minute slot (default 07:00)
         const wantRaw  = (prefRow.send_time || '07:00').slice(0, 5)
         const wantSlot = wantRaw.slice(0, 3) + (Number(wantRaw.slice(3, 5)) < 30 ? '00' : '30')
-        if (wantSlot !== slot) { skipped++; continue }
+        if (!force && wantSlot !== slot) { skipped++; continue }
 
         // Once-per-day guard: unique(agent_id, sent_date) in
         // briefing_sends makes double sends impossible even if the
         // cron fires twice or overlaps a manual Send All.
+        if (force) {
+          await supabase.from('briefing_sends').delete().eq('agent_id', agentRow.id).eq('sent_date', todayStr)
+        }
         const { error: dupErr } = await supabase.from('briefing_sends')
-          .insert({ agent_id: agentRow.id, sent_date: todayStr, source: 'cron' })
+          .insert({ agent_id: agentRow.id, sent_date: todayStr, source: force ? 'manual' : 'cron' })
         if (dupErr) { skipped++; continue }  // unique violation = already sent today
 
         const prefs = { ...DEFAULT_PREFS, ...(prefRow?.sections || {}), emailEnabled: enabled }
