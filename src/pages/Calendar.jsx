@@ -46,8 +46,8 @@ export function Calendar() {
   const [calSize, setCalSize] = useState(() => { try { return localStorage.getItem('tos_cal_size') || 'large' } catch { return 'large' } })
   useEffect(() => { try { localStorage.setItem('tos_cal_size', calSize) } catch {} }, [calSize])
   const SZ = calSize === 'large'
-    ? { cell: 150, num: 15, ev: 13, evPad: '4px 8px', chip: 11, gap: 3, cellPad: 8 }
-    : { cell: 108, num: 13, ev: 11.5, evPad: '2px 6px', chip: 10, gap: 2, cellPad: 6 }
+    ? { cell: 160, num: 16, ev: 14, evPad: '4px 8px', chip: 11, gap: 4, cellPad: 9 }
+    : { cell: 115, num: 14, ev: 12.5, evPad: '3px 7px', chip: 10, gap: 3, cellPad: 7 }
   const yearHolidays = useMemo(() => showHolidays ? holidaysForYear(year) : {}, [year, showHolidays])
 
   const startDate = new Date(year, month, 1).toISOString().slice(0,10)
@@ -219,14 +219,17 @@ export function Calendar() {
                       {h.kind === 'us' ? '🇺🇸 ' : '✡️ '}{h.name}
                     </div>
                   ))}
-                  {dayEvents.slice(0, calSize==='large'?5:3).map(ev => (
+                  {dayEvents.slice(0, calSize==='large'?5:3).map(ev => {
+                    const ec = ev.color || '#CC2200'
+                    return (
                     <div key={ev.id}
                       onClick={(e) => { e.stopPropagation(); navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) }}
-                      style={{ fontSize: SZ.ev, fontWeight: 600, color: '#fff', background: ev.color || '#CC2200', borderRadius: '5px', padding: SZ.evPad, marginBottom: SZ.gap, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {ev.start_time && (ev.start_time.slice(0,5)) + " "}{ev.title}
+                      style={{ fontSize: SZ.ev, fontWeight: 600, color: 'var(--text)', background: ec + '1A', borderLeft: '3px solid ' + ec, borderRadius: '4px', padding: SZ.evPad, marginBottom: SZ.gap, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
+                      {ev.start_time && <span style={{ fontWeight: 800, color: ec, marginRight: 5 }}>{ev.start_time.slice(0,5)}</span>}{ev.title}
                     </div>
-                  ))}
-                  {dayEvents.length > (calSize==='large'?5:3) && <div style={{ fontSize: SZ.chip, color: 'var(--muted)', fontWeight:600 }}>+{dayEvents.length - (calSize==='large'?5:3)} more</div>}
+                    )
+                  })}
+                  {dayEvents.length > (calSize==='large'?5:3) && <div style={{ fontSize: SZ.chip, color: 'var(--muted)', fontWeight:600, marginTop:1 }}>+{dayEvents.length - (calSize==='large'?5:3)} more</div>}
                   {showWeather && (
                     <DayWeather address={dayEvents.find(e => e.location)?.location} date={dateStr} />
                   )}
