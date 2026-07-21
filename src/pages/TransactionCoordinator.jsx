@@ -50,6 +50,59 @@ const PHASES = [
   { id:'closed',         label:'Closed',           icon:'🎉', color:'#10B981', desc:'Post-close'        },
 ]
 
+// ── CARD SIGNAL DERIVATION (display-only, from existing data) ──────
+// Which parties matter at each stage → drives "Missing" + "Waiting on".
+const STAGE_CRITICAL_ROLES = {
+  pre_listing:    ['seller'],
+  active:         ['seller'],
+  offer:          ['seller', 'buyer', 'seller_attorney', 'buyer_attorney'],
+  under_contract: ['seller', 'buyer', 'seller_attorney', 'buyer_attorney', 'mortgage_broker', 'title'],
+  closed:         [],
+}
+const ROLE_LABEL = {
+  seller:'seller', buyer:'buyer', seller_attorney:"seller attorney", buyer_attorney:"buyer attorney",
+  mortgage_broker:'mortgage', title:'title', inspector:'inspector', appraiser:'appraiser', other_agent:'other agent',
+}
+// Some roles are also stored as plain text fields on tc_deals (legacy),
+// so treat those as "present" too when a participant row is absent.
+function rolePresent(deal, roleSet, role) {
+  if (roleSet && roleSet.has(role)) return true
+  if (role === 'seller_attorney' || role === 'buyer_attorney') return !!deal.attorney_name
+  if (role === 'mortgage_broker') return !!deal.mortgage_broker
+  if (role === 'inspector') return !!deal.inspector
+  return false
+}
+// Returns { level, chips[] } where level ∈ red|amber|blue|gray
+function deriveCardSignals(deal, tasks, roleSet) {
+  const now = new Date()
+  const startToday = new Date(); startToday.setHours(0,0,0,0)
+  const endToday   = new Date(); endToday.setHours(23,59,59,999)
+  const open = tasks.filter(t => t.status !== 'done')
+  const overdue = open.filter(t => t.due_date && new Date(t.due_date) < startToday).length
+  const dueToday = open.filter(t => t.due_date && new Date(t.due_date) >= startToday && new Date(t.due_date) <= endToday).length
+
+  const chips = []
+  // Missing critical parties for the stage
+  const missing = (STAGE_CRITICAL_ROLES[deal.tc_phase] || []).filter(r => !rolePresent(deal, roleSet, r))
+  missing.forEach(r => chips.push({ kind:'missing', label:'Missing ' + (ROLE_LABEL[r]||r) }))
+
+  // Closing soon
+  let closingSoon = false
+  if (deal.close_date) {
+    const days = Math.ceil((new Date(deal.close_date) - now) / 86400000)
+    if (days >= 0 && days <= 7) { closingSoon = true; chips.push({ kind:'closing', label:'Closing soon' }) }
+  }
+
+  // Urgency level (border color): red > amber > blue > gray
+  let level = 'gray'
+  if (overdue > 0 || missing.length > 0) level = 'red'
+  else if (dueToday > 0) level = 'amber'
+  else if (closingSoon) level = 'blue'
+
+  return { level, overdue, dueToday, missing, closingSoon, chips }
+}
+const URGENCY_COLOR = { red:'#DC2626', amber:'#F5A623', blue:'#3B82F6', gray:'var(--border)' }
+
 // ── TASK TEMPLATES PER PHASE ──────────────────────────────────────
 
 function addDays(n) {
@@ -180,7 +233,7 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
 }
 
 // ── DEAL CARD ─────────────────────────────────────────────────────
-function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle }) {
+function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle }) {
   const [subTab, setSubTab] = useState('tasks')   // tasks | people | photo | email
   const phase    = PHASES.find(p => p.id === deal.tc_phase) || PHASES[0]
   const agent    = agents.find(a => a.id === deal.agent_id)
@@ -209,6 +262,10 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask,
   const overdue  = overdueTasks.length
   const dueToday = dueTodayTasks.length
 
+  // Derived card signals (urgency border, waiting-on/missing chips)
+  const signals = deriveCardSignals(deal, tasks, roleSet)
+  const borderColor = URGENCY_COLOR[signals.level] || 'var(--border)'
+
   // Progress bar = current-stage completion (done current-phase / all current-phase)
   const curPhaseAll  = tasks.filter(t => isCurrentRel(t))
   const curPhaseDone = curPhaseAll.filter(t => t.status === 'done').length
@@ -223,89 +280,62 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask,
   const nextAgent = nextTask ? agents.find(a => a.id === nextTask.agent_id) : null
 
   return (
-    <div style={{ background:'var(--panel)', borderRadius:14, border:'2px solid '+(overdue>0?'rgba(220,38,38,.3)':'var(--border)'),
-      marginBottom:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.06)' }}>
+    <div style={{ background:'var(--panel)', borderRadius:8, border:'0.5px solid var(--border)',
+      borderLeft:'3px solid '+borderColor,
+      marginBottom:6, overflow:'hidden' }}>
 
-      {/* ── CARD HEADER ── */}
-      <div onClick={onToggle} style={{ padding:'14px 16px', cursor:'pointer', borderBottom: expanded?'1px solid var(--border)':'none' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-          {/* Phase color bar */}
-          <div style={{ width:5, borderRadius:99, background:phase.color, alignSelf:'stretch', minHeight:44, flexShrink:0 }} />
-
-          <div style={{ flex:1, minWidth:0 }}>
-            {/* Row 1: address + badges */}
-            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
-              <span style={{ fontSize:15, fontWeight:900, color:'var(--text)' }}>{deal.addr || '—'}</span>
-              <span style={{ fontSize:10, fontWeight:700, color:'#fff',
-                background:deal.side==='Buyer'?'#3B82F6':'#8B5CF6', padding:'1px 8px', borderRadius:99 }}>
-                {deal.side}
-              </span>
-              {overdue > 0 && (
-                <span style={{ fontSize:10, fontWeight:700, color:'#DC2626', background:'rgba(220,38,38,.1)', padding:'2px 8px', borderRadius:99, animation:'pulse 1s infinite' }}>
-                  ⚠️ {overdue} overdue
-                </span>
-              )}
-              {agent && (
-                <span style={{ fontSize:10, color:agent.color||'var(--muted)', fontWeight:700 }}>
-                  👤 {agent.name.split(' ')[0]}
-                </span>
-              )}
-            </div>
-
-            {/* Row 2: price + dates */}
-            <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
-              {deal.list_price && <span style={{ fontSize:11, color:'var(--muted)' }}>List: <strong>{fmt$(deal.list_price)}</strong></span>}
-              {deal.sale_price && <span style={{ fontSize:11, color:'var(--muted)' }}>Sale: <strong>{fmt$(deal.sale_price)}</strong></span>}
-              {deal.ao_date    && <span style={{ fontSize:11, color:'var(--muted)' }}>AO: {fmtDate(deal.ao_date)}</span>}
-              {deal.close_date && <span style={{ fontSize:11, color:'var(--muted)' }}>Close: {fmtDate(deal.close_date)}</span>}
-            </div>
+      {/* ── COMPACT CARD ROW ── */}
+      <div onClick={onToggle} style={{ padding:'9px 12px', cursor:'pointer', borderBottom: expanded?'1px solid var(--border)':'none', display:'flex', alignItems:'center', gap:12 }}>
+        {/* Left: address + agent · stage */}
+        <div style={{ minWidth:130, maxWidth:170, flexShrink:0 }}>
+          <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{deal.addr || '—'}</div>
+          <div style={{ fontSize:11, color:'var(--muted)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+            {agent ? agent.name.split(' ')[0] : '—'} · <span style={{ color:phase.color, fontWeight:700 }}>{phase.label}</span>
           </div>
-
-          {/* Right: phase pill + task count */}
-          <div style={{ textAlign:'right', flexShrink:0 }}>
-            <div style={{ fontSize:11, fontWeight:800, color:phase.color, background:phase.color+'15',
-              padding:'4px 12px', borderRadius:99, marginBottom:3, whiteSpace:'nowrap' }}>
-              {phase.icon} {phase.label}
-            </div>
-            <div style={{ fontSize:10, color:overdue>0?'#DC2626':'var(--muted)', fontWeight:overdue>0?700:400, whiteSpace:'nowrap' }}>
-              {currentOpen.length === 0 && carryover.length === 0
-                ? '✓ All done'
-                : [
-                    overdue > 0 ? overdue + ' overdue' : null,
-                    dueToday > 0 ? dueToday + ' due today' : null,
-                    currentOpen.length + ' current',
-                  ].filter(Boolean).join(' · ')}
-            </div>
-            {carryover.length > 0 && (
-              <div style={{ fontSize:9.5, color:'var(--muted)', marginTop:1, whiteSpace:'nowrap' }}>
-                + {carryover.length} carryover
-              </div>
-            )}
-          </div>
-
-          <span style={{ color:'var(--muted)', fontSize:18, transform:expanded?'rotate(0)':'rotate(-90deg)', transition:'transform .2s', flexShrink:0 }}>▾</span>
         </div>
 
-        {/* Next action line */}
-        {nextTask && (
-          <div style={{ marginTop:8, padding:'6px 10px', background:'var(--dim)', borderRadius:8, fontSize:11.5, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-            <span style={{ fontWeight:800, color:'var(--muted)', textTransform:'uppercase', fontSize:9.5, letterSpacing:'.05em' }}>Next</span>
-            <span style={{ fontWeight:700, color:'var(--text)' }}>{nextTask.title}</span>
-            {nextTask.due_date && (
-              <span style={{ fontWeight:700, color: overdueTasks.includes(nextTask) ? '#DC2626' : dueTodayTasks.includes(nextTask) ? '#F5A623' : 'var(--muted)' }}>
-                — {overdueTasks.includes(nextTask) ? 'overdue' : dueTodayTasks.includes(nextTask) ? 'due today' : 'due ' + fmtDate(nextTask.due_date)}
-              </span>
-            )}
-            {nextAgent && <span style={{ color:nextAgent.color||'var(--muted)', fontWeight:700 }}>· {nextAgent.name.split(' ')[0]}</span>}
-          </div>
-        )}
+        {/* Middle: NEXT action + chips */}
+        <div style={{ flex:1, minWidth:0 }}>
+          {nextTask ? (
+            <div style={{ fontSize:13, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+              <span style={{ fontSize:9.5, color:'var(--brand)', fontWeight:800, letterSpacing:'.04em' }}>NEXT</span>
+              &nbsp;{nextTask.title}
+              {nextTask.due_date && (
+                <span style={{ fontWeight:700, color: overdueTasks.includes(nextTask) ? '#DC2626' : dueTodayTasks.includes(nextTask) ? '#F5A623' : 'var(--muted)' }}>
+                  {' — ' + (overdueTasks.includes(nextTask) ? 'overdue' : dueTodayTasks.includes(nextTask) ? 'due today' : 'due ' + fmtDate(nextTask.due_date))}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize:13, color:'var(--muted)' }}>✓ No open tasks this stage</div>
+          )}
+          {signals.chips.length > 0 && (
+            <div style={{ display:'flex', gap:5, marginTop:3, flexWrap:'wrap' }}>
+              {signals.chips.slice(0,4).map((c,i) => {
+                const style = c.kind==='missing'
+                  ? { bg:'rgba(220,38,38,.1)', fg:'#DC2626' }
+                  : c.kind==='closing'
+                  ? { bg:'rgba(59,130,246,.1)', fg:'#2563EB' }
+                  : { bg:'var(--dim)', fg:'var(--muted)' }
+                return <span key={i} style={{ fontSize:10.5, background:style.bg, color:style.fg, padding:'1px 8px', borderRadius:99, whiteSpace:'nowrap' }}>{c.label}</span>
+              })}
+            </div>
+          )}
+        </div>
 
-        {/* Progress bar — current-stage completion */}
-        {curPhaseAll.length > 0 && (
-          <div style={{ marginTop:10, height:5, background:'var(--border)', borderRadius:99, overflow:'hidden' }}>
-            <div style={{ height:'100%', width:pct+'%', background:pct===100?'#10B981':phase.color, borderRadius:99, transition:'width .5s' }} />
+        {/* Right: counts + close date + chevron */}
+        <div style={{ textAlign:'right', flexShrink:0, display:'flex', alignItems:'center', gap:10 }}>
+          <div>
+            <div style={{ fontSize:11, fontWeight:700, color: overdue>0?'#DC2626':dueToday>0?'#F5A623':'var(--muted)', whiteSpace:'nowrap' }}>
+              {overdue>0 ? overdue+' overdue' : dueToday>0 ? dueToday+' today' : (currentOpen.length? currentOpen.length+' open' : 'clear')}
+              {overdue>0 && dueToday>0 ? ' · '+dueToday+' today' : ''}
+            </div>
+            <div style={{ fontSize:10.5, color:'var(--muted)', whiteSpace:'nowrap' }}>
+              {deal.close_date ? 'Close ' + fmtDate(deal.close_date) : (carryover.length ? carryover.length+' carryover' : '—')}
+            </div>
           </div>
-        )}
+          <span style={{ color:'var(--muted)', fontSize:16, transform:expanded?'rotate(0)':'rotate(-90deg)', transition:'transform .2s' }}>▾</span>
+        </div>
       </div>
 
       {/* ── EXPANDED BODY ── */}
@@ -485,7 +515,9 @@ export function TransactionCoordinator() {
   const [search,      setSearch]      = useState('')
   const [phaseFilter, setPhaseFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('all')
+  const [dashTile,    setDashTile]    = useState('all')
   const [expanded,    setExpanded]    = useState({})
+  const [partsByDeal, setPartsByDeal] = useState({})
   const [saving,      setSaving]      = useState(false)
 
   // Modals
@@ -590,15 +622,20 @@ export function TransactionCoordinator() {
     setLoading(true)
     try {
       loadTcSettings().then(setTcCfg).catch(() => {})
-      const [dr, tr, ar] = await Promise.all([
+      const [dr, tr, ar, pr] = await Promise.all([
         supabase.from('tc_deals').select('*').order('updated_at', { ascending:false }).range(0, 499),
         supabase.from('tc_tasks').select('*').order('due_date',   { ascending:true  }).range(0, 4999),
         supabase.from('agents').select('id,name,color,email').eq('active',true).order('name'),
+        supabase.from('tc_participants').select('tc_deal_id,role,contact_id').range(0, 9999),
       ])
       if (dr.error?.message?.includes('does not exist')) { setSqlError(true); return }
       setDeals(dr.data || [])
       setTasks(tr.data || [])
       setAgents(ar.data || [])
+      // group participants by deal → { dealId: Set(roles-with-a-contact) }
+      const pByDeal = {}
+      ;(pr.data || []).forEach(p => { if (!p.contact_id) return; (pByDeal[p.tc_deal_id] = pByDeal[p.tc_deal_id] || new Set()).add(p.role) })
+      setPartsByDeal(pByDeal)
     } catch(e) {
       setSqlError(true)
     } finally { setLoading(false) }
@@ -941,15 +978,39 @@ export function TransactionCoordinator() {
   const filteredDeals = useMemo(() => deals.filter(d => {
     if (phaseFilter !== 'all' && d.tc_phase !== phaseFilter) return false
     if (agentFilter !== 'all' && d.agent_id !== agentFilter) return false
+    if (dashTile !== 'all' && !(buckets[dashTile] || []).includes(d.id)) return false
     if (search && !matchSearch(d, search, ['addr','attorney_name','mortgage_broker','notes'])) return false
     return true
-  }), [deals, phaseFilter, agentFilter, search])
+  }), [deals, phaseFilter, agentFilter, dashTile, buckets, search])
 
   const tasksByDeal = useMemo(() => {
     const m = {}
     tasks.forEach(t => { if (!m[t.deal_id]) m[t.deal_id]=[]; m[t.deal_id].push(t) })
     return m
   }, [tasks])
+
+  // Per-deal derived signals (for dashboard tiles + tile filtering)
+  const signalsByDeal = useMemo(() => {
+    const m = {}
+    deals.forEach(d => { m[d.id] = deriveCardSignals(d, tasksByDeal[d.id] || [], partsByDeal[d.id]) })
+    return m
+  }, [deals, tasksByDeal, partsByDeal])
+
+  // Which deals fall in each dashboard bucket (memoized)
+  const buckets = useMemo(() => {
+    const b = { attention:[], today:[], overdue:[], closing:[], wait_agent:[], wait_mtg:[], missing:[] }
+    const now = Date.now()
+    deals.forEach(d => {
+      const s = signalsByDeal[d.id]; if (!s) return
+      if (s.level === 'red') b.attention.push(d.id)
+      if (s.dueToday > 0) b.today.push(d.id)
+      if (s.overdue > 0) b.overdue.push(d.id)
+      if (s.closingSoon) b.closing.push(d.id)
+      if (s.missing.length) b.missing.push(d.id)
+      if (s.missing.includes('mortgage_broker') || s.missing.includes('title')) b.wait_mtg.push(d.id)
+    })
+    return b
+  }, [deals, signalsByDeal])
 
   const stats = useMemo(() => ({
     total:   deals.length,
@@ -1019,6 +1080,30 @@ export function TransactionCoordinator() {
         ))}
       </div>
 
+      {/* Office dashboard — compact clickable tiles */}
+      <div style={{ display:'flex', gap:6, marginBottom:14, flexWrap:'wrap' }}>
+        {[
+          { id:'all',       label:'All files',       n:deals.length,              c:'var(--muted)',  bg:'var(--dim)' },
+          { id:'attention', label:'Needs attention', n:buckets.attention.length,  c:'#DC2626',       bg:'rgba(220,38,38,.1)' },
+          { id:'today',     label:'Due today',       n:buckets.today.length,      c:'#B45309',       bg:'rgba(245,166,35,.14)' },
+          { id:'overdue',   label:'Overdue',         n:buckets.overdue.length,    c:'#DC2626',       bg:'rgba(220,38,38,.1)' },
+          { id:'closing',   label:'Closing ≤7d',     n:buckets.closing.length,    c:'#2563EB',       bg:'rgba(59,130,246,.1)' },
+          { id:'wait_mtg',  label:'Wait mtg/title',  n:buckets.wait_mtg.length,   c:'var(--muted)',  bg:'var(--dim)' },
+          { id:'missing',   label:'Missing info',    n:buckets.missing.length,    c:'var(--muted)',  bg:'var(--dim)' },
+        ].map(t => {
+          const active = dashTile === t.id
+          return (
+            <button key={t.id} onClick={()=>setDashTile(active && t.id!=='all' ? 'all' : t.id)}
+              style={{ display:'flex', alignItems:'baseline', gap:6, padding:'5px 11px', borderRadius:8,
+                border:'1px solid '+(active?t.c:'transparent'), background:t.bg, cursor:'pointer', fontFamily:ff,
+                opacity:(t.n===0 && t.id!=='all')?0.5:1 }}>
+              <span style={{ fontSize:15, fontWeight:800, color:t.c }}>{t.n}</span>
+              <span style={{ fontSize:12, color:t.c }}>{t.label}</span>
+            </button>
+          )
+        })}
+      </div>
+
       {/* Filters */}
       <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by address, attorney, broker..."
@@ -1063,9 +1148,10 @@ export function TransactionCoordinator() {
             key={deal.id}
             deal={deal}
             tasks={tasksByDeal[deal.id] || []}
+            roleSet={partsByDeal[deal.id]}
             agents={agents}
             expanded={!!expanded[deal.id]}
-            onToggle={() => setExpanded(p => ({...p,[deal.id]:!p[deal.id]}))}
+            onToggle={() => setExpanded(p => (p[deal.id] ? {} : { [deal.id]: true }))}
             onPhaseChange={changePhase}
             onCheckTask={checkTask}
             onEditTask={t => { setSelTask(t); setSelDeal(deals.find(d=>d.id===t.deal_id)); setTaskForm({ title:t.title, priority:t.priority, due_date:t.due_date||'', agent_id:t.agent_id||'', notes:t.notes||'', needs_calendar:!!t.needs_calendar, reminder_days:t.reminder_days||'', completion_action:t.completion_action||'none', completion_note:t.completion_note||'' }); setShowEditTask(true) }}
