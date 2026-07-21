@@ -75,6 +75,16 @@ export function Analytics() {
   const navigate = useNavigate()
   const { agents } = useAgents()
   const [tab, setTab]       = useState('summary')
+  // Contact Health filters
+  const [hAgent, setHAgent]   = useState('')
+  const [hSource, setHSource] = useState('')
+  const [hStatus, setHStatus] = useState('')
+  const [hContacted, setHContacted] = useState('')
+  const [hAge, setHAge]       = useState('')
+  const [hFollow, setHFollow] = useState('')
+  const [hSearch, setHSearch] = useState('')
+  function resetHealthFilters() { setHAgent(''); setHSource(''); setHStatus(''); setHContacted(''); setHAge(''); setHFollow(''); setHSearch('') }
+  const healthFiltersActive = !!(hAgent||hSource||hStatus||hContacted||hAge||hFollow||hSearch)
   const [preset, setPreset] = useState('month')
   const [customOn, setCustomOn] = useState(false)
   const [cStart, setCStart] = useState(iso(presetRange('month').start))
@@ -307,6 +317,27 @@ export function Analytics() {
       return { ...c, _lastAct: la, _daysSince: daysSince, _ever: !!everInteracted[c.id], _ageHours: ageH, _followUp: fu }
     }
     let rows = (contacts || []).map(enrich)
+    // Apply Contact Health filters (affect KPIs + all lists)
+    const agentNameFor = aid => (agents||[]).find(a=>a.id===aid)?.name || ''
+    if (hAgent === '__none__') rows = rows.filter(c => !c.agent_id)
+    else if (hAgent) rows = rows.filter(c => c.agent_id === hAgent)
+    if (hSource === '__none__') rows = rows.filter(c => !c.source)
+    else if (hSource) rows = rows.filter(c => c.source === hSource)
+    if (hStatus) rows = rows.filter(c => (c.status || '') === hStatus)
+    if (hContacted === 'yes') rows = rows.filter(c => c.contacted === true)
+    else if (hContacted === 'no') rows = rows.filter(c => c.contacted !== true)
+    if (hAge === 'never') rows = rows.filter(c => !c._ever)
+    else if (hAge === '7') rows = rows.filter(c => c._daysSince != null && c._daysSince <= 7)
+    else if (hAge === '7-30') rows = rows.filter(c => c._daysSince != null && c._daysSince > 7 && c._daysSince < 30)
+    else if (hAge === '30') rows = rows.filter(c => c._daysSince != null && c._daysSince >= 30)
+    if (hFollow === 'none') rows = rows.filter(c => c._followUp == null)
+    else if (hFollow === 'today') rows = rows.filter(c => c._followUp != null && new Date(c._followUp).toDateString() === new Date().toDateString())
+    else if (hFollow === 'week') rows = rows.filter(c => c._followUp != null && c._followUp >= now && c._followUp <= now + 7*86400000)
+    else if (hFollow === 'overdue') rows = rows.filter(c => c._followUp != null && c._followUp < now)
+    if (hSearch) {
+      const q = hSearch.toLowerCase()
+      rows = rows.filter(c => [c.first_name, c.last_name, c.phone, c.email, c.source, agentNameFor(c.agent_id)].filter(Boolean).some(v => String(v).toLowerCase().includes(q)))
+    }
     const total = rows.length
     const contacted = rows.filter(c => c.contacted === true).length
     const uncontacted = total - contacted
@@ -332,7 +363,7 @@ export function Analytics() {
         noAgent: rows.filter(c => !c.agent_id),
       },
     }
-  }, [contacts, calls, interactionsData])
+  }, [contacts, calls, interactionsData, agents, hAgent, hSource, hStatus, hContacted, hAge, hFollow, hSearch])
 
   if (!isAdmin && !canManage) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontFamily: ff }}>Analytics is available to admins and office staff.</div>
   if (loading) return <Loading />
@@ -366,9 +397,9 @@ export function Analytics() {
       })))
     } else if (tab === 'health') {
       const agentNm = aid => (agents||[]).find(a=>a.id===aid)?.name || ''
-      // Export the full contact-health roster + a separate agent-accountability isn't possible in one file;
-      // export the most actionable: every contact with health fields.
-      downloadCSV('contact-health-' + stamp + '.csv', health.rows.map(c => ({
+      const fparts = [hAgent==='__none__'?'no-agent':(hAgent?agentNm(hAgent).replace(/\s+/g,'-'):''), hSource==='__none__'?'no-source':hSource, hStatus, hContacted&&('contacted-'+hContacted), hAge&&('age-'+hAge), hFollow&&('fu-'+hFollow)].filter(Boolean).join('_')
+      const fname = 'contact-health' + (fparts?('-'+fparts):'') + '-' + stamp + '.csv'
+      downloadCSV(fname, health.rows.map(c => ({
         Contact: [c.first_name,c.last_name].filter(Boolean).join(' '), Phone: c.phone||'', Email: c.email||'',
         Agent: agentNm(c.agent_id), Source: c.source||'', Status: c.status||'',
         Contacted: c.contacted===true?'yes':'no', Created: c.created_at?c.created_at.slice(0,10):'',
@@ -759,6 +790,52 @@ export function Analytics() {
       {tab === 'health' && (() => {
         const agentName = aid => (agents || []).find(a => a.id === aid)?.name || '—'
         const fmtD = t => t ? new Date(t).toLocaleDateString() : '—'
+        // Distinct sources/statuses from the full contact base (not filtered)
+        const allSources = Array.from(new Set((contacts||[]).map(c => c.source).filter(Boolean))).sort()
+        const allStatuses = Array.from(new Set((contacts||[]).map(c => c.status).filter(Boolean))).sort()
+        const selStyle = { padding:'6px 8px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, maxWidth:150 }
+        const FilterBar = (
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center', padding:12, background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12 }}>
+            <input value={hSearch} onChange={e=>setHSearch(e.target.value)} placeholder="🔍 name, phone, email, source, agent…"
+              style={{ ...selStyle, maxWidth:230, flex:'1 1 200px' }} />
+            <select value={hAgent} onChange={e=>setHAgent(e.target.value)} style={selStyle}>
+              <option value="">All agents</option>
+              <option value="__none__">⚠ Missing agent</option>
+              {(agents||[]).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+            <select value={hSource} onChange={e=>setHSource(e.target.value)} style={selStyle}>
+              <option value="">All sources</option>
+              <option value="__none__">⚠ Missing source</option>
+              {allSources.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={hStatus} onChange={e=>setHStatus(e.target.value)} style={selStyle}>
+              <option value="">All statuses</option>
+              {allStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={hContacted} onChange={e=>setHContacted(e.target.value)} style={selStyle}>
+              <option value="">Contacted: all</option>
+              <option value="yes">Contacted</option>
+              <option value="no">Not contacted</option>
+            </select>
+            <select value={hAge} onChange={e=>setHAge(e.target.value)} style={selStyle}>
+              <option value="">Activity: all</option>
+              <option value="never">No interaction ever</option>
+              <option value="7">Last 7 days</option>
+              <option value="7-30">7–30 days</option>
+              <option value="30">30+ days</option>
+            </select>
+            <select value={hFollow} onChange={e=>setHFollow(e.target.value)} style={selStyle}>
+              <option value="">Follow-up: all</option>
+              <option value="none">No follow-up</option>
+              <option value="today">Due today</option>
+              <option value="week">Due this week</option>
+              <option value="overdue">Overdue</option>
+            </select>
+            {healthFiltersActive && (
+              <button onClick={resetHealthFilters} style={{ padding:'6px 12px', borderRadius:7, border:'1px solid var(--brand)', background:'rgba(204,34,0,.06)', color:'var(--brand)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>✕ Reset</button>
+            )}
+          </div>
+        )
         const HealthTable = ({ title, rows, accent, dateCol }) => {
           const [open, setOpen] = React.useState(false)
           const shown = open ? rows : rows.slice(0, 8)
@@ -820,6 +897,8 @@ export function Analytics() {
         const srcRows = Object.values(srcMap).sort((a,b)=>b.total-a.total)
         return (
           <div style={{ display:'grid', gap:16 }}>
+            {FilterBar}
+            {healthFiltersActive && <div style={{ fontSize:12, color:'var(--muted)', marginTop:-8 }}>Showing {health.total} filtered contact{health.total!==1?'s':''} · KPIs and lists below reflect the filter.</div>}
             {/* KPI cards */}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))', gap:12 }}>
               <StatCard label="Total Contacts" value={health.total} now={health.total} prev={null} accent="#225091" />
