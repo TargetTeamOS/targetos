@@ -17,7 +17,7 @@ import ContactPicker from './ContactPicker'
 
 const ff = 'Inter,system-ui,sans-serif'
 
-export default function SellerContacts({ listingId, listingAgentId, compact = false }) {
+export default function SellerContacts({ listingId, listingAgentId, compact = false, debug = false }) {
   const { agent, isAdmin, canManage } = useAuth()
   const canManageAll = isAdmin || canManage           // admin + secretary/TC
   const isOwnListing = !!(agent?.id && listingAgentId && agent.id === listingAgentId)
@@ -26,6 +26,7 @@ export default function SellerContacts({ listingId, listingAgentId, compact = fa
   const [sellers, setSellers] = useState([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
+  const [dbg, setDbg] = useState('')   // temporary debug trace
 
   async function load() {
     if (!listingId || !allowed) { setSellers([]); return }
@@ -35,6 +36,7 @@ export default function SellerContacts({ listingId, listingAgentId, compact = fa
         .select('id,contact_id,role,primary_contact,contacts(id,first_name,last_name,phone,email)')
         .eq('listing_id', listingId)
       if (error) throw error
+      if (debug) setDbg(d => d + '\n[load] listingId=' + listingId + ' rows=' + (data ? data.length : 'null'))
       setSellers(data || [])
     } catch (e) { setErr(e.message || String(e)); setSellers([]) }
     setLoading(false)
@@ -42,20 +44,27 @@ export default function SellerContacts({ listingId, listingAgentId, compact = fa
   useEffect(() => { load() }, [listingId, allowed])
 
   async function addSeller(contact) {
+    if (debug) setDbg(d => d + '\n[addSeller] fired. contact.id=' + (contact?.id) + ' listingId=' + listingId)
     if (!listingId) { alert('Save the listing first, then link a seller.'); return }
     if (!contact?.id) { alert('No contact selected.'); return }
     if (sellers.some(s => s.contact_id === contact.id)) { alert('Already linked as a seller.'); return }
     const isFirst = sellers.length === 0
+    const payload = { listing_id: listingId, contact_id: contact.id, role: 'seller', primary_contact: isFirst }
+    if (debug) setDbg(d => d + '\n[insert payload] ' + JSON.stringify(payload))
     try {
       const { data, error } = await supabase.from('listing_contacts')
-        .insert({ listing_id: listingId, contact_id: contact.id, role: 'seller', primary_contact: isFirst })
+        .insert(payload)
         .select('id,contact_id,role,primary_contact,contacts(id,first_name,last_name,phone,email)')
         .single()
+      if (debug) setDbg(d => d + '\n[insert resp] data=' + JSON.stringify(data) + ' error=' + (error ? error.message : 'none'))
       if (error) throw error
       if (data) setSellers(prev => [...prev, data])
       if (isFirst) await supabase.from('listings').update({ seller_contact_id: contact.id }).eq('id', listingId)
       load()
-    } catch (e) { alert('Could not link seller: ' + (e.message || e)) }
+    } catch (e) {
+      if (debug) setDbg(d => d + '\n[insert threw] ' + (e.message || e))
+      alert('Could not link seller: ' + (e.message || e))
+    }
   }
   async function removeSeller(row) {
     try {
@@ -74,10 +83,11 @@ export default function SellerContacts({ listingId, listingAgentId, compact = fa
   }
 
   // Not permitted → render nothing at all (no seller data exposed)
-  if (!allowed) return null
+  if (!allowed) return debug ? <div style={{ fontSize:11, fontFamily:'monospace', background:'#3a1e1e', color:'#f88', padding:8, borderRadius:6 }}>[SellerContacts] NOT ALLOWED — canManageAll={String(canManageAll)} isOwnListing={String(isOwnListing)} agent.id={String(agent?.id)} listingAgentId={String(listingAgentId)}</div> : null
 
   return (
     <div style={{ marginTop: compact ? 4 : 8, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+      {debug && dbg && <div style={{ fontSize:11, fontFamily:'monospace', background:'#1e1e1e', color:'#0f0', padding:8, borderRadius:6, marginBottom:8, whiteSpace:'pre-wrap', wordBreak:'break-all' }}>{dbg}</div>}
       <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>🧑 Seller Contact(s)</div>
       {!listingId ? (
         <div style={{ fontSize: 12, color: 'var(--muted)' }}>No linked listing.</div>

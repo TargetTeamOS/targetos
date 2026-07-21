@@ -1179,7 +1179,14 @@ export function TransactionCoordinator() {
             <BoardLinks tcDealId={selDeal.id} listingId={selDeal.linked_listing_id} dealId={selDeal.linked_deal_id} />
             {selDeal.linked_listing_id && (
               <div style={{ marginTop:10 }}>
-                <SellerContacts listingId={selDeal.linked_listing_id} listingAgentId={selDeal.agent_id} />
+                <div style={{ fontSize:11, fontFamily:'monospace', background:'#1e1e1e', color:'#0f0', padding:8, borderRadius:6, marginBottom:8, whiteSpace:'pre-wrap', wordBreak:'break-all' }}>
+                  [TC SELLER DEBUG]{'\n'}
+                  tc deal id: {String(selDeal.id)}{'\n'}
+                  linked_listing_id: {String(selDeal.linked_listing_id)}{'\n'}
+                  selDeal.agent_id: {String(selDeal.agent_id)}{'\n'}
+                  → passed as listingId: {String(selDeal.linked_listing_id)}
+                </div>
+                <SellerContacts listingId={selDeal.linked_listing_id} listingAgentId={selDeal.agent_id} debug />
               </div>
             )}
             <PeoplePanel dealId={selDeal.id} agentId={selDeal.agent_id}
