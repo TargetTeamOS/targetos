@@ -321,6 +321,43 @@ export function Analytics() {
     return out
   }, [deals, dealContacts, listings, listingContacts])
 
+  // ── Seller-update accountability ──────────────────────────────
+  const sellerHealth = useMemo(() => {
+    const now = Date.now()
+    const ACTIVE = ['Active', 'Coming Soon', 'Under Contract', 'Accepted offer']
+    const listingById = {}; (listings || []).forEach(l => { listingById[l.id] = l })
+    const contactById = {}; (contacts || []).forEach(c => { contactById[c.id] = c })
+    // one row per (listing, seller-contact) for active listings
+    const rows = []
+    ;(listingContacts || []).forEach(lc => {
+      const l = listingById[lc.listing_id]; if (!l) return
+      if (!ACTIVE.includes(l.status)) return
+      const c = contactById[lc.contact_id]
+      const su = l.seller_updated_at ? new Date(l.seller_updated_at).getTime() : null
+      const days = su ? Math.floor((now - su) / 86400000) : null
+      const ld = l.listed_date || l.list_date || l.created_at
+      const dom = ld ? Math.floor((now - new Date(ld).getTime()) / 86400000) : null
+      rows.push({
+        listingId: l.id, contactId: lc.contact_id, addr: l.addr, status: l.status, agent_id: l.agent_id,
+        contactName: c ? [c.first_name, c.last_name].filter(Boolean).join(' ') : 'Contact', phone: c?.phone, email: c?.email,
+        seller_updated_at: l.seller_updated_at, daysSince: days, dom, marketing_status: l.marketing_status, next_step: l.next_step,
+        stale: !su || days >= 7,
+      })
+    })
+    const needing = rows.filter(r => r.stale)
+    // agent metrics
+    const byAgent = {}
+    rows.forEach(r => {
+      const k = r.agent_id || '__none__'
+      if (!byAgent[k]) byAgent[k] = { agent_id: r.agent_id, active: 0, updatedWeek: 0, stale7: 0, never: 0 }
+      byAgent[k].active++
+      if (!r.seller_updated_at) byAgent[k].never++
+      else if (r.daysSince <= 7) byAgent[k].updatedWeek++
+      if (r.stale) byAgent[k].stale7++
+    })
+    return { rows, needing, byAgent }
+  }, [listings, listingContacts, contacts])
+
   const health = useMemo(() => {
     const now = Date.now()
     const lastAct = {}
@@ -720,6 +757,9 @@ export function Analytics() {
               <StatCard label="Sold" value={byStatus['Sold']||0} now={byStatus['Sold']||0} prev={null} accent="#ffcb00" />
               <StatCard label="Avg Days on Market" value={active.length ? Math.round(active.reduce((s,l)=>s+(dom(l)||0),0)/active.length) : 0} now={0} prev={null} accent="#8B5CF6" />
               <StatCard label="Price Reductions" value={reduced.length} now={reduced.length} prev={null} invert accent="#F5A623" />
+              <StatCard label="Never Updated" value={active.filter(l => !l.seller_updated_at).length} now={active.filter(l => !l.seller_updated_at).length} prev={null} invert accent="#DC2626" />
+              <StatCard label="Updated This Week" value={active.filter(l => l.seller_updated_at && (now - new Date(l.seller_updated_at).getTime() <= 7*86400000)).length} now={0} prev={null} accent="#0B7A45" />
+              <StatCard label="Stale Seller Update" value={active.filter(l => l.seller_updated_at && (now - new Date(l.seller_updated_at).getTime() > 7*86400000)).length} now={0} prev={null} invert accent="#B45309" />
             </div>
 
             <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
@@ -914,14 +954,17 @@ export function Analytics() {
           const assigned = health.rows.filter(c => c.agent_id === a.id)
           const contacted = assigned.filter(c => c.contacted === true).length
           const lastIx = assigned.reduce((mx,c) => c._lastAct && c._lastAct > mx ? c._lastAct : mx, 0)
+          const sm = sellerHealth.byAgent[a.id] || { active:0, updatedWeek:0, stale7:0, never:0 }
           return {
             agent: a, assigned: assigned.length, contacted, uncontacted: assigned.length - contacted,
             newUncontacted: assigned.filter(c => c.contacted !== true && (c.status==='New'||!c.status)).length,
             overdueFu: assigned.filter(c => c._followUp != null && c._followUp < Date.now()).length,
             stale7: assigned.filter(c => c._daysSince != null && c._daysSince >= 7).length,
+            sellersActive: sm.active, sellersStale: sm.stale7,
+            sellerPct: sm.active ? Math.round(((sm.active - sm.stale7) / sm.active) * 100) : null,
             lastIx, pct: assigned.length ? Math.round((contacted/assigned.length)*100) : 0,
           }
-        }).filter(r => r.assigned > 0).sort((a,b) => a.pct - b.pct)
+        }).filter(r => r.assigned > 0 || r.sellersActive > 0).sort((a,b) => a.pct - b.pct)
         // Source health
         const srcMap = {}
         health.rows.forEach(c => { const k = c.source||'Unknown'; if(!srcMap[k]) srcMap[k]={source:k,total:0,contacted:0,noEver:0,overdueFu:0}; srcMap[k].total++; if(c.contacted===true)srcMap[k].contacted++; if(!c._ever)srcMap[k].noEver++; if(c._followUp!=null&&c._followUp<Date.now())srcMap[k].overdueFu++ })
@@ -960,13 +1003,50 @@ export function Analytics() {
               <HealthTable title="👤 Missing assigned agent" rows={health.lists.noAgent} accent="#DC2626" />
             </div>
 
+            {/* Sellers needing updates */}
+            <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ padding:'11px 16px', fontSize:13, fontWeight:800, color:'var(--text)', borderBottom:'1px solid var(--border)', borderLeft:'3px solid #F5A623' }}>🏡 Sellers Needing Updates <span style={{ color:'var(--muted)', fontWeight:600 }}>({sellerHealth.needing.length})</span></div>
+              {sellerHealth.needing.length === 0 ? <div style={{ padding:16, fontSize:12.5, color:'var(--muted)' }}>All active sellers updated within 7 days.</div> : (
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', minWidth:760 }}>
+                    <thead><tr style={{ background:'var(--dim)' }}>
+                      {['Seller','Listing','Status','Agent','Last Update','Days','DOM','Next Step',''].map((h,i)=>(
+                        <th key={i} style={{ padding:'8px 12px', textAlign:i===0?'left':(i===8?'right':'left'), fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', borderBottom:'1px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {sellerHealth.needing.sort((a,b)=>(b.daysSince||9999)-(a.daysSince||9999)).slice(0,30).map((r,i)=>(
+                        <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
+                          <td style={{ padding:'8px 12px' }}>
+                            <div style={{ fontWeight:600, color:'var(--text)', fontSize:12.5 }}>{r.contactName}</div>
+                            <div style={{ fontSize:11, color:'var(--muted)' }}>{r.phone||r.email||''}</div>
+                          </td>
+                          <td style={{ padding:'8px 12px', fontSize:12, color:'var(--text)', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.addr}</td>
+                          <td style={{ padding:'8px 12px', fontSize:12, color:'var(--muted)' }}>{r.status}</td>
+                          <td style={{ padding:'8px 12px', fontSize:12, color:'var(--muted)' }}>{agentName(r.agent_id)}</td>
+                          <td style={{ padding:'8px 12px', fontSize:12, color: r.seller_updated_at?'var(--text)':'#DC2626', fontWeight: r.seller_updated_at?400:700 }}>{r.seller_updated_at?fmtD(r.seller_updated_at):'never'}</td>
+                          <td style={{ padding:'8px 12px', fontSize:12.5, fontWeight:700, color: (r.daysSince==null||r.daysSince>=14)?'#DC2626':'#F5A623' }}>{r.daysSince!=null?r.daysSince+'d':'—'}</td>
+                          <td style={{ padding:'8px 12px', fontSize:12, color:'var(--muted)' }}>{r.dom!=null?r.dom+'d':'—'}</td>
+                          <td style={{ padding:'8px 12px', fontSize:12, color:'var(--muted)', maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.next_step||'—'}</td>
+                          <td style={{ padding:'8px 12px', textAlign:'right', whiteSpace:'nowrap' }}>
+                            <button onClick={()=>navigate('/contacts/'+r.contactId+'/detail')} style={{ border:'1px solid var(--border)', background:'transparent', color:'var(--brand)', borderRadius:6, padding:'3px 8px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff, marginRight:4 }}>Contact</button>
+                            <button onClick={()=>navigate('/listings')} style={{ border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', borderRadius:6, padding:'3px 8px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>Listing</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             {/* Agent accountability */}
             <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
               <div style={{ padding:'11px 16px', fontSize:13, fontWeight:800, color:'var(--text)', borderBottom:'1px solid var(--border)' }}>👥 Agent Accountability <span style={{ fontSize:11, fontWeight:600, color:'var(--muted)' }}>— sorted by lowest contacted %</span></div>
               <div style={{ overflowX:'auto' }}>
                 <table style={{ width:'100%', borderCollapse:'collapse', minWidth:760 }}>
                   <thead><tr style={{ background:'var(--dim)' }}>
-                    {['Agent','Assigned','Contacted','Uncontacted','New Uncontacted','Overdue F/U','Stale 7+d','Last Interaction','Contacted %'].map((h,i)=>(
+                    {['Agent','Assigned','Contacted','Uncontacted','New Uncontacted','Overdue F/U','Stale 7+d','Sellers','Sellers Stale','Seller %','Last Interaction','Contacted %'].map((h,i)=>(
                       <th key={h} style={{ padding:'9px 12px', textAlign:i===0?'left':'right', fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
                     ))}
                   </tr></thead>
@@ -980,11 +1060,14 @@ export function Analytics() {
                         <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color: r.newUncontacted>0?'#DC2626':'var(--muted)' }}>{r.newUncontacted}</td>
                         <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color: r.overdueFu>0?'#DC2626':'var(--muted)' }}>{r.overdueFu}</td>
                         <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color:'var(--muted)' }}>{r.stale7}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color:'var(--muted)' }}>{r.sellersActive||'—'}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color: r.sellersStale>0?'#DC2626':'var(--muted)', fontWeight: r.sellersStale>0?700:400 }}>{r.sellersStale||'—'}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, fontWeight:800, color: r.sellerPct==null?'var(--muted)':r.sellerPct>=70?'#0B7A45':r.sellerPct>=40?'#F5A623':'#DC2626' }}>{r.sellerPct!=null?r.sellerPct+'%':'—'}</td>
                         <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12, color:'var(--muted)' }}>{r.lastIx?fmtD(r.lastIx):'never'}</td>
                         <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, fontWeight:800, color: r.pct>=70?'#0B7A45':r.pct>=40?'#F5A623':'#DC2626' }}>{r.pct}%</td>
                       </tr>
                     ))}
-                    {agentAcc.length===0 && <tr><td colSpan={9} style={{ padding:24, textAlign:'center', color:'var(--muted)' }}>No assigned contacts.</td></tr>}
+                    {agentAcc.length===0 && <tr><td colSpan={12} style={{ padding:24, textAlign:'center', color:'var(--muted)' }}>No assigned contacts.</td></tr>}
                   </tbody>
                 </table>
               </div>
