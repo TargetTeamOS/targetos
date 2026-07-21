@@ -36,6 +36,7 @@ import { BoardLinks } from '../components/BoardLinks'
 import { DEFAULT_TC_SETTINGS } from '../lib/tcSettings'
 import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
+import SellerContacts from '../components/SellerContacts'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -1176,6 +1177,11 @@ export function TransactionCoordinator() {
         {selDeal?.id && (
           <div style={{ marginTop:14, borderTop:'1px solid var(--border)', paddingTop:4 }}>
             <BoardLinks tcDealId={selDeal.id} listingId={selDeal.linked_listing_id} dealId={selDeal.linked_deal_id} />
+            {selDeal.linked_listing_id && (
+              <div style={{ marginTop:10 }}>
+                <SellerContacts listingId={selDeal.linked_listing_id} listingAgentId={selDeal.agent_id} />
+              </div>
+            )}
             <PeoplePanel dealId={selDeal.id} agentId={selDeal.agent_id}
                          roles={(tcCfg || DEFAULT_TC_SETTINGS).participant_roles} toast={toast} />
             <DocumentsPanel dealId={selDeal.id}

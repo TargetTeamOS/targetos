@@ -18,7 +18,7 @@ import { BulkEditBar } from '../components/BulkEditBar'
 import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
-import ContactPicker from '../components/ContactPicker'
+import SellerContacts from '../components/SellerContacts'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { CustomFieldsSection } from '../components/CustomFieldsSection'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
@@ -171,89 +171,12 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
   const [form, setForm] = useState({ ...listing })
   const [tab,  setTab]  = useState('info')
   const [showings, setShowings] = useState([])
-  const [sellers, setSellers] = useState([])   // [{id, contact_id, role, primary_contact, contacts:{...}}]
-  const [suOpen, setSuOpen] = useState(false)  // Log Seller Update modal
-  const [suNotes, setSuNotes] = useState('')
-  const [suPicked, setSuPicked] = useState({}) // contact_id -> bool
-  const [suSaving, setSuSaving] = useState(false)
   const set = (k,v) => setForm(p => ({...p,[k]:v}))
 
-  async function logSellerUpdate() {
-    setSuSaving(true)
-    const nowISO = new Date().toISOString()
-    try {
-      // 1) stamp the listing
-      await supabase.from('listings').update({ seller_updated_at: nowISO }).eq('id', listing.id)
-      set('seller_updated_at', nowISO)
-      // 2) interaction per chosen seller (counts as contact → trigger stamps contact)
-      const chosen = sellers.filter(s => suPicked[s.contact_id])
-      for (const s of chosen) {
-        try {
-          await supabase.from('interactions').insert({
-            contact_id: s.contact_id, agent_id: form.agent_id || null,
-            type: 'seller_update', direction: 'outbound',
-            notes: suNotes || ('Seller update — ' + (form.addr || 'listing')),
-            occurred_at: nowISO, counts_as_contact: true, created_by: form.agent_id || null,
-          })
-        } catch (e) { /* keep going */ }
-      }
-      setSuOpen(false); setSuNotes(''); setSuPicked({})
-    } catch (e) { alert('Could not log seller update: ' + e.message) }
-    setSuSaving(false)
-  }
-
-  async function loadSellers() {
-    if (!listing?.id) { setSellers([]); return }
-    try {
-      const { data, error } = await supabase.from('listing_contacts')
-        .select('id,contact_id,role,primary_contact,contacts(id,first_name,last_name,phone,email)')
-        .eq('listing_id', listing.id)
-      if (error) { console.warn('[listing_contacts] load error:', error.message); setSellers([]); return }
-      setSellers(data || [])
-    } catch (e) { console.warn('[listing_contacts] load threw:', e.message); setSellers([]) }
-  }
-  async function addSeller(contact) {
-    if (!listing?.id) { alert('Save the listing before linking a seller.'); return }
-    if (!contact?.id) { alert('No contact selected (contact id missing).'); return }
-    if (sellers.some(s => s.contact_id === contact.id)) { alert('That contact is already linked as a seller.'); return }
-    const isFirst = sellers.length === 0
-    try {
-      const { data, error } = await supabase.from('listing_contacts')
-        .insert({ listing_id: listing.id, contact_id: contact.id, role: 'seller', primary_contact: isFirst })
-        .select('id,contact_id,role,primary_contact,contacts(id,first_name,last_name,phone,email)')
-        .single()
-      if (error) throw error
-      // optimistic: add the returned row immediately, then reconcile
-      if (data) setSellers(prev => [...prev, data])
-      if (isFirst) {
-        const { error: upErr } = await supabase.from('listings').update({ seller_contact_id: contact.id }).eq('id', listing.id)
-        if (upErr) console.warn('[listing_contacts] seller_contact_id update failed:', upErr.message)
-      }
-      loadSellers()
-    } catch (e) {
-      const msg = e.message || String(e)
-      if (/relation .*listing_contacts.* does not exist|could not find the table|schema cache/i.test(msg)) {
-        alert('The listing_contacts table does not exist yet. Run sql/listing_contacts.sql in Supabase, then try again.')
-      } else if (/row-level security|rls|policy/i.test(msg)) {
-        alert('Insert blocked by row-level security on listing_contacts. Run the RLS policy in sql/listing_contacts.sql.')
-      } else {
-        alert('Could not link seller: ' + msg)
-      }
-      console.error('[listing_contacts] insert error:', e)
-    }
-  }
-  async function removeSeller(row) {
-    try {
-      await supabase.from('listing_contacts').delete().eq('id', row.id)
-      if (row.primary_contact) await supabase.from('listings').update({ seller_contact_id: null }).eq('id', listing.id)
-      loadSellers()
-    } catch (e) { alert('Could not remove: ' + e.message) }
-  }
 
   useEffect(() => {
     setForm({ ...listing })
     loadShowings()
-    loadSellers()
   }, [listing?.id])
 
   async function loadShowings() {
@@ -376,70 +299,8 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
                 </a>
               )}
 
-              {/* Seller contacts */}
-              <div style={{ marginTop:8, paddingTop:12, borderTop:'1px solid var(--border)' }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                  <div style={{ fontSize:12, fontWeight:800, color:'var(--text)' }}>🧑 Seller Contact(s)</div>
-                  {form.id && sellers.length > 0 && (
-                    <button onClick={()=>{ setSuPicked(Object.fromEntries(sellers.map(s=>[s.contact_id,true]))); setSuOpen(true) }}
-                      style={{ padding:'5px 10px', borderRadius:7, border:'1px solid var(--brand)', background:'rgba(204,34,0,.06)', color:'var(--brand)', fontSize:11.5, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
-                      📢 Log Seller Update
-                    </button>
-                  )}
-                </div>
-                {form.id && (
-                  <div style={{ fontSize:11.5, color: (!form.seller_updated_at || (Date.now()-new Date(form.seller_updated_at).getTime() > 7*86400000)) ? '#DC2626' : 'var(--muted)', marginBottom:8, fontWeight: form.seller_updated_at?400:700 }}>
-                    Last seller update: {form.seller_updated_at ? new Date(form.seller_updated_at).toLocaleDateString() + ' (' + Math.floor((Date.now()-new Date(form.seller_updated_at).getTime())/86400000) + 'd ago)' : 'never'}
-                  </div>
-                )}
-                {!form.id ? (
-                  <div style={{ fontSize:12, color:'var(--muted)' }}>Save the listing first, then link seller contacts.</div>
-                ) : (
-                  <>
-                    {sellers.length > 0 && (
-                      <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:8 }}>
-                        {sellers.map(s => (
-                          <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 10px', background:'var(--dim)', borderRadius:8 }}>
-                            <div>
-                              <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{[s.contacts?.first_name,s.contacts?.last_name].filter(Boolean).join(' ')||'Contact'}</span>
-                              {s.primary_contact && <span style={{ marginLeft:6, fontSize:10, fontWeight:700, color:'#0B7A45' }}>PRIMARY</span>}
-                              <span style={{ marginLeft:6, fontSize:11, color:'var(--muted)' }}>{s.contacts?.phone||s.contacts?.email||''}</span>
-                            </div>
-                            <button onClick={()=>removeSeller(s)} style={{ border:'none', background:'none', color:'var(--muted)', cursor:'pointer', fontSize:15 }}>✕</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <ContactPicker onSelect={addSeller} placeholder="Search & link a seller contact…" agentId={form.agent_id} />
-                  </>
-                )}
-              </div>
-
-              {/* Log Seller Update modal */}
-              {suOpen && (
-                <div onClick={()=>setSuOpen(false)} style={{ position:'fixed', inset:0, zIndex:4000, background:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-                  <div onClick={e=>e.stopPropagation()} style={{ background:'var(--panel)', borderRadius:14, padding:20, width:'min(440px,95vw)', fontFamily:ff }}>
-                    <div style={{ fontSize:16, fontWeight:800, color:'var(--text)', marginBottom:12 }}>📢 Log Seller Update</div>
-                    <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12 }}>Records the update on the listing and logs a contact touch for the chosen seller(s).</div>
-                    <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', marginBottom:6 }}>Which sellers were updated?</div>
-                    <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:12 }}>
-                      {sellers.map(s => (
-                        <label key={s.contact_id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color:'var(--text)', cursor:'pointer' }}>
-                          <input type="checkbox" checked={!!suPicked[s.contact_id]} onChange={e=>setSuPicked(p=>({...p,[s.contact_id]:e.target.checked}))} style={{ width:16, height:16, accentColor:'#0B7A45' }} />
-                          {[s.contacts?.first_name,s.contacts?.last_name].filter(Boolean).join(' ')||'Contact'}
-                        </label>
-                      ))}
-                    </div>
-                    <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', marginBottom:6 }}>What was discussed?</div>
-                    <textarea value={suNotes} onChange={e=>setSuNotes(e.target.value)} rows={3} placeholder="Price feedback, showing activity, next steps…"
-                      style={{ width:'100%', padding:'9px 11px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff, boxSizing:'border-box', resize:'vertical', marginBottom:14 }} />
-                    <div style={{ display:'flex', gap:8 }}>
-                      <button onClick={()=>setSuOpen(false)} style={{ flex:1, padding:11, borderRadius:9, border:'1px solid var(--border)', background:'transparent', color:'var(--text)', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>Cancel</button>
-                      <button onClick={logSellerUpdate} disabled={suSaving} style={{ flex:2, padding:11, borderRadius:9, border:'none', background:'var(--brand)', color:'#fff', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:ff }}>{suSaving?'Saving…':'Log Update'}</button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Seller contacts — permission-gated component (admin/TC any listing; agent own only) */}
+              {form.id && <SellerContacts listingId={form.id} listingAgentId={form.agent_id} />}
             </div>
           )}
 

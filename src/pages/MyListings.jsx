@@ -18,6 +18,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import SellerContacts from '../components/SellerContacts'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
@@ -119,6 +120,10 @@ function ListingCard({ listing, showings, openHouses, onLogShowing, onScheduleOH
       {/* Expanded body */}
       {expanded && (
         <div>
+          {/* Seller contacts — agent manages their own listing's sellers */}
+          <div style={{ padding: '4px 16px 12px' }}>
+            <SellerContacts listingId={listing.id} listingAgentId={listing.agent_id} />
+          </div>
           {/* Quick actions */}
           <div style={{ padding: '10px 16px', background: 'var(--dim)', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={() => onLogShowing(listing)}
