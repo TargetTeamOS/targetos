@@ -63,7 +63,7 @@ function Panel({ title, children, height = 300 }) {
   return (
     <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', marginBottom: 12 }}>{title}</div>
-      <div style={{ height }}>{children}</div>
+      <div style={height === 'auto' ? undefined : { height }}>{children}</div>
     </div>
   )
 }
@@ -72,7 +72,7 @@ const axis = { fontSize: 11, fontFamily: ff }
 export function Analytics() {
   const { isAdmin, canManage } = useAuth()
   const { agents } = useAgents()
-  const [tab, setTab]       = useState('business')
+  const [tab, setTab]       = useState('summary')
   const [preset, setPreset] = useState('month')
   const [customOn, setCustomOn] = useState(false)
   const [cStart, setCStart] = useState(iso(presetRange('month').start))
@@ -86,7 +86,7 @@ export function Analytics() {
       setLoading(true)
       const safe = async (p) => { try { const r = await p; return r.data || [] } catch { return [] } }
       const [deals, offers, calls, contacts, showings, tasks, activity] = await Promise.all([
-        safe(supabase.from('deals').select('id,stage,gci,production,ao_date,close_date,created_at,agent_id,side,source').range(0,4999)),
+        safe(supabase.from('deals').select('id,stage,gci,production,ao_date,close_date,created_at,agent_id,side,source,addr').range(0,4999)),
         safe(supabase.from('offers').select('id,status,offer_date,created_at,agent_id,buyers_agent_id,listing_addr,purchase_price').range(0,4999)),
         safe(supabase.from('calls').select('id,agent_id,direction,outcome,is_sms,kind,created_at').range(0,19999)),
         safe(supabase.from('contacts').select('id,agent_id,created_at,status,source').range(0,19999)),
@@ -184,6 +184,35 @@ export function Analytics() {
     return (agents||[]).map(a => ({ agent: a, now: calc(a.id, cur), prev: calc(a.id, prev) })).sort((x,y) => y.now.gci - x.now.gci)
   }, [agents, deals, offers, calls, showings, contacts, cur, prev])
 
+  // ── Year-over-year "as of this date" ──────────────────────────
+  // Jan 1 → the end of the current range, this year vs the identical
+  // window last year (Jan 1 → same month/day last year).
+  const yoy = useMemo(() => {
+    const asOf = cur.end
+    const ytd = { start: new Date(asOf.getFullYear(), 0, 1), end: asOf }
+    const lastYtd = { start: new Date(asOf.getFullYear()-1, 0, 1), end: new Date(asOf.getFullYear()-1, asOf.getMonth(), asOf.getDate(), 23,59,59,999) }
+    const calc = (r) => {
+      const closed = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, r))
+      const sent   = offers.filter(o => inRange(o.offer_date || o.created_at, r))
+      return {
+        closed: closed.length,
+        gci: closed.reduce((s,d)=>s+parseNum(d.gci),0),
+        prod: closed.reduce((s,d)=>s+parseNum(d.production),0),
+        sent: sent.length,
+        pipeline: deals.filter(d => ['Negotiations','Offer Accapted','Under Shtar','Under Contract'].includes(d.stage)).reduce((s,d)=>s+parseNum(d.production),0),
+      }
+    }
+    return { asOf, now: calc(ytd), prev: calc(lastYtd) }
+  }, [deals, offers, cur])
+
+  // ── Alerts (Tier A subset — from data we have) ────────────────
+  const alerts = useMemo(() => {
+    const now = Date.now()
+    const soon = deals.filter(d => d.stage === 'Under Contract' && d.close_date && (() => { const dd = new Date(d.close_date).getTime(); return dd >= now && dd <= now + 7*86400000 })())
+    const stale = deals.filter(d => ['Negotiations','Offer Accapted','Under Shtar','Under Contract'].includes(d.stage) && d.created_at && (now - new Date(d.created_at).getTime() > 90*86400000))
+    return { closingSoon: soon, stuck: stale }
+  }, [deals])
+
   if (!isAdmin && !canManage) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontFamily: ff }}>Analytics is available to admins and office staff.</div>
   if (loading) return <Loading />
 
@@ -225,7 +254,7 @@ export function Analytics() {
       </div>
 
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border)', marginBottom: 18 }}>
-        {[{ id:'business', label:'🏢 Business' }, { id:'agents', label:'👤 Agents' }].map(t => (
+        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'agents', label:'👤 Agents' }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '10px 18px', border: 'none', borderBottom: tab === t.id ? '2px solid var(--brand)' : '2px solid transparent',
               background: 'transparent', color: tab === t.id ? 'var(--brand)' : 'var(--muted)', fontSize: 14, fontWeight: tab === t.id ? 800 : 600, cursor: 'pointer', fontFamily: ff, marginBottom: -1 }}>
@@ -233,6 +262,87 @@ export function Analytics() {
           </button>
         ))}
       </div>
+
+      {tab === 'summary' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          {/* Headline KPIs */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 12 }}>
+            <StatCard label="Closed Deals" value={n.closed} now={n.closed} prev={p.closed} accent="#225091" />
+            <StatCard label="Production" value={fmt$(n.prod)} now={n.prod} prev={p.prod} money accent="#037f4c" />
+            <StatCard label="GCI / Commissions" value={fmt$(n.gci)} now={n.gci} prev={p.gci} money accent="#CC2200" />
+            <StatCard label="Under Contract" value={n.uc} now={n.uc} prev={p.uc} accent="#757575" />
+            <StatCard label="Offers Sent" value={n.sent} now={n.sent} prev={p.sent} accent="#0EA5E9" />
+            <StatCard label="Offers Accepted" value={n.accepted} now={n.accepted} prev={p.accepted} accent="#00c875" />
+          </div>
+
+          {/* Year over year, as of this date */}
+          <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 12, padding: 18 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>📆 This Year vs Last Year — as of {yoy.asOf.toLocaleDateString()}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 14 }}>Jan 1 → {yoy.asOf.toLocaleDateString()} compared to the exact same window last year</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12 }}>
+              {[
+                { k:'Closed', now: yoy.now.closed, prev: yoy.prev.closed },
+                { k:'Production', now: yoy.now.prod, prev: yoy.prev.prod, money: true },
+                { k:'GCI', now: yoy.now.gci, prev: yoy.prev.gci, money: true },
+                { k:'Offers Sent', now: yoy.now.sent, prev: yoy.prev.sent },
+              ].map(m => (
+                <div key={m.k} style={{ padding: '10px 12px', background: 'var(--dim)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>{m.k}</div>
+                  <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--text)' }}>{m.money ? fmt$(m.now) : m.now}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>last year: {m.money ? fmt$(m.prev) : m.prev}</div>
+                  <div style={{ marginTop: 2 }}><Trend now={m.now} prev={m.prev} money={m.money} /></div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Alerts */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+            <Panel title={'🔔 Closing within 7 days (' + alerts.closingSoon.length + ')'} height="auto">
+              {alerts.closingSoon.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Nothing closing this week.</div>
+                : alerts.closingSoon.slice(0,8).map(d => (
+                  <div key={d.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}>
+                    <span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{d.addr}</span>
+                    <span style={{ color:'#DC2626', fontWeight:700, flexShrink:0 }}>{new Date(d.close_date).toLocaleDateString()}</span>
+                  </div>
+                ))}
+            </Panel>
+            <Panel title={'⏳ Stuck 90+ days (' + alerts.stuck.length + ')'} height="auto">
+              {alerts.stuck.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>No stuck deals.</div>
+                : alerts.stuck.slice(0,8).map(d => (
+                  <div key={d.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}>
+                    <span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{d.addr}</span>
+                    <span style={{ color:'var(--muted)', flexShrink:0 }}>{d.stage}</span>
+                  </div>
+                ))}
+            </Panel>
+          </div>
+        </div>
+      )}
+
+      {tab === 'pipeline' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <Panel title="Pipeline by Stage" height="auto">
+            {(() => {
+              const stages = ['Negotiations','Offer Accapted','Under Shtar','Under Contract','Closed']
+              const colors = { 'Negotiations':'#037f4c','Offer Accapted':'#00c875','Under Shtar':'#bb3354','Under Contract':'#757575','Closed':'#225091' }
+              const counts = stages.map(st => ({ st, n: deals.filter(d => d.stage === st).length, gci: deals.filter(d => d.stage === st).reduce((s,d)=>s+parseNum(d.gci),0) }))
+              const max = Math.max(1, ...counts.map(c => c.n))
+              return counts.map(c => (
+                <div key={c.st} style={{ marginBottom: 12 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}>
+                    <span style={{ fontWeight:700, color:'var(--text)' }}>{c.st}</span>
+                    <span style={{ color:'var(--muted)' }}>{c.n} {c.gci > 0 ? '· ' + fmt$(c.gci) + ' GCI' : ''}</span>
+                  </div>
+                  <div style={{ height: 26, background:'var(--dim)', borderRadius:6, overflow:'hidden' }}>
+                    <div style={{ width: Math.max(3,(c.n/max)*100)+'%', height:'100%', background: colors[c.st], borderRadius:6, transition:'width .3s' }} />
+                  </div>
+                </div>
+              ))
+            })()}
+          </Panel>
+        </div>
+      )}
 
       {tab === 'business' && (
         <div style={{ display: 'grid', gap: 16 }}>
@@ -313,6 +423,32 @@ export function Analytics() {
 
       {tab === 'agents' && (
         <div style={{ display: 'grid', gap: 16 }}>
+          {/* Leaderboards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+            {[
+              { title: '🏆 Top GCI', key: 'gci', money: true },
+              { title: '🥇 Most Closings', key: 'deals' },
+              { title: '📤 Most Offers Sent', key: 'sent' },
+              { title: '📞 Most Calls', key: 'calls' },
+            ].map(board => {
+              const ranked = [...agentRows].sort((a,b) => b.now[board.key] - a.now[board.key]).filter(r => r.now[board.key] > 0).slice(0,5)
+              return (
+                <div key={board.key} style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:14 }}>
+                  <div style={{ fontSize:12.5, fontWeight:800, color:'var(--text)', marginBottom:10 }}>{board.title}</div>
+                  {ranked.length === 0 ? <div style={{ fontSize:12, color:'var(--muted)' }}>No data.</div>
+                    : ranked.map((r, i) => (
+                    <div key={r.agent.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', borderBottom: i<ranked.length-1?'1px solid var(--border)':'none' }}>
+                      <span style={{ fontSize:12, fontWeight:800, color: i===0?'#F5A623':'var(--muted)', width:16 }}>{i+1}</span>
+                      <span style={{ width:7, height:7, borderRadius:'50%', background:r.agent.color||'#CC2200' }} />
+                      <span style={{ flex:1, fontSize:12.5, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.agent.name}</span>
+                      <span style={{ fontSize:12.5, fontWeight:800, color:'var(--text)' }}>{board.money ? fmt$(r.now[board.key]) : r.now[board.key]}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+
           <Panel title="GCI by Agent" height={Math.max(220, agentRows.length * 34)}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={agentRows.map(r => ({ name: r.agent.name, GCI: Math.round(r.now.gci) }))} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 0 }}>
