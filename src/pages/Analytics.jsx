@@ -78,7 +78,7 @@ export function Analytics() {
   const [cStart, setCStart] = useState(iso(presetRange('month').start))
   const [cEnd, setCEnd]     = useState(iso(new Date()))
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [] })
+  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [] })
   const [goals, setGoals] = useState({})   // agent_id -> {deals,gci,production}
   const [savingGoal, setSavingGoal] = useState(false)
   const thisYear = new Date().getFullYear()
@@ -108,15 +108,16 @@ export function Analytics() {
       setLoading(true)
       const safe = async (p) => { try { const r = await p; return r.data || [] } catch { return [] } }
       const [deals, offers, calls, contacts, showings, tasks, activity] = await Promise.all([
-        safe(supabase.from('deals').select('id,stage,gci,production,ao_date,close_date,created_at,agent_id,side,source,addr').range(0,4999)),
+        safe(supabase.from('deals').select('*').range(0,4999)),
         safe(supabase.from('offers').select('id,status,offer_date,created_at,agent_id,buyers_agent_id,listing_addr,purchase_price').range(0,4999)),
         safe(supabase.from('calls').select('id,agent_id,direction,outcome,is_sms,kind,created_at').range(0,19999)),
-        safe(supabase.from('contacts').select('id,agent_id,created_at,status,source').range(0,19999)),
+        safe(supabase.from('contacts').select('id,agent_id,created_at,status,source,first_name,last_name').range(0,19999)),
         safe(supabase.from('showings').select('id,agent_id,showing_date,created_at,listing_id').range(0,9999)),
-        safe(supabase.from('tasks').select('id,agent_id,status,completed,created_at,completed_at').range(0,9999)),
+        safe(supabase.from('tasks').select('id,agent_id,status,completed,created_at,completed_at,due_date,title').range(0,9999)),
         safe(supabase.from('record_activity').select('id,agent_name,action,created_at').range(0,19999)),
       ])
-      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity }); setLoading(false) }
+      const tcDeals = await safe(supabase.from('tc_deals').select('id,addr,agent_id,tc_phase,attorney_name,mortgage_broker,inspector,close_date').range(0,4999))
+      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals }); setLoading(false) }
     })()
     return () => { alive = false }
   }, [])
@@ -127,7 +128,7 @@ export function Analytics() {
   }, [customOn, cStart, cEnd, preset])
   const prev = useMemo(() => priorSamePeriod(cur), [cur])
 
-  const { deals, offers, calls, contacts, showings, tasks, activity } = data
+  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals } = data
   const isSms = c => c.is_sms === true || c.kind === 'sms' || String(c.direction||'').toLowerCase().includes('sms')
 
   const biz = useMemo(() => {
@@ -232,13 +233,29 @@ export function Analytics() {
     const now = Date.now()
     const soon = deals.filter(d => d.stage === 'Under Contract' && d.close_date && (() => { const dd = new Date(d.close_date).getTime(); return dd >= now && dd <= now + 7*86400000 })())
     const stale = deals.filter(d => ['Negotiations','Offer Accapted','Under Shtar','Under Contract'].includes(d.stage) && d.created_at && (now - new Date(d.created_at).getTime() > 90*86400000))
-    return { closingSoon: soon, stuck: stale }
-  }, [deals])
+    // Active TC deals missing key party info
+    const active = (tcDeals || []).filter(t => t.tc_phase !== 'closed' && t.tc_phase !== 'dead')
+    const missingInfo = active.filter(t => !t.attorney_name || !t.mortgage_broker).map(t => ({
+      ...t, missing: [!t.attorney_name && 'attorney', !t.mortgage_broker && 'mortgage broker'].filter(Boolean).join(', ')
+    }))
+    const overdueTasks = (tasks || []).filter(t => t.status !== 'done' && !t.completed && t.due_date && new Date(t.due_date).getTime() < now)
+    const uncontacted = (contacts || []).filter(c => c.status === 'New' && c.contacted !== true)
+    return { closingSoon: soon, stuck: stale, missingInfo, overdueTasks, uncontacted }
+  }, [deals, tcDeals, tasks, contacts])
+
+  // Commission tracking (from Tier-B fields; falls back gracefully)
+  const commission = useMemo(() => {
+    const closed = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, cur))
+    const total = closed.reduce((s,d)=>s+parseNum(d.gci),0)
+    const collected = closed.reduce((s,d)=>s + (d.commission_status === 'collected' ? parseNum(d.collected_gci ?? d.gci) : 0), 0)
+    return { total, collected, outstanding: Math.max(0, total - collected) }
+  }, [deals, cur])
 
   if (!isAdmin && !canManage) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontFamily: ff }}>Analytics is available to admins and office staff.</div>
   if (loading) return <Loading />
 
   const n = biz.now, p = biz.prev, ix = interactions.now, ixp = interactions.prev
+  const alertCount = alerts.closingSoon.length + alerts.missingInfo.length + alerts.overdueTasks.length + alerts.uncontacted.length
   const rangeLabel = customOn ? (cStart + ' → ' + cEnd) : ({ week:'Last 7 days', month:'Last 30 days', quarter:'Last 90 days', year:'Last 12 months' }[preset])
 
   return (
@@ -276,7 +293,7 @@ export function Analytics() {
       </div>
 
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border)', marginBottom: 18 }}>
-        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'agents', label:'👤 Agents' }, { id:'goals', label:'🎯 Goals' }].map(t => (
+        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'agents', label:'👤 Agents' }, { id:'goals', label:'🎯 Goals' }, { id:'alerts', label:'🔔 Alerts' + (alertCount ? ' (' + alertCount + ')' : '') }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '10px 18px', border: 'none', borderBottom: tab === t.id ? '2px solid var(--brand)' : '2px solid transparent',
               background: 'transparent', color: tab === t.id ? 'var(--brand)' : 'var(--muted)', fontSize: 14, fontWeight: tab === t.id ? 800 : 600, cursor: 'pointer', fontFamily: ff, marginBottom: -1 }}>
@@ -457,6 +474,35 @@ export function Analytics() {
         </div>
       )}
 
+      {tab === 'alerts' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          {alertCount === 0 && <div style={{ textAlign:'center', color:'var(--muted)', fontSize:14, padding:30 }}>✓ Nothing needs attention right now.</div>}
+          {[
+            { title:'🔔 Closing within 7 days', items: alerts.closingSoon, render: d => ({ main: d.addr, sub: new Date(d.close_date).toLocaleDateString(), col:'#DC2626' }) },
+            { title:'📋 Active deals missing attorney / mortgage info', items: alerts.missingInfo, render: t => ({ main: t.addr, sub: 'missing: ' + t.missing, col:'#B45309' }) },
+            { title:'⏰ Overdue tasks', items: alerts.overdueTasks, render: t => ({ main: t.title || 'Task', sub: 'due ' + new Date(t.due_date).toLocaleDateString(), col:'#DC2626' }) },
+            { title:'📞 New leads not yet contacted', items: alerts.uncontacted, render: c => ({ main: [c.first_name,c.last_name].filter(Boolean).join(' ') || 'Lead', sub: c.source || '', col:'#0EA5E9' }) },
+            { title:'⏳ Deals stuck 90+ days', items: alerts.stuck, render: d => ({ main: d.addr, sub: d.stage, col:'var(--muted)' }) },
+          ].filter(g => g.items.length > 0).map(group => (
+            <div key={group.title} style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ padding:'11px 16px', fontSize:13, fontWeight:800, color:'var(--text)', borderBottom:'1px solid var(--border)', background:'var(--dim)' }}>
+                {group.title} <span style={{ color:'var(--muted)', fontWeight:600 }}>({group.items.length})</span>
+              </div>
+              {group.items.slice(0,15).map((it, i) => {
+                const r = group.render(it)
+                return (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'9px 16px', borderBottom:'1px solid var(--border)', fontSize:12.5 }}>
+                    <span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'60%' }}>{r.main || '—'}</span>
+                    <span style={{ color:r.col, fontWeight:700, flexShrink:0 }}>{r.sub}</span>
+                  </div>
+                )
+              })}
+              {group.items.length > 15 && <div style={{ padding:'8px 16px', fontSize:11, color:'var(--muted)' }}>+{group.items.length-15} more</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
       {tab === 'business' && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 12 }}>
@@ -466,6 +512,8 @@ export function Analytics() {
             <StatCard label="Closed Deals" value={n.closed} now={n.closed} prev={p.closed} accent="#225091" />
             <StatCard label="Production Volume" value={fmt$(n.prod)} now={n.prod} prev={p.prod} money accent="#037f4c" />
             <StatCard label="GCI / Commissions" value={fmt$(n.gci)} now={n.gci} prev={p.gci} money accent="#CC2200" />
+            <StatCard label="Commission Collected" value={fmt$(commission.collected)} now={commission.collected} prev={null} money accent="#0B7A45" />
+            <StatCard label="Commission Outstanding" value={fmt$(commission.outstanding)} now={commission.outstanding} prev={null} money invert accent="#F5A623" />
             <StatCard label="Avg GCI / Deal" value={fmt$(n.avgGci)} now={n.avgGci} prev={p.avgGci} money accent="#8B5CF6" />
             <StatCard label="Acceptance Rate" value={n.acceptRate + '%'} now={n.acceptRate} prev={p.acceptRate} accent="#F5A623" />
             <StatCard label="Sent → Closed" value={n.convRate + '%'} now={n.convRate} prev={p.convRate} accent="#EC4899" />
