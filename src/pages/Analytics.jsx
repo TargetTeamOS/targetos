@@ -78,7 +78,7 @@ export function Analytics() {
   const [cStart, setCStart] = useState(iso(presetRange('month').start))
   const [cEnd, setCEnd]     = useState(iso(new Date()))
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [], listings: [], leadSources: [] })
+  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [], listings: [], leadSources: [], interactionsData: [] })
   const [goals, setGoals] = useState({})   // agent_id -> {deals,gci,production}
   const [savingGoal, setSavingGoal] = useState(false)
   const thisYear = new Date().getFullYear()
@@ -119,7 +119,8 @@ export function Analytics() {
       const tcDeals = await safe(supabase.from('tc_deals').select('id,addr,agent_id,tc_phase,attorney_name,mortgage_broker,inspector,close_date').range(0,4999))
       const listings = await safe(supabase.from('listings').select('id,addr,status,list_price,original_price,list_date,listed_date,created_at,agent_id,seller_updated_at,marketing_status').range(0,4999))
       const leadSources = await safe(supabase.from('lead_sources').select('name,monthly_cost,active'))
-      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources }); setLoading(false) }
+      const interactionsData = await safe(supabase.from('interactions').select('id,contact_id,agent_id,type,direction,occurred_at,follow_up,follow_up_date,counts_as_contact').range(0,19999))
+      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources, interactionsData }); setLoading(false) }
     })()
     return () => { alive = false }
   }, [])
@@ -130,7 +131,7 @@ export function Analytics() {
   }, [customOn, cStart, cEnd, preset])
   const prev = useMemo(() => priorSamePeriod(cur), [cur])
 
-  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources } = data
+  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources, interactionsData } = data
   const isSms = c => c.is_sms === true || c.kind === 'sms' || String(c.direction||'').toLowerCase().includes('sms')
 
   const biz = useMemo(() => {
@@ -153,16 +154,28 @@ export function Analytics() {
   }, [offers, deals, cur, prev])
 
   const interactions = useMemo(() => {
+    // Anti-double-count rule:
+    //  • calls/SMS from the calls table (Twilio-captured)
+    //  • PLUS manually-logged call/sms in the interactions table (distinct records)
+    //  • whatsapp/email/in_person ONLY from interactions
+    //  • notes count only when counts_as_contact !== false
+    const ixIn = (r, pred) => (interactionsData || []).filter(x => pred(x) && inRange(x.occurred_at, r))
     const calc = (r) => ({
-      calls: calls.filter(c => !isSms(c) && inRange(c.created_at, r)).length,
-      sms:   calls.filter(c => isSms(c) && inRange(c.created_at, r)).length,
+      calls: calls.filter(c => !isSms(c) && inRange(c.created_at, r)).length + ixIn(r, x => x.type === 'call').length,
+      sms:   calls.filter(c => isSms(c) && inRange(c.created_at, r)).length + ixIn(r, x => x.type === 'sms').length,
+      whatsapp: ixIn(r, x => x.type === 'whatsapp').length,
+      email:    ixIn(r, x => x.type === 'email').length,
+      inPerson: ixIn(r, x => x.type === 'in_person').length,
       showings: showings.filter(s => inRange(s.showing_date || s.created_at, r)).length,
       contacts: contacts.filter(c => inRange(c.created_at, r)).length,
       tasksDone: tasks.filter(t => (t.status === 'done' || t.completed) && inRange(t.completed_at || t.created_at, r)).length,
-      notes: activity.filter(a => inRange(a.created_at, r)).length,
+      notes: activity.filter(a => inRange(a.created_at, r)).length + ixIn(r, x => x.type === 'note').length,
+      followUps: ixIn(r, x => x.follow_up === true).length,
+      total: 0, // filled below
     })
-    return { now: calc(cur), prev: calc(prev) }
-  }, [calls, showings, contacts, tasks, activity, cur, prev])
+    const withTotal = c => ({ ...c, total: c.calls + c.sms + c.whatsapp + c.email + c.inPerson })
+    return { now: withTotal(calc(cur)), prev: withTotal(calc(prev)) }
+  }, [calls, showings, contacts, tasks, activity, interactionsData, cur, prev])
 
   const series = useMemo(() => {
     const days = daysBetween(cur)
@@ -195,19 +208,24 @@ export function Analytics() {
     const calc = (id, r) => {
       const closed = deals.filter(d => d.agent_id === id && d.stage === 'Closed' && inRange(d.close_date || d.created_at, r))
       const sent   = offers.filter(o => (o.agent_id === id || o.buyers_agent_id === id) && inRange(o.offer_date || o.created_at, r))
+      const ixA = (pred) => (interactionsData || []).filter(x => x.agent_id === id && pred(x) && inRange(x.occurred_at, r)).length
+      const callN = calls.filter(c => c.agent_id === id && !isSms(c) && inRange(c.created_at, r)).length + ixA(x => x.type === 'call')
+      const smsN  = calls.filter(c => c.agent_id === id && isSms(c) && inRange(c.created_at, r)).length + ixA(x => x.type === 'sms')
+      const whatsapp = ixA(x => x.type === 'whatsapp'), email = ixA(x => x.type === 'email'), inPerson = ixA(x => x.type === 'in_person'), notes = ixA(x => x.type === 'note')
       return {
         deals: closed.length, sent: sent.length,
         gci: closed.reduce((s,d)=>s+parseNum(d.gci),0),
         prod: closed.reduce((s,d)=>s+parseNum(d.production),0),
-        calls: calls.filter(c => c.agent_id === id && !isSms(c) && inRange(c.created_at, r)).length,
-        sms: calls.filter(c => c.agent_id === id && isSms(c) && inRange(c.created_at, r)).length,
+        calls: callN, sms: smsN, whatsapp, email, inPerson, notes,
+        interactions: callN + smsN + whatsapp + email + inPerson,
+        followUps: ixA(x => x.follow_up === true),
         showings: showings.filter(s => s.agent_id === id && inRange(s.showing_date || s.created_at, r)).length,
         contacts: contacts.filter(c => c.agent_id === id && inRange(c.created_at, r)).length,
         conv: sent.length ? Math.round((closed.length/sent.length)*100) : 0,
       }
     }
     return (agents||[]).map(a => ({ agent: a, now: calc(a.id, cur), prev: calc(a.id, prev) })).sort((x,y) => y.now.gci - x.now.gci)
-  }, [agents, deals, offers, calls, showings, contacts, cur, prev])
+  }, [agents, deals, offers, calls, showings, contacts, interactionsData, cur, prev])
 
   // ── Year-over-year "as of this date" ──────────────────────────
   // Jan 1 → the end of the current range, this year vs the identical
@@ -242,8 +260,9 @@ export function Analytics() {
     }))
     const overdueTasks = (tasks || []).filter(t => t.status !== 'done' && !t.completed && t.due_date && new Date(t.due_date).getTime() < now)
     const uncontacted = (contacts || []).filter(c => c.status === 'New' && c.contacted !== true)
-    return { closingSoon: soon, stuck: stale, missingInfo, overdueTasks, uncontacted }
-  }, [deals, tcDeals, tasks, contacts])
+    const overdueFollowUps = (interactionsData || []).filter(x => x.follow_up && x.follow_up_date && new Date(x.follow_up_date).getTime() < now)
+    return { closingSoon: soon, stuck: stale, missingInfo, overdueTasks, uncontacted, overdueFollowUps }
+  }, [deals, tcDeals, tasks, contacts, interactionsData])
 
   // Commission tracking (from Tier-B fields; falls back gracefully)
   const sideSplit = useMemo(() => {
@@ -269,7 +288,7 @@ export function Analytics() {
   if (loading) return <Loading />
 
   const n = biz.now, p = biz.prev, ix = interactions.now, ixp = interactions.prev
-  const alertCount = alerts.closingSoon.length + alerts.missingInfo.length + alerts.overdueTasks.length + alerts.uncontacted.length
+  const alertCount = alerts.closingSoon.length + alerts.missingInfo.length + alerts.overdueTasks.length + alerts.uncontacted.length + alerts.overdueFollowUps.length
 
   function downloadCSV(filename, rows) {
     if (!rows.length) { alert('Nothing to export for this view.'); return }
@@ -286,8 +305,9 @@ export function Analytics() {
     if (tab === 'agents' || tab === 'goals') {
       downloadCSV('agent-performance-' + stamp + '.csv', agentRows.map(r => ({
         Agent: r.agent.name, Closed: r.now.deals, OffersSent: r.now.sent, GCI: Math.round(r.now.gci),
-        Production: Math.round(r.now.prod), Calls: r.now.calls, Texts: r.now.sms, Showings: r.now.showings,
-        NewContacts: r.now.contacts, ConversionPct: r.now.conv,
+        Production: Math.round(r.now.prod), Calls: r.now.calls, Texts: r.now.sms, WhatsApp: r.now.whatsapp,
+        Email: r.now.email, InPerson: r.now.inPerson, TotalInteractions: r.now.interactions,
+        Showings: r.now.showings, NewContacts: r.now.contacts, ConversionPct: r.now.conv,
       })))
     } else if (tab === 'listings') {
       downloadCSV('listings-' + stamp + '.csv', (listings||[]).map(l => ({
@@ -538,6 +558,7 @@ export function Analytics() {
             { title:'📋 Active deals missing attorney / mortgage info', items: alerts.missingInfo, render: t => ({ main: t.addr, sub: 'missing: ' + t.missing, col:'#B45309' }) },
             { title:'⏰ Overdue tasks', items: alerts.overdueTasks, render: t => ({ main: t.title || 'Task', sub: 'due ' + new Date(t.due_date).toLocaleDateString(), col:'#DC2626' }) },
             { title:'📞 New leads not yet contacted', items: alerts.uncontacted, render: c => ({ main: [c.first_name,c.last_name].filter(Boolean).join(' ') || 'Lead', sub: c.source || '', col:'#0EA5E9' }) },
+            { title:'🔁 Overdue follow-ups', items: alerts.overdueFollowUps, render: x => ({ main: (x.type||'follow-up') + ' interaction', sub: 'due ' + new Date(x.follow_up_date).toLocaleDateString(), col:'#DC2626' }) },
             { title:'⏳ Deals stuck 90+ days', items: alerts.stuck, render: d => ({ main: d.addr, sub: d.stage, col:'var(--muted)' }) },
           ].filter(g => g.items.length > 0).map(group => (
             <div key={group.title} style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
@@ -718,6 +739,10 @@ export function Analytics() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
             <StatCard label="📞 Calls" value={ix.calls} now={ix.calls} prev={ixp.calls} accent="#0EA5E9" />
             <StatCard label="💬 Texts (SMS)" value={ix.sms} now={ix.sms} prev={ixp.sms} accent="#00c875" />
+            <StatCard label="🟢 WhatsApp" value={ix.whatsapp} now={ix.whatsapp} prev={ixp.whatsapp} accent="#25D366" />
+            <StatCard label="📧 Email" value={ix.email} now={ix.email} prev={ixp.email} accent="#B45309" />
+            <StatCard label="🤝 In Person" value={ix.inPerson} now={ix.inPerson} prev={ixp.inPerson} accent="#EC4899" />
+            <StatCard label="⚡ Total Interactions" value={ix.total} now={ix.total} prev={ixp.total} accent="#CC2200" />
             <StatCard label="🏠 Showings" value={ix.showings} now={ix.showings} prev={ixp.showings} accent="#8B5CF6" />
             <StatCard label="👤 New Contacts" value={ix.contacts} now={ix.contacts} prev={ixp.contacts} accent="#F5A623" />
             <StatCard label="✅ Tasks Done" value={ix.tasksDone} now={ix.tasksDone} prev={ixp.tasksDone} accent="#65A30D" />
@@ -813,7 +838,7 @@ export function Analytics() {
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
                 <thead>
                   <tr style={{ background: 'var(--dim)' }}>
-                    {['Agent','Closed','Offers Sent','GCI','Production','Calls','Texts','Showings','New Contacts','Conv %'].map((h, i) => (
+                    {['Agent','Closed','Offers Sent','GCI','Production','Calls','Texts','WhatsApp','Email','In Person','Total Int.','Showings','New Contacts','Conv %'].map((h, i) => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: i === 0 ? 'left' : 'right', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -831,6 +856,10 @@ export function Analytics() {
                         { now: now.prod, prev: prev.prod, money: true },
                         { now: now.calls, prev: prev.calls },
                         { now: now.sms, prev: prev.sms },
+                        { now: now.whatsapp, prev: prev.whatsapp },
+                        { now: now.email, prev: prev.email },
+                        { now: now.inPerson, prev: prev.inPerson },
+                        { now: now.interactions, prev: prev.interactions },
                         { now: now.showings, prev: prev.showings },
                         { now: now.contacts, prev: prev.contacts },
                         { now: now.conv, prev: prev.conv, suffix: '%' },
