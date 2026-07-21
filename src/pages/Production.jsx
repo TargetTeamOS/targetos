@@ -177,6 +177,7 @@ const BLANK = {
   ctc_close_date: '',
   // Finance
   production: '', gci: '', commission_received: '', agent_commission_sent: '',
+  commission_status: 'pending', collected_gci: '', collected_date: '', payment_method: '',
   // Client
   client_name: '', client_legal_name: '', client_email: '', client_phone: '',
   // Attorney
@@ -1211,6 +1212,29 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
                   </select>
                 </Field>
               </Grid2>
+
+              {/* Commission collection — $ tracking for reports */}
+              <Grid2>
+                <Field label="Collection Status">
+                  <select value={form.commission_status || 'pending'} onChange={e => {
+                      const v = e.target.value; set('commission_status', v)
+                      if (v === 'collected' && !form.collected_gci) set('collected_gci', form.gci || '')
+                      if (v === 'collected' && !form.collected_date) set('collected_date', new Date().toISOString().slice(0,10))
+                    }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+                    <option value="pending">Pending</option>
+                    <option value="partial">Partially paid</option>
+                    <option value="collected">Collected</option>
+                  </select>
+                </Field>
+                <Field label="Collected Amount $"><Inp k="collected_gci" type="number" placeholder={form.gci || '0'} /></Field>
+              </Grid2>
+              {(form.commission_status === 'collected' || form.commission_status === 'partial') && (
+                <Grid2>
+                  <Field label="Collected Date"><Inp k="collected_date" type="date" /></Field>
+                  <Field label="Payment Method / Notes"><Inp k="payment_method" placeholder="Wire, check #123…" /></Field>
+                </Grid2>
+              )}
 
               {/* Finance summary card */}
               {(form.production || form.gci) && (

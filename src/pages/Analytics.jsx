@@ -78,7 +78,7 @@ export function Analytics() {
   const [cStart, setCStart] = useState(iso(presetRange('month').start))
   const [cEnd, setCEnd]     = useState(iso(new Date()))
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [] })
+  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [], listings: [] })
   const [goals, setGoals] = useState({})   // agent_id -> {deals,gci,production}
   const [savingGoal, setSavingGoal] = useState(false)
   const thisYear = new Date().getFullYear()
@@ -117,7 +117,8 @@ export function Analytics() {
         safe(supabase.from('record_activity').select('id,agent_name,action,created_at').range(0,19999)),
       ])
       const tcDeals = await safe(supabase.from('tc_deals').select('id,addr,agent_id,tc_phase,attorney_name,mortgage_broker,inspector,close_date').range(0,4999))
-      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals }); setLoading(false) }
+      const listings = await safe(supabase.from('listings').select('id,addr,status,list_price,original_price,list_date,listed_date,created_at,agent_id,seller_updated_at,marketing_status').range(0,4999))
+      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings }); setLoading(false) }
     })()
     return () => { alive = false }
   }, [])
@@ -128,7 +129,7 @@ export function Analytics() {
   }, [customOn, cStart, cEnd, preset])
   const prev = useMemo(() => priorSamePeriod(cur), [cur])
 
-  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals } = data
+  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings } = data
   const isSms = c => c.is_sms === true || c.kind === 'sms' || String(c.direction||'').toLowerCase().includes('sms')
 
   const biz = useMemo(() => {
@@ -247,7 +248,11 @@ export function Analytics() {
   const commission = useMemo(() => {
     const closed = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, cur))
     const total = closed.reduce((s,d)=>s+parseNum(d.gci),0)
-    const collected = closed.reduce((s,d)=>s + (d.commission_status === 'collected' ? parseNum(d.collected_gci ?? d.gci) : 0), 0)
+    const collected = closed.reduce((s,d)=>{
+      if (d.commission_status === 'collected') return s + parseNum(d.collected_gci ?? d.gci)
+      if (d.commission_status === 'partial')   return s + parseNum(d.collected_gci ?? 0)
+      return s
+    }, 0)
     return { total, collected, outstanding: Math.max(0, total - collected) }
   }, [deals, cur])
 
@@ -293,7 +298,7 @@ export function Analytics() {
       </div>
 
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border)', marginBottom: 18 }}>
-        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'agents', label:'👤 Agents' }, { id:'goals', label:'🎯 Goals' }, { id:'alerts', label:'🔔 Alerts' + (alertCount ? ' (' + alertCount + ')' : '') }].map(t => (
+        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'listings', label:'🏡 Listings' }, { id:'agents', label:'👤 Agents' }, { id:'goals', label:'🎯 Goals' }, { id:'alerts', label:'🔔 Alerts' + (alertCount ? ' (' + alertCount + ')' : '') }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '10px 18px', border: 'none', borderBottom: tab === t.id ? '2px solid var(--brand)' : '2px solid transparent',
               background: 'transparent', color: tab === t.id ? 'var(--brand)' : 'var(--muted)', fontSize: 14, fontWeight: tab === t.id ? 800 : 600, cursor: 'pointer', fontFamily: ff, marginBottom: -1 }}>
@@ -502,6 +507,71 @@ export function Analytics() {
           ))}
         </div>
       )}
+
+      {tab === 'listings' && (() => {
+        const now = Date.now()
+        const agentName = id => (agents || []).find(a => a.id === id)?.name || '—'
+        const dom = l => { const ld = l.listed_date || l.list_date || l.created_at; return ld ? Math.floor((now - new Date(ld).getTime())/86400000) : null }
+        const byStatus = {}
+        ;(listings || []).forEach(l => { const k = l.status || 'Unknown'; byStatus[k] = (byStatus[k]||0)+1 })
+        const active = (listings || []).filter(l => l.status === 'Active')
+        const sittingLong = active.filter(l => { const d = dom(l); return d != null && d > 90 })
+        const reduced = (listings || []).filter(l => l.original_price && l.list_price && parseNum(l.list_price) < parseNum(l.original_price))
+        const staleUpdate = active.filter(l => !l.seller_updated_at || (now - new Date(l.seller_updated_at).getTime() > 14*86400000))
+        return (
+          <div style={{ display: 'grid', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
+              <StatCard label="Active" value={byStatus['Active']||0} now={byStatus['Active']||0} prev={null} accent="#00c875" />
+              <StatCard label="Under Contract" value={byStatus['Under Contract']||0} now={byStatus['Under Contract']||0} prev={null} accent="#007eb5" />
+              <StatCard label="Accepted Offer" value={byStatus['Accepted offer']||0} now={byStatus['Accepted offer']||0} prev={null} accent="#784bd1" />
+              <StatCard label="Sold" value={byStatus['Sold']||0} now={byStatus['Sold']||0} prev={null} accent="#ffcb00" />
+              <StatCard label="Avg Days on Market" value={active.length ? Math.round(active.reduce((s,l)=>s+(dom(l)||0),0)/active.length) : 0} now={0} prev={null} accent="#8B5CF6" />
+              <StatCard label="Price Reductions" value={reduced.length} now={reduced.length} prev={null} invert accent="#F5A623" />
+            </div>
+
+            <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ padding:'11px 16px', fontSize:13, fontWeight:800, color:'var(--text)', borderBottom:'1px solid var(--border)' }}>Active Listings — Days on Market</div>
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', minWidth:640 }}>
+                  <thead><tr style={{ background:'var(--dim)' }}>
+                    {['Address','Agent','List Price','Original','DOM','Seller Update'].map((h,i)=>(
+                      <th key={h} style={{ padding:'9px 12px', textAlign:i===0?'left':'right', fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {active.sort((a,b)=>(dom(b)||0)-(dom(a)||0)).slice(0,25).map(l => {
+                      const d = dom(l); const isReduced = l.original_price && parseNum(l.list_price) < parseNum(l.original_price)
+                      const staleU = !l.seller_updated_at || (now - new Date(l.seller_updated_at).getTime() > 14*86400000)
+                      return (
+                        <tr key={l.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                          <td style={{ padding:'9px 12px', fontWeight:600, color:'var(--text)', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.addr}</td>
+                          <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12, color:'var(--muted)' }}>{agentName(l.agent_id)}</td>
+                          <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, fontWeight:600, color: isReduced?'#DC2626':'var(--text)' }}>{fmt$(parseNum(l.list_price))}</td>
+                          <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12, color:'var(--muted)' }}>{l.original_price?fmt$(parseNum(l.original_price)):'—'}</td>
+                          <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, fontWeight:700, color: d>90?'#DC2626':d>60?'#F5A623':'var(--text)' }}>{d != null ? d+'d' : '—'}</td>
+                          <td style={{ padding:'9px 12px', textAlign:'right', fontSize:11.5, color: staleU?'#DC2626':'#0B7A45', fontWeight:600 }}>{l.seller_updated_at?new Date(l.seller_updated_at).toLocaleDateString():'never'}</td>
+                        </tr>
+                      )
+                    })}
+                    {active.length===0 && <tr><td colSpan={6} style={{ padding:24, textAlign:'center', color:'var(--muted)' }}>No active listings.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:16 }}>
+              <Panel title={'⏳ Sitting 90+ days (' + sittingLong.length + ')'} height="auto">
+                {sittingLong.length===0 ? <div style={{ fontSize:12.5, color:'var(--muted)' }}>None sitting long.</div>
+                  : sittingLong.slice(0,10).map(l => <div key={l.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}><span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{l.addr}</span><span style={{ color:'#DC2626', fontWeight:700 }}>{dom(l)}d</span></div>)}
+              </Panel>
+              <Panel title={'📢 No seller update in 14+ days (' + staleUpdate.length + ')'} height="auto">
+                {staleUpdate.length===0 ? <div style={{ fontSize:12.5, color:'var(--muted)' }}>All sellers recently updated.</div>
+                  : staleUpdate.slice(0,10).map(l => <div key={l.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}><span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{l.addr}</span><span style={{ color:'var(--muted)' }}>{l.seller_updated_at?new Date(l.seller_updated_at).toLocaleDateString():'never'}</span></div>)}
+              </Panel>
+            </div>
+          </div>
+        )
+      })()}
 
       {tab === 'business' && (
         <div style={{ display: 'grid', gap: 16 }}>
