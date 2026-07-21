@@ -5,6 +5,7 @@
 // immediately before — e.g. this 30 days vs the previous 30 days).
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useAgents } from '../lib/hooks'
@@ -71,6 +72,7 @@ const axis = { fontSize: 11, fontFamily: ff }
 
 export function Analytics() {
   const { isAdmin, canManage } = useAuth()
+  const navigate = useNavigate()
   const { agents } = useAgents()
   const [tab, setTab]       = useState('summary')
   const [preset, setPreset] = useState('month')
@@ -110,8 +112,8 @@ export function Analytics() {
       const [deals, offers, calls, contacts, showings, tasks, activity] = await Promise.all([
         safe(supabase.from('deals').select('*').range(0,4999)),
         safe(supabase.from('offers').select('id,status,offer_date,created_at,agent_id,buyers_agent_id,listing_addr,purchase_price').range(0,4999)),
-        safe(supabase.from('calls').select('id,agent_id,direction,outcome,is_sms,kind,created_at').range(0,19999)),
-        safe(supabase.from('contacts').select('id,agent_id,created_at,status,source,first_name,last_name').range(0,19999)),
+        safe(supabase.from('calls').select('id,agent_id,contact_id,direction,outcome,is_sms,kind,created_at').range(0,19999)),
+        safe(supabase.from('contacts').select('id,agent_id,created_at,status,source,first_name,last_name,phone,email,contacted,first_contact_at,last_contact_at,last_activity_at,next_step').range(0,19999)),
         safe(supabase.from('showings').select('id,agent_id,showing_date,created_at,listing_id').range(0,9999)),
         safe(supabase.from('tasks').select('id,agent_id,status,completed,created_at,completed_at,due_date,title').range(0,9999)),
         safe(supabase.from('record_activity').select('id,agent_name,action,created_at').range(0,19999)),
@@ -284,6 +286,54 @@ export function Analytics() {
     return { total, collected, outstanding: Math.max(0, total - collected) }
   }, [deals, cur])
 
+  // ── Contact Health (part 4) ───────────────────────────────────
+  const health = useMemo(() => {
+    const now = Date.now()
+    const lastAct = {}
+    const bump = (cid, ts) => { if (!cid || !ts) return; const t = new Date(ts).getTime(); if (!lastAct[cid] || t > lastAct[cid]) lastAct[cid] = t }
+    ;(calls || []).forEach(c => bump(c.contact_id, c.created_at))
+    ;(interactionsData || []).forEach(x => { if (x.counts_as_contact !== false) bump(x.contact_id, x.occurred_at) })
+    const everInteracted = {}
+    ;(calls || []).forEach(c => { if (c.contact_id) everInteracted[c.contact_id] = true })
+    ;(interactionsData || []).forEach(x => { if (x.contact_id && x.counts_as_contact !== false) everInteracted[x.contact_id] = true })
+    const followUpByContact = {}
+    ;(interactionsData || []).forEach(x => { if (x.follow_up && x.follow_up_date && x.contact_id) { const t = new Date(x.follow_up_date).getTime(); if (!followUpByContact[x.contact_id] || t < followUpByContact[x.contact_id]) followUpByContact[x.contact_id] = t } })
+
+    const enrich = c => {
+      const la = lastAct[c.id] || (c.last_contact_at ? new Date(c.last_contact_at).getTime() : (c.last_activity_at ? new Date(c.last_activity_at).getTime() : null))
+      const daysSince = la ? Math.floor((now - la) / 86400000) : null
+      const ageH = c.created_at ? (now - new Date(c.created_at).getTime()) / 3600000 : 0
+      const fu = followUpByContact[c.id] || null
+      return { ...c, _lastAct: la, _daysSince: daysSince, _ever: !!everInteracted[c.id], _ageHours: ageH, _followUp: fu }
+    }
+    let rows = (contacts || []).map(enrich)
+    const total = rows.length
+    const contacted = rows.filter(c => c.contacted === true).length
+    const uncontacted = total - contacted
+    const noInteractionEver = rows.filter(c => !c._ever).length
+    const recent = rows.filter(c => c._daysSince != null && c._daysSince <= 7).length
+    const needFollowUp = rows.filter(c => c._followUp != null).length
+    const overdueFollowUp = rows.filter(c => c._followUp != null && c._followUp < now).length
+    const newUncontacted24 = rows.filter(c => c.contacted !== true && c._ageHours > 24 && (c.status === 'New' || !c.status)).length
+    const firstContactSamples = rows.filter(c => c.first_contact_at && c.created_at).map(c => (new Date(c.first_contact_at).getTime() - new Date(c.created_at).getTime()) / 3600000).filter(h => h >= 0)
+    const avgToFirst = firstContactSamples.length ? Math.round(firstContactSamples.reduce((a,b)=>a+b,0) / firstContactSamples.length) : null
+
+    return {
+      rows, total, contacted, uncontacted, noInteractionEver, recent, needFollowUp, overdueFollowUp, newUncontacted24, avgToFirst,
+      lists: {
+        newUncontacted: rows.filter(c => c.contacted !== true && (c.status === 'New' || !c.status)),
+        noEver: rows.filter(c => !c._ever),
+        stale7: rows.filter(c => c._daysSince != null && c._daysSince >= 7 && c._daysSince < 30),
+        stale30: rows.filter(c => c._daysSince != null && c._daysSince >= 30),
+        overdueFu: rows.filter(c => c._followUp != null && c._followUp < now),
+        dueToday: rows.filter(c => c._followUp != null && new Date(c._followUp).toDateString() === new Date().toDateString()),
+        dueWeek: rows.filter(c => c._followUp != null && c._followUp >= now && c._followUp <= now + 7*86400000),
+        noNextStep: rows.filter(c => c.contacted === true && !c.next_step),
+        noAgent: rows.filter(c => !c.agent_id),
+      },
+    }
+  }, [contacts, calls, interactionsData])
+
   if (!isAdmin && !canManage) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontFamily: ff }}>Analytics is available to admins and office staff.</div>
   if (loading) return <Loading />
 
@@ -313,6 +363,18 @@ export function Analytics() {
       downloadCSV('listings-' + stamp + '.csv', (listings||[]).map(l => ({
         Address: l.addr, Status: l.status, Agent: (agents||[]).find(a=>a.id===l.agent_id)?.name||'', ListPrice: parseNum(l.list_price),
         OriginalPrice: l.original_price?parseNum(l.original_price):'', SellerUpdated: l.seller_updated_at||'',
+      })))
+    } else if (tab === 'health') {
+      const agentNm = aid => (agents||[]).find(a=>a.id===aid)?.name || ''
+      // Export the full contact-health roster + a separate agent-accountability isn't possible in one file;
+      // export the most actionable: every contact with health fields.
+      downloadCSV('contact-health-' + stamp + '.csv', health.rows.map(c => ({
+        Contact: [c.first_name,c.last_name].filter(Boolean).join(' '), Phone: c.phone||'', Email: c.email||'',
+        Agent: agentNm(c.agent_id), Source: c.source||'', Status: c.status||'',
+        Contacted: c.contacted===true?'yes':'no', Created: c.created_at?c.created_at.slice(0,10):'',
+        FirstContact: c.first_contact_at?c.first_contact_at.slice(0,10):'', LastContact: c.last_contact_at?c.last_contact_at.slice(0,10):'',
+        DaysSinceActivity: c._daysSince!=null?c._daysSince:'', FollowUp: c._followUp?new Date(c._followUp).toISOString().slice(0,10):'',
+        NoInteractionEver: c._ever?'no':'yes',
       })))
     } else {
       // business/summary/pipeline → company KPI snapshot
@@ -369,7 +431,7 @@ export function Analytics() {
       </div>
 
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border)', marginBottom: 18 }}>
-        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'listings', label:'🏡 Listings' }, { id:'sources', label:'📥 Lead Sources' }, { id:'agents', label:'👤 Agents' }, { id:'goals', label:'🎯 Goals' }, { id:'alerts', label:'🔔 Alerts' + (alertCount ? ' (' + alertCount + ')' : '') }].map(t => (
+        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'listings', label:'🏡 Listings' }, { id:'sources', label:'📥 Lead Sources' }, { id:'health', label:'🩺 Contact Health' }, { id:'agents', label:'👤 Agents' }, { id:'goals', label:'🎯 Goals' }, { id:'alerts', label:'🔔 Alerts' + (alertCount ? ' (' + alertCount + ')' : '') }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '10px 18px', border: 'none', borderBottom: tab === t.id ? '2px solid var(--brand)' : '2px solid transparent',
               background: 'transparent', color: tab === t.id ? 'var(--brand)' : 'var(--muted)', fontSize: 14, fontWeight: tab === t.id ? 800 : 600, cursor: 'pointer', fontFamily: ff, marginBottom: -1 }}>
@@ -689,6 +751,161 @@ export function Analytics() {
                 </table>
               </div>
               <div style={{ padding:'8px 16px', fontSize:11, color:'var(--muted)' }}>Cost & ROI need source costs entered in the lead_sources table. Leads counted from contacts' source field; GCI from closed deals' source field.</div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {tab === 'health' && (() => {
+        const agentName = aid => (agents || []).find(a => a.id === aid)?.name || '—'
+        const fmtD = t => t ? new Date(t).toLocaleDateString() : '—'
+        const HealthTable = ({ title, rows, accent, dateCol }) => {
+          const [open, setOpen] = React.useState(false)
+          const shown = open ? rows : rows.slice(0, 8)
+          return (
+            <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ padding:'11px 16px', fontSize:13, fontWeight:800, color:'var(--text)', borderBottom:'1px solid var(--border)', borderLeft:'3px solid '+accent, display:'flex', justifyContent:'space-between' }}>
+                <span>{title} <span style={{ color:'var(--muted)', fontWeight:600 }}>({rows.length})</span></span>
+              </div>
+              {rows.length === 0 ? <div style={{ padding:16, fontSize:12.5, color:'var(--muted)' }}>None — all clear.</div> : (
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', minWidth:640 }}>
+                    <thead><tr style={{ background:'var(--dim)' }}>
+                      {['Contact','Agent','Source','Status', dateCol||'Last Activity',''].map((h,i)=>(
+                        <th key={i} style={{ padding:'8px 12px', textAlign:i===0?'left':(i===5?'right':'left'), fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', borderBottom:'1px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {shown.map(c => (
+                        <tr key={c.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                          <td style={{ padding:'8px 12px' }}>
+                            <div style={{ fontWeight:600, color:'var(--text)', fontSize:12.5 }}>{[c.first_name,c.last_name].filter(Boolean).join(' ')||'—'}</div>
+                            <div style={{ fontSize:11, color:'var(--muted)' }}>{c.phone||c.email||''}</div>
+                          </td>
+                          <td style={{ padding:'8px 12px', fontSize:12, color: c.agent_id?'var(--text)':'#DC2626', fontWeight: c.agent_id?400:700 }}>{c.agent_id?agentName(c.agent_id):'unassigned'}</td>
+                          <td style={{ padding:'8px 12px', fontSize:12, color:'var(--muted)' }}>{c.source||'—'}</td>
+                          <td style={{ padding:'8px 12px', fontSize:12, color:'var(--muted)' }}>{c.status||'—'}</td>
+                          <td style={{ padding:'8px 12px', fontSize:12, color:'var(--text)' }}>
+                            {dateCol === 'Follow-up' ? fmtD(c._followUp) : (c._daysSince != null ? c._daysSince+'d ago' : 'never')}
+                          </td>
+                          <td style={{ padding:'8px 12px', textAlign:'right' }}>
+                            <button onClick={()=>navigate('/contacts/'+c.id+'/detail')} style={{ border:'1px solid var(--border)', background:'transparent', color:'var(--brand)', borderRadius:6, padding:'3px 9px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>Open</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {rows.length > 8 && <button onClick={()=>setOpen(o=>!o)} style={{ width:'100%', padding:'8px', border:'none', borderTop:'1px solid var(--border)', background:'var(--dim)', color:'var(--brand)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>{open?'Show less':'Show all '+rows.length}</button>}
+                </div>
+              )}
+            </div>
+          )
+        }
+        // Agent accountability
+        const agentAcc = (agents||[]).map(a => {
+          const assigned = health.rows.filter(c => c.agent_id === a.id)
+          const contacted = assigned.filter(c => c.contacted === true).length
+          const lastIx = assigned.reduce((mx,c) => c._lastAct && c._lastAct > mx ? c._lastAct : mx, 0)
+          return {
+            agent: a, assigned: assigned.length, contacted, uncontacted: assigned.length - contacted,
+            newUncontacted: assigned.filter(c => c.contacted !== true && (c.status==='New'||!c.status)).length,
+            overdueFu: assigned.filter(c => c._followUp != null && c._followUp < Date.now()).length,
+            stale7: assigned.filter(c => c._daysSince != null && c._daysSince >= 7).length,
+            lastIx, pct: assigned.length ? Math.round((contacted/assigned.length)*100) : 0,
+          }
+        }).filter(r => r.assigned > 0).sort((a,b) => a.pct - b.pct)
+        // Source health
+        const srcMap = {}
+        health.rows.forEach(c => { const k = c.source||'Unknown'; if(!srcMap[k]) srcMap[k]={source:k,total:0,contacted:0,noEver:0,overdueFu:0}; srcMap[k].total++; if(c.contacted===true)srcMap[k].contacted++; if(!c._ever)srcMap[k].noEver++; if(c._followUp!=null&&c._followUp<Date.now())srcMap[k].overdueFu++ })
+        const srcRows = Object.values(srcMap).sort((a,b)=>b.total-a.total)
+        return (
+          <div style={{ display:'grid', gap:16 }}>
+            {/* KPI cards */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))', gap:12 }}>
+              <StatCard label="Total Contacts" value={health.total} now={health.total} prev={null} accent="#225091" />
+              <StatCard label="Contacted" value={health.contacted} now={health.contacted} prev={null} accent="#0B7A45" />
+              <StatCard label="Uncontacted" value={health.uncontacted} now={health.uncontacted} prev={null} invert accent="#DC2626" />
+              <StatCard label="No Interaction Ever" value={health.noInteractionEver} now={health.noInteractionEver} prev={null} invert accent="#B45309" />
+              <StatCard label="Recent (≤7d)" value={health.recent} now={health.recent} prev={null} accent="#00c875" />
+              <StatCard label="Need Follow-up" value={health.needFollowUp} now={health.needFollowUp} prev={null} accent="#F5A623" />
+              <StatCard label="Overdue Follow-ups" value={health.overdueFollowUp} now={health.overdueFollowUp} prev={null} invert accent="#DC2626" />
+              <StatCard label="New >24h Uncontacted" value={health.newUncontacted24} now={health.newUncontacted24} prev={null} invert accent="#EC4899" />
+              <StatCard label="Avg Time to 1st Contact" value={health.avgToFirst != null ? (health.avgToFirst < 48 ? health.avgToFirst+'h' : Math.round(health.avgToFirst/24)+'d') : '—'} now={0} prev={null} accent="#8B5CF6" />
+            </div>
+
+            {/* Health lists */}
+            <HealthTable title="📞 New leads not contacted" rows={health.lists.newUncontacted} accent="#0EA5E9" />
+            <HealthTable title="🚫 No interaction ever" rows={health.lists.noEver} accent="#B45309" />
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(340px, 1fr))', gap:16 }}>
+              <HealthTable title="⏳ No activity 7–30 days" rows={health.lists.stale7} accent="#F5A623" />
+              <HealthTable title="🥶 No activity 30+ days" rows={health.lists.stale30} accent="#DC2626" />
+            </div>
+            <HealthTable title="🔁 Overdue follow-ups" rows={health.lists.overdueFu} accent="#DC2626" dateCol="Follow-up" />
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(340px, 1fr))', gap:16 }}>
+              <HealthTable title="📅 Follow-up due today" rows={health.lists.dueToday} accent="#F5A623" dateCol="Follow-up" />
+              <HealthTable title="🗓 Follow-up due this week" rows={health.lists.dueWeek} accent="#0EA5E9" dateCol="Follow-up" />
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(340px, 1fr))', gap:16 }}>
+              <HealthTable title="➡️ Contacted but no next step" rows={health.lists.noNextStep} accent="#8B5CF6" />
+              <HealthTable title="👤 Missing assigned agent" rows={health.lists.noAgent} accent="#DC2626" />
+            </div>
+
+            {/* Agent accountability */}
+            <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ padding:'11px 16px', fontSize:13, fontWeight:800, color:'var(--text)', borderBottom:'1px solid var(--border)' }}>👥 Agent Accountability <span style={{ fontSize:11, fontWeight:600, color:'var(--muted)' }}>— sorted by lowest contacted %</span></div>
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', minWidth:760 }}>
+                  <thead><tr style={{ background:'var(--dim)' }}>
+                    {['Agent','Assigned','Contacted','Uncontacted','New Uncontacted','Overdue F/U','Stale 7+d','Last Interaction','Contacted %'].map((h,i)=>(
+                      <th key={h} style={{ padding:'9px 12px', textAlign:i===0?'left':'right', fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {agentAcc.map(r => (
+                      <tr key={r.agent.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                        <td style={{ padding:'9px 12px', fontWeight:700, color:'var(--text)', whiteSpace:'nowrap' }}><span style={{ display:'inline-block', width:7, height:7, borderRadius:'50%', background:r.agent.color||'#CC2200', marginRight:7 }} />{r.agent.name}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5 }}>{r.assigned}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color:'#0B7A45', fontWeight:600 }}>{r.contacted}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color: r.uncontacted>0?'#DC2626':'var(--muted)', fontWeight: r.uncontacted>0?700:400 }}>{r.uncontacted}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color: r.newUncontacted>0?'#DC2626':'var(--muted)' }}>{r.newUncontacted}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color: r.overdueFu>0?'#DC2626':'var(--muted)' }}>{r.overdueFu}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color:'var(--muted)' }}>{r.stale7}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12, color:'var(--muted)' }}>{r.lastIx?fmtD(r.lastIx):'never'}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, fontWeight:800, color: r.pct>=70?'#0B7A45':r.pct>=40?'#F5A623':'#DC2626' }}>{r.pct}%</td>
+                      </tr>
+                    ))}
+                    {agentAcc.length===0 && <tr><td colSpan={9} style={{ padding:24, textAlign:'center', color:'var(--muted)' }}>No assigned contacts.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Source health */}
+            <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ padding:'11px 16px', fontSize:13, fontWeight:800, color:'var(--text)', borderBottom:'1px solid var(--border)' }}>📥 Contact Health by Lead Source</div>
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', minWidth:560 }}>
+                  <thead><tr style={{ background:'var(--dim)' }}>
+                    {['Source','Total','Contacted','Uncontacted','No Interaction','Overdue F/U','Contacted %'].map((h,i)=>(
+                      <th key={h} style={{ padding:'9px 12px', textAlign:i===0?'left':'right', fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {srcRows.map(r => { const pct = r.total?Math.round((r.contacted/r.total)*100):0; return (
+                      <tr key={r.source} style={{ borderBottom:'1px solid var(--border)' }}>
+                        <td style={{ padding:'9px 12px', fontWeight:700, color:'var(--text)' }}>{r.source}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5 }}>{r.total}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color:'#0B7A45' }}>{r.contacted}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color: (r.total-r.contacted)>0?'#DC2626':'var(--muted)' }}>{r.total-r.contacted}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color:'var(--muted)' }}>{r.noEver}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, color: r.overdueFu>0?'#DC2626':'var(--muted)' }}>{r.overdueFu}</td>
+                        <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, fontWeight:800, color: pct>=70?'#0B7A45':pct>=40?'#F5A623':'#DC2626' }}>{pct}%</td>
+                      </tr>
+                    )})}
+                    {srcRows.length===0 && <tr><td colSpan={7} style={{ padding:24, textAlign:'center', color:'var(--muted)' }}>No contacts.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )
