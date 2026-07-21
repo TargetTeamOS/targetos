@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase'
 import { CallJourney } from '../components/CallJourney'
 import { loadContactLayout, saveContactLayout } from '../lib/contactLayout'
 import { EmailComposeModal } from '../components/EmailComposeModal'
+import { LogInteractionModal } from '../components/LogInteractionModal'
 import { SmsComposeModal } from '../components/SmsComposeModal'
 import { ContactAutomations } from '../components/ContactAutomations'
 import { ActivityPanel } from '../components/ActivityPanel'
@@ -1081,6 +1082,7 @@ export function ContactDetail() {
   const { toast } = useApp()
 
   const [contact,   setContact]   = useState(null)
+  const [logOpen,   setLogOpen]   = useState(false)
   const [loading,   setLoading]   = useState(true)
   const [timeline,  setTimeline]  = useState([])
   const [tlLoading, setTlLoading] = useState(true)
@@ -1166,8 +1168,22 @@ export function ContactDetail() {
         supabase.from('audit_log').select('id,action,field_name,new_value,metadata,created_at,agents(id,name,color)').eq('record_id', id).eq('field_name', 'web_activity').order('created_at', { ascending: false }).limit(20).then(r => r.data || []).catch(()=>[]),
         supabase.from('audit_log').select('*, agents(id,name,color)').eq('record_id', id).order('created_at', { ascending: false }).limit(100).then(r => r.data || []),
       ])
+      // Logged interactions (WhatsApp, in-person, manual, etc.)
+      const interactions = await supabase.from('interactions')
+        .select('id,type,direction,notes,occurred_at,follow_up,follow_up_date,agents:agent_id(id,name,color)')
+        .eq('contact_id', id).order('occurred_at', { ascending: false }).limit(50)
+        .then(r => r.data || []).catch(() => [])
 
       const items = []
+      const IX_ICON = { call:'📞', sms:'💬', whatsapp:'🟢', email:'📧', in_person:'🤝', note:'📝', other:'•' }
+      interactions.forEach(x => items.push({
+        id: 'ix_' + x.id, type: 'interaction',
+        title: (IX_ICON[x.type] || '•') + ' ' + (x.type === 'in_person' ? 'In person' : x.type.charAt(0).toUpperCase() + x.type.slice(1)) + ' · ' + (x.direction === 'inbound' ? 'Inbound' : 'Outbound'),
+        body: x.notes || '',
+        meta: x.follow_up && x.follow_up_date ? 'Follow-up ' + new Date(x.follow_up_date).toLocaleDateString() : 'Logged interaction',
+        agent: x.agents,
+        created_at: x.occurred_at,
+      }))
 
       // SMS messages in timeline
       smsMessages.forEach(m => items.push({
@@ -1459,6 +1475,10 @@ export function ContactDetail() {
         </div>
         {/* actions, right-aligned */}
         <div style={{ marginLeft:'auto', display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
+          <button onClick={()=>setLogOpen(true)} title="Log a contact made outside the CRM (WhatsApp, in person, personal phone…)"
+            style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1px solid var(--brand)', background:'rgba(204,34,0,.06)', color:'var(--brand)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            ➕ Log Interaction
+          </button>
           {f.phone && <ClickToCall phone={f.phone} contactName={(f.first_name||'')+' '+(f.last_name||'')} contactId={id} showLabel />}
           {f.email && (
             <button onClick={()=>setComposeOpen(true)} title="Email (sends from the CRM, logs here)"
@@ -1816,6 +1836,8 @@ export function ContactDetail() {
       </div>
 
       <Confirm open={confirmDel} message={'Delete ' + f.first_name + ' ' + (f.last_name || '') + '? Cannot be undone.'} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />
+      <LogInteractionModal open={logOpen} onClose={() => setLogOpen(false)} contact={f} agent={agent} toast={toast}
+        onLogged={() => { setContact(prev => ({ ...prev, contacted: true, last_contact_at: new Date().toISOString(), first_contact_at: prev.first_contact_at || new Date().toISOString() })); loadTimeline() }} />
     </div>
   )
 }
