@@ -1,30 +1,26 @@
 -- ══════════════════════════════════════════════════════════════════
--- PHASE 1 · MIGRATION A (v3) — PARTIAL FOUNDATION ROLLBACK
--- ⚠ This is a PARTIAL rollback by design, not a complete teardown.
--- It removes the reporting layer (RPC, goal readers, data-quality,
--- canonical view, reporting indexes, and the non-identity permission
--- helpers) while PRESERVING stateful data and the minimum helpers its
--- policies require:
---   • KEPT: public.team_goals + its policies + privileges (your 300 goal
---           and any admin edits — never auto-dropped).
---   • KEPT: public.secretary_permissions if it holds any grant rows
---           (dropped only when empty).
---   • KEPT: app_is_admin() and app_current_agent_id() — the preserved
---           policies depend on them; dropping would fail or need CASCADE.
---   • KEPT: deals exclusion columns (may hold DUP-cleanup marks).
--- Idempotent: safe if A only partially applied or tables are absent.
--- For a COMPLETE teardown (export + drop everything), see the commented
--- appendix at the bottom.
+-- PHASE 1 · MIGRATION A (v4) — PARTIAL FOUNDATION ROLLBACK
+-- ⚠ PARTIAL by design. Removes the reporting layer + non-identity helpers
+-- while PRESERVING stateful data and the identity helpers its policies need.
+--   KEPT: team_goals (+policies) — your 300 goal & edits; never auto-dropped.
+--   KEPT: secretary_permissions (+policies) if it has grant rows (dropped if empty).
+--   KEPT: app_is_admin() & app_current_agent_id() — preserved policies depend on them.
+--   KEPT: deals columns is_duplicate/is_test/archived_at/deleted_at/duplicate_of/expected_gci.
+-- Idempotent: safe if A only partially applied or objects are absent.
+-- Clears the phase1_A migration record so state is consistent afterward.
+-- NOTE: because team_goals is preserved, a clean REINSTALL of A requires the
+-- COMPLETE TEARDOWN appendix at the bottom (export + drop). A will otherwise
+-- abort on the team_goals collision check — by design.
 -- ══════════════════════════════════════════════════════════════════
 begin;
 
--- 1. Drop the reporting RPC + readers + data-quality (nothing depends on them)
+-- 1. reporting RPC + readers + data-quality
 drop function if exists public.app_dashboard_summary(text,uuid,date,date);
 drop function if exists public.app_agent_goal(uuid,int);
 drop function if exists public.app_team_goal(int);
 drop function if exists public.app_data_quality(int);
 
--- 2. Drop the scope/permission helpers NOT required by preserved policies
+-- 2. scope/permission helpers NOT required by preserved policies
 drop function if exists public.app_report_scope_ok(text,uuid,text);
 drop function if exists public.app_can_view_team(text);
 drop function if exists public.app_can_view_financials(uuid,text,text);
@@ -37,19 +33,18 @@ drop function if exists public.app_can_create_for(uuid,text);
 drop function if exists public.app_can_view_agent(uuid,text);
 drop function if exists public.app_is_secretary();
 drop function if exists public.app_is_agent();
--- NOTE: app_is_admin() and app_current_agent_id() are intentionally KEPT
--- (secretary_permissions_* and team_goals_admin policies depend on them).
+-- KEPT intentionally: public.app_is_admin(), public.app_current_agent_id()
 
--- 3. Drop the internal canonical view
+-- 3. internal canonical view
 drop view if exists public.v_deals_canonical;
 
--- 4. Drop ONLY migration-owned indexes (idx_a1_*) — never pre-existing ones
+-- 4. migration-owned indexes only
 drop index if exists public.idx_a1_deals_close_date;
 drop index if exists public.idx_a1_deals_report;
 drop index if exists public.idx_a1_tasks_overdue;
 drop index if exists public.idx_a1_cal_agent_start;
 
--- 5. Preserve stateful tables; disclose; idempotent if missing
+-- 5. preserve/dispose stateful tables; idempotent; disclose
 do $$
 declare sp_rows int;
 begin
@@ -63,28 +58,36 @@ begin
       drop table public.secretary_permissions;
       raise notice 'secretary_permissions was empty → dropped (policies removed).';
     else
-      raise notice 'PRESERVED secretary_permissions (% grant row[s]) + its policies. Manual removal: DROP TABLE public.secretary_permissions CASCADE;', sp_rows;
+      raise notice 'PRESERVED secretary_permissions (% grant row[s]) + policies. Manual: DROP TABLE public.secretary_permissions CASCADE;', sp_rows;
     end if;
   end if;
 
   if to_regclass('public.team_goals') is null then
     raise notice 'team_goals absent — nothing to preserve.';
   else
-    raise notice 'PRESERVED team_goals (% row[s], incl. 2026=300 + edits) + its policies. Never auto-dropped. Manual removal: DROP TABLE public.team_goals CASCADE;',
+    raise notice 'PRESERVED team_goals (% row[s], incl. 2026=300 + edits) + policies. Never auto-dropped. Manual: DROP TABLE public.team_goals CASCADE;',
       (select count(*) from public.team_goals);
   end if;
 
-  raise notice 'PRESERVED app_is_admin() and app_current_agent_id() — required by the preserved policies.';
-  raise notice 'PRESERVED deals columns is_duplicate/is_test/archived_at/deleted_at/duplicate_of (may hold DUP marks).';
+  raise notice 'PRESERVED app_is_admin() and app_current_agent_id() — required by preserved policies.';
+  raise notice 'PRESERVED deals columns is_duplicate/is_test/archived_at/deleted_at/duplicate_of/expected_gci (may hold marks/values).';
+end $$;
+
+-- 6. clear the migration record (idempotent)
+do $$
+begin
+  if to_regclass('public._app_migrations') is not null then
+    delete from public._app_migrations where name='phase1_A';
+    raise notice 'Cleared phase1_A migration record.';
+  end if;
 end $$;
 
 commit;
-select 'MIGRATION A (v3) PARTIAL rollback complete — see NOTICEs for preserved objects' as status;
+select 'MIGRATION A (v4) PARTIAL rollback complete — see NOTICEs' as status;
 
 -- ══════════════════════════════════════════════════════════════════
--- OPTIONAL — COMPLETE TEARDOWN (run manually, only if you truly want to
--- remove EVERYTHING A created, INCLUDING your team goal + grants).
--- Export first, then drop. Uncomment to use.
+-- OPTIONAL — COMPLETE TEARDOWN (manual). Removes EVERYTHING A created,
+-- INCLUDING your team goal + grants. Export first. Uncomment to use.
 --
 -- create table public._export_team_goals as select * from public.team_goals;
 -- create table public._export_secretary_permissions as select * from public.secretary_permissions;
@@ -96,7 +99,9 @@ select 'MIGRATION A (v3) PARTIAL rollback complete — see NOTICEs for preserved
 -- drop table if exists public.secretary_permissions;
 -- drop function if exists public.app_is_admin();
 -- drop function if exists public.app_current_agent_id();
--- -- exclusion columns (only if you want them gone; loses DUP marks):
+-- delete from public._app_migrations where name='phase1_A';
+-- -- exclusion/expected columns (optional; loses DUP marks + expected_gci values):
 -- -- alter table public.deals drop column if exists is_duplicate, drop column if exists is_test,
 -- --   drop column if exists archived_at, drop column if exists deleted_at, drop column if exists duplicate_of;
+-- --   (leave expected_gci — it may be owned by reporting_tier_b.sql)
 -- ══════════════════════════════════════════════════════════════════

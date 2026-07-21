@@ -1,65 +1,111 @@
 -- ══════════════════════════════════════════════════════════════════
--- PHASE 1 · MIGRATION A (v3) — SAFE FOUNDATION
--- Revised per 2nd security review. NOT applied/verified against live DB.
+-- PHASE 1 · MIGRATION A (v4) — SAFE FOUNDATION
+-- One-time, collision-safe, transactional. NOT applied/verified on live DB.
 -- Adds NO restrictive RLS on existing data tables → no lockout.
--- Transactional + comprehensive preflight. Rollback: A_rollback.sql (v3).
+-- Rollback: A_rollback.sql (v4).
 --
--- v3 changes: (1) self-access only for role=agent; secretaries always need
--- a grant row. (2) RPC gates EACH resource separately; unauthorized groups
--- are OMITTED. (3) annual goal progress uses year boundaries, independent
--- of the widget filter; filtered vs annual returned separately. (4) rollback
--- rebuilt for real dependency order (keeps app_is_admin/app_current_agent_id
--- that preserved policies need). (5) v_deals_canonical is INTERNAL — no
--- direct grant to authenticated. (6) explicit table privileges on new tables.
--- (7) financial perm is resource-aware + requires can_view. (8) data-quality
--- takes a year param, covers deals/listings/contacts/calls, excludes marked
--- dups + excluded rows. (9) agent_goal_leads gated separately. (10) preflight
--- verifies tables+columns+index-name availability. (11) migration-specific
--- idx_a1_* names asserted unused so rollback can't drop pre-existing indexes.
+-- v4 corrections:
+-- (1) app_report_scope_ok self-mode no longer auto-authorizes secretaries;
+--     self+agent both route through app_can_view_agent (secretary needs a grant).
+-- (2) genuinely one-time: preflight ABORTS if any migration-owned function
+--     signature, view, table, policy, constraint, or index already exists.
+--     Uses CREATE (not CREATE OR REPLACE / IF NOT EXISTS) so nothing is
+--     silently overwritten.
+-- (3) preflight verifies every column referenced later (incl. contacts.agent_id,
+--     calls.agent_id, agent_goals.deals/leads/gci/production).
+-- (4) migration record table _app_migrations distinguishes not-installed /
+--     fully-installed / partial-or-unexpected.
+-- (5) complete file: all END IF / terminators / grants / COMMIT / verification.
+-- (6) pipeline GCI source = coalesce(expected_gci, gci) (expected commission on
+--     in-progress deals; NOT closed GCI). A ensures expected_gci exists.
 -- ══════════════════════════════════════════════════════════════════
 begin;
 
--- ── PREFLIGHT (10,11) ── verify schema + that migration-owned names are free
+-- ── migration record (shared meta; safe to pre-exist) (4) ──
+create table if not exists public._app_migrations (
+  name text primary key,
+  status text not null,                 -- 'in_progress' | 'complete'
+  applied_at timestamptz not null default now(),
+  rolled_back_at timestamptz
+);
+
+-- ── PREFLIGHT ──
 do $$
-declare need_col text; tbl text; col text;
+declare need_col text; tbl text; col text; fn text; pol record;
 begin
   if current_setting('server_version_num')::int < 150000 then
     raise exception 'Requires PostgreSQL 15+.'; end if;
-  -- required tables
+
+  -- (4) install-state gate
+  if exists(select 1 from public._app_migrations where name='phase1_A' and status='complete') then
+    raise exception 'phase1_A already fully installed. Nothing to do.'; end if;
+  if exists(select 1 from public._app_migrations where name='phase1_A' and status='in_progress') then
+    raise exception 'phase1_A is in a partial/unexpected state. Run A_rollback.sql, then re-run.'; end if;
+
+  -- required tables (3)
   foreach tbl in array array['agents','deals','listings','tasks','calendar_events','contacts','calls','agent_goals'] loop
     if to_regclass('public.'||tbl) is null then raise exception 'Missing table public.%', tbl; end if;
   end loop;
-  -- required columns (table:column)
+
+  -- required columns, every one referenced later (3)
   foreach need_col in array array[
     'agents:auth_user_id','agents:role','agents:active',
     'deals:agent_id','deals:stage','deals:deal_status','deals:side','deals:gci','deals:production',
     'deals:ao_date','deals:contract_date','deals:close_date',
-    'listings:agent_id','listings:status','tasks:agent_id','tasks:status','tasks:due_date',
-    'calendar_events:agent_id','calendar_events:start_date','agent_goals:agent_id','agent_goals:year'] loop
+    'listings:agent_id','listings:status',
+    'tasks:agent_id','tasks:status','tasks:due_date',
+    'calendar_events:agent_id','calendar_events:start_date',
+    'contacts:agent_id','calls:agent_id',
+    'agent_goals:agent_id','agent_goals:year','agent_goals:deals','agent_goals:leads','agent_goals:gci','agent_goals:production'] loop
     tbl := split_part(need_col,':',1); col := split_part(need_col,':',2);
     if not exists(select 1 from information_schema.columns
         where table_schema='public' and table_name=tbl and column_name=col) then
       raise exception 'Missing column %.%', tbl, col; end if;
   end loop;
-  -- migration-owned index names must be unused (11)
-  foreach tbl in array array['idx_a1_deals_close_date','idx_a1_deals_report','idx_a1_tasks_overdue','idx_a1_cal_agent_start'] loop
-    if to_regclass('public.'||tbl) is not null then
-      raise exception 'Index name % already exists — aborting so rollback stays safe. Rename or drop it first.', tbl; end if;
+
+  -- (2) collision-safety: migration-owned FUNCTION signatures must NOT exist
+  foreach fn in array array[
+    'public.app_current_agent_id()','public.app_is_admin()','public.app_is_secretary()','public.app_is_agent()',
+    'public.app_can_view_agent(uuid,text)','public.app_can_create_for(uuid,text)','public.app_can_edit_resource(uuid,text)',
+    'public.app_can_assign(uuid,text)','public.app_can_complete(uuid,text)','public.app_can_delete(uuid,text)',
+    'public.app_can_access_unassigned(text)','public.app_can_view_financials(uuid,text,text)','public.app_can_view_team(text)',
+    'public.app_report_scope_ok(text,uuid,text)','public.app_dashboard_summary(text,uuid,date,date)',
+    'public.app_agent_goal(uuid,int)','public.app_team_goal(int)','public.app_data_quality(int)'] loop
+    if to_regprocedure(fn) is not null then
+      raise exception 'Function % already exists — DB in unexpected state. Run A_rollback.sql (or full teardown) first.', fn; end if;
   end loop;
-  -- warn (not fail) if app_* helper names already exist
-  if exists(select 1 from pg_proc where proname like 'app\_%') then
-    raise notice 'NOTE: some app_* functions already exist and will be replaced by CREATE OR REPLACE.'; end if;
+
+  -- (2) migration-owned VIEW / TABLES / INDEXES must NOT exist
+  if to_regclass('public.v_deals_canonical')     is not null then raise exception 'view public.v_deals_canonical already exists — run rollback/teardown first.'; end if;
+  if to_regclass('public.secretary_permissions') is not null then raise exception 'table public.secretary_permissions already exists — run rollback/teardown first.'; end if;
+  if to_regclass('public.team_goals')            is not null then raise exception 'table public.team_goals already exists (may hold data) — export + full teardown before reinstalling.'; end if;
+  foreach tbl in array array['idx_a1_deals_close_date','idx_a1_deals_report','idx_a1_tasks_overdue','idx_a1_cal_agent_start'] loop
+    if to_regclass('public.'||tbl) is not null then raise exception 'index % already exists — rename/drop before running A.', tbl; end if;
+  end loop;
+
+  -- (2) migration-owned CONSTRAINT names must NOT exist
+  if exists(select 1 from pg_constraint where conname in ('secretary_permissions_uniq','team_goals_uniq')) then
+    raise exception 'a migration-owned constraint name already exists — run rollback/teardown first.'; end if;
+
+  -- (2) migration-owned POLICY names must NOT exist
+  for pol in select policyname from pg_policies where schemaname='public'
+      and policyname in ('secretary_permissions_admin','secretary_permissions_selfread','team_goals_read','team_goals_admin') loop
+    raise exception 'policy % already exists — run rollback/teardown first.', pol.policyname; end loop;
 end $$;
 
--- ── 1. Exclusion columns (additive) ──
+-- mark in_progress (rolled back automatically if any later statement fails)
+insert into public._app_migrations(name,status) values ('phase1_A','in_progress');
+
+-- ── 1. Exclusion columns + ensure expected_gci for pipeline GCI (6) ──
 alter table public.deals add column if not exists is_duplicate boolean not null default false;
 alter table public.deals add column if not exists is_test      boolean not null default false;
 alter table public.deals add column if not exists archived_at  timestamptz;
 alter table public.deals add column if not exists deleted_at   timestamptz;
 alter table public.deals add column if not exists duplicate_of uuid;
+alter table public.deals add column if not exists expected_gci numeric;   -- (6) pipeline source
 
--- ── 2. New tables (13,14) with EXPLICIT privileges (6) ──
-create table if not exists public.secretary_permissions (
+-- ── 2. New tables (explicit privileges) ──
+create table public.secretary_permissions (
   id uuid primary key default gen_random_uuid(),
   secretary_id uuid not null references public.agents(id) on delete cascade,
   target_agent_id uuid references public.agents(id) on delete cascade,
@@ -80,7 +126,7 @@ alter table public.secretary_permissions enable row level security;
 revoke all on public.secretary_permissions from public, anon, authenticated;
 grant select, insert, update, delete on public.secretary_permissions to authenticated;
 
-create table if not exists public.team_goals (
+create table public.team_goals (
   id uuid primary key default gen_random_uuid(),
   year int not null,
   goal_type text not null,
@@ -92,29 +138,26 @@ create table if not exists public.team_goals (
 alter table public.team_goals enable row level security;
 revoke all on public.team_goals from public, anon, authenticated;
 grant select, insert, update, delete on public.team_goals to authenticated;
-insert into public.team_goals (year, goal_type, target)
-values (2026, 'closed_deals', 300)
-on conflict on constraint team_goals_uniq do nothing;
+insert into public.team_goals (year, goal_type, target) values (2026, 'closed_deals', 300);
 
--- ══ SECURITY DEFINER helpers, fully-qualified, SET search_path = '' (18) ══
-create or replace function public.app_current_agent_id()
+-- ══ SECURITY DEFINER helpers (CREATE, not replace) — fully qualified, search_path='' ══
+create function public.app_current_agent_id()
 returns uuid language sql stable security definer set search_path = '' as $$
   select id from public.agents where auth_user_id = auth.uid() and coalesce(active,true) limit 1; $$;
 
-create or replace function public.app_is_admin()
+create function public.app_is_admin()
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists(select 1 from public.agents where auth_user_id=auth.uid() and role='admin' and coalesce(active,true)); $$;
 
-create or replace function public.app_is_secretary()
+create function public.app_is_secretary()
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists(select 1 from public.agents where auth_user_id=auth.uid() and role='secretary' and coalesce(active,true)); $$;
 
-create or replace function public.app_is_agent()
+create function public.app_is_agent()
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists(select 1 from public.agents where auth_user_id=auth.uid() and role='agent' and coalesce(active,true)); $$;
 
--- (1) self-access ONLY for role=agent; secretaries always need a grant row
-create or replace function public.app_can_view_agent(target uuid, res text)
+create function public.app_can_view_agent(target uuid, res text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select case when public.app_is_admin() then true
     when public.app_is_agent() and target is not null and target = public.app_current_agent_id() then true
@@ -124,7 +167,7 @@ returns boolean language sql stable security definer set search_path = '' as $$
         and (p.resource = res or p.resource = '*') and p.can_view)
     else false end; $$;
 
-create or replace function public.app_can_create_for(target uuid, res text)
+create function public.app_can_create_for(target uuid, res text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select case when public.app_is_admin() then true
     when public.app_is_agent() and target is not null and target = public.app_current_agent_id() then true
@@ -134,7 +177,7 @@ returns boolean language sql stable security definer set search_path = '' as $$
         and (p.resource = res or p.resource = '*') and p.can_create)
     else false end; $$;
 
-create or replace function public.app_can_edit_resource(target uuid, res text)
+create function public.app_can_edit_resource(target uuid, res text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select case when public.app_is_admin() then true
     when public.app_is_agent() and target is not null and target = public.app_current_agent_id() then true
@@ -144,7 +187,7 @@ returns boolean language sql stable security definer set search_path = '' as $$
         and (p.resource = res or p.resource = '*') and p.can_edit)
     else false end; $$;
 
-create or replace function public.app_can_assign(target uuid, res text)
+create function public.app_can_assign(target uuid, res text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select case when public.app_is_admin() then true
     when public.app_is_secretary() then exists(select 1 from public.secretary_permissions p
@@ -153,7 +196,7 @@ returns boolean language sql stable security definer set search_path = '' as $$
         and (p.resource = res or p.resource = '*') and p.can_assign)
     else false end; $$;
 
-create or replace function public.app_can_complete(target uuid, res text)
+create function public.app_can_complete(target uuid, res text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select case when public.app_is_admin() then true
     when public.app_is_agent() and target is not null and target = public.app_current_agent_id() then true
@@ -163,7 +206,7 @@ returns boolean language sql stable security definer set search_path = '' as $$
         and (p.resource = res or p.resource = '*') and p.can_complete)
     else false end; $$;
 
-create or replace function public.app_can_delete(target uuid, res text)
+create function public.app_can_delete(target uuid, res text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select case when public.app_is_admin() then true
     when public.app_is_secretary() then exists(select 1 from public.secretary_permissions p
@@ -172,7 +215,7 @@ returns boolean language sql stable security definer set search_path = '' as $$
         and (p.resource = res or p.resource = '*') and p.can_delete)
     else false end; $$;
 
-create or replace function public.app_can_access_unassigned(res text)
+create function public.app_can_access_unassigned(res text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select case when public.app_is_admin() then true
     when public.app_is_secretary() then exists(select 1 from public.secretary_permissions p
@@ -180,8 +223,7 @@ returns boolean language sql stable security definer set search_path = '' as $$
         and (p.resource = res or p.resource = '*') and p.can_access_unassigned)
     else false end; $$;
 
--- (7) financial perm is resource-aware AND requires can_view
-create or replace function public.app_can_view_financials(target uuid, res text, mode text)
+create function public.app_can_view_financials(target uuid, res text, mode text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select case when public.app_is_admin() then true
     when public.app_is_agent() then (mode = 'self')
@@ -193,7 +235,7 @@ returns boolean language sql stable security definer set search_path = '' as $$
         and (p.target_agent_id is not distinct from target or p.target_agent_id is null))
     else false end; $$;
 
-create or replace function public.app_can_view_team(res text)
+create function public.app_can_view_team(res text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select case when public.app_is_admin() then true
     when public.app_is_secretary() then exists(select 1 from public.secretary_permissions p
@@ -201,31 +243,25 @@ returns boolean language sql stable security definer set search_path = '' as $$
         and p.team_wide and p.can_view and (p.resource = res or p.resource = '*'))
     else false end; $$;
 
--- (2) per-resource report scope: self=own(linked), agent=view grant, team=admin/secretary-team
-create or replace function public.app_report_scope_ok(mode text, target uuid, res text)
+-- (1) self+agent both require app_can_view_agent (secretary needs a grant in self mode too)
+create function public.app_report_scope_ok(mode text, target uuid, res text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select case
-    when mode = 'self' then public.app_current_agent_id() is not null
-    when mode = 'agent' then public.app_can_view_agent(target, res)
+    when mode in ('self','agent') then public.app_can_view_agent(target, res)
     when mode = 'team' then (public.app_is_admin() or (public.app_is_secretary() and public.app_can_view_team(res)))
     else false end; $$;
 
--- ── RLS + explicit policies for new tables ──
-drop policy if exists secretary_permissions_admin on public.secretary_permissions;
+-- ── policies for new tables ──
 create policy secretary_permissions_admin on public.secretary_permissions
   for all to authenticated using (public.app_is_admin()) with check (public.app_is_admin());
-drop policy if exists secretary_permissions_selfread on public.secretary_permissions;
 create policy secretary_permissions_selfread on public.secretary_permissions
   for select to authenticated using (secretary_id = public.app_current_agent_id());
-
-drop policy if exists team_goals_read on public.team_goals;
 create policy team_goals_read on public.team_goals for select to authenticated using (true);
-drop policy if exists team_goals_admin on public.team_goals;
 create policy team_goals_admin on public.team_goals for all to authenticated
   using (public.app_is_admin()) with check (public.app_is_admin());
 
--- ── 5. Canonical view INTERNAL: security_invoker + NO grants to anyone ──
-create or replace view public.v_deals_canonical with (security_invoker = true) as
+-- ── 5. Canonical view INTERNAL (security_invoker + no grants) ──
+create view public.v_deals_canonical with (security_invoker = true) as
   select d.*,
     (d.is_duplicate=false and d.is_test=false and d.archived_at is null and d.deleted_at is null) as is_countable,
     (lower(trim(d.stage))='closed' and lower(trim(coalesce(d.deal_status,'')))='closed'
@@ -236,12 +272,13 @@ create or replace view public.v_deals_canonical with (security_invoker = true) a
       and d.is_duplicate=false and d.is_test=false and d.archived_at is null and d.deleted_at is null) as is_under_contract,
     (lower(trim(d.stage)) in ('negotiations','offer accepted','under shtar','under contract')
       and d.is_duplicate=false and d.is_test=false and d.archived_at is null and d.deleted_at is null) as is_active_pipeline,
-    lower(trim(coalesce(d.side,''))) as side_norm
+    lower(trim(coalesce(d.side,''))) as side_norm,
+    coalesce(d.expected_gci, d.gci) as pipeline_gci_val    -- (6)
   from public.deals d;
 revoke all on public.v_deals_canonical from public, anon, authenticated;
 
--- ── 2/3/11/12. Secure aggregate RPC (SECURITY DEFINER owner reads the internal view) ──
-create or replace function public.app_dashboard_summary(mode text, target uuid, from_date date, to_date date)
+-- ── Secure aggregate RPC ──
+create function public.app_dashboard_summary(mode text, target uuid, from_date date, to_date date)
 returns jsonb language plpgsql stable security definer set search_path = '' as $$
 declare
   v_agent uuid := public.app_current_agent_id();
@@ -264,15 +301,12 @@ begin
     if target is null then return jsonb_build_object('error','target_required'); end if;
     eff := target;
   else
-    if public.app_is_agent() and not public.app_is_admin() and not public.app_is_secretary() then
-      agent_restricted := true;  -- (5) agents get team CLOSED-DEAL progress only
-    elsif not (public.app_is_admin() or (public.app_is_secretary())) then
-      return jsonb_build_object('error','forbidden');
-    end if;
-    team := true;
+    if public.app_is_admin() then team := true;
+    elsif public.app_is_secretary() then team := true;
+    elsif public.app_is_agent() then team := true; agent_restricted := true;
+    else return jsonb_build_object('error','forbidden'); end if;
   end if;
 
-  -- (2) per-resource authorization
   can_deals    := (not agent_restricted) and public.app_report_scope_ok(mode, eff, 'deals');
   can_listings := (not agent_restricted) and public.app_report_scope_ok(mode, eff, 'listings');
   can_tasks    := (not agent_restricted) and public.app_report_scope_ok(mode, eff, 'tasks');
@@ -281,21 +315,17 @@ begin
   fin          := (not agent_restricted) and public.app_can_view_financials(eff, 'deals', mode);
 
   if mode='agent' and not (can_deals or can_listings or can_tasks or can_appts or can_goals) then
-    return jsonb_build_object('error','forbidden');
-  end if;
+    return jsonb_build_object('error','forbidden'); end if;
   if mode='team' and public.app_is_secretary() and not agent_restricted
      and not (can_deals or can_listings or can_tasks or can_appts or can_goals) then
-    return jsonb_build_object('error','forbidden');
-  end if;
+    return jsonb_build_object('error','forbidden'); end if;
 
-  -- (3) ANNUAL goal figures — independent of the widget filter
   select target into team_target from public.team_goals where year=yr and goal_type='closed_deals';
   select count(*) into team_annual_closed from public.v_deals_canonical
     where is_closed_official and close_date >= annual_from and close_date < annual_to;
   select count(*) into filtered_closed from public.v_deals_canonical
     where is_closed_official and close_date >= from_date and close_date < to_date;
 
-  -- team goal block is closed-deal based (non-financial) → available to all authorized incl. restricted agents
   out := out || jsonb_build_object(
     'filtered_closed_deals', filtered_closed,
     'team_goal_closed_deals', team_annual_closed,
@@ -307,7 +337,6 @@ begin
     return out || jsonb_build_object('scope','team','restricted',true,'from',from_date,'to',to_date);
   end if;
 
-  -- DEALS metrics (gated)
   if can_deals then
     out := out || (select jsonb_build_object(
       'closed_deals', count(*) filter (where c.is_closed_official and c.close_date>=from_date and c.close_date<to_date),
@@ -325,18 +354,16 @@ begin
       out := out || (select jsonb_build_object(
           'closed_gci', coalesce(sum(gci) filter (where is_closed_official and close_date>=from_date and close_date<to_date),0),
           'closed_production', coalesce(sum(production) filter (where is_closed_official and close_date>=from_date and close_date<to_date),0),
-          'pipeline_gci', coalesce(sum(gci) filter (where is_active_pipeline),0))
+          'pipeline_gci', coalesce(sum(pipeline_gci_val) filter (where is_active_pipeline),0))
         from public.v_deals_canonical where (team or agent_id = eff));
     end if;
   end if;
 
-  -- LISTINGS (gated)
   if can_listings then
     out := out || jsonb_build_object('active_listings', (select count(*) from public.listings l
       where (team or l.agent_id = eff) and lower(trim(coalesce(l.status,'')))='active'));
   end if;
 
-  -- TASKS (gated)
   if can_tasks then
     out := out || (select jsonb_build_object(
         'open_tasks', count(*) filter (where lower(trim(coalesce(status,''))) not in ('done','completed','cancelled','canceled')),
@@ -345,13 +372,11 @@ begin
       from public.tasks where (team or agent_id = eff));
   end if;
 
-  -- APPOINTMENTS (gated)
   if can_appts then
     out := out || jsonb_build_object('upcoming_appointments', (select count(*) from public.calendar_events e
       where (team or e.agent_id = eff) and e.start_date >= greatest(today, from_date) and e.start_date < to_date));
   end if;
 
-  -- AGENT GOALS (gated; leads + financials sub-gated inside reader) — self/agent only
   if can_goals and mode in ('self','agent') then
     out := out || public.app_agent_goal(eff, yr);
   end if;
@@ -359,13 +384,12 @@ begin
   return out || jsonb_build_object('scope',mode,'from',from_date,'to',to_date,'restricted',false);
 end; $$;
 
--- ── 7/9. Agent goal reader: deals-goal, leads-goal, financials each separately gated ──
-create or replace function public.app_agent_goal(target uuid, yr int)
+-- ── Agent goal reader: deals-goal, leads-goal, financials each separately gated ──
+create function public.app_agent_goal(target uuid, yr int)
 returns jsonb language plpgsql stable security definer set search_path = '' as $$
 declare g record; out jsonb := '{}'::jsonb; m text;
 begin
   m := case when public.app_is_agent() and target = public.app_current_agent_id() then 'self' else 'agent' end;
-  -- must be able to view the agent's goals at all
   if not (public.app_can_view_agent(target,'goals') or public.app_can_view_agent(target,'deals')
           or public.app_can_view_agent(target,'leads')) then
     return jsonb_build_object('error','forbidden'); end if;
@@ -374,19 +398,18 @@ begin
   if public.app_can_view_agent(target,'deals') or public.app_can_view_agent(target,'goals') then
     out := out || jsonb_build_object('agent_goal_deals', g.deals); end if;
   if public.app_can_view_agent(target,'leads') or public.app_can_view_agent(target,'goals') then
-    out := out || jsonb_build_object('agent_goal_leads', g.leads); end if;   -- (9) separate gate
+    out := out || jsonb_build_object('agent_goal_leads', g.leads); end if;
   if public.app_can_view_financials(target,'deals',m) then
     out := out || jsonb_build_object('agent_goal_gci', g.gci, 'agent_goal_production', g.production); end if;
   return out;
 end; $$;
 
-create or replace function public.app_team_goal(yr int)
+create function public.app_team_goal(yr int)
 returns jsonb language sql stable security definer set search_path = '' as $$
   select coalesce((select jsonb_build_object('year',year,'goal_type',goal_type,'target',target)
     from public.team_goals where year=yr and goal_type='closed_deals'), jsonb_build_object('missing',true)); $$;
 
--- ── 8. Data-quality: year param, deals/listings/contacts/calls, excludes marked+excluded ──
-create or replace function public.app_data_quality(yr int default null)
+create function public.app_data_quality(yr int default null)
 returns jsonb language sql stable security definer set search_path = '' as $$
   select case when not public.app_is_admin() then jsonb_build_object('error','forbidden') else
     jsonb_build_object(
@@ -406,11 +429,11 @@ returns jsonb language sql stable security definer set search_path = '' as $$
           and g.year = coalesce(yr, extract(year from (now() at time zone 'America/New_York'))::int))))
     end; $$;
 
--- ── 9. Indexes with migration-specific names (11) ──
-create index if not exists idx_a1_deals_close_date on public.deals(close_date) where close_date is not null;
-create index if not exists idx_a1_deals_report on public.deals(agent_id, stage, deal_status, close_date);
-create index if not exists idx_a1_tasks_overdue on public.tasks(agent_id, status, due_date);
-create index if not exists idx_a1_cal_agent_start on public.calendar_events(agent_id, start_date);
+-- ── Indexes (migration-owned names) ──
+create index idx_a1_deals_close_date on public.deals(close_date) where close_date is not null;
+create index idx_a1_deals_report on public.deals(agent_id, stage, deal_status, close_date);
+create index idx_a1_tasks_overdue on public.tasks(agent_id, status, due_date);
+create index idx_a1_cal_agent_start on public.calendar_events(agent_id, start_date);
 
 -- ── Execution privileges: REVOKE FROM PUBLIC+anon, GRANT authenticated only ──
 do $$
@@ -430,5 +453,14 @@ begin
   end loop;
 end $$;
 
+-- mark complete (still inside the transaction)
+update public._app_migrations set status='complete', applied_at=now() where name='phase1_A';
+
 commit;
-select 'MIGRATION A (v3) applied' as status;
+
+-- ── VERIFICATION (read-only; runs after commit) ──
+select 'phase1_A install state' as check, status from public._app_migrations where name='phase1_A';
+select 'functions created (expect 18)' as check, count(*) as n from pg_proc where proname like 'app\_%';
+select 'canonical view present' as check, count(*) as n from pg_views where viewname='v_deals_canonical';
+select 'team_goals rows' as check, count(*) as n from public.team_goals;
+select 'idx_a1_ indexes (expect 4)' as check, count(*) as n from pg_indexes where schemaname='public' and indexname like 'idx\_a1\_%';
