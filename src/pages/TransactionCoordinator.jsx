@@ -183,18 +183,44 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
 function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle }) {
   const [subTab, setSubTab] = useState('tasks')   // tasks | people | photo | email
   const phase    = PHASES.find(p => p.id === deal.tc_phase) || PHASES[0]
-  const done     = tasks.filter(t => t.status === 'done').length
-  const total    = tasks.length
-  const overdue  = tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done').length
-  const pending  = tasks.filter(t => t.status !== 'done').length
   const agent    = agents.find(a => a.id === deal.agent_id)
-  const pct      = total > 0 ? Math.round(done/total*100) : 0
 
-  // Group pending tasks by phase for display
-  const pendingTasks  = tasks.filter(t => t.status !== 'done')
-  const doneTasks     = tasks.filter(t => t.status === 'done')
-  const overdueTasks  = pendingTasks.filter(t => t.due_date && new Date(t.due_date) < new Date())
-  const upcomingTasks = pendingTasks.filter(t => !t.due_date || new Date(t.due_date) >= new Date())
+  // ── Phase-aware task classification (DISPLAY ONLY — no DB writes) ──
+  const phaseOrder = PHASES.reduce((m, p, i) => { m[p.id] = i; return m }, {})
+  const curIdx = phaseOrder[deal.tc_phase] ?? 0
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
+  const endOfToday   = new Date(); endOfToday.setHours(23, 59, 59, 999)
+  const isOpen = t => t.status !== 'done'
+  // A task belongs to "current/relevant" if its phase == current phase, has no
+  // phase, or is from a LATER phase (so nothing ever disappears). Carryover =
+  // open tasks whose phase is strictly EARLIER than the current phase.
+  const taskPhaseIdx = t => (t.phase != null && phaseOrder[t.phase] != null ? phaseOrder[t.phase] : curIdx)
+  const isCarryover  = t => isOpen(t) && taskPhaseIdx(t) < curIdx
+  const isCurrentRel = t => !isCarryover(t)   // current phase, no-phase, or later-phase
+
+  const currentOpen  = tasks.filter(t => isOpen(t) && isCurrentRel(t))
+  const carryover    = tasks.filter(isCarryover)
+  const doneTasks    = tasks.filter(t => t.status === 'done')
+
+  const overdueTasks = currentOpen.filter(t => t.due_date && new Date(t.due_date) < startOfToday)
+  const dueTodayTasks = currentOpen.filter(t => t.due_date && new Date(t.due_date) >= startOfToday && new Date(t.due_date) <= endOfToday)
+  const otherCurrent = currentOpen.filter(t => !overdueTasks.includes(t) && !dueTodayTasks.includes(t))
+
+  const overdue  = overdueTasks.length
+  const dueToday = dueTodayTasks.length
+
+  // Progress bar = current-stage completion (done current-phase / all current-phase)
+  const curPhaseAll  = tasks.filter(t => isCurrentRel(t))
+  const curPhaseDone = curPhaseAll.filter(t => t.status === 'done').length
+  const pct = curPhaseAll.length > 0 ? Math.round(curPhaseDone / curPhaseAll.length * 100) : 0
+
+  // Next action = most urgent current-stage open task (overdue → due today → soonest)
+  const byDue = (a, b) => {
+    if (!a.due_date) return 1; if (!b.due_date) return -1
+    return new Date(a.due_date) - new Date(b.due_date)
+  }
+  const nextTask = [...overdueTasks, ...dueTodayTasks, ...otherCurrent].sort(byDue)[0] || null
+  const nextAgent = nextTask ? agents.find(a => a.id === nextTask.agent_id) : null
 
   return (
     <div style={{ background:'var(--panel)', borderRadius:14, border:'2px solid '+(overdue>0?'rgba(220,38,38,.3)':'var(--border)'),
@@ -241,17 +267,41 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask,
               padding:'4px 12px', borderRadius:99, marginBottom:3, whiteSpace:'nowrap' }}>
               {phase.icon} {phase.label}
             </div>
-            <div style={{ fontSize:10, color:overdue>0?'#DC2626':'var(--muted)', fontWeight:overdue>0?700:400 }}>
-              {pending > 0 ? pending + ' task' + (pending!==1?'s':'') + ' left' : '✓ All done'}
-              {total > 0 && ' · ' + pct + '%'}
+            <div style={{ fontSize:10, color:overdue>0?'#DC2626':'var(--muted)', fontWeight:overdue>0?700:400, whiteSpace:'nowrap' }}>
+              {currentOpen.length === 0 && carryover.length === 0
+                ? '✓ All done'
+                : [
+                    overdue > 0 ? overdue + ' overdue' : null,
+                    dueToday > 0 ? dueToday + ' due today' : null,
+                    currentOpen.length + ' current',
+                  ].filter(Boolean).join(' · ')}
             </div>
+            {carryover.length > 0 && (
+              <div style={{ fontSize:9.5, color:'var(--muted)', marginTop:1, whiteSpace:'nowrap' }}>
+                + {carryover.length} carryover
+              </div>
+            )}
           </div>
 
           <span style={{ color:'var(--muted)', fontSize:18, transform:expanded?'rotate(0)':'rotate(-90deg)', transition:'transform .2s', flexShrink:0 }}>▾</span>
         </div>
 
-        {/* Progress bar */}
-        {total > 0 && (
+        {/* Next action line */}
+        {nextTask && (
+          <div style={{ marginTop:8, padding:'6px 10px', background:'var(--dim)', borderRadius:8, fontSize:11.5, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+            <span style={{ fontWeight:800, color:'var(--muted)', textTransform:'uppercase', fontSize:9.5, letterSpacing:'.05em' }}>Next</span>
+            <span style={{ fontWeight:700, color:'var(--text)' }}>{nextTask.title}</span>
+            {nextTask.due_date && (
+              <span style={{ fontWeight:700, color: overdueTasks.includes(nextTask) ? '#DC2626' : dueTodayTasks.includes(nextTask) ? '#F5A623' : 'var(--muted)' }}>
+                — {overdueTasks.includes(nextTask) ? 'overdue' : dueTodayTasks.includes(nextTask) ? 'due today' : 'due ' + fmtDate(nextTask.due_date)}
+              </span>
+            )}
+            {nextAgent && <span style={{ color:nextAgent.color||'var(--muted)', fontWeight:700 }}>· {nextAgent.name.split(' ')[0]}</span>}
+          </div>
+        )}
+
+        {/* Progress bar — current-stage completion */}
+        {curPhaseAll.length > 0 && (
           <div style={{ marginTop:10, height:5, background:'var(--border)', borderRadius:99, overflow:'hidden' }}>
             <div style={{ height:'100%', width:pct+'%', background:pct===100?'#10B981':phase.color, borderRadius:99, transition:'width .5s' }} />
           </div>
@@ -264,7 +314,7 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask,
           {/* Sub-tabs — keeps the card from dumping everything at once */}
           <div style={{ display:'flex', gap:2, padding:'8px 12px 0', background:'var(--dim)', borderBottom:'1px solid var(--border)' }}>
             {[
-              { id:'tasks',  label:'✓ Tasks', n: tasks.filter(t=>t.status!=='done').length },
+              { id:'tasks',  label:'✓ Tasks', n: currentOpen.length },
               { id:'people', label:'👥 People & Parties' },
               { id:'photo',  label:'📸 Photography' },
               { id:'email',  label:'✉️ Email Log' },
@@ -295,41 +345,53 @@ function DealCard({ deal, tasks, agents, onPhaseChange, onCheckTask, onEditTask,
                 </button>
               ))}
             </div>
-            {/* Overdue tasks — always shown first */}
-            {overdueTasks.length > 0 && (
+            {/* Section 1: Overdue / Due Today (current stage, most urgent) */}
+            {(overdueTasks.length > 0 || dueTodayTasks.length > 0) && (
               <div>
                 <div style={{ padding:'6px 14px 3px', fontSize:10, fontWeight:800, color:'#DC2626',
                   textTransform:'uppercase', letterSpacing:'.06em', background:'rgba(220,38,38,.04)' }}>
-                  ⚠️ Overdue ({overdueTasks.length})
+                  ⚠️ Overdue / Due Today ({overdueTasks.length + dueTodayTasks.length})
                 </div>
-                {overdueTasks.map(t => (
+                {[...overdueTasks, ...dueTodayTasks].map(t => (
                   <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} />
                 ))}
               </div>
             )}
 
-            {/* Upcoming tasks */}
-            {upcomingTasks.length > 0 && (
+            {/* Section 2: Current Stage Tasks (remaining open, this phase) */}
+            {otherCurrent.length > 0 && (
               <div>
-                {overdueTasks.length > 0 && (
-                  <div style={{ padding:'6px 14px 3px', fontSize:10, fontWeight:800, color:'var(--muted)',
-                    textTransform:'uppercase', letterSpacing:'.06em', background:'var(--dim)' }}>
-                    Upcoming ({upcomingTasks.length})
-                  </div>
-                )}
-                {upcomingTasks.map(t => (
+                <div style={{ padding:'6px 14px 3px', fontSize:10, fontWeight:800, color:phase.color,
+                  textTransform:'uppercase', letterSpacing:'.06em', background:'var(--dim)' }}>
+                  {phase.icon} {phase.label} Tasks ({otherCurrent.length})
+                </div>
+                {otherCurrent.map(t => (
                   <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} />
                 ))}
               </div>
             )}
 
-            {/* Completed tasks — collapsed by default */}
+            {/* Section 3: Carryover from Previous Stages (open, earlier phase) — collapsed */}
+            {carryover.length > 0 && (
+              <details style={{ borderTop:'1px solid var(--border)' }}>
+                <summary style={{ padding:'6px 14px', fontSize:10, fontWeight:700, color:'#B45309',
+                  cursor:'pointer', listStyle:'none', userSelect:'none', background:'rgba(245,166,35,.05)',
+                  display:'flex', alignItems:'center', gap:6 }}>
+                  ↩ Carryover from previous stages ({carryover.length}) — click to view
+                </summary>
+                {carryover.map(t => (
+                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} />
+                ))}
+              </details>
+            )}
+
+            {/* Section 4: Completed / History — collapsed by default */}
             {doneTasks.length > 0 && (
               <details style={{ borderTop:'1px solid var(--border)' }}>
                 <summary style={{ padding:'6px 14px', fontSize:10, fontWeight:700, color:'#10B981',
                   cursor:'pointer', listStyle:'none', userSelect:'none',
                   display:'flex', alignItems:'center', gap:6 }}>
-                  ✓ Completed ({doneTasks.length}) — click to view
+                  ✓ Completed / History ({doneTasks.length}) — click to view
                 </summary>
                 {doneTasks.map(t => (
                   <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} />
