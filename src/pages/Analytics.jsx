@@ -78,7 +78,7 @@ export function Analytics() {
   const [cStart, setCStart] = useState(iso(presetRange('month').start))
   const [cEnd, setCEnd]     = useState(iso(new Date()))
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [], listings: [] })
+  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [], listings: [], leadSources: [] })
   const [goals, setGoals] = useState({})   // agent_id -> {deals,gci,production}
   const [savingGoal, setSavingGoal] = useState(false)
   const thisYear = new Date().getFullYear()
@@ -118,7 +118,8 @@ export function Analytics() {
       ])
       const tcDeals = await safe(supabase.from('tc_deals').select('id,addr,agent_id,tc_phase,attorney_name,mortgage_broker,inspector,close_date').range(0,4999))
       const listings = await safe(supabase.from('listings').select('id,addr,status,list_price,original_price,list_date,listed_date,created_at,agent_id,seller_updated_at,marketing_status').range(0,4999))
-      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings }); setLoading(false) }
+      const leadSources = await safe(supabase.from('lead_sources').select('name,monthly_cost,active'))
+      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources }); setLoading(false) }
     })()
     return () => { alive = false }
   }, [])
@@ -129,7 +130,7 @@ export function Analytics() {
   }, [customOn, cStart, cEnd, preset])
   const prev = useMemo(() => priorSamePeriod(cur), [cur])
 
-  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings } = data
+  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources } = data
   const isSms = c => c.is_sms === true || c.kind === 'sms' || String(c.direction||'').toLowerCase().includes('sms')
 
   const biz = useMemo(() => {
@@ -348,7 +349,7 @@ export function Analytics() {
       </div>
 
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border)', marginBottom: 18 }}>
-        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'listings', label:'🏡 Listings' }, { id:'agents', label:'👤 Agents' }, { id:'goals', label:'🎯 Goals' }, { id:'alerts', label:'🔔 Alerts' + (alertCount ? ' (' + alertCount + ')' : '') }].map(t => (
+        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'listings', label:'🏡 Listings' }, { id:'sources', label:'📥 Lead Sources' }, { id:'agents', label:'👤 Agents' }, { id:'goals', label:'🎯 Goals' }, { id:'alerts', label:'🔔 Alerts' + (alertCount ? ' (' + alertCount + ')' : '') }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '10px 18px', border: 'none', borderBottom: tab === t.id ? '2px solid var(--brand)' : '2px solid transparent',
               background: 'transparent', color: tab === t.id ? 'var(--brand)' : 'var(--muted)', fontSize: 14, fontWeight: tab === t.id ? 800 : 600, cursor: 'pointer', fontFamily: ff, marginBottom: -1 }}>
@@ -618,6 +619,55 @@ export function Analytics() {
                 {staleUpdate.length===0 ? <div style={{ fontSize:12.5, color:'var(--muted)' }}>All sellers recently updated.</div>
                   : staleUpdate.slice(0,10).map(l => <div key={l.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}><span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{l.addr}</span><span style={{ color:'var(--muted)' }}>{l.seller_updated_at?new Date(l.seller_updated_at).toLocaleDateString():'never'}</span></div>)}
               </Panel>
+            </div>
+          </div>
+        )
+      })()}
+
+      {tab === 'sources' && (() => {
+        // Aggregate by source across contacts (leads) and closed deals
+        const costMap = {}; (leadSources||[]).forEach(s => { costMap[s.name] = parseNum(s.monthly_cost) })
+        const months = Math.max(1, daysBetween(cur) / 30)
+        const srcs = {}
+        const ensure = k => { if (!srcs[k]) srcs[k] = { source:k, leads:0, closed:0, gci:0, prod:0 }; return srcs[k] }
+        contacts.filter(c => inRange(c.created_at, cur)).forEach(c => ensure(c.source || 'Unknown').leads++)
+        deals.filter(d => d.stage==='Closed' && inRange(d.close_date||d.created_at, cur)).forEach(d => { const e = ensure(d.source || 'Unknown'); e.closed++; e.gci += parseNum(d.gci); e.prod += parseNum(d.production) })
+        const rows = Object.values(srcs).map(r => {
+          const cost = (costMap[r.source] || 0) * months
+          const roi = cost > 0 ? Math.round(((r.gci - cost) / cost) * 100) : null
+          const conv = r.leads > 0 ? Math.round((r.closed / r.leads) * 100) : null
+          return { ...r, cost, roi, conv }
+        }).sort((a,b) => b.gci - a.gci)
+        const best = rows.filter(r => r.gci > 0)[0]
+        return (
+          <div style={{ display:'grid', gap:16 }}>
+            {best && <div style={{ background:'rgba(11,122,69,.08)', border:'1px solid rgba(11,122,69,.25)', borderRadius:12, padding:'12px 16px', fontSize:13, color:'var(--text)' }}>🏆 Best source this period: <b>{best.source}</b> — {fmt$(best.gci)} GCI from {best.closed} closed deal{best.closed!==1?'s':''}{best.conv!=null?' · '+best.conv+'% conversion':''}</div>}
+            <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', minWidth:720 }}>
+                  <thead><tr style={{ background:'var(--dim)' }}>
+                    {['Source','Leads','Closed','Conv %','GCI','Production','Cost','ROI'].map((h,i)=>(
+                      <th key={h} style={{ padding:'10px 12px', textAlign:i===0?'left':'right', fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {rows.map(r => (
+                      <tr key={r.source} style={{ borderBottom:'1px solid var(--border)' }}>
+                        <td style={{ padding:'10px 12px', fontWeight:700, color:'var(--text)' }}>{r.source}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13 }}>{r.leads}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13 }}>{r.closed}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13 }}>{r.conv!=null?r.conv+'%':'—'}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, fontWeight:700, color:'#037f4c' }}>{fmt$(r.gci)}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13 }}>{fmt$(r.prod)}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, color:'var(--muted)' }}>{r.cost>0?fmt$(r.cost):'—'}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, fontWeight:700, color: r.roi==null?'var(--muted)':r.roi>=0?'#0B7A45':'#DC2626' }}>{r.roi!=null?r.roi+'%':'—'}</td>
+                      </tr>
+                    ))}
+                    {rows.length===0 && <tr><td colSpan={8} style={{ padding:24, textAlign:'center', color:'var(--muted)' }}>No lead/deal source data in this period.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ padding:'8px 16px', fontSize:11, color:'var(--muted)' }}>Cost & ROI need source costs entered in the lead_sources table. Leads counted from contacts' source field; GCI from closed deals' source field.</div>
             </div>
           </div>
         )
