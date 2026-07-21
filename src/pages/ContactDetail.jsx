@@ -1293,6 +1293,33 @@ export function ContactDetail() {
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
   }
 
+  // Mark this lead as contacted (manual button + used by note-logging).
+  // first_contact_at set only once; last_contact_at always bumped.
+  async function markContacted() {
+    if (!contact) return
+    const now = new Date().toISOString()
+    const fields = {
+      contacted: true,
+      first_contact_at: contact.first_contact_at || now,
+      last_contact_at: now,
+    }
+    try {
+      const updated = await db.contacts.update(id, fields, agent?.id)
+      setContact(prev => ({ ...prev, ...fields, ...updated }))
+      toast('Marked as contacted', '#0B7A45')
+      loadTimeline()
+    } catch (e) { toast('Save failed: ' + e.message, '#DC2626') }
+  }
+  async function unmarkContacted() {
+    if (!contact) return
+    if (!window.confirm('Mark this lead as NOT contacted? (clears contacted status)')) return
+    try {
+      const updated = await db.contacts.update(id, { contacted: false }, agent?.id)
+      setContact(prev => ({ ...prev, contacted: false, ...updated }))
+      toast('Marked as not contacted', '#B45309')
+    } catch (e) { toast('Save failed: ' + e.message, '#DC2626') }
+  }
+
   async function saveFields(fields) {
     if (!contact) return
     try {
@@ -1360,7 +1387,7 @@ export function ContactDetail() {
 
   const statusColor = STATUS_COLORS[contact.status] || '#94A3B8'
   const f = contact // shorthand for all field reads
-  const daysSinceContact = f.last_reached ? getDaysAgo(f.last_reached) : null
+  const daysSinceContact = (f.last_contact_at || f.last_reached) ? getDaysAgo(f.last_contact_at || f.last_reached) : null
   const daysToFollowup   = f.next_followup ? getDaysUntil(f.next_followup) : null
 
   return (
@@ -1408,6 +1435,19 @@ export function ContactDetail() {
                 title={f.is_private ? 'Private: hidden from other agents in contact search. Click to make visible.' : 'Visible to all agents in contact search. Click to make private.'}
                 style={{ border:'1px solid '+(f.is_private?'#F5A623':'var(--border)'), background: f.is_private?'rgba(245,166,35,.12)':'transparent', color: f.is_private?'#B45309':'var(--muted)', borderRadius:99, padding:'3px 10px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
                 {f.is_private ? '🔒 Private' : '🔓 Shared'}
+              </button>
+            )}
+            {f.contacted ? (
+              <button onClick={unmarkContacted}
+                title={'Contacted' + (f.first_contact_at ? ' since ' + new Date(f.first_contact_at).toLocaleDateString() : '') + (f.last_contact_at ? ' · last ' + new Date(f.last_contact_at).toLocaleDateString() : '') + '. Click to clear.'}
+                style={{ border:'1px solid rgba(11,122,69,.3)', background:'rgba(11,122,69,.12)', color:'#0B7A45', borderRadius:99, padding:'3px 10px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
+                ✓ Contacted
+              </button>
+            ) : (
+              <button onClick={markContacted}
+                title="Mark this lead as contacted (records first & last contact date)"
+                style={{ border:'1px solid var(--brand)', background:'rgba(204,34,0,.06)', color:'var(--brand)', borderRadius:99, padding:'3px 10px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
+                📞 Mark Contacted
               </button>
             )}
           </div>

@@ -296,6 +296,7 @@ export function Contacts() {
   const [agentF,      setAgentF]      = useState('')
   const [sourceF,     setSourceF]     = useState('')
   const [typeF,       setTypeF]       = useState('')
+  const [contactedF,  setContactedF]  = useState('')
 
   // Load contacts with server-side pagination
   async function loadContacts(offset = 0, append = false) {
@@ -478,6 +479,8 @@ export function Contacts() {
       if (agentF  && c.agent_id  !== agentF)  return false
       if (sourceF && c.source    !== sourceF) return false
       if (typeF   && c.type      !== typeF)   return false
+      if (contactedF === 'yes' && !c.contacted) return false
+      if (contactedF === 'no'  && c.contacted)  return false
       if (dateRange?.from && c.created_at && c.created_at.slice(0,10) < dateRange.from) return false
       if (dateRange?.to   && c.created_at && c.created_at.slice(0,10) > dateRange.to)   return false
       if (search  && !matchSearch(c, search, ['first_name','last_name','phone','email','address','notes'])) return false
@@ -492,7 +495,7 @@ export function Contacts() {
       return 0
     })
     return result
-  }, [contacts, statusF, agentF, sourceF, typeF, dateRange, search, tagFilter, sortKey, sortDir])
+  }, [contacts, statusF, agentF, sourceF, typeF, contactedF, dateRange, search, tagFilter, sortKey, sortDir])
 
   // Role-grouped ordering: contacts sorted by CONTACT_TYPES order, then name
   const displayList = React.useMemo(() => {
@@ -575,7 +578,7 @@ export function Contacts() {
         page="contacts"
         searchKey="search"
         placeholder="Name, phone, email..."
-        filters={{ search, statusF, agentF, sourceF, typeF, dateRange, tagFilter }}
+        filters={{ search, statusF, agentF, sourceF, typeF, contactedF, dateRange, tagFilter }}
         onChange={f => {
           if ('search'    in f) setSearch(f.search)
           if ('tagFilter' in f) setTagFilter(f.tagFilter)
@@ -583,6 +586,7 @@ export function Contacts() {
           if ('agentF'    in f) setAgentF(f.agentF)
           if ('sourceF'   in f) setSourceF(f.sourceF)
           if ('typeF'     in f) setTypeF(f.typeF)
+          if ('contactedF' in f) setContactedF(f.contactedF)
           if ('dateRange' in f) setDateRange(f.dateRange)
         }}
         definitions={[
@@ -590,6 +594,7 @@ export function Contacts() {
           ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', options:agents.map(a=>({value:a.id,label:a.name})) }]:[]),
           { key:'sourceF', label:'Source', options:(CONTACT_SOURCES||['SOI','Zillow','Referral','Open House','Referral','Past Client']).map(s=>({value:s,label:s})) },
           { key:'typeF',   label:'Type',   options:['Buyer','Seller','Investor','Renter','Other'].map(s=>({value:s,label:s})) },
+          { key:'contactedF', label:'Contacted', options:[{value:'yes',label:'✓ Contacted'},{value:'no',label:'Not contacted'}] },
           { key:'dateRange', label:'Date Added', type:'date' },
         ]}
         sortDefs={[
