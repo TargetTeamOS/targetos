@@ -245,6 +245,14 @@ export function Analytics() {
   }, [deals, tcDeals, tasks, contacts])
 
   // Commission tracking (from Tier-B fields; falls back gracefully)
+  const sideSplit = useMemo(() => {
+    const closed = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, cur))
+    const norm = s => { const v = String(s||'').toLowerCase(); if (v.includes('dual')||v.includes('both')) return 'Dual'; if (v.includes('list')||v.includes('sell')) return 'Listing'; if (v.includes('buy')) return 'Buyer'; return 'Unspecified' }
+    const g = { Buyer:{n:0,gci:0,prod:0}, Listing:{n:0,gci:0,prod:0}, Dual:{n:0,gci:0,prod:0}, Unspecified:{n:0,gci:0,prod:0} }
+    closed.forEach(d => { const k = norm(d.side); g[k].n++; g[k].gci += parseNum(d.gci); g[k].prod += parseNum(d.production) })
+    return g
+  }, [deals, cur])
+
   const commission = useMemo(() => {
     const closed = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, cur))
     const total = closed.reduce((s,d)=>s+parseNum(d.gci),0)
@@ -261,6 +269,40 @@ export function Analytics() {
 
   const n = biz.now, p = biz.prev, ix = interactions.now, ixp = interactions.prev
   const alertCount = alerts.closingSoon.length + alerts.missingInfo.length + alerts.overdueTasks.length + alerts.uncontacted.length
+
+  function downloadCSV(filename, rows) {
+    if (!rows.length) { alert('Nothing to export for this view.'); return }
+    const headers = Object.keys(rows[0])
+    const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"'
+    const csv = [headers.join(','), ...rows.map(r => headers.map(h => esc(r[h])).join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click()
+    URL.revokeObjectURL(url)
+  }
+  function exportCSV() {
+    const stamp = new Date().toISOString().slice(0,10)
+    if (tab === 'agents' || tab === 'goals') {
+      downloadCSV('agent-performance-' + stamp + '.csv', agentRows.map(r => ({
+        Agent: r.agent.name, Closed: r.now.deals, OffersSent: r.now.sent, GCI: Math.round(r.now.gci),
+        Production: Math.round(r.now.prod), Calls: r.now.calls, Texts: r.now.sms, Showings: r.now.showings,
+        NewContacts: r.now.contacts, ConversionPct: r.now.conv,
+      })))
+    } else if (tab === 'listings') {
+      downloadCSV('listings-' + stamp + '.csv', (listings||[]).map(l => ({
+        Address: l.addr, Status: l.status, Agent: (agents||[]).find(a=>a.id===l.agent_id)?.name||'', ListPrice: parseNum(l.list_price),
+        OriginalPrice: l.original_price?parseNum(l.original_price):'', SellerUpdated: l.seller_updated_at||'',
+      })))
+    } else {
+      // business/summary/pipeline → company KPI snapshot
+      downloadCSV('company-report-' + stamp + '.csv', [{
+        Period: rangeLabel, OffersSent: n.sent, OffersAccepted: n.accepted, UnderContract: n.uc, Closed: n.closed,
+        Production: Math.round(n.prod), GCI: Math.round(n.gci), CommissionCollected: Math.round(commission.collected),
+        CommissionOutstanding: Math.round(commission.outstanding), AvgGCI: Math.round(n.avgGci),
+        AcceptanceRatePct: n.acceptRate, SentToClosedPct: n.convRate, FellThrough: n.fell,
+      }])
+    }
+  }
   const rangeLabel = customOn ? (cStart + ' → ' + cEnd) : ({ week:'Last 7 days', month:'Last 30 days', quarter:'Last 90 days', year:'Last 12 months' }[preset])
 
   return (
@@ -293,6 +335,14 @@ export function Analytics() {
           <button onClick={() => setCustomOn(v => !v)}
             style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid ' + (customOn ? 'var(--brand)' : 'var(--border)'), background: customOn ? 'rgba(204,34,0,.07)' : 'var(--dim)', color: customOn ? 'var(--brand)' : 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
             📅 {customOn ? 'Presets' : 'Custom dates'}
+          </button>
+          <button onClick={exportCSV}
+            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--dim)', color: 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+            ⬇ CSV
+          </button>
+          <button onClick={() => window.print()}
+            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--dim)', color: 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+            🖨 PDF / Print
           </button>
         </div>
       </div>
@@ -648,6 +698,22 @@ export function Analytics() {
                 </ResponsiveContainer>
               )}
             </Panel>
+          </div>
+
+          {/* Buyer / Listing / Dual side split */}
+          <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:18 }}>
+            <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', marginBottom:12 }}>Deal Side Split — Buyer vs Listing vs Dual</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:12 }}>
+              {[
+                { k:'Buyer', c:'#0EA5E9' }, { k:'Listing', c:'#F5A623' }, { k:'Dual', c:'#8B5CF6' }, { k:'Unspecified', c:'#94A3B8' },
+              ].filter(s => sideSplit[s.k].n > 0).map(s => (
+                <div key={s.k} style={{ padding:'12px 14px', background:'var(--dim)', borderRadius:10, borderTop:'3px solid '+s.c }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase' }}>{s.k} Side</div>
+                  <div style={{ fontSize:22, fontWeight:800, color:'var(--text)' }}>{sideSplit[s.k].n} <span style={{ fontSize:12, fontWeight:600, color:'var(--muted)' }}>deals</span></div>
+                  <div style={{ fontSize:12, color:'var(--muted)', marginTop:3 }}>{fmt$(sideSplit[s.k].gci)} GCI · {fmt$(sideSplit[s.k].prod)} vol</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
