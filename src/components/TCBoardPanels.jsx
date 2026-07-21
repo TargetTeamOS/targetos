@@ -51,8 +51,6 @@ export function TCParties({ deal, agents = [] }) {
   }
   useEffect(() => { load() }, [deal.id])
 
-  const [dbg, setDbg] = useState('')
-
   async function setParty(role, contact) {
     try {
       // Remove any existing participant for this role, then add
@@ -60,35 +58,18 @@ export function TCParties({ deal, agents = [] }) {
       await supabase.from('tc_participants').insert({ tc_deal_id: deal.id, role, contact_id: contact.id })
 
       // SELLER sync → listing_contacts (only if this deal is linked to a listing)
-      if (role === 'seller') {
+      if (role === 'seller' && deal.linked_listing_id) {
         const lid = deal.linked_listing_id
-        let trace = '[seller-sync] tc_deal=' + deal.id + ' linked_listing_id=' + String(lid) + ' contact_id=' + contact.id
-        if (lid) {
-          // is this the first seller on the listing?
-          const { data: existing } = await supabase.from('listing_contacts').select('id').eq('listing_id', lid).eq('role', 'seller')
-          const isFirst = !existing || existing.length === 0
-          const payload = { listing_id: lid, contact_id: contact.id, role: 'seller', primary_contact: isFirst }
-          trace += '\n[insert payload] ' + JSON.stringify(payload)
-          // upsert-style: avoid dupes on (listing_id, contact_id)
-          const { data: ins, error: insErr } = await supabase.from('listing_contacts')
-            .upsert(payload, { onConflict: 'listing_id,contact_id' })
-            .select('id,contact_id,primary_contact').single()
-          trace += '\n[insert resp] data=' + JSON.stringify(ins) + ' error=' + (insErr ? insErr.message : 'none')
-          if (!insErr && isFirst) {
-            const { error: upErr } = await supabase.from('listings').update({ seller_contact_id: contact.id }).eq('id', lid)
-            trace += '\n[listings.seller_contact_id] ' + (upErr ? upErr.message : 'set to ' + contact.id)
-          }
-          const { data: check } = await supabase.from('listing_contacts').select('id,contact_id,role,primary_contact').eq('listing_id', lid)
-          trace += '\n[reload listing_contacts] rows=' + (check ? check.length : 'null') + ' ' + JSON.stringify(check)
-        } else {
-          trace += '\n[skip] deal has no linked_listing_id — nothing to sync to listing_contacts'
-        }
-        setDbg(trace)
+        const { data: existing } = await supabase.from('listing_contacts').select('id').eq('listing_id', lid).eq('role', 'seller')
+        const isFirst = !existing || existing.length === 0
+        const { error: insErr } = await supabase.from('listing_contacts')
+          .upsert({ listing_id: lid, contact_id: contact.id, role: 'seller', primary_contact: isFirst }, { onConflict: 'listing_id,contact_id' })
+        if (!insErr && isFirst) await supabase.from('listings').update({ seller_contact_id: contact.id }).eq('id', lid)
       }
 
       setAddingRole(null)
       load()
-    } catch (e) { setDbg('[seller-sync ERROR] ' + (e.message || e)); alert('Could not save: ' + e.message) }
+    } catch (e) { alert('Could not save: ' + e.message) }
   }
   async function removeParty(role) {
     try {
@@ -109,7 +90,6 @@ export function TCParties({ deal, agents = [] }) {
 
   return (
     <div style={{ fontFamily: ff }}>
-      {dbg && <div style={{ fontSize: 11, fontFamily: 'monospace', background: '#1e1e1e', color: '#0f0', padding: 8, borderRadius: 6, marginBottom: 10, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{dbg}</div>}
       <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
         Everyone on this deal — linked to the Contacts board. Call or email any of them right here.
       </div>

@@ -37,6 +37,7 @@ import { DEFAULT_TC_SETTINGS } from '../lib/tcSettings'
 import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import SellerContacts from '../components/SellerContacts'
+import LinkListingControl from '../components/LinkListingControl'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -1177,6 +1178,8 @@ export function TransactionCoordinator() {
         {selDeal?.id && (
           <div style={{ marginTop:14, borderTop:'1px solid var(--border)', paddingTop:4 }}>
             <BoardLinks tcDealId={selDeal.id} listingId={selDeal.linked_listing_id} dealId={selDeal.linked_deal_id} />
+            <LinkListingControl deal={selDeal} toast={toast}
+              onLinked={lid => { setSelDeal(d => ({ ...d, linked_listing_id: lid })); setDeals(ds => ds.map(x => x.id === selDeal.id ? { ...x, linked_listing_id: lid } : x)) }} />
             {selDeal.linked_listing_id && (
               <div style={{ marginTop:10 }}>
                 <SellerContacts listingId={selDeal.linked_listing_id} listingAgentId={selDeal.agent_id} />
