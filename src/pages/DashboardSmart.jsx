@@ -7,6 +7,8 @@ import { useApp } from '../context/AppContext'
 import { BOARD_OPTIONS } from '../lib/boardOptions'
 import { loadDashPrefs, saveDashPrefs } from '../lib/dashboardPrefs'
 import { WidgetContent } from '../components/SmartWidget'
+import { ViewingProvider } from '../context/ViewingContext'
+import { ViewingBar } from '../components/ViewingBar'
 
 // Smart dashboard: a grid of query-driven widgets. Every widget filters
 // any board on any field(s), displays as number/chart/list/table, and is
@@ -60,6 +62,14 @@ function starterWidgets() {
   ]
 }
 export function DashboardSmart() {
+  return (
+    <ViewingProvider>
+      <DashboardSmartInner />
+    </ViewingProvider>
+  )
+}
+
+function DashboardSmartInner() {
   const { agent, isAdmin } = useAuth()
   const { toast } = useApp()
   const [widgets, setWidgets] = useState(null)
@@ -127,6 +137,8 @@ export function DashboardSmart() {
       </div>
 
       {edit && <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>Drag to move · drag the bottom-right corner to resize · click a widget's gear to edit its data.</div>}
+
+      <ViewingBar />
 
       <GridLayout className="layout" layout={layout} cols={COLS} rowHeight={ROW_H} width={width}
         isDraggable={edit} isResizable={edit} onLayoutChange={onLayoutChange} margin={[12,12]} draggableCancel=".no-drag">
