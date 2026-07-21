@@ -34,6 +34,7 @@ import { Calls }         from './pages/Calls'
 import { OpenHouse }     from './pages/OpenHouse'
 import { SocialCards } from './pages/SocialCards'
 import { AgentPerformance } from './pages/AgentPerformance'
+import { Analytics } from './pages/Analytics'
 import { AgentActivity } from './pages/AgentActivity'
 import { Signs }         from './pages/Signs'
 import { Announcements } from './pages/Announcements'
@@ -162,8 +163,9 @@ function AppShell() {
           <Route path="/openhouse"           element={<OpenHouse />} />
           <Route path="/openhouse/:id"       element={<OpenHouse />} />
           <Route path="/social-cards" element={<SocialCards />} />
-          <Route path="/performance" element={<AgentPerformance />} />
-          <Route path="/agent-activity" element={<AgentActivity />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/performance" element={<Analytics />} />
+          <Route path="/agent-activity" element={<Analytics />} />
           <Route path="/signs"               element={<Signs />} />
           <Route path="/signs/:id"           element={<Signs />} />
           <Route path="/announcements"       element={<Announcements />} />
@@ -192,8 +194,8 @@ function AppShell() {
           <Route path="/tc"                 element={<TransactionCoordinator />} />
           <Route path="/tc-settings"        element={<RequirePermission perm="admin.customize"><TCSettings /></RequirePermission>} />
           <Route path="/my-listings"          element={<MyListings />} />
-          <Route path="/reports"            element={<RequirePermission perm="reports.view"><Reports /></RequirePermission>} />
-          <Route path="/reportbuilder"      element={<ReportBuilder />} />
+          <Route path="/reports"            element={<RequirePermission perm="reports.view"><Analytics /></RequirePermission>} />
+          <Route path="/reportbuilder"      element={<Analytics />} />
           <Route path="/notepad"            element={<Notepad />} />
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />

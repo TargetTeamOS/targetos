@@ -22,10 +22,7 @@ const NAV = [
 
   // ── BOARD 1: PRODUCTION ───────────────────────────────────────────
   { id: 'production',    label: 'Production',     icon: '📊', roles: ['admin','secretary','agent'] },
-  { id: 'performance',   label: 'Performance',    icon: '📈', roles: ['admin','secretary'] },
-  { id: 'agent-activity',label: 'Agent Activity', icon: '📊', roles: ['admin','secretary'] },
-  { id: 'reports',       label: 'Reports',        icon: '📉', roles: ['admin','secretary'] },
-  { id: 'reportbuilder', label: 'Report Builder', icon: '📧', roles: ['admin'] },
+  { id: 'analytics',     label: 'Reports & Analytics', icon: '📈', roles: ['admin','secretary'] },
   { id: 'notepad',       label: 'Notepad',        icon: '📝', roles: ['admin','secretary','agent'] },
 
   // ── BOARD 2: TC BOARD ────────────────────────────────────────────
