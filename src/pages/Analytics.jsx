@@ -79,6 +79,28 @@ export function Analytics() {
   const [cEnd, setCEnd]     = useState(iso(new Date()))
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [] })
+  const [goals, setGoals] = useState({})   // agent_id -> {deals,gci,production}
+  const [savingGoal, setSavingGoal] = useState(false)
+  const thisYear = new Date().getFullYear()
+
+  async function loadGoals() {
+    try {
+      const { data: g } = await supabase.from('agent_goals').select('agent_id, deals, gci, production').eq('year', thisYear)
+      const m = {}; (g || []).forEach(r => { m[r.agent_id] = r }); setGoals(m)
+    } catch {}
+  }
+  useEffect(() => { loadGoals() }, [])
+
+  async function saveGoal(agentId, field, value) {
+    setSavingGoal(true)
+    const cur = goals[agentId] || { deals: 0, gci: 0, production: 0 }
+    const next = { ...cur, [field]: parseNum(value) }
+    setGoals(g => ({ ...g, [agentId]: next }))
+    try {
+      await supabase.from('agent_goals').upsert({ agent_id: agentId, year: thisYear, deals: next.deals || 0, gci: next.gci || 0, production: next.production || 0, updated_at: new Date().toISOString() }, { onConflict: 'agent_id,year' })
+    } catch (e) { alert('Could not save goal: ' + e.message) }
+    setSavingGoal(false)
+  }
 
   useEffect(() => {
     let alive = true
@@ -254,7 +276,7 @@ export function Analytics() {
       </div>
 
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border)', marginBottom: 18 }}>
-        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'agents', label:'👤 Agents' }].map(t => (
+        {[{ id:'summary', label:'⭐ Summary' }, { id:'business', label:'🏢 Business' }, { id:'pipeline', label:'🔻 Pipeline' }, { id:'agents', label:'👤 Agents' }, { id:'goals', label:'🎯 Goals' }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '10px 18px', border: 'none', borderBottom: tab === t.id ? '2px solid var(--brand)' : '2px solid transparent',
               background: 'transparent', color: tab === t.id ? 'var(--brand)' : 'var(--muted)', fontSize: 14, fontWeight: tab === t.id ? 800 : 600, cursor: 'pointer', fontFamily: ff, marginBottom: -1 }}>
@@ -341,6 +363,97 @@ export function Analytics() {
               ))
             })()}
           </Panel>
+        </div>
+      )}
+
+      {tab === 'goals' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          {(() => {
+            const now = new Date()
+            const startY = new Date(thisYear, 0, 1)
+            const endY = new Date(thisYear, 11, 31)
+            const dayOfYear = Math.floor((now - startY) / 86400000) + 1
+            const daysLeft = Math.max(1, Math.floor((endY - now) / 86400000))
+            const weeksLeft = Math.max(1, daysLeft / 7)
+            const monthsLeft = Math.max(1, (12 - now.getMonth()) - now.getDate()/30)
+            const yearFrac = dayOfYear / 365
+
+            // company totals
+            const closedYTD = deals.filter(d => d.stage === 'Closed' && (d.close_date||d.created_at||'').startsWith(String(thisYear)))
+            const compActual = { deals: closedYTD.length, gci: closedYTD.reduce((s,d)=>s+parseNum(d.gci),0), production: closedYTD.reduce((s,d)=>s+parseNum(d.production),0) }
+            const compGoal = Object.values(goals).reduce((a,g)=>({ deals:a.deals+(g.deals||0), gci:a.gci+(g.gci||0), production:a.production+(g.production||0) }), { deals:0, gci:0, production:0 })
+
+            const GoalBar = ({ label, actual, goal, money }) => {
+              const pct = goal > 0 ? Math.min(100, Math.round((actual/goal)*100)) : 0
+              const projected = yearFrac > 0 ? Math.round(actual / yearFrac) : 0
+              const onPace = goal > 0 && projected >= goal
+              const remaining = Math.max(0, goal - actual)
+              return (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}>
+                    <span style={{ fontWeight:700, color:'var(--text)' }}>{label}</span>
+                    <span style={{ color:'var(--muted)' }}>{money?fmt$(actual):actual} / {money?fmt$(goal):goal} <b style={{ color: onPace?'#0B7A45':'#DC2626' }}>({pct}%)</b></span>
+                  </div>
+                  <div style={{ height:22, background:'var(--dim)', borderRadius:6, overflow:'hidden', marginBottom:4 }}>
+                    <div style={{ width: pct+'%', height:'100%', background: onPace?'#0B7A45':'#F5A623', borderRadius:6, transition:'width .3s' }} />
+                  </div>
+                  {goal > 0 && (
+                    <div style={{ fontSize:11, color:'var(--muted)' }}>
+                      Projected year-end: <b style={{ color: onPace?'#0B7A45':'#DC2626' }}>{money?fmt$(projected):projected}</b> ({onPace?'ahead of':'behind'} pace) ·
+                      Need {money?fmt$(Math.ceil(remaining/monthsLeft)):Math.ceil(remaining/monthsLeft)}/mo · {money?fmt$(Math.ceil(remaining/weeksLeft)):Math.ceil(remaining/weeksLeft)}/wk to hit goal
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            return (
+              <>
+                <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:18 }}>
+                  <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', marginBottom:2 }}>🏢 Company Goals — {thisYear}</div>
+                  <div style={{ fontSize:11.5, color:'var(--muted)', marginBottom:14 }}>Sum of all agent goals · {daysLeft} days left in the year</div>
+                  <GoalBar label="Closed Deals" actual={compActual.deals} goal={compGoal.deals} />
+                  <GoalBar label="GCI / Commissions" actual={compActual.gci} goal={compGoal.gci} money />
+                  <GoalBar label="Production Volume" actual={compActual.production} goal={compGoal.production} money />
+                </div>
+
+                <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+                  <div style={{ padding:'12px 16px', fontSize:14, fontWeight:800, color:'var(--text)', borderBottom:'1px solid var(--border)' }}>🎯 Set Agent Goals ({thisYear})</div>
+                  <div style={{ overflowX:'auto' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', minWidth:640 }}>
+                      <thead><tr style={{ background:'var(--dim)' }}>
+                        {['Agent','Deals Goal','Closed (YTD)','GCI Goal','GCI (YTD)','Production Goal','Prod (YTD)'].map((h,i) => (
+                          <th key={h} style={{ padding:'9px 12px', textAlign:i===0?'left':'right', fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody>
+                        {(agents||[]).map(a => {
+                          const g = goals[a.id] || {}
+                          const ac = deals.filter(d => d.agent_id===a.id && d.stage==='Closed' && (d.close_date||d.created_at||'').startsWith(String(thisYear)))
+                          const acD = ac.length, acG = ac.reduce((s,d)=>s+parseNum(d.gci),0), acP = ac.reduce((s,d)=>s+parseNum(d.production),0)
+                          const gInp = { width:90, padding:'5px 7px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, textAlign:'right' }
+                          return (
+                            <tr key={a.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                              <td style={{ padding:'8px 12px', fontWeight:700, color:'var(--text)', whiteSpace:'nowrap' }}>
+                                <span style={{ display:'inline-block', width:7, height:7, borderRadius:'50%', background:a.color||'#CC2200', marginRight:7 }} />{a.name}
+                              </td>
+                              <td style={{ padding:'8px 12px', textAlign:'right' }}><input type="number" defaultValue={g.deals||''} onBlur={e=>saveGoal(a.id,'deals',e.target.value)} style={gInp} /></td>
+                              <td style={{ padding:'8px 12px', textAlign:'right', fontSize:12.5, color: acD>=(g.deals||0)&&g.deals?'#0B7A45':'var(--text)', fontWeight:600 }}>{acD}</td>
+                              <td style={{ padding:'8px 12px', textAlign:'right' }}><input type="number" defaultValue={g.gci||''} onBlur={e=>saveGoal(a.id,'gci',e.target.value)} style={gInp} /></td>
+                              <td style={{ padding:'8px 12px', textAlign:'right', fontSize:12.5, color:'var(--text)', fontWeight:600 }}>{fmt$(acG)}</td>
+                              <td style={{ padding:'8px 12px', textAlign:'right' }}><input type="number" defaultValue={g.production||''} onBlur={e=>saveGoal(a.id,'production',e.target.value)} style={gInp} /></td>
+                              <td style={{ padding:'8px 12px', textAlign:'right', fontSize:12.5, color:'var(--text)', fontWeight:600 }}>{fmt$(acP)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ padding:'8px 16px', fontSize:11, color:'var(--muted)' }}>{savingGoal ? 'Saving…' : 'Type a goal and click away to save. YTD updates from closed deals.'}</div>
+                </div>
+              </>
+            )
+          })()}
         </div>
       )}
 
