@@ -18,6 +18,7 @@ import { BulkEditBar } from '../components/BulkEditBar'
 import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
+import ContactPicker from '../components/ContactPicker'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { CustomFieldsSection } from '../components/CustomFieldsSection'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
@@ -170,11 +171,41 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
   const [form, setForm] = useState({ ...listing })
   const [tab,  setTab]  = useState('info')
   const [showings, setShowings] = useState([])
+  const [sellers, setSellers] = useState([])   // [{id, contact_id, role, primary_contact, contacts:{...}}]
   const set = (k,v) => setForm(p => ({...p,[k]:v}))
+
+  async function loadSellers() {
+    if (!listing?.id) { setSellers([]); return }
+    try {
+      const { data } = await supabase.from('listing_contacts')
+        .select('id,contact_id,role,primary_contact,contacts(id,first_name,last_name,phone,email)')
+        .eq('listing_id', listing.id)
+      setSellers(data || [])
+    } catch { setSellers([]) }
+  }
+  async function addSeller(contact) {
+    if (!listing?.id || !contact) return
+    if (sellers.some(s => s.contact_id === contact.id)) return
+    const isFirst = sellers.length === 0
+    try {
+      const { error } = await supabase.from('listing_contacts').insert({ listing_id: listing.id, contact_id: contact.id, role: 'seller', primary_contact: isFirst })
+      if (error) throw error
+      if (isFirst) await supabase.from('listings').update({ seller_contact_id: contact.id }).eq('id', listing.id)
+      loadSellers()
+    } catch (e) { alert('Could not link seller (run sql/listing_contacts.sql?): ' + e.message) }
+  }
+  async function removeSeller(row) {
+    try {
+      await supabase.from('listing_contacts').delete().eq('id', row.id)
+      if (row.primary_contact) await supabase.from('listings').update({ seller_contact_id: null }).eq('id', listing.id)
+      loadSellers()
+    } catch (e) { alert('Could not remove: ' + e.message) }
+  }
 
   useEffect(() => {
     setForm({ ...listing })
     loadShowings()
+    loadSellers()
   }, [listing?.id])
 
   async function loadShowings() {
@@ -296,6 +327,32 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
                   🔗 View MLS Listing
                 </a>
               )}
+
+              {/* Seller contacts */}
+              <div style={{ marginTop:8, paddingTop:12, borderTop:'1px solid var(--border)' }}>
+                <div style={{ fontSize:12, fontWeight:800, color:'var(--text)', marginBottom:8 }}>🧑 Seller Contact(s)</div>
+                {!form.id ? (
+                  <div style={{ fontSize:12, color:'var(--muted)' }}>Save the listing first, then link seller contacts.</div>
+                ) : (
+                  <>
+                    {sellers.length > 0 && (
+                      <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:8 }}>
+                        {sellers.map(s => (
+                          <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 10px', background:'var(--dim)', borderRadius:8 }}>
+                            <div>
+                              <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{[s.contacts?.first_name,s.contacts?.last_name].filter(Boolean).join(' ')||'Contact'}</span>
+                              {s.primary_contact && <span style={{ marginLeft:6, fontSize:10, fontWeight:700, color:'#0B7A45' }}>PRIMARY</span>}
+                              <span style={{ marginLeft:6, fontSize:11, color:'var(--muted)' }}>{s.contacts?.phone||s.contacts?.email||''}</span>
+                            </div>
+                            <button onClick={()=>removeSeller(s)} style={{ border:'none', background:'none', color:'var(--muted)', cursor:'pointer', fontSize:15 }}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <ContactPicker onSelect={addSeller} placeholder="Search & link a seller contact…" agentId={form.agent_id} />
+                  </>
+                )}
+              </div>
             </div>
           )}
 

@@ -90,7 +90,7 @@ export function Analytics() {
   const [cStart, setCStart] = useState(iso(presetRange('month').start))
   const [cEnd, setCEnd]     = useState(iso(new Date()))
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [], listings: [], leadSources: [], interactionsData: [], dealContacts: [] })
+  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [], listings: [], leadSources: [], interactionsData: [], dealContacts: [], listingContacts: [] })
   const [goals, setGoals] = useState({})   // agent_id -> {deals,gci,production}
   const [savingGoal, setSavingGoal] = useState(false)
   const thisYear = new Date().getFullYear()
@@ -133,7 +133,8 @@ export function Analytics() {
       const leadSources = await safe(supabase.from('lead_sources').select('name,monthly_cost,active'))
       const interactionsData = await safe(supabase.from('interactions').select('id,contact_id,agent_id,type,direction,occurred_at,follow_up,follow_up_date,counts_as_contact').range(0,19999))
       const dealContacts = await safe(supabase.from('deal_contacts').select('deal_id,contact_id,role').range(0,19999))
-      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources, interactionsData, dealContacts }); setLoading(false) }
+      const listingContacts = await safe(supabase.from('listing_contacts').select('listing_id,contact_id,role').range(0,19999))
+      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources, interactionsData, dealContacts, listingContacts }); setLoading(false) }
     })()
     return () => { alive = false }
   }, [])
@@ -144,7 +145,7 @@ export function Analytics() {
   }, [customOn, cStart, cEnd, preset])
   const prev = useMemo(() => priorSamePeriod(cur), [cur])
 
-  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources, interactionsData, dealContacts } = data
+  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources, interactionsData, dealContacts, listingContacts } = data
   const isSms = c => c.is_sms === true || c.kind === 'sms' || String(c.direction||'').toLowerCase().includes('sms')
 
   const biz = useMemo(() => {
@@ -310,11 +311,15 @@ export function Analytics() {
     const add = (cid, addr) => { if (!cid || !addr) return; if (!idx[cid]) idx[cid] = new Set(); idx[cid].add(addr) }
     ;(deals || []).forEach(d => { if (d.contact_id) add(d.contact_id, dealAddr[d.id]) })
     ;(dealContacts || []).forEach(dc => add(dc.contact_id, dealAddr[dc.deal_id]))
+    // Listing addresses via listing_contacts (seller links)
+    const listAddr = {}
+    ;(listings || []).forEach(l => { listAddr[l.id] = l.addr })
+    ;(listingContacts || []).forEach(lc => add(lc.contact_id, listAddr[lc.listing_id]))
     // materialize to arrays + a lowercased search blob
     const out = {}
     Object.keys(idx).forEach(cid => { const arr = Array.from(idx[cid]).filter(Boolean); out[cid] = { list: arr, blob: arr.join(' ').toLowerCase() } })
     return out
-  }, [deals, dealContacts])
+  }, [deals, dealContacts, listings, listingContacts])
 
   const health = useMemo(() => {
     const now = Date.now()
