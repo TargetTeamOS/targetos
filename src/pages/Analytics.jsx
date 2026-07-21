@@ -90,7 +90,7 @@ export function Analytics() {
   const [cStart, setCStart] = useState(iso(presetRange('month').start))
   const [cEnd, setCEnd]     = useState(iso(new Date()))
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [], listings: [], leadSources: [], interactionsData: [] })
+  const [data, setData] = useState({ deals: [], offers: [], calls: [], contacts: [], showings: [], tasks: [], activity: [], tcDeals: [], listings: [], leadSources: [], interactionsData: [], dealContacts: [] })
   const [goals, setGoals] = useState({})   // agent_id -> {deals,gci,production}
   const [savingGoal, setSavingGoal] = useState(false)
   const thisYear = new Date().getFullYear()
@@ -132,7 +132,8 @@ export function Analytics() {
       const listings = await safe(supabase.from('listings').select('id,addr,status,list_price,original_price,list_date,listed_date,created_at,agent_id,seller_updated_at,marketing_status').range(0,4999))
       const leadSources = await safe(supabase.from('lead_sources').select('name,monthly_cost,active'))
       const interactionsData = await safe(supabase.from('interactions').select('id,contact_id,agent_id,type,direction,occurred_at,follow_up,follow_up_date,counts_as_contact').range(0,19999))
-      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources, interactionsData }); setLoading(false) }
+      const dealContacts = await safe(supabase.from('deal_contacts').select('deal_id,contact_id,role').range(0,19999))
+      if (alive) { setData({ deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources, interactionsData, dealContacts }); setLoading(false) }
     })()
     return () => { alive = false }
   }, [])
@@ -143,7 +144,7 @@ export function Analytics() {
   }, [customOn, cStart, cEnd, preset])
   const prev = useMemo(() => priorSamePeriod(cur), [cur])
 
-  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources, interactionsData } = data
+  const { deals, offers, calls, contacts, showings, tasks, activity, tcDeals, listings, leadSources, interactionsData, dealContacts } = data
   const isSms = c => c.is_sms === true || c.kind === 'sms' || String(c.direction||'').toLowerCase().includes('sms')
 
   const biz = useMemo(() => {
@@ -297,6 +298,24 @@ export function Analytics() {
   }, [deals, cur])
 
   // ── Contact Health (part 4) ───────────────────────────────────
+  // Per-contact related-property index (built once). Sources:
+  //  • deals.contact_id (direct)  • deal_contacts (multi-party)
+  //  • deals.addr/unit as the address string
+  // Listings link only by agent (no seller-contact FK), so they're
+  // not attributable to a specific contact and are excluded here.
+  const addrByContact = useMemo(() => {
+    const dealAddr = {}
+    ;(deals || []).forEach(d => { dealAddr[d.id] = [d.addr, d.unit && ('#'+d.unit)].filter(Boolean).join(' ') })
+    const idx = {}
+    const add = (cid, addr) => { if (!cid || !addr) return; if (!idx[cid]) idx[cid] = new Set(); idx[cid].add(addr) }
+    ;(deals || []).forEach(d => { if (d.contact_id) add(d.contact_id, dealAddr[d.id]) })
+    ;(dealContacts || []).forEach(dc => add(dc.contact_id, dealAddr[dc.deal_id]))
+    // materialize to arrays + a lowercased search blob
+    const out = {}
+    Object.keys(idx).forEach(cid => { const arr = Array.from(idx[cid]).filter(Boolean); out[cid] = { list: arr, blob: arr.join(' ').toLowerCase() } })
+    return out
+  }, [deals, dealContacts])
+
   const health = useMemo(() => {
     const now = Date.now()
     const lastAct = {}
@@ -314,7 +333,8 @@ export function Analytics() {
       const daysSince = la ? Math.floor((now - la) / 86400000) : null
       const ageH = c.created_at ? (now - new Date(c.created_at).getTime()) / 3600000 : 0
       const fu = followUpByContact[c.id] || null
-      return { ...c, _lastAct: la, _daysSince: daysSince, _ever: !!everInteracted[c.id], _ageHours: ageH, _followUp: fu }
+      const props = addrByContact[c.id]
+      return { ...c, _lastAct: la, _daysSince: daysSince, _ever: !!everInteracted[c.id], _ageHours: ageH, _followUp: fu, _props: props ? props.list : [], _propBlob: props ? props.blob : '' }
     }
     let rows = (contacts || []).map(enrich)
     // Apply Contact Health filters (affect KPIs + all lists)
@@ -336,7 +356,10 @@ export function Analytics() {
     else if (hFollow === 'overdue') rows = rows.filter(c => c._followUp != null && c._followUp < now)
     if (hSearch) {
       const q = hSearch.toLowerCase()
-      rows = rows.filter(c => [c.first_name, c.last_name, c.phone, c.email, c.source, agentNameFor(c.agent_id)].filter(Boolean).some(v => String(v).toLowerCase().includes(q)))
+      rows = rows.filter(c => {
+        if ([c.first_name, c.last_name, c.phone, c.email, c.source, agentNameFor(c.agent_id)].filter(Boolean).some(v => String(v).toLowerCase().includes(q))) return true
+        return c._propBlob && c._propBlob.includes(q)   // related deal property address / town / unit
+      })
     }
     const total = rows.length
     const contacted = rows.filter(c => c.contacted === true).length
@@ -363,7 +386,7 @@ export function Analytics() {
         noAgent: rows.filter(c => !c.agent_id),
       },
     }
-  }, [contacts, calls, interactionsData, agents, hAgent, hSource, hStatus, hContacted, hAge, hFollow, hSearch])
+  }, [contacts, calls, interactionsData, agents, addrByContact, hAgent, hSource, hStatus, hContacted, hAge, hFollow, hSearch])
 
   if (!isAdmin && !canManage) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontFamily: ff }}>Analytics is available to admins and office staff.</div>
   if (loading) return <Loading />
@@ -405,7 +428,7 @@ export function Analytics() {
         Contacted: c.contacted===true?'yes':'no', Created: c.created_at?c.created_at.slice(0,10):'',
         FirstContact: c.first_contact_at?c.first_contact_at.slice(0,10):'', LastContact: c.last_contact_at?c.last_contact_at.slice(0,10):'',
         DaysSinceActivity: c._daysSince!=null?c._daysSince:'', FollowUp: c._followUp?new Date(c._followUp).toISOString().slice(0,10):'',
-        NoInteractionEver: c._ever?'no':'yes',
+        NoInteractionEver: c._ever?'no':'yes', RelatedProperty: (c._props||[]).join(' | '),
       })))
     } else {
       // business/summary/pipeline → company KPI snapshot
@@ -796,7 +819,7 @@ export function Analytics() {
         const selStyle = { padding:'6px 8px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, maxWidth:150 }
         const FilterBar = (
           <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center', padding:12, background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12 }}>
-            <input value={hSearch} onChange={e=>setHSearch(e.target.value)} placeholder="🔍 name, phone, email, source, agent…"
+            <input value={hSearch} onChange={e=>setHSearch(e.target.value)} placeholder="🔍 name, phone, email, source, agent, address…"
               style={{ ...selStyle, maxWidth:230, flex:'1 1 200px' }} />
             <select value={hAgent} onChange={e=>setHAgent(e.target.value)} style={selStyle}>
               <option value="">All agents</option>
@@ -848,8 +871,8 @@ export function Analytics() {
                 <div style={{ overflowX:'auto' }}>
                   <table style={{ width:'100%', borderCollapse:'collapse', minWidth:640 }}>
                     <thead><tr style={{ background:'var(--dim)' }}>
-                      {['Contact','Agent','Source','Status', dateCol||'Last Activity',''].map((h,i)=>(
-                        <th key={i} style={{ padding:'8px 12px', textAlign:i===0?'left':(i===5?'right':'left'), fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', borderBottom:'1px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+                      {['Contact','Agent','Source','Status', dateCol||'Last Activity','Property',''].map((h,i)=>(
+                        <th key={i} style={{ padding:'8px 12px', textAlign:i===0?'left':(i===6?'right':'left'), fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', borderBottom:'1px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
                       ))}
                     </tr></thead>
                     <tbody>
@@ -864,6 +887,9 @@ export function Analytics() {
                           <td style={{ padding:'8px 12px', fontSize:12, color:'var(--muted)' }}>{c.status||'—'}</td>
                           <td style={{ padding:'8px 12px', fontSize:12, color:'var(--text)' }}>
                             {dateCol === 'Follow-up' ? fmtD(c._followUp) : (c._daysSince != null ? c._daysSince+'d ago' : 'never')}
+                          </td>
+                          <td style={{ padding:'8px 12px', fontSize:11.5, color:'var(--muted)', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={(c._props||[]).join(' · ')}>
+                            {(c._props && c._props.length) ? (c._props[0] + (c._props.length>1?' +'+(c._props.length-1):'')) : '—'}
                           </td>
                           <td style={{ padding:'8px 12px', textAlign:'right' }}>
                             <button onClick={()=>navigate('/contacts/'+c.id+'/detail')} style={{ border:'1px solid var(--border)', background:'transparent', color:'var(--brand)', borderRadius:6, padding:'3px 9px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>Open</button>
