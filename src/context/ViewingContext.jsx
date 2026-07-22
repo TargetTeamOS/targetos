@@ -57,6 +57,7 @@ export function ViewingProvider({ children }) {
     <ViewingContext.Provider value={{
       mode, setMode, selectedAgentId, setSelectedAgentId, allowedAgents,
       canSelectAgents, canViewTeam, dateRange, setDateRange, label, fetchSummary,
+      isAdmin,
     }}>
       {children}
     </ViewingContext.Provider>

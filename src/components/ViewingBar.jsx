@@ -5,11 +5,14 @@ import { useViewing } from '../context/ViewingContext'
 // design. Shows the viewing label, an agent selector for authorized users
 // only, and the secure server-aggregated summary with explicit states.
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
-const money = n => { const v = Number(n)||0; if (v>=1e6) return '$'+(v/1e6).toFixed(2)+'M'; if (v>=1e3) return '$'+Math.round(v/1e3)+'K'; return '$'+Math.round(v) }
+// currency: proper $ formatting for GCI/production. counts: whole numbers.
+const money = n => (Number(n) || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+const count = n => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })
+const percent = n => (n === null || n === undefined) ? '—' : (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%'
 
 export function ViewingBar() {
   const { mode, setMode, selectedAgentId, setSelectedAgentId, allowedAgents,
-    canSelectAgents, canViewTeam, label, fetchSummary, dateRange } = useViewing()
+    canSelectAgents, canViewTeam, label, fetchSummary, dateRange, isAdmin } = useViewing()
   const [state, setState] = useState('loading')   // loading|ok|empty|forbidden|nolink|error
   const [summary, setSummary] = useState(null)
   const [err, setErr] = useState('')
@@ -24,7 +27,10 @@ export function ViewingBar() {
     if (!r || Object.keys(r).length === 0) { setState('empty'); return }
     setSummary(r); setUpdatedAt(new Date()); setState('ok')
   }
-  useEffect(() => { refresh() }, [mode, selectedAgentId, dateRange])
+  useEffect(() => { if (isAdmin) refresh() }, [mode, selectedAgentId, dateRange, isAdmin])
+
+  // Admin-only for now. Agent/secretary dashboards handled in a later step.
+  if (!isAdmin) return null
 
   return (
     <div style={{ marginBottom: 16, fontFamily: ff }}>
@@ -56,17 +62,26 @@ export function ViewingBar() {
       {state==='error' && <Bar text={'Summary failed to load: ' + err + ' (this is an error, not zero).'} tone="err" />}
       {state==='empty' && <Bar text="No data in this range." />}
       {state==='ok' && summary && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px,1fr))', gap:10 }}>
-          <Stat label="Closed Deals" value={summary.closed_deals} color="#059669" />
-          <Stat label="Closed GCI" value={money(summary.closed_gci)} color="#059669" />
-          <Stat label="Production" value={money(summary.closed_production)} color="#2563EB" />
-          <Stat label="Active Deals" value={summary.active_deals} color="#2563EB" />
-          <Stat label="Under Contract" value={summary.under_contract} color="#D97706" />
-          <Stat label="Accepted Offers" value={summary.accepted_offers} color="#DB2777" />
+        <>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px,1fr))', gap:10 }}>
+            <Stat label="Closed in Selected Period" value={count(summary.filtered_closed_deals)} color="#059669" />
+            <Stat label="Closed Toward 2026 Goal" value={count(summary.team_goal_closed_deals)} color="#059669" />
+            <Stat label="2026 Team Goal" value={count(summary.team_goal_target)} color="#2563EB" />
+            <Stat label="Remaining to Goal" value={count(summary.team_goal_remaining)} color="#D97706" />
+            <Stat label="Goal Progress" value={percent(summary.team_goal_progress_pct)} color="#2563EB" />
+            <Stat label="Closed GCI" value={money(summary.closed_gci)} color="#059669" />
+            <Stat label="Closed Production" value={money(summary.closed_production)} color="#2563EB" />
+            <Stat label="Pipeline GCI" value={money(summary.pipeline_gci)} color="#7C3AED" />
+            <Stat label="Active Pipeline" value={count(summary.active_deals)} color="#2563EB" />
+            <Stat label="Under Contract Now" value={count(summary.under_contract_now)} color="#D97706" />
+            <Stat label="Contracts During Selected Period" value={count(summary.under_contract_period)} color="#0891B2" />
+          </div>
           {summary.closed_missing_close_date > 0 && (
-            <Stat label="⚠ Missing close date" value={summary.closed_missing_close_date} color="#DC2626" />
+            <div style={{ marginTop:10 }}>
+              <Bar tone="warn" text={'⚠ Data quality: ' + count(summary.closed_missing_close_date) + ' closed deal(s) missing a close date — excluded from period totals.'} />
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   )
