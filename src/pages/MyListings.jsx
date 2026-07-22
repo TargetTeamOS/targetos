@@ -18,11 +18,11 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import ListingWorkspaceDrawer from '../components/ListingWorkspaceDrawer'
+import ListingWorkspace from '../components/ListingWorkspace'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
-import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
+import { PageHeader, Btn, Modal, ModalActions, Loading, Empty, Avatar } from '../components/UI'
 import { logRecordChange } from '../lib/recordActivity'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 
@@ -63,53 +63,72 @@ function DOMBadge({ days }) {
   )
 }
 
-// Compact one-line listing row → opens the workspace drawer
-function ListingRow({ listing, showings, openHouses, onOpen }) {
+// Compact one-line listing row → opens the full workspace
+function ListingRow({ listing, agent, showings, openHouses, onOpen }) {
   const dom    = daysOnMarket(listing.listed_date || listing.list_date || listing.created_at)
   const status = listing.status || 'Active'
   const sc     = STATUS_COLORS[status] || '#94A3B8'
   const avgInterest = showings.length
     ? (showings.reduce((s, sh) => s + (sh.interest_level || 3), 0) / showings.length).toFixed(1)
     : null
+  const buyerInterest = showings.filter(s => (s.interest_level || 0) >= 4).length
+  const priceChanges = Array.isArray(listing.price_history) ? listing.price_history.length : 0
   const sellerStale = !listing.seller_updated_at || (Date.now() - new Date(listing.seller_updated_at).getTime() > 7 * 86400000)
-  // Next action / alert (light, from existing data)
-  let alert = null
-  if (sellerStale && (status === 'Active' || status === 'Coming Soon')) alert = { t: 'Seller update due', c: '#DC2626' }
-  else if (showings.length === 0 && (status === 'Active')) alert = { t: 'No showings yet', c: '#B45309' }
-  else if (dom != null && dom > 60 && status === 'Active') alert = { t: 'On market 60+ days', c: '#B45309' }
+  const priceChanged = (listing.original_price && listing.list_price && listing.original_price !== listing.list_price) || priceChanges > 0
+  const closingSoon = status === 'Under Contract'
+
+  // Alert chips
+  const chips = []
+  if (showings.length === 0 && status === 'Active') chips.push({ t:'No showings', c:'#B45309' })
+  if (sellerStale && (status === 'Active' || status === 'Coming Soon')) chips.push({ t:'Seller update overdue', c:'#DC2626' })
+  if (dom != null && dom > 60 && status === 'Active') chips.push({ t:'60+ DOM', c:'#B45309' })
+  if (priceChanged) chips.push({ t:'Price changed', c:'#2563EB' })
+  if (!listing.seller_contact_id) chips.push({ t:'Missing seller contact', c:'#B45309' })
+  if (closingSoon) chips.push({ t:'Under contract', c:'#F97316' })
 
   return (
     <div onClick={() => onOpen(listing)}
-      style={{ background: 'var(--panel)', border: '0.5px solid var(--border)', borderLeft: '3px solid ' + sc,
-        borderRadius: 8, marginBottom: 6, padding: '9px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
-      {/* Left: address + city/status */}
-      <div style={{ minWidth: 150, maxWidth: 210, flexShrink: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{listing.addr || '—'}</div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {listing.city ? listing.city + ' · ' : ''}<span style={{ color: sc, fontWeight: 700 }}>{status}</span>
+      style={{ background:'var(--panel)', border:'0.5px solid var(--border)', borderLeft:'3px solid '+sc,
+        borderRadius:8, marginBottom:6, padding:'9px 12px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
+      {/* Agent avatar */}
+      {agent ? <Avatar agent={agent} size={34} showHover={false} /> : <div style={{ width:34, height:34, borderRadius:'50%', background:'var(--dim)', flexShrink:0 }} />}
+      {/* Address + agent/city/status */}
+      <div style={{ minWidth:150, maxWidth:200, flexShrink:0 }}>
+        <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{listing.addr || '—'}</div>
+        <div style={{ fontSize:11, color:'var(--muted)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+          {agent?.name ? agent.name.split(' ')[0] + ' · ' : ''}{listing.city ? listing.city + ' · ' : ''}<span style={{ color:sc, fontWeight:700 }}>{status}</span>
         </div>
       </div>
       {/* Price */}
-      <div style={{ minWidth: 80, flexShrink: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{listing.list_price ? fmt$(listing.list_price) : '—'}</div>
-        {dom != null && <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{dom}d on market</div>}
+      <div style={{ minWidth:82, flexShrink:0 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{listing.list_price ? fmt$(listing.list_price) : '—'}</div>
+        {listing.original_price && listing.original_price !== listing.list_price
+          ? <div style={{ fontSize:10, color:'var(--muted)', textDecoration:'line-through' }}>{fmt$(listing.original_price)}</div>
+          : (dom != null && <div style={{ fontSize:10.5, color:'var(--muted)' }}>{dom}d</div>)}
       </div>
       {/* Counts */}
-      <div style={{ display: 'flex', gap: 14, flexShrink: 0 }}>
-        <div style={{ textAlign: 'center' }}><div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>{showings.length}</div><div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Show</div></div>
-        <div style={{ textAlign: 'center' }}><div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>{openHouses.length}</div><div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>OH</div></div>
-        <div style={{ textAlign: 'center' }}><div style={{ fontSize: 14, fontWeight: 800, color: avgInterest ? '#F5A623' : 'var(--muted)' }}>{avgInterest || '—'}</div><div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Int</div></div>
+      <div style={{ display:'flex', gap:12, flexShrink:0 }}>
+        {[['Show',showings.length],['Int❤',buyerInterest],['OH',openHouses.length],['Avg',avgInterest||'—'],['Δ$',priceChanges]].map(([lab,val],i)=>(
+          <div key={i} style={{ textAlign:'center', minWidth:26 }}>
+            <div style={{ fontSize:13, fontWeight:800, color: lab==='Avg'&&avgInterest?'#F5A623':'var(--text)' }}>{val}</div>
+            <div style={{ fontSize:8.5, color:'var(--muted)', fontWeight:700, textTransform:'uppercase' }}>{lab}</div>
+          </div>
+        ))}
       </div>
-      {/* Middle: next action / alert + last seller update */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {alert && <span style={{ fontSize: 11, fontWeight: 700, color: alert.c, background: alert.c + '18', padding: '2px 8px', borderRadius: 99 }}>{alert.t}</span>}
-        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: alert ? 3 : 0 }}>
-          Seller update: {listing.seller_updated_at ? fmtDate(listing.seller_updated_at) : 'never'}
+      {/* Chips + marketing/seller-update */}
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+          {chips.slice(0,4).map((c,i)=>(
+            <span key={i} style={{ fontSize:10, fontWeight:700, color:c.c, background:c.c+'18', padding:'1px 7px', borderRadius:99, whiteSpace:'nowrap' }}>{c.t}</span>
+          ))}
+        </div>
+        <div style={{ fontSize:10, color:'var(--muted)', marginTop:3 }}>
+          {listing.marketing_status ? listing.marketing_status + ' · ' : ''}Seller upd: {listing.seller_updated_at ? fmtDate(listing.seller_updated_at) : 'never'}
         </div>
       </div>
       {/* Open */}
-      <button onClick={(e) => { e.stopPropagation(); onOpen(listing) }}
-        style={{ flexShrink: 0, border: '1px solid var(--border)', background: 'transparent', color: 'var(--brand)', borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>Open →</button>
+      <button onClick={(e)=>{ e.stopPropagation(); onOpen(listing) }}
+        style={{ flexShrink:0, border:'1px solid var(--border)', background:'transparent', color:'var(--brand)', borderRadius:6, padding:'4px 12px', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>Open →</button>
     </div>
   )
 }
@@ -125,7 +144,8 @@ export function MyListings() {
   const [openHouses, setOpenHouses] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [expanded,   setExpanded]   = useState({})
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [agentsMap,  setAgentsMap]  = useState({})
+  const [workspaceListing, setWorkspaceListing] = useState(null)  // when set, show full workspace
   const [statusFilter,setStatusFilter] = useState('All')
   const [search,     setSearch]     = useState('')
 
@@ -170,6 +190,11 @@ export function MyListings() {
       setListings(listRes.data || [])
       setShowings(showRes.data || [])
       setOpenHouses(ohRes.data || [])
+      // agents for avatars (id → agent)
+      try {
+        const { data: ags } = await supabase.from('agents').select('id,name,color,photo_url,email').eq('active', true)
+        setAgentsMap(Object.fromEntries((ags || []).map(a => [a.id, a])))
+      } catch { setAgentsMap({}) }
     } catch(e) { toast('Load failed: ' + e.message, '#DC2626') }
     finally { setLoading(false) }
   }
@@ -334,81 +359,10 @@ export function MyListings() {
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}><Loading /></div>
 
-  return (
-    <div style={{ fontFamily: ff }}>
-      <PageHeader
-        title="My Listings"
-        sub="Your active listings — showings, open houses, price changes"
-        actions={
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <LastVisited page="listings" />
-            <Btn variant="secondary" onClick={() => navigate('/listings')}>All Listings</Btn>
-            <Btn onClick={() => navigate('/listings/new')}>+ New Listing</Btn>
-          </div>
-        }
-      />
-
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
-        {[
-          { label: 'Active',          value: stats.active,        color: '#10B981', icon: '🏡' },
-          { label: 'Under Contract',  value: stats.uc,            color: '#F97316', icon: '📝' },
-          { label: 'Sold This Year',  value: stats.sold,          color: '#3B82F6', icon: '🎉' },
-          { label: 'Total Showings',  value: stats.totalShowings, color: '#8B5CF6', icon: '👀' },
-        ].map(s => (
-          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: 10, border: '1px solid var(--border)', padding: '12px 14px', borderLeftWidth: 3, borderLeftColor: s.color }}>
-            <div style={{ fontSize: 22, fontWeight: 900, color: s.color }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginTop: 2, textTransform: 'uppercase', letterSpacing: '.04em' }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-
-
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by address, MLS#..."
-          style={{ flex: 1, minWidth: 200, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: 13, fontFamily: ff }} />
-        <div style={{ display: 'flex', gap: 4 }}>
-          {['All', ...LISTING_STATUSES].map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              style={{ padding: '5px 12px', borderRadius: 99, border: '1px solid ' + (statusFilter === s ? (STATUS_COLORS[s] || 'var(--brand)') : 'var(--border)'), background: statusFilter === s ? (STATUS_COLORS[s] || 'var(--brand)') + '18' : 'transparent', color: statusFilter === s ? (STATUS_COLORS[s] || 'var(--brand)') : 'var(--muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Listing cards */}
-      {filtered.length === 0 ? (
-        <Empty text={listings.length === 0 ? 'No listings yet — click + New Listing' : 'No listings match your filter'} />
-      ) : (
-        filtered.map(listing => (
-          <ListingRow
-            key={listing.id}
-            listing={listing}
-            showings={showings.filter(s => s.listing_id === listing.id)}
-            openHouses={openHouses.filter(oh => oh.listing_id === listing.id)}
-            onOpen={l => { setSelListing(l); setDrawerOpen(true) }}
-          />
-        ))
-      )}
-
-      {/* Full listing workspace drawer */}
-      <ListingWorkspaceDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        listing={selListing}
-        showings={selListing ? showings.filter(s => s.listing_id === selListing.id) : []}
-        openHouses={selListing ? openHouses.filter(oh => oh.listing_id === selListing.id) : []}
-        agents={[]}
-        statuses={LISTING_STATUSES}
-        onLogShowing={l => { setSelListing(l); setShowingModal(true) }}
-        onScheduleOH={l => { setSelListing(l); setOhModal(true) }}
-        onPriceChange={l => { setSelListing(l); setPriceForm({ list_price: l.list_price || '', reason: '' }); setPriceModal(true) }}
-        onUpdateStatus={updateStatus}
-        onToggleIvr={toggleIvr}
-      />
-
+  // Full-page workspace view (replaces the list when a listing is opened)
+  function renderModals() {
+    return (
+      <>
       {/* LOG SHOWING MODAL */}
       <Modal open={showingModal} onClose={() => setShowingModal(false)} title={'Log Showing — ' + (selListing?.addr || '')} width={500}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -497,6 +451,96 @@ export function MyListings() {
           <Btn onClick={updatePrice} loading={saving}>Update Price</Btn>
         </ModalActions>
       </Modal>
+
+      </>
+    )
+  }
+
+  if (workspaceListing) {
+    const wl = listings.find(l => l.id === workspaceListing.id) || workspaceListing
+    return (
+      <div style={{ fontFamily: ff }}>
+        <ListingWorkspace
+          listing={wl}
+          agent={agentsMap[wl.agent_id]}
+          showings={showings.filter(s => s.listing_id === wl.id)}
+          openHouses={openHouses.filter(oh => oh.listing_id === wl.id)}
+          onBack={() => setWorkspaceListing(null)}
+          onSaved={(updated, showingEdit) => {
+            if (updated && updated.id) setListings(p => p.map(l => l.id === updated.id ? { ...l, ...updated } : l))
+            // refresh showings if a showing was edited
+            if (showingEdit) loadAll()
+          }}
+          onLogShowing={l => { setSelListing(l); setShowingModal(true) }}
+          onScheduleOH={l => { setSelListing(l); setOhModal(true) }}
+        />
+        {/* Modals still available from the workspace (add showing / open house) */}
+        {renderModals()}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ fontFamily: ff }}>
+      <PageHeader
+        title="My Listings"
+        sub="Your active listings — showings, open houses, price changes"
+        actions={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <LastVisited page="listings" />
+            <Btn variant="secondary" onClick={() => navigate('/listings')}>All Listings</Btn>
+            <Btn onClick={() => navigate('/listings/new')}>+ New Listing</Btn>
+          </div>
+        }
+      />
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
+        {[
+          { label: 'Active',          value: stats.active,        color: '#10B981', icon: '🏡' },
+          { label: 'Under Contract',  value: stats.uc,            color: '#F97316', icon: '📝' },
+          { label: 'Sold This Year',  value: stats.sold,          color: '#3B82F6', icon: '🎉' },
+          { label: 'Total Showings',  value: stats.totalShowings, color: '#8B5CF6', icon: '👀' },
+        ].map(s => (
+          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: 10, border: '1px solid var(--border)', padding: '12px 14px', borderLeftWidth: 3, borderLeftColor: s.color }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginTop: 2, textTransform: 'uppercase', letterSpacing: '.04em' }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by address, MLS#..."
+          style={{ flex: 1, minWidth: 200, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: 13, fontFamily: ff }} />
+        <div style={{ display: 'flex', gap: 4 }}>
+          {['All', ...LISTING_STATUSES].map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              style={{ padding: '5px 12px', borderRadius: 99, border: '1px solid ' + (statusFilter === s ? (STATUS_COLORS[s] || 'var(--brand)') : 'var(--border)'), background: statusFilter === s ? (STATUS_COLORS[s] || 'var(--brand)') + '18' : 'transparent', color: statusFilter === s ? (STATUS_COLORS[s] || 'var(--brand)') : 'var(--muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Listing cards */}
+      {filtered.length === 0 ? (
+        <Empty text={listings.length === 0 ? 'No listings yet — click + New Listing' : 'No listings match your filter'} />
+      ) : (
+        filtered.map(listing => (
+          <ListingRow
+            key={listing.id}
+            listing={listing}
+            agent={agentsMap[listing.agent_id]}
+            showings={showings.filter(s => s.listing_id === listing.id)}
+            openHouses={openHouses.filter(oh => oh.listing_id === listing.id)}
+            onOpen={l => setWorkspaceListing(l)}
+          />
+        ))
+      )}
+
+      {renderModals()}
     </div>
   )
 }
