@@ -12,6 +12,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { authFetch } from '../lib/apiAuth'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -305,21 +306,66 @@ function StatusDot({ value, options, color = '#94A3B8' }) {
 
 // ── INLINE PICKER ─────────────────────────────────────────────────
 // Click a cell → dropdown appears inline; saves immediately
+// Shared board dropdown. The menu renders through a PORTAL to document.body
+// with position:fixed so it escapes the table/scroll container's overflow
+// clipping and sticky-header/z-index stacking. Positioned from the trigger's
+// bounding rect, flipping up / shifting left to stay in the viewport.
+const PICKER_Z = 10000
 function InlinePicker({ value, options, onSave, color, renderValue }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [menuPos, setMenuPos] = useState(null)   // { left, top, width, maxHeight, openUp }
+  const triggerRef = useRef(null)
+  const menuRef = useRef(null)
+
+  function computePosition() {
+    const el = triggerRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const vw = window.innerWidth, vh = window.innerHeight
+    const GAP = 4, MENU_W = Math.min(Math.max(r.width, 180), vw - 16)
+    const spaceBelow = vh - r.bottom, spaceAbove = r.top
+    const openUp = spaceBelow < 200 && spaceAbove > spaceBelow
+    const maxHeight = Math.min(280, (openUp ? spaceAbove : spaceBelow) - GAP - 8)
+    let left = r.left
+    if (left + MENU_W > vw - 8) left = Math.max(8, vw - 8 - MENU_W)   // shift left off the right edge
+    if (left < 8) left = 8
+    const top = openUp ? Math.max(8, r.top - GAP) : r.bottom + GAP
+    setMenuPos({ left, top, width: MENU_W, maxHeight: Math.max(120, maxHeight), openUp })
+  }
+
+  function openMenu(e) {
+    e.stopPropagation()
+    if (open) { setOpen(false); return }
+    computePosition()
+    setOpen(true)
+  }
 
   useEffect(() => {
     if (!open) return
-    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    computePosition()
+    const onDocDown = e => {
+      if (triggerRef.current?.contains(e.target)) return
+      if (menuRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    const onKey = e => { if (e.key === 'Escape') setOpen(false) }
+    // Reposition on scroll (capture: catches the inner board scroller too) and resize.
+    const onScrollOrResize = () => computePosition()
+    document.addEventListener('mousedown', onDocDown)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onScrollOrResize, true)
+    window.addEventListener('resize', onScrollOrResize)
+    return () => {
+      document.removeEventListener('mousedown', onDocDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScrollOrResize, true)
+      window.removeEventListener('resize', onScrollOrResize)
+    }
   }, [open])
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
-      <div onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
-        style={{ cursor: 'pointer', userSelect: 'none' }}>
+    <div ref={triggerRef} style={{ display: 'inline-block' }}>
+      <div onClick={openMenu} style={{ cursor: 'pointer', userSelect: 'none' }}>
         {renderValue ? renderValue(value) : (
           <span style={{
             display: 'inline-block', padding: '2px 8px', borderRadius: '20px',
@@ -330,13 +376,17 @@ function InlinePicker({ value, options, onSave, color, renderValue }) {
           </span>
         )}
       </div>
-      {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, zIndex: 999,
-          background: 'var(--panel)', border: '1px solid var(--border)',
-          borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,.18)',
-          minWidth: '160px', maxHeight: '240px', overflowY: 'auto',
-        }}>
+      {open && menuPos && createPortal(
+        <div ref={menuRef}
+          style={{
+            position: 'fixed', left: menuPos.left,
+            top: menuPos.openUp ? undefined : menuPos.top,
+            bottom: menuPos.openUp ? (window.innerHeight - menuPos.top) : undefined,
+            width: menuPos.width, zIndex: PICKER_Z,
+            background: 'var(--panel, #fff)', border: '1px solid var(--border, #D0D4E4)',
+            borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,.18)',
+            maxHeight: menuPos.maxHeight, overflowY: 'auto',
+          }}>
           {options.map(o => {
             const val = typeof o === 'string' ? o : o.value
             const lbl = typeof o === 'string' ? o : o.label
@@ -347,19 +397,21 @@ function InlinePicker({ value, options, onSave, color, renderValue }) {
                 style={{
                   padding: '7px 12px', cursor: 'pointer', fontSize: '12px',
                   fontWeight: val === value ? 700 : 400,
-                  color: val === value ? hex : 'var(--text)',
+                  color: val === value ? hex : 'var(--text, #323338)',
                   background: val === value ? hex + '11' : 'transparent',
                   display: 'flex', alignItems: 'center', gap: '8px',
+                  lineHeight: 1.3, wordBreak: 'break-word',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--hov)'}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--hov, #F0F3FF)'}
                 onMouseLeave={e => e.currentTarget.style.background = val === value ? hex + '11' : 'transparent'}
               >
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: hex, flexShrink: 0 }} />
-                {lbl}
+                <span style={{ flex: 1, minWidth: 0 }}>{lbl}</span>
               </div>
             )
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
