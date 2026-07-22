@@ -27,6 +27,7 @@ export const DEFAULT_PERMISSIONS = {
   'deals.view_all':         { admin:true,  secretary:true,  agent:true  },
   'deals.create':           { admin:true,  secretary:true,  agent:true  },
   'deals.edit':             { admin:true,  secretary:true,  agent:true  },
+  'deals.edit_widgets':     { admin:true,  secretary:false, agent:false },
   'deals.delete':           { admin:true,  secretary:false, agent:false },
   'deals.export':           { admin:true,  secretary:true,  agent:false },
   'deals.import':           { admin:true,  secretary:true,  agent:false },
@@ -80,7 +81,7 @@ export const DEFAULT_PERMISSIONS = {
 // ── PERMISSION GROUP LABELS ───────────────────────────────────────
 export const PERMISSION_GROUPS = [
   { id:'contacts',    label:'Contacts',         icon:'👤', keys:['contacts.view','contacts.view_all','contacts.create','contacts.edit','contacts.delete','contacts.export','contacts.import','contacts.reassign'] },
-  { id:'deals',       label:'Deals & Production',icon:'🏠', keys:['deals.view','deals.view_all','deals.create','deals.edit','deals.delete','deals.export','deals.import','deals.view_gci','deals.view_team_gci'] },
+  { id:'deals',       label:'Deals & Production',icon:'🏠', keys:['deals.view','deals.view_all','deals.create','deals.edit','deals.edit_widgets','deals.delete','deals.export','deals.import','deals.view_gci','deals.view_team_gci'] },
   { id:'listings',    label:'Listings',          icon:'🏡', keys:['listings.view','listings.view_all','listings.create','listings.edit','listings.delete'] },
   { id:'tasks',       label:'Tasks',             icon:'✅', keys:['tasks.view','tasks.view_all','tasks.create','tasks.edit_own','tasks.edit_any','tasks.delete'] },
   { id:'calls',       label:'Phone & Calls',     icon:'📞', keys:['calls.view','calls.view_all','calls.make','calls.recordings','calls.own_recordings','calls.flow_edit'] },
@@ -103,6 +104,7 @@ export const PERMISSION_LABELS = {
   'deals.view_all':         'View all agents\' deals',
   'deals.create':           'Create new deals',
   'deals.edit':             'Edit deals',
+  'deals.edit_widgets':     'Edit Production Board widgets',
   'deals.delete':           'Delete deals',
   'deals.export':           'Export deal data',
   'deals.import':           'Import deals from CSV/Excel',

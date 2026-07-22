@@ -321,12 +321,33 @@ begin
   for w in select * from public.production_widgets where visible = true order by position loop
     begin
       -- (6) reconstruct the accepted editable definition for THIS row and revalidate it
-      perform public._pw_validate(jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
-        'id', w.id, 'position', w.position, 'title', w.title, 'subtitle', w.subtitle,
-        'metric', w.metric, 'field', w.field, 'filters', w.filters, 'date_mode', w.date_mode,
-        'date_field', w.date_field, 'custom_from', w.custom_from, 'custom_to', w.custom_to,
-        'format', w.format, 'color', w.color, 'goal_type', w.goal_type, 'goal_value', w.goal_value,
-        'goal_year', w.goal_year, 'visible', w.visible, 'scope', w.scope)), false));
+      perform public._pw_validate(
+        jsonb_build_array(
+          jsonb_strip_nulls(
+            jsonb_build_object(
+              'id', w.id,
+              'position', w.position,
+              'title', w.title,
+              'subtitle', w.subtitle,
+              'metric', w.metric,
+              'field', w.field,
+              'filters', w.filters,
+              'date_mode', w.date_mode,
+              'date_field', w.date_field,
+              'custom_from', w.custom_from,
+              'custom_to', w.custom_to,
+              'format', w.format,
+              'color', w.color,
+              'goal_type', w.goal_type,
+              'goal_value', w.goal_value,
+              'goal_year', w.goal_year,
+              'visible', w.visible,
+              'scope', w.scope
+            )
+          )
+        ),
+        false
+      );
       calc := public._pw_compute(w, board_from, board_to);
       item := jsonb_build_object(
         'id', w.id, 'title', w.title, 'subtitle', w.subtitle, 'color', w.color,

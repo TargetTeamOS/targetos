@@ -32,6 +32,7 @@ import { RecordActivity } from '../pages/ActivityLog'
 import { ClickToCall } from '../components/ClickToCall'
 import ContactPicker from '../components/ContactPicker'
 import { FilterBar } from '../components/FilterBar'
+import { ProductionWidgetEditor } from '../components/ProductionWidgetEditor'
 import { ImportExport } from '../components/ImportExport'
 import { loadFieldDefs, saveFieldDefs, getFieldsForEntity, labelToKey, FIELD_TYPES, invalidateFieldCache } from '../lib/customFields'
 import { CustomFieldRenderer } from '../components/CustomFieldRenderer'
@@ -59,6 +60,20 @@ const STAGE_ACCENT = {
 const stageAccent = (label='') => {
   for (const k in STAGE_ACCENT) if (label.includes(k)) return STAGE_ACCENT[k]
   return BOARD.blue
+}
+
+// Widget value formatter — honors the stored display_format.
+function fmtWidget(v, format) {
+  const n = Number(v) || 0
+  if (format === 'whole') return n.toLocaleString('en-US', { maximumFractionDigits: 0 })
+  if (format === 'percent') return n.toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%'
+  if (format === 'compact_currency') {
+    if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M'
+    if (Math.abs(n) >= 1e3) return '$' + (n / 1e3).toFixed(1) + 'K'
+    return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 })
+  }
+  // currency / full_currency
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
 // Fixed leading columns (checkbox + sticky Item). Item narrowed from 260→190
@@ -1525,6 +1540,11 @@ export function Production() {
   const [showColPicker, setShowColPicker] = useState(false)
   const [customGroups,  setCustomGroups]  = useState(null)
   const [trueTotals,    setTrueTotals]    = useState(null) // { total_count, total_gci, closed_gci, pipeline_gci } from production_totals() RPC — null until loaded
+  // Shared Production Board widgets — values computed server-side by
+  // app_production_widget_values. Never derived from deals[] in JS.
+  const [widgets,       setWidgets]       = useState([])
+  const [widgetState,   setWidgetState]   = useState('loading') // loading | ok | error
+  const [widgetEditorOpen, setWidgetEditorOpen] = useState(false)
   const [customFieldDefs, setCustomFieldDefs] = useState([])
   const [colOrder,        setColOrder]        = useState(null) // array of column keys, custom order — null = default
   const [showAddCol,      setShowAddCol]      = useState(false)
@@ -2106,22 +2126,33 @@ export function Production() {
   // contract is still part of this year's active business), while
   // Closed/Deal Fell Through only count if they resolved this year.
   const currentYear = new Date().getFullYear().toString()
-  const ACTIVE_STAGES = ['Negotiations', 'Offer Accapted', 'Under Shtar', 'Under Contract']
-  const thisYearScope = useMemo(() => deals.filter(d => {
-    if (ACTIVE_STAGES.includes(d.stage)) return true
-    if (d.stage === 'Closed' || d.stage === 'Deal Fell Through') {
-      const year = d.close_date?.slice(0,4) || d.ao_date?.slice(0,4) || d.created_at?.slice(0,4)
-      return year === currentYear
-    }
-    return false
-  }), [deals, currentYear])
-
-  const totalGCIAll   = thisYearScope.reduce((s, d) => s + parseNum(d.gci), 0)
-  const closedArr     = thisYearScope.filter(d => d.stage === 'Closed')
-  const closedGCI     = closedArr.reduce((s, d) => s + parseNum(d.gci), 0)
-  const activeArr     = thisYearScope.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
-  const pipelineGCI   = activeArr.reduce((s, d) => s + parseNum(d.gci), 0)
+  // NOTE: all widget financial totals (GCI/expected/collected/production/pipeline)
+  // are computed SERVER-SIDE by app_production_widget_values — never from deals[].
+  // The client-side GCI/pipeline reductions that used to live here were removed.
   const isTruncated   = !!(trueTotals && deals.length < trueTotals.total_count)
+
+  // Resolved board date range for the widget RPC: the selected FilterBar year,
+  // else the current year. Half-open [from, to).
+  const boardFrom = useMemo(() => ((yearF ? yearF : currentYear) + '-01-01'), [yearF, currentYear])
+  const boardTo   = useMemo(() => {
+    const y = parseInt(yearF || currentYear, 10)
+    return (y + 1) + '-01-01'
+  }, [yearF, currentYear])
+
+  async function loadWidgets() {
+    setWidgetState('loading')
+    try {
+      const { data, error } = await supabase.rpc('app_production_widget_values', { board_from: boardFrom, board_to: boardTo })
+      if (error) throw error
+      const arr = Array.isArray(data) ? [...data].sort((a, b) => (a.position ?? 0) - (b.position ?? 0)) : []
+      setWidgets(arr)
+      setWidgetState('ok')
+    } catch (e) {
+      setWidgets([])
+      setWidgetState('error')
+    }
+  }
+  useEffect(() => { loadWidgets() }, [boardFrom, boardTo])
 
   return (
     <div style={{ fontFamily: ff }}>
@@ -2131,15 +2162,14 @@ export function Production() {
         <div>
           <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-.3px' }}>📊 Production Board</div>
           <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-            {filtered.length} deals · {fmtFull$(totalGCIAll)} GCI
+            {filtered.length} deals shown
           </div>
         </div>
 
         {isTruncated && (
           <div style={{ background: 'rgba(245,166,35,.08)', border: '1px solid rgba(245,166,35,.35)', borderRadius: 8, padding: '8px 14px', fontSize: 12, color: '#8a5a00', maxWidth: 480 }}>
             <strong>⚠ Board is showing {deals.length.toLocaleString()} of {trueTotals.total_count.toLocaleString()} deals.</strong>{' '}
-            True totals (all deals): {fmtFull$(trueTotals.total_gci)} GCI · {fmtFull$(trueTotals.closed_gci)} closed · {fmtFull$(trueTotals.pipeline_gci)} pipeline.
-            Use filters to narrow the board view — the numbers above the board reflect only what's currently loaded.
+            Use filters to narrow the board view — the row list reflects only what's currently loaded. The widgets above use accurate server-side totals.
           </div>
         )}
 
@@ -2245,20 +2275,61 @@ export function Production() {
         </div>
       </div>
 
-      {/* ── STATS ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '10px' }}>
-        {[
-          { label: 'Total Deals',    value: thisYearScope.length, color: BOARD.blue },
-          { label: 'Active',         value: activeArr.length,     color: BOARD.green },
-          { label: 'Closed GCI',     value: fmtFull$(closedGCI),  color: BOARD.darkGreen },
-          { label: 'Pipeline GCI',   value: fmtFull$(pipelineGCI), color: BOARD.orange },
-        ].map(s => (
-          <div key={s.label} style={{ background: '#fff', borderRadius: '8px', border: '1px solid ' + BOARD.border, padding: '12px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 64, position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: s.color }} />
-            <div style={{ fontSize: '22px', fontWeight: 800, color: BOARD.text, lineHeight: 1.1, letterSpacing: '-.3px' }}>{s.value}</div>
-            <div style={{ fontSize: '11px', color: BOARD.sub, marginTop: '3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>{s.label}</div>
+      {/* ── SHARED WIDGETS (server-computed; same for everyone) ── */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, minHeight: 24 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: BOARD.sub, textTransform: 'uppercase', letterSpacing: '.05em' }}>Team Overview</div>
+          {can('deals.edit_widgets') && (
+            <button onClick={() => setWidgetEditorOpen(true)}
+              style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid ' + BOARD.border, background: '#fff', color: BOARD.blue, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff, display: 'flex', alignItems: 'center', gap: 5 }}
+              title="Edit shared Production Board widgets">⚙ Edit Widgets</button>
+          )}
+        </div>
+
+        {widgetState === 'error' ? (
+          <div style={{ background: '#fff', border: '1px solid ' + BOARD.border, borderRadius: 8, padding: '16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 13, color: BOARD.sub }}>⚠ Couldn't load widgets.</span>
+            <button onClick={loadWidgets}
+              style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid ' + BOARD.border, background: BOARD.blue, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>↻ Retry</button>
           </div>
-        ))}
+        ) : widgetState === 'loading' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+            {[0,1,2,3].map(i => (
+              <div key={i} style={{ background: '#fff', borderRadius: 8, border: '1px solid ' + BOARD.border, padding: '12px 16px', minHeight: 64, opacity: .5 }}>
+                <div style={{ height: 22, width: '55%', background: BOARD.page, borderRadius: 4 }} />
+                <div style={{ height: 10, width: '40%', background: BOARD.page, borderRadius: 4, marginTop: 8 }} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+            {widgets.map(w => (
+              <div key={w.id} style={{ background: '#fff', borderRadius: 8, border: '1px solid ' + BOARD.border, padding: '12px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 64, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: w.color || BOARD.blue }} />
+                {w.error ? (
+                  <div style={{ fontSize: 12, color: BOARD.sub }}>⚠ Unavailable</div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '22px', fontWeight: 800, color: BOARD.text, lineHeight: 1.1, letterSpacing: '-.3px' }}>
+                      {fmtWidget(w.value, w.display_format)}
+                      {w.metric === 'progress' && w.goal != null && (
+                        <span style={{ fontSize: 12, fontWeight: 600, color: BOARD.sub }}> / {fmtWidget(w.goal, w.display_format)}</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '11px', color: BOARD.sub, marginTop: '3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                      {w.title}{w.subtitle ? ' · ' + w.subtitle : ''}
+                    </div>
+                    {w.metric === 'progress' && w.progress_pct != null && (
+                      <div style={{ marginTop: 6, height: 4, background: BOARD.page, borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: Math.min(100, w.progress_pct) + '%', background: w.color || BOARD.blue }} />
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
 
@@ -2502,11 +2573,19 @@ export function Production() {
           onDelete={deleteDeal}
         />
       )}
+
+      {/* ── WIDGET EDITOR (admin only) ── */}
+      {widgetEditorOpen && can('deals.edit_widgets') && (
+        <ProductionWidgetEditor
+          boardFrom={boardFrom}
+          boardTo={boardTo}
+          onClose={() => setWidgetEditorOpen(false)}
+          onSaved={() => { setWidgetEditorOpen(false); loadWidgets() }}
+        />
+      )}
     </div>
   )
 }
-
-// ── ADD COLUMN MODAL ──────────────────────────────────────────────
 function AddColumnModal({ onClose, onCreate }) {
   const [label,   setLabel]   = useState('')
   const [type,    setType]    = useState('text')
