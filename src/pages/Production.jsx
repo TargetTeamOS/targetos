@@ -681,7 +681,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
       onDragEnter={e => { e.preventDefault(); onDragEnterGroup?.() }}
       onDragLeave={onDragLeaveGroup}
       onDrop={e => { e.preventDefault(); onDropDeal?.() }}
-      style={{ marginBottom: 0, outline: isDragOver ? '2px solid #0073ea' : 'none', outlineOffset: -2, transition: 'outline .1s' }}>
+      style={{ marginBottom: 10, outline: isDragOver ? '2px solid #0073ea' : 'none', outlineOffset: -2, transition: 'outline .1s' }}>
       {/* ── Group header row (sticky below the column header) ── */}
       <div style={{ display: 'flex', alignItems: 'center', height: BOARD.HEAD_H, background: headerBg + '12', borderTop: '1px solid ' + BOARD.cellBorder, borderBottom: '1px solid ' + BOARD.cellBorder, borderLeft: '3px solid ' + headerBg, userSelect: 'none', position: 'sticky', top: BOARD.HEAD_H, zIndex: 5 }}>
         {/* Checkbox */}
@@ -721,9 +721,9 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
         </span>
 
         {/* Totals */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 20, alignItems: 'center', paddingRight: 16, fontSize: 12, color: '#676879' }}>
-          {showGci && <span>GCI: <strong style={{ color: '#037f4c' }}>{fmtFull$(totalGCI)}</strong></span>}
-          <span>Vol: <strong style={{ color: '#323338' }}>{fmtFull$(totalProd)}</strong></span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center', paddingRight: 16, fontSize: 12, color: BOARD.sub }}>
+          {showGci && <span style={{ background: '#fff', border: '1px solid ' + BOARD.border, borderRadius: 6, padding: '3px 9px' }}>GCI <strong style={{ color: BOARD.darkGreen }}>{fmtFull$(totalGCI)}</strong></span>}
+          <span style={{ background: '#fff', border: '1px solid ' + BOARD.border, borderRadius: 6, padding: '3px 9px' }}>Vol <strong style={{ color: BOARD.text }}>{fmtFull$(totalProd)}</strong></span>
         </div>
       </div>
 
@@ -2126,8 +2126,8 @@ export function Production() {
   return (
     <div style={{ fontFamily: ff }}>
 
-      {/* ── HEADER ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
+      {/* ── HEADER / TOOLBAR (sticky) ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 20, background: '#fff', padding: '10px 12px', margin: '0 0 10px', borderBottom: '1px solid ' + BOARD.border, borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
         <div>
           <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-.3px' }}>📊 Production Board</div>
           <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
@@ -2246,16 +2246,17 @@ export function Production() {
       </div>
 
       {/* ── STATS ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '10px' }}>
         {[
-          { label: 'Total Deals',    value: thisYearScope.length, color: '#3B82F6', prefix: '' },
-          { label: 'Active',         value: activeArr.length,     color: '#037f4c', prefix: '' },
-          { label: 'Closed GCI',     value: fmtFull$(closedGCI),      color: '#10B981', prefix: '' },
-          { label: 'Pipeline GCI',   value: fmtFull$(pipelineGCI),    color: '#F5A623', prefix: '' },
+          { label: 'Total Deals',    value: thisYearScope.length, color: BOARD.blue },
+          { label: 'Active',         value: activeArr.length,     color: BOARD.green },
+          { label: 'Closed GCI',     value: fmtFull$(closedGCI),  color: BOARD.darkGreen },
+          { label: 'Pipeline GCI',   value: fmtFull$(pipelineGCI), color: BOARD.orange },
         ].map(s => (
-          <div key={s.label} style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '9px 14px', borderLeft: "3px solid " + (s.color) }}>
-            <div style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)' }}>{s.value}</div>
-            <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px', fontWeight: 600 }}>{s.label}</div>
+          <div key={s.label} style={{ background: '#fff', borderRadius: '8px', border: '1px solid ' + BOARD.border, padding: '12px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 64, position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: s.color }} />
+            <div style={{ fontSize: '22px', fontWeight: 800, color: BOARD.text, lineHeight: 1.1, letterSpacing: '-.3px' }}>{s.value}</div>
+            <div style={{ fontSize: '11px', color: BOARD.sub, marginTop: '3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>{s.label}</div>
           </div>
         ))}
       </div>
