@@ -57,16 +57,36 @@ select 'anon execute all (expect f x8)' as check,
   has_function_privilege('anon','public._pw_validate(jsonb,boolean)','EXECUTE') as val,
   has_function_privilege('anon','public._pw_window(text,date,date,date,date)','EXECUTE') as win,
   has_function_privilege('anon','public._pw_compute(public.production_widgets,date,date)','EXECUTE') as comp;
--- PUBLIC: nothing executable (expect all f)
-select 'PUBLIC execute all (expect f x8)' as check,
-  has_function_privilege('public','public.app_production_widget_values(date,date)','EXECUTE') as v,
-  has_function_privilege('public','public.app_get_production_widgets()','EXECUTE') as g,
-  has_function_privilege('public','public.app_save_production_widgets(jsonb)','EXECUTE') as s,
-  has_function_privilege('public','public.app_reset_production_widgets()','EXECUTE') as r,
-  has_function_privilege('public','public.app_preview_production_widgets(jsonb,date,date)','EXECUTE') as p,
-  has_function_privilege('public','public._pw_validate(jsonb,boolean)','EXECUTE') as val,
-  has_function_privilege('public','public._pw_window(text,date,date,date,date)','EXECUTE') as win,
-  has_function_privilege('public','public._pw_compute(public.production_widgets,date,date)','EXECUTE') as comp;
+-- PUBLIC: pseudo-role — check via the function ACL, not has_function_privilege.
+with expected(signature) as (
+  values
+    ('public.app_production_widget_values(date,date)'),
+    ('public.app_get_production_widgets()'),
+    ('public.app_save_production_widgets(jsonb)'),
+    ('public.app_reset_production_widgets()'),
+    ('public.app_preview_production_widgets(jsonb,date,date)'),
+    ('public._pw_validate(jsonb,boolean)'),
+    ('public._pw_window(text,date,date,date,date)'),
+    ('public._pw_compute(public.production_widgets,date,date)')
+),
+resolved as (
+  select signature, to_regprocedure(signature) as fn
+  from expected
+),
+public_exec as (
+  select r.signature
+  from resolved r
+  join pg_proc p on p.oid = r.fn
+  cross join lateral aclexplode(
+    coalesce(p.proacl, acldefault('f', p.proowner))
+  ) a
+  where a.grantee = 0
+    and a.privilege_type = 'EXECUTE'
+)
+select
+  'PUBLIC execute grants (expect 0)' as check,
+  count(*) as public_execute_grants
+from public_exec;
 
 -- 6. exact function signatures present
 select 'API + helper signatures (expect t x8)' as check,
