@@ -38,7 +38,7 @@ begin
     'public.app_save_production_widgets(jsonb)',
     'public.app_reset_production_widgets()',
     'public.app_preview_production_widgets(jsonb,date,date)',
-    'public._pw_validate(jsonb)',
+    'public._pw_validate(jsonb,boolean)',
     'public._pw_window(text,date,date,date,date)',
     'public._pw_compute(public.production_widgets,date,date)'
   ] loop
@@ -99,18 +99,20 @@ create table public.production_widgets (
 
 -- ── RLS + policy (admin reads all incl hidden; others visible-only) ──
 alter table public.production_widgets enable row level security;
+-- (1) SELECT policy is visible-only and does NOT call app_is_admin().
+-- Admins retrieve hidden defs via the admin-only app_get_production_widgets() RPC.
 create policy production_widgets_read on public.production_widgets
   for select to authenticated
-  using (public.app_is_admin() or visible = true);
+  using (visible = true);
 
 -- ── Privileges: SELECT only for authenticated; NO write grants ──
 revoke all on public.production_widgets from public, anon, authenticated;
 grant select on public.production_widgets to authenticated;
 
 -- ══ INTERNAL VALIDATION HELPER — whitelist + value-type enforcement (1,7) ══
-create function public._pw_validate(defs jsonb)
+create function public._pw_validate(defs jsonb, collection_checks boolean default true)
 returns void language plpgsql immutable set search_path = '' as $$
-declare w jsonb; k text; fk text; n int; positions int[] := '{}';
+declare w jsonb; k text; fk text; n int; positions int[] := '{}'; ids text[] := '{}';
   ok_metric text[] := array['count','sum','avg','progress'];
   ok_field  text[] := array['production','gci','expected_gci','collected_gci','pipeline_gci'];
   ok_dmode  text[] := array['board_range','current_year','ytd','current_month','all_time','custom'];
@@ -143,6 +145,12 @@ begin
     positions := positions || (w->>'position')::int;
     if coalesce(w->>'scope','team') <> 'team' then raise exception 'v1 supports scope=team only'; end if;
     if (w ? 'visible') and jsonb_typeof(w->'visible') not in ('boolean','null') then raise exception 'visible must be boolean'; end if;
+    -- (3) id: if supplied and non-null, must be a valid UUID; collect for dupe check
+    if (w ? 'id') and jsonb_typeof(w->'id') = 'string' and coalesce(w->>'id','') <> '' then
+      if (w->>'id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+        raise exception 'malformed widget id: %', w->>'id'; end if;
+      ids := ids || (w->>'id');
+    end if;
     -- metric/field coherence
     if (w->>'metric') in ('sum','avg') then
       if not ((w->>'field') = any(ok_field)) then raise exception 'sum/avg require an approved field'; end if;
@@ -157,6 +165,7 @@ begin
       for fk in select jsonb_object_keys(w->'filters') loop
         if fk = any(ok_bool_f) then
           if jsonb_typeof(w->'filters'->fk) <> 'boolean' then raise exception 'filter % must be a JSON boolean', fk; end if;
+          if (w->'filters'->>fk) <> 'true' then raise exception 'filter % accepts only true; omit the key when unused', fk; end if;
         elsif fk = any(ok_text_f) then
           if jsonb_typeof(w->'filters'->fk) <> 'string' then raise exception 'filter % must be a string', fk; end if;
           if coalesce(w->'filters'->>fk,'') = '' or char_length(w->'filters'->>fk) > 60 then raise exception 'filter % must be a non-empty string <=60 chars', fk; end if;
@@ -167,15 +176,20 @@ begin
     end if;
     -- goal rules (8,9)
     if (w->>'metric') = 'progress' then
+      if coalesce(w->>'field','') <> '' then raise exception 'progress is deal-count based in v1; field must be null (no production/GCI/expected/collected/pipeline)'; end if;
       if coalesce(w->>'goal_type','') not in ('team_goal','custom') then raise exception 'progress requires goal_type team_goal|custom'; end if;
       if (w->>'goal_type') = 'custom' then
         if jsonb_typeof(w->'goal_value') is distinct from 'number' or (w->>'goal_value')::numeric <= 0 then
           raise exception 'custom goal_value must be a positive number'; end if;
       end if;
       if (w->>'goal_type') = 'team_goal' then
-        if (w->>'date_mode') = 'all_time' and (w->>'goal_year') is null then
-          raise exception 'team_goal cannot use all_time without an explicit goal_year'; end if;
+        if (w->>'date_mode') in ('all_time','board_range','custom') and (w->>'goal_year') is null then
+          raise exception 'team_goal with date_mode % requires an explicit goal_year', w->>'date_mode'; end if;
         if (w ? 'goal_year') and jsonb_typeof(w->'goal_year') not in ('number','null') then raise exception 'goal_year must be a number'; end if;
+        if (w->>'goal_year') is not null then
+          if (w->>'goal_year')::numeric <> trunc((w->>'goal_year')::numeric) then raise exception 'goal_year must be a whole integer'; end if;
+          if (w->>'goal_year')::int < 2000 or (w->>'goal_year')::int > 2100 then raise exception 'goal_year must be within 2000-2100'; end if;
+        end if;
       end if;
     end if;
     -- custom date coherence
@@ -184,8 +198,19 @@ begin
       if (w->>'custom_from')::date > (w->>'custom_to')::date then raise exception 'custom_from must be <= custom_to'; end if;
     end if;
   end loop;
-  if (select count(*) from unnest(positions)) <> (select count(distinct u) from unnest(positions) u) then
-    raise exception 'positions must be unique'; end if;
+  if collection_checks then
+    if (select count(*) from unnest(positions)) <> (select count(distinct u) from unnest(positions) u) then
+      raise exception 'positions must be unique'; end if;
+    -- positions must be contiguous 0..n-1
+    if n > 0 then
+      if (select min(u) from unnest(positions) u) <> 0
+         or (select max(u) from unnest(positions) u) <> n - 1 then
+        raise exception 'positions must be contiguous from 0 to widget_count-1'; end if;
+    end if;
+    -- (3) reject duplicate supplied ids within the config
+    if (select count(*) from unnest(ids)) <> (select count(distinct u) from unnest(ids) u) then
+      raise exception 'duplicate widget ids in configuration'; end if;
+  end if;
 end $$;
 
 -- ══ INTERNAL: resolve window. Returns NULL for all_time (means "no date bound") (2) ══
@@ -268,8 +293,13 @@ begin
     if w.goal_type = 'custom' then
       goal := w.goal_value;
     else
-      -- team_goal: one clear year (explicit goal_year, else resolved window lower bound) (9)
-      yr := coalesce(w.goal_year, extract(year from lower(win))::int);
+      -- team_goal: explicit goal_year wins; else derive from resolved window lower bound.
+      -- Validation guarantees goal_year is present for all_time/board_range/custom.
+      yr := w.goal_year;
+      if yr is null then
+        if win is null then return jsonb_build_object('error', true); end if;  -- all_time w/o year (shouldn't happen post-validation)
+        yr := extract(year from lower(win))::int;
+      end if;
       if yr is null then return jsonb_build_object('error', true); end if;
       select target into goal from public.team_goals where year = yr and goal_type = 'closed_deals';
     end if;
@@ -290,6 +320,13 @@ declare w public.production_widgets; out jsonb := '[]'::jsonb; item jsonb; calc 
 begin
   for w in select * from public.production_widgets where visible = true order by position loop
     begin
+      -- (6) reconstruct the accepted editable definition for THIS row and revalidate it
+      perform public._pw_validate(jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
+        'id', w.id, 'position', w.position, 'title', w.title, 'subtitle', w.subtitle,
+        'metric', w.metric, 'field', w.field, 'filters', w.filters, 'date_mode', w.date_mode,
+        'date_field', w.date_field, 'custom_from', w.custom_from, 'custom_to', w.custom_to,
+        'format', w.format, 'color', w.color, 'goal_type', w.goal_type, 'goal_value', w.goal_value,
+        'goal_year', w.goal_year, 'visible', w.visible, 'scope', w.scope)), false));
       calc := public._pw_compute(w, board_from, board_to);
       item := jsonb_build_object(
         'id', w.id, 'title', w.title, 'subtitle', w.subtitle, 'color', w.color,
@@ -328,9 +365,11 @@ begin
   delete from public.production_widgets;
   for w in select * from jsonb_array_elements(config) loop
     insert into public.production_widgets
-      (position,title,subtitle,metric,field,filters,date_mode,date_field,custom_from,custom_to,
+      (id,position,title,subtitle,metric,field,filters,date_mode,date_field,custom_from,custom_to,
        format,color,goal_type,goal_value,goal_year,visible,scope,updated_at)
     values (
+      -- (3) preserve a supplied valid UUID; generate only when none provided
+      coalesce(nullif(w->>'id','')::uuid, gen_random_uuid()),
       (w->>'position')::int, w->>'title', nullif(w->>'subtitle',''), w->>'metric',
       nullif(w->>'field',''), coalesce(w->'filters','{}'::jsonb), w->>'date_mode',
       coalesce(nullif(w->>'date_field',''),'close_date'),
@@ -400,7 +439,7 @@ begin
     'public.app_save_production_widgets(jsonb)',
     'public.app_reset_production_widgets()',
     'public.app_preview_production_widgets(jsonb,date,date)',
-    'public._pw_validate(jsonb)',
+    'public._pw_validate(jsonb,boolean)',
     'public._pw_window(text,date,date,date,date)',
     'public._pw_compute(public.production_widgets,date,date)'
   ] loop

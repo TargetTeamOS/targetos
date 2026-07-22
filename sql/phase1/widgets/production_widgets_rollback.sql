@@ -16,19 +16,26 @@ drop function if exists public.app_save_production_widgets(jsonb);
 drop function if exists public.app_get_production_widgets();
 drop function if exists public.app_production_widget_values(date,date);
 drop function if exists public._pw_window(text,date,date,date,date);
-drop function if exists public._pw_validate(jsonb);
+drop function if exists public._pw_validate(jsonb,boolean);
 
 -- _pw_compute takes the composite type public.production_widgets as an argument.
--- Drop it by OID via catalog lookup so we never name the type when it is gone (6).
+-- Drop ONLY the exact migration-owned signature, matched by its argument type,
+-- via catalog lookup — so (a) we never name the composite type in DDL text when
+-- it is already gone, and (b) we never touch an unrelated function that merely
+-- shares the name _pw_compute. Second run: the lookup returns no row → no-op. (2,6)
 do $$
 declare pr record;
 begin
   for pr in
     select p.oid::regprocedure as sig
-    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = '_pw_compute'
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = '_pw_compute'
+      and pg_get_function_identity_arguments(p.oid) = 'w public.production_widgets, board_from date, board_to date'
   loop
     execute 'drop function ' || pr.sig::text;
+    raise notice 'Dropped %', pr.sig;
   end loop;
 end $$;
 

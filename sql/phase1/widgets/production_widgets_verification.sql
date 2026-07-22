@@ -44,7 +44,7 @@ select 'authenticated API execute (expect t,t,t,t,t)' as check,
   has_function_privilege('authenticated','public.app_reset_production_widgets()','EXECUTE') as r,
   has_function_privilege('authenticated','public.app_preview_production_widgets(jsonb,date,date)','EXECUTE') as p;
 select 'authenticated internal execute (expect f,f,f)' as check,
-  has_function_privilege('authenticated','public._pw_validate(jsonb)','EXECUTE') as val,
+  has_function_privilege('authenticated','public._pw_validate(jsonb,boolean)','EXECUTE') as val,
   has_function_privilege('authenticated','public._pw_window(text,date,date,date,date)','EXECUTE') as win,
   has_function_privilege('authenticated','public._pw_compute(public.production_widgets,date,date)','EXECUTE') as comp;
 -- anon: nothing executable (expect all f)
@@ -54,7 +54,7 @@ select 'anon execute all (expect f x8)' as check,
   has_function_privilege('anon','public.app_save_production_widgets(jsonb)','EXECUTE') as s,
   has_function_privilege('anon','public.app_reset_production_widgets()','EXECUTE') as r,
   has_function_privilege('anon','public.app_preview_production_widgets(jsonb,date,date)','EXECUTE') as p,
-  has_function_privilege('anon','public._pw_validate(jsonb)','EXECUTE') as val,
+  has_function_privilege('anon','public._pw_validate(jsonb,boolean)','EXECUTE') as val,
   has_function_privilege('anon','public._pw_window(text,date,date,date,date)','EXECUTE') as win,
   has_function_privilege('anon','public._pw_compute(public.production_widgets,date,date)','EXECUTE') as comp;
 -- PUBLIC: nothing executable (expect all f)
@@ -64,7 +64,7 @@ select 'PUBLIC execute all (expect f x8)' as check,
   has_function_privilege('public','public.app_save_production_widgets(jsonb)','EXECUTE') as s,
   has_function_privilege('public','public.app_reset_production_widgets()','EXECUTE') as r,
   has_function_privilege('public','public.app_preview_production_widgets(jsonb,date,date)','EXECUTE') as p,
-  has_function_privilege('public','public._pw_validate(jsonb)','EXECUTE') as val,
+  has_function_privilege('public','public._pw_validate(jsonb,boolean)','EXECUTE') as val,
   has_function_privilege('public','public._pw_window(text,date,date,date,date)','EXECUTE') as win,
   has_function_privilege('public','public._pw_compute(public.production_widgets,date,date)','EXECUTE') as comp;
 
@@ -75,7 +75,7 @@ select 'API + helper signatures (expect t x8)' as check,
   to_regprocedure('public.app_save_production_widgets(jsonb)') is not null as s,
   to_regprocedure('public.app_reset_production_widgets()') is not null as r,
   to_regprocedure('public.app_preview_production_widgets(jsonb,date,date)') is not null as p,
-  to_regprocedure('public._pw_validate(jsonb)') is not null as val,
+  to_regprocedure('public._pw_validate(jsonb,boolean)') is not null as val,
   to_regprocedure('public._pw_window(text,date,date,date,date)') is not null as win,
   to_regprocedure('public._pw_compute(public.production_widgets,date,date)') is not null as comp;
 
