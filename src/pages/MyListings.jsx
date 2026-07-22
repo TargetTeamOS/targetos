@@ -134,7 +134,7 @@ function ListingRow({ listing, agent, showings, openHouses, onOpen }) {
 }
 
 export function MyListings() {
-  const { agent, isAdmin, can } = useAuth()
+  const { agent, isAdmin, canManage, can } = useAuth()
   usePageView('listings')
   const { toast } = useApp()
   const navigate  = useNavigate()
@@ -463,6 +463,7 @@ export function MyListings() {
         <ListingWorkspace
           listing={wl}
           agent={agentsMap[wl.agent_id]}
+          canViewAdminLog={canManage || can('listings.view_all')}
           showings={showings.filter(s => s.listing_id === wl.id)}
           openHouses={openHouses.filter(oh => oh.listing_id === wl.id)}
           onBack={() => setWorkspaceListing(null)}
