@@ -1080,14 +1080,6 @@ export function TransactionCoordinator() {
   }
 
   // Derived state
-  const filteredDeals = useMemo(() => deals.filter(d => {
-    if (phaseFilter !== 'all' && d.tc_phase !== phaseFilter) return false
-    if (agentFilter !== 'all' && d.agent_id !== agentFilter) return false
-    if (dashTile !== 'all' && !(buckets[dashTile] || []).includes(d.id)) return false
-    if (search && !matchSearch(d, search, ['addr','attorney_name','mortgage_broker','notes'])) return false
-    return true
-  }), [deals, phaseFilter, agentFilter, dashTile, buckets, search])
-
   const tasksByDeal = useMemo(() => {
     const m = {}
     tasks.forEach(t => { if (!m[t.deal_id]) m[t.deal_id]=[]; m[t.deal_id].push(t) })
@@ -1116,6 +1108,14 @@ export function TransactionCoordinator() {
     })
     return b
   }, [deals, signalsByDeal])
+
+  const filteredDeals = useMemo(() => deals.filter(d => {
+    if (phaseFilter !== 'all' && d.tc_phase !== phaseFilter) return false
+    if (agentFilter !== 'all' && d.agent_id !== agentFilter) return false
+    if (dashTile !== 'all' && !(buckets[dashTile] || []).includes(d.id)) return false
+    if (search && !matchSearch(d, search, ['addr','attorney_name','mortgage_broker','notes'])) return false
+    return true
+  }), [deals, phaseFilter, agentFilter, dashTile, buckets, search])
 
   const stats = useMemo(() => ({
     total:   deals.length,
