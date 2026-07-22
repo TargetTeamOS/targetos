@@ -1188,22 +1188,26 @@ export function TransactionCoordinator() {
         }
       />
 
-      {/* Stats */}
+      {/* Stats — clickable KPI cards open the work-queue drawer */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:16 }}>
         {[
-          { label:'Total Deals',    val:stats.total,   color:'var(--brand)', icon:'📋' },
-          { label:'Overdue Tasks',  val:stats.overdue, color:'#DC2626',      icon:'⚠️' },
-          { label:'Pre-Listing',    val:stats.pre,     color:'#8B5CF6',      icon:'📋' },
-          { label:'Under Contract', val:stats.uc,      color:'#F97316',      icon:'📝' },
-          { label:'Closing ≤14d',   val:stats.closing, color:'#10B981',      icon:'🎉' },
+          { label:'Total Deals',    val:stats.total,   color:'var(--brand)', icon:'📋', tile:'all_deals' },
+          { label:'Overdue Tasks',  val:stats.overdue, color:'#DC2626',      icon:'⚠️', tile:'overdue' },
+          { label:'Pre-Listing',    val:stats.pre,     color:'#8B5CF6',      icon:'📋', tile:'pre_listing' },
+          { label:'Under Contract', val:stats.uc,      color:'#F97316',      icon:'📝', tile:'under_contract' },
+          { label:'Closing ≤14d',   val:stats.closing, color:'#10B981',      icon:'🎉', tile:'closing14' },
         ].map(s => (
-          <div key={s.label} style={{ background:'var(--panel)', borderRadius:10, border:'1px solid var(--border)',
-            padding:'12px 14px', borderLeft:'4px solid '+s.color }}>
+          <button key={s.label} onClick={()=>setDrawerTile(s.tile)}
+            onMouseEnter={e=>{ e.currentTarget.style.boxShadow='0 4px 14px rgba(0,0,0,.1)'; e.currentTarget.style.transform='translateY(-1px)' }}
+            onMouseLeave={e=>{ e.currentTarget.style.boxShadow='none'; e.currentTarget.style.transform='none' }}
+            style={{ background:'var(--panel)', borderRadius:10, border:'1px solid var(--border)',
+            padding:'12px 14px', borderLeft:'4px solid '+s.color, cursor:'pointer', textAlign:'left',
+            fontFamily:ff, transition:'box-shadow .15s, transform .15s' }}>
             <div style={{ fontSize:24, fontWeight:900, color:s.color }}>{s.val}</div>
             <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', marginTop:2 }}>
-              {s.label}
+              {s.label} <span style={{ opacity:.5 }}>›</span>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -1221,7 +1225,7 @@ export function TransactionCoordinator() {
           { id:'missing',   label:'Missing info',    n:buckets.missing.length,       c:'var(--muted)',  bg:'var(--dim)' },
           { id:'photo',     label:'Photography',     n:buckets.photo.length,         c:'var(--muted)',  bg:'var(--dim)' },
         ].map(t => (
-          <button key={t.id} onClick={()=> { console.log('[TC tile click]', t.id, 'count=', t.n); setDrawerTile(t.id) }}
+          <button key={t.id} onClick={()=> setDrawerTile(t.id)}
             style={{ display:'flex', alignItems:'baseline', gap:6, padding:'5px 11px', borderRadius:8,
               border:'1px solid transparent', background:t.bg, cursor:'pointer', fontFamily:ff,
               opacity: t.n===0 ? 0.55 : 1 }}>
@@ -1300,6 +1304,8 @@ export function TransactionCoordinator() {
           overdue:'🔴 Overdue', today:'📌 Due today', week:'📆 Due this week', attention:'⚠️ Needs attention',
           closing:'🏁 Closing ≤7 days', wait_agent:'👤 Waiting on agent', wait_attorney:'⚖️ Waiting on attorney',
           wait_mtg:'🏦 Waiting on mortgage/title', missing:'❗ Missing info', photo:'📸 Photography',
+          all_deals:'📋 All TC files', pre_listing:'📋 Pre-Listing files', under_contract:'📝 Under Contract files',
+          closing14:'🎉 Closing within 14 days',
         }
         const APPROX = {
           wait_agent:'approx: open tasks assigned to an agent (no real waiting-on field yet)',
@@ -1308,9 +1314,18 @@ export function TransactionCoordinator() {
           photo:'derived from stage — full photography tracking coming later',
         }
         let rows = []
-        const dealIds = buckets[drawerTile] || []
+        // KPI keys pull their own deal lists (not in buckets)
+        let dealIds
+        if (drawerTile === 'all_deals') dealIds = deals.map(d => d.id)
+        else if (drawerTile === 'pre_listing') dealIds = deals.filter(d => d.tc_phase === 'pre_listing').map(d => d.id)
+        else if (drawerTile === 'under_contract') dealIds = deals.filter(d => d.tc_phase === 'under_contract').map(d => d.id)
+        else if (drawerTile === 'closing14') {
+          const in14 = (()=>{ const d=new Date(); d.setDate(d.getDate()+14); return d.toISOString().slice(0,10) })()
+          dealIds = deals.filter(d => d.close_date && d.close_date >= t && d.close_date <= in14).map(d => d.id)
+        } else dealIds = buckets[drawerTile] || []
+
         if (['overdue','today','week','attention','wait_agent'].includes(drawerTile)) {
-          // task-level rows
+          // task-level rows (editable)
           dealIds.forEach(id => {
             const deal = dealById(id)
             openTasksFor(id).forEach(task => {
@@ -1324,16 +1339,17 @@ export function TransactionCoordinator() {
             })
           })
         } else {
-          // deal-level rows (closing / missing / waiting party / photography)
+          // deal-level rows (Total Deals / Pre-Listing / Under Contract / Closing / missing / waiting party / photography)
           rows = dealIds.map(id => {
             const deal = dealById(id)
             const s = signalsByDeal[id]
-            const actionLabel = drawerTile === 'closing' ? 'Closing prep'
-              : drawerTile === 'missing' ? ('Add ' + (s?.missing||[]).map(r=>({seller:'seller',buyer:'buyer',seller_attorney:'seller attorney',buyer_attorney:'buyer attorney',mortgage_broker:'mortgage',title:'title'}[r]||r)).join(', '))
+            const missLabel = (s?.missing || []).map(r=>({seller:'seller',buyer:'buyer',seller_attorney:'seller attorney',buyer_attorney:'buyer attorney',mortgage_broker:'mortgage',title:'title'}[r]||r)).join(', ')
+            const actionLabel = drawerTile === 'closing' || drawerTile === 'closing14' ? (missLabel ? 'Missing: '+missLabel : 'Closing prep')
+              : drawerTile === 'missing' ? ('Add ' + missLabel)
               : drawerTile === 'wait_attorney' ? 'Follow up with attorney'
               : drawerTile === 'wait_mtg' ? 'Follow up with mortgage/title'
               : drawerTile === 'photo' ? 'Schedule / confirm photography'
-              : '—'
+              : (missLabel ? 'Missing: '+missLabel : (s && (s.overdue>0||s.dueToday>0) ? s.overdue+' overdue · '+s.dueToday+' today' : 'On track'))
             return { key:id, task:null, deal, actionLabel }
           })
         }
