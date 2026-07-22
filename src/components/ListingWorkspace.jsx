@@ -115,45 +115,63 @@ export default function ListingWorkspace({
   const saveBtn = k => ({ padding:'7px 12px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity: saving===k?0.6:1 })
   const sectionTitle = { fontSize:11, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:8 }
 
-  return (
-    <div style={{ fontFamily:ff }}>
-      {/* Back */}
-      <button onClick={onBack} style={{ display:'inline-flex', alignItems:'center', gap:6, marginBottom:12, padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel)', color:'var(--text)', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>← Back to My Listings</button>
+  const statTile = (label, value, sub, color) => (
+    <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px', minWidth:0 }}>
+      <div style={{ fontSize:22, fontWeight:900, color: color||'var(--text)', lineHeight:1 }}>{value}</div>
+      <div style={{ fontSize:10.5, color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', marginTop:5 }}>{label}</div>
+      {sub && <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{sub}</div>}
+    </div>
+  )
 
-      {/* Header */}
-      <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderLeft:'4px solid '+sc, borderRadius:12, padding:'16px 20px', marginBottom:14 }}>
-        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-            {agent && <Avatar agent={agent} size={44} />}
-            <div>
-              <div style={{ fontSize:20, fontWeight:900, color:'var(--text)' }}>{listing.addr || '—'}</div>
-              <div style={{ fontSize:13, color:'var(--muted)', marginTop:2 }}>
+  return (
+    // Full-screen breakout: escape Layout's 1400px padded container
+    <div style={{ fontFamily:ff, position:'relative', left:'50%', right:'50%', marginLeft:'-50vw', marginRight:'-50vw', width:'100vw', minHeight:'100vh', marginTop:-28, background:'var(--bg)' }}>
+
+      {/* Distinct header band */}
+      <div style={{ background:'linear-gradient(180deg, var(--panel), var(--bg))', borderBottom:'1px solid var(--border)', borderTop:'4px solid '+sc }}>
+        <div style={{ maxWidth:1280, margin:'0 auto', padding:'18px 32px' }}>
+          <button onClick={onBack} style={{ display:'inline-flex', alignItems:'center', gap:6, marginBottom:16, padding:'7px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--panel)', color:'var(--text)', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>← Back to My Listings</button>
+
+          <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
+            {agent && <Avatar agent={agent} size={56} />}
+            <div style={{ flex:1, minWidth:200 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                <span style={{ fontSize:28, fontWeight:900, color:'var(--text)', letterSpacing:'-.01em' }}>{listing.addr || '—'}</span>
+                <span style={{ fontSize:12, fontWeight:800, color:'#fff', background:sc, padding:'3px 12px', borderRadius:99 }}>{status}</span>
+              </div>
+              <div style={{ fontSize:14, color:'var(--muted)', marginTop:4 }}>
                 {listing.city ? listing.city + ' · ' : ''}{agent?.name || ''}
               </div>
             </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={()=>onLogShowing?.(listing)} style={{ padding:'9px 16px', borderRadius:9, border:'1px solid var(--brand)', background:'rgba(204,34,0,.06)', color:'var(--brand)', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>👀 Add showing</button>
+              <button onClick={()=>onScheduleOH?.(listing)} style={{ padding:'9px 16px', borderRadius:9, border:'1px solid #3B82F6', background:'rgba(59,130,246,.06)', color:'#3B82F6', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>📅 Open house</button>
+            </div>
           </div>
-          <div style={{ display:'flex', gap:20, flexWrap:'wrap' }}>
-            <div><div style={cLabel}>Status</div><div style={{ fontSize:15, fontWeight:800, color:sc }}>{status}</div></div>
-            <div><div style={cLabel}>Price</div><div style={{ fontSize:15, fontWeight:800 }}>{listing.list_price?fmt$(listing.list_price):'—'}</div>{listing.original_price&&listing.original_price!==listing.list_price&&<div style={{ fontSize:11, color:'var(--muted)' }}>orig {fmt$(listing.original_price)}</div>}</div>
-            <div><div style={cLabel}>DOM</div><div style={{ fontSize:15, fontWeight:800 }}>{d!=null?d+'d':'—'}</div></div>
-            <div><div style={cLabel}>Last seller update</div><div style={{ fontSize:15, fontWeight:800, color:listing.seller_updated_at?'var(--text)':'#DC2626' }}>{listing.seller_updated_at?fmtDate(listing.seller_updated_at):'never'}</div></div>
+
+          {/* Summary stat cards */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginTop:18 }}>
+            {statTile('Price', listing.list_price?fmt$(listing.list_price):'—', listing.original_price&&listing.original_price!==listing.list_price?'orig '+fmt$(listing.original_price):null)}
+            {statTile('Days on market', d!=null?d:'—', d!=null?'days':null)}
+            {statTile('Showings', showings.length, avgInterest?'avg '+avgInterest+'/5':null, '#8B5CF6')}
+            {statTile('Open houses', openHouses.length, null, '#3B82F6')}
+            {statTile('Price changes', ph.length, null)}
+            {statTile('Last seller update', listing.seller_updated_at?fmtDate(listing.seller_updated_at):'never', null, listing.seller_updated_at?'var(--text)':'#DC2626')}
           </div>
-        </div>
-        <div style={{ display:'flex', gap:8, marginTop:14, flexWrap:'wrap' }}>
-          <button onClick={()=>onLogShowing?.(listing)} style={{ ...inp, cursor:'pointer', color:'var(--brand)', fontWeight:700 }}>👀 Add showing</button>
-          <button onClick={()=>onScheduleOH?.(listing)} style={{ ...inp, cursor:'pointer', color:'var(--brand)', fontWeight:700 }}>📅 Schedule open house</button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display:'flex', gap:2, borderBottom:'1px solid var(--border)', marginBottom:16, overflowX:'auto' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={()=>setTab(t.id)}
-            style={{ padding:'9px 14px', border:'none', borderBottom: tab===t.id?'2px solid var(--brand)':'2px solid transparent',
-              background:'transparent', color: tab===t.id?'var(--brand)':'var(--muted)', fontSize:13, fontWeight: tab===t.id?800:600,
-              cursor:'pointer', fontFamily:ff, whiteSpace:'nowrap', marginBottom:-1 }}>{t.label}</button>
-        ))}
-      </div>
+      {/* Body */}
+      <div style={{ maxWidth:1280, margin:'0 auto', padding:'0 32px 40px' }}>
+        {/* Tabs */}
+        <div style={{ display:'flex', gap:2, borderBottom:'1px solid var(--border)', margin:'0 -4px 20px', overflowX:'auto', position:'sticky', top:0, background:'var(--bg)', zIndex:5, paddingTop:14 }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              style={{ padding:'11px 16px', border:'none', borderBottom: tab===t.id?'2px solid var(--brand)':'2px solid transparent',
+                background:'transparent', color: tab===t.id?'var(--brand)':'var(--muted)', fontSize:13.5, fontWeight: tab===t.id?800:600,
+                cursor:'pointer', fontFamily:ff, whiteSpace:'nowrap', marginBottom:-1 }}>{t.label}</button>
+          ))}
+        </div>
 
       {/* ── OVERVIEW (inline edit) ── */}
       {tab==='overview' && (
@@ -323,6 +341,7 @@ export default function ListingWorkspace({
             ))}
         </div>
       )}
+      </div>
     </div>
   )
 }

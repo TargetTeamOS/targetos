@@ -36,7 +36,7 @@ export const DEFAULT_PERMISSIONS = {
 
   // --- Listings ---
   'listings.view':          { admin:true,  secretary:true,  agent:true  },
-  'listings.view_all':      { admin:true,  secretary:true,  agent:true  },
+  'listings.view_all':      { admin:true,  secretary:true,  agent:false },
   'listings.create':        { admin:true,  secretary:true,  agent:true  },
   'listings.edit':          { admin:true,  secretary:true,  agent:true  },
   'listings.delete':        { admin:true,  secretary:false, agent:false },

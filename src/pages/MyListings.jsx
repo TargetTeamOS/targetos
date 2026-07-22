@@ -134,7 +134,7 @@ function ListingRow({ listing, agent, showings, openHouses, onOpen }) {
 }
 
 export function MyListings() {
-  const { agent, isAdmin } = useAuth()
+  const { agent, isAdmin, can } = useAuth()
   usePageView('listings')
   const { toast } = useApp()
   const navigate  = useNavigate()
@@ -171,7 +171,7 @@ export function MyListings() {
     setLoading(true)
     try {
       let q = supabase.from('listings').select('*').order('list_date', { ascending: false })
-      if (!isAdmin) q = q.eq('agent_id', agent?.id)
+      if (!can('listings.view_all')) q = q.eq('agent_id', agent?.id)
       q = q.range(0, 199) // 200 max per agent — more than enough
 
       const listRes = await q
