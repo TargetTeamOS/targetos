@@ -31,13 +31,21 @@ export function CustomFieldRenderer({ field, value, onChange, readOnly = false }
     case 'textarea':
       return <textarea value={value||''} onChange={e=>onChange(e.target.value)} placeholder={field.label} rows={3} style={{...S,resize:'vertical'}} />
 
-    case 'select':
+    case 'select': {
+      const opts = (field.options||[]).map(o => (o && typeof o === 'object')
+        ? { label: o.label ?? String(o.value), value: o.value ?? o.label, color: o.color || null }
+        : { label: String(o), value: String(o), color: null })
+      const sel = opts.find(o => String(o.value) === String(value))
       return (
-        <select value={value||''} onChange={e=>onChange(e.target.value)} style={S}>
-          <option value="">— Select —</option>
-          {(field.options||[]).map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          {sel?.color && <span style={{ width:12, height:12, borderRadius:'50%', background: sel.color, flexShrink:0 }} />}
+          <select value={value||''} onChange={e=>onChange(e.target.value)} style={S}>
+            <option value="">— Select —</option>
+            {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
       )
+    }
 
     case 'checkbox':
       return (

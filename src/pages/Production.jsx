@@ -33,6 +33,7 @@ import { ClickToCall } from '../components/ClickToCall'
 import ContactPicker from '../components/ContactPicker'
 import { FilterBar } from '../components/FilterBar'
 import { ProductionWidgetEditor } from '../components/ProductionWidgetEditor'
+import { loadSideColors, saveSideColors, SIDE_COLOR_DEFAULTS, ensureCommandFields } from '../lib/customFields'
 import { ImportExport } from '../components/ImportExport'
 import { loadFieldDefs, saveFieldDefs, getFieldsForEntity, labelToKey, FIELD_TYPES, invalidateFieldCache } from '../lib/customFields'
 import { CustomFieldRenderer } from '../components/CustomFieldRenderer'
@@ -78,9 +79,9 @@ function fmtWidget(v, format) {
 
 // Fixed leading columns (checkbox + sticky Item). Item narrowed from 260→190
 // so horizontal scrolling leaves more room for data on the right.
-const COL_CHECK = 44
-const COL_ITEM  = 190
-const COL_OPEN  = 36
+const COL_CHECK = 36
+const COL_ITEM  = 150
+const COL_OPEN  = 32
 
 // Shared <colgroup> — the ONE place widths are declared. Rendered identically
 // by the header table and every stage-group table so columns can never drift.
@@ -184,8 +185,24 @@ const STATUS_COLORS = {
   'Dual':              '#784bd1',  'Referral':       '#ff6b35',
 }
 
+// Live side-color map (defaults; overwritten from system_settings on board load).
+let SIDE_COLORS = {
+  'Listing': '#F59E0B', 'Seller': '#F59E0B', 'Buyer': '#8B5E3C',
+  'Dual Listing': '#F97316', 'Dual Buyer': '#A16207', 'Dual': '#7C3AED',
+  'Rental': '#0EA5E9', 'Flip': '#14B8A6', 'Referral': '#6B7280',
+}
+function setSideColors(map) { SIDE_COLORS = { ...SIDE_COLORS, ...(map || {}) } }
+
 function cellColor(col, val) {
   if (!val) return null
+  // Side column → dynamic shared side-color map.
+  if (col.key === 'side') return SIDE_COLORS[val] || STATUS_COLORS[val] || null
+  // Custom select with per-option colors (backward compatible with strings).
+  if (col.custom && col.type === 'select' && Array.isArray(col.options)) {
+    for (const o of col.options) {
+      if (o && typeof o === 'object' && String(o.value ?? o.label) === String(val)) return o.color || null
+    }
+  }
   if (col.type === 'stage' || col.type === 'command' || col.type === 'ctc' || col.type === 'select') {
     return STATUS_COLORS[val] || null
   }
@@ -526,7 +543,11 @@ function MondayCell({ col, deal, onQuickUpdate, agents, rowH = BOARD.ROW_H }) {
       stage:   DEAL_STAGES,
       command: COMMAND_STATUSES.filter(c => c.value),
       ctc:     CTC_STAGES,
-      select:  (col.options||[]).map(o => ({ value:o, label:o, hex: STATUS_COLORS[o] })),
+      select:  (col.options||[]).map(o => {
+        // Backward compatible: options may be plain strings OR {label,value,color}.
+        if (o && typeof o === 'object') return { value: o.value ?? o.label, label: o.label ?? String(o.value), hex: o.color || STATUS_COLORS[o.value ?? o.label] }
+        return { value: o, label: o, hex: STATUS_COLORS[o] }
+      }),
     }
     const opts = optionsMap[col.type] || []
     const found = opts.find(o => o.value === raw)
@@ -591,6 +612,33 @@ function MondayCell({ col, deal, onQuickUpdate, agents, rowH = BOARD.ROW_H }) {
           {display || <span style={{ color: '#c5c7d0' }}>—</span>}
           {days !== null && days >= 0 && days <= 14 && (
             <span style={{ marginLeft: 4, fontSize: 10, opacity: .75 }}>({days}d)</span>
+          )}
+        </div>
+      </td>
+    )
+  }
+
+  // URL cell — clickable external-link icon; never dumps a huge raw URL.
+  if (col.type === 'url') {
+    if (editing) return (
+      <td style={{ height: rowH, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle', overflow: 'hidden' }}>
+        <input ref={ref} value={val} onChange={e => setVal(e.target.value)} placeholder="https://…"
+          onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
+          style={{ width: '100%', height: rowH, padding: '0 10px', border: '2px solid ' + BOARD.blue, outline: 'none', fontSize: 13, fontFamily: ff, background: '#fff', color: BOARD.text, boxSizing: 'border-box' }} />
+      </td>
+    )
+    const href = raw ? (/^https?:\/\//i.test(raw) ? raw : 'https://' + raw) : null
+    return (
+      <td style={{ height: rowH, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle', overflow: 'hidden' }}>
+        <div style={{ ...base, cursor: href ? 'pointer' : 'text' }} onClick={e => { if (!href) { startEdit(e) } }}>
+          {href ? (
+            <a href={href} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+              title={raw}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: BOARD.blue, fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+              🔗 Open
+            </a>
+          ) : (
+            <span style={{ color: '#c5c7d0', fontSize: 14 }} title="Add link">＋🔗</span>
           )}
         </div>
       </td>
@@ -1545,6 +1593,27 @@ export function Production() {
   const [widgets,       setWidgets]       = useState([])
   const [widgetState,   setWidgetState]   = useState('loading') // loading | ok | error
   const [widgetEditorOpen, setWidgetEditorOpen] = useState(false)
+  // Synced horizontal scrollbar: refs to the board scroller + the proxy bar,
+  // and the board's current scrollWidth (for sizing the proxy track).
+  const boardScrollRef = React.useRef(null)
+  const hbarRef = React.useRef(null)
+  const [boardScrollW, setBoardScrollW] = useState(0)
+  const [boardClientW, setBoardClientW] = useState(0)
+  const syncingRef = React.useRef(false)
+  // Shared Side colors (cosmetic, from system_settings) + admin editor toggle.
+  const [sideColors, setSideColorsState] = useState(SIDE_COLOR_DEFAULTS)
+  const [sideEditorOpen, setSideEditorOpen] = useState(false)
+
+  // On mount: load shared Side colors and idempotently ensure the two Command
+  // custom fields exist. Both are best-effort; failures don't block the board.
+  useEffect(() => {
+    let alive = true
+    loadSideColors().then(m => { if (alive) { setSideColorsState(m); setSideColors(m) } }).catch(() => {})
+    ensureCommandFields()
+      .then(() => { if (alive) { invalidateFieldCache(); getFieldsForEntity('deals').then(setCustomFieldDefs).catch(() => {}) } })
+      .catch(e => console.warn('ensureCommandFields:', e?.message))
+    return () => { alive = false }
+  }, [])
   const [customFieldDefs, setCustomFieldDefs] = useState([])
   const [colOrder,        setColOrder]        = useState(null) // array of column keys, custom order — null = default
   const [showAddCol,      setShowAddCol]      = useState(false)
@@ -2154,6 +2223,35 @@ export function Production() {
   }
   useEffect(() => { loadWidgets() }, [boardFrom, boardTo])
 
+  // Measure the board's scroll width so the proxy bar's track matches.
+  // Re-measure on data, column, density, and window-size changes.
+  useEffect(() => {
+    const el = boardScrollRef.current
+    if (!el) return
+    const measure = () => { setBoardScrollW(el.scrollWidth); setBoardClientW(el.clientWidth) }
+    measure()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+    if (ro) ro.observe(el)
+    window.addEventListener('resize', measure)
+    return () => { if (ro) ro.disconnect(); window.removeEventListener('resize', measure) }
+  }, [deals, visibleCols, colWidths, rowH, viewMode, widgets.length])
+
+  // Two-way scroll sync between the board and the bottom proxy bar.
+  function onBoardScroll() {
+    if (syncingRef.current) { syncingRef.current = false; return }
+    if (hbarRef.current && boardScrollRef.current) {
+      syncingRef.current = true
+      hbarRef.current.scrollLeft = boardScrollRef.current.scrollLeft
+    }
+  }
+  function onHbarScroll() {
+    if (syncingRef.current) { syncingRef.current = false; return }
+    if (hbarRef.current && boardScrollRef.current) {
+      syncingRef.current = true
+      boardScrollRef.current.scrollLeft = hbarRef.current.scrollLeft
+    }
+  }
+
   return (
     <div style={{ fontFamily: ff }}>
 
@@ -2262,6 +2360,11 @@ export function Production() {
               <button onClick={() => setCollapseSignal(s => ({ n: s.n + 1, collapsed: false }))}
                 style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}
                 title="Expand all stage groups">⊞ Expand All</button>
+              {can('deals.edit_widgets') && (
+                <button onClick={() => setSideEditorOpen(true)}
+                  style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}
+                  title="Edit Side label colors (shared)">🎨 Side Colors</button>
+              )}
             </div>
           )}
           <ImportExport
@@ -2439,7 +2542,8 @@ export function Production() {
           action={<Btn onClick={openNew}>+ Add Deal</Btn>} />
       ) : viewMode === 'board' ? (
         /* BOARD VIEW — Monday.com style */
-        <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid ' + BOARD.border, borderRadius: 6 }}>
+        <>
+        <div ref={boardScrollRef} onScroll={onBoardScroll} style={{ overflowX: 'auto', background: '#fff', border: '1px solid ' + BOARD.border, borderRadius: 6 }}>
           {/* Sticky column header — SAME colgroup as every row table → exact alignment */}
           <table style={{ position: 'sticky', top: 0, zIndex: 10, borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', background: BOARD.page }}>
             <BoardColgroup visibleCols={visibleCols} />
@@ -2502,6 +2606,17 @@ export function Production() {
             <span>Add group</span>
           </div>
         </div>
+        {/* Always-visible synchronized horizontal move bar (Monday-style). */}
+        {boardScrollW > boardClientW + 2 && (
+          <div ref={hbarRef} onScroll={onHbarScroll}
+            style={{ position: 'sticky', bottom: 0, zIndex: 15, overflowX: 'auto', overflowY: 'hidden',
+                     background: BOARD.page, borderTop: '1px solid ' + BOARD.border, borderRadius: '0 0 6px 6px',
+                     height: 16, marginTop: -1 }}
+            title="Scroll the board left / right">
+            <div style={{ width: boardScrollW, height: 1 }} />
+          </div>
+        )}
+        </>
       ) : (
         /* TABLE VIEW — flat list */
         <div style={{ overflowX: 'auto', background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)' }}>
@@ -2583,9 +2698,65 @@ export function Production() {
           onSaved={() => { setWidgetEditorOpen(false); loadWidgets() }}
         />
       )}
+
+      {/* ── SIDE COLOR EDITOR (admin only) ── */}
+      {sideEditorOpen && can('deals.edit_widgets') && (
+        <SideColorEditor
+          initial={sideColors}
+          onClose={() => setSideEditorOpen(false)}
+          onSaved={(m) => { setSideColorsState(m); setSideColors(m); setSideEditorOpen(false) }}
+        />
+      )}
     </div>
   )
 }
+// ── SIDE COLOR EDITOR (admin) ─────────────────────────────────────
+function SideColorEditor({ initial, onClose, onSaved }) {
+  const [map, setMap] = React.useState({ ...SIDE_COLOR_DEFAULTS, ...(initial || {}) })
+  const [busy, setBusy] = React.useState(false)
+  const [err, setErr] = React.useState('')
+  const sides = DEAL_SIDES
+  async function doSave() {
+    setBusy(true); setErr('')
+    try { const saved = await saveSideColors(map); onSaved?.(saved) }
+    catch (e) { setErr(e.message || 'Save failed') } finally { setBusy(false) }
+  }
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.3)' }} />
+      <div style={{ position: 'relative', width: 'min(420px,100%)', maxHeight: '85vh', overflowY: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,.2)', fontFamily: ff }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid ' + BOARD.border, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: BOARD.text }}>Edit Side Colors</div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', fontSize: 20, color: BOARD.sub, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ padding: '14px 18px' }}>
+          {err && <div style={{ background: '#FEF2F2', border: '1px solid #E2445C55', color: '#B42318', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 12 }}>{err}</div>}
+          <div style={{ fontSize: 12, color: BOARD.sub, marginBottom: 12 }}>These colors are shared — everyone sees the same Side label colors.</div>
+          {sides.map(s => (
+            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 120 }}>
+                <span style={{ width: 20, height: 20, borderRadius: '50%', background: map[s] || '#c5c7d0', boxShadow: '0 0 0 1px ' + BOARD.border }} />
+                <span style={{ fontSize: 13, color: BOARD.text }}>{s}</span>
+              </span>
+              <input type="color" value={map[s] || '#cccccc'} onChange={e => setMap(m => ({ ...m, [s]: e.target.value }))}
+                style={{ width: 36, height: 28, border: '1px solid ' + BOARD.border, borderRadius: 6, background: '#fff', cursor: 'pointer' }} />
+              <input value={map[s] || ''} onChange={e => setMap(m => ({ ...m, [s]: e.target.value }))} placeholder="#RRGGBB"
+                style={{ width: 96, padding: '6px 8px', borderRadius: 6, border: '1px solid ' + BOARD.border, fontSize: 12, fontFamily: ff }} />
+              <button onClick={() => setMap(m => ({ ...m, [s]: SIDE_COLOR_DEFAULTS[s] || '#cccccc' }))}
+                title="Reset to default" style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid ' + BOARD.border, background: '#fff', color: BOARD.sub, fontSize: 11, cursor: 'pointer' }}>Reset</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '12px 18px', borderTop: '1px solid ' + BOARD.border, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} disabled={busy} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + BOARD.border, background: 'transparent', color: BOARD.sub, fontSize: 13, cursor: 'pointer', fontFamily: ff }}>Cancel</button>
+          <button onClick={doSave} disabled={busy} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: BOARD.blue, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>{busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AddColumnModal({ onClose, onCreate }) {
   const [label,   setLabel]   = useState('')
   const [type,    setType]    = useState('text')
