@@ -41,6 +41,27 @@ import { useAgents } from '../lib/hooks'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
+// ── Board design tokens (Monday-inspired palette; staff know this UI) ──
+const BOARD = {
+  blue:'#0073EA', green:'#00C875', purple:'#A25DDC', orange:'#FDAB3D',
+  pink:'#E2445C', teal:'#00D2D2', darkGreen:'#037f4c',
+  text:'#323338', sub:'#676879', page:'#F5F6F8', border:'#D0D4E4',
+  cellBorder:'#E6E9EF', hover:'#F0F3FF', selected:'#DCE9FC',
+  ROW_H: 46, HEAD_H: 44,
+}
+// Consistent stage accent colors, reused for group headers AND status pills.
+const STAGE_ACCENT = {
+  'Accepted Offers': BOARD.green, 'Offer Accepted': BOARD.green,
+  'Under Shtar': BOARD.pink, 'Under Contract': BOARD.blue,
+  'Closed': BOARD.darkGreen, 'Sold': BOARD.darkGreen,
+  'Deal Fell Through': BOARD.pink, 'Negotiations': BOARD.orange,
+}
+const stageAccent = (label='') => {
+  for (const k in STAGE_ACCENT) if (label.includes(k)) return STAGE_ACCENT[k]
+  return BOARD.blue
+}
+
+
 const EXPORT_COLUMNS = [
   { key: 'addr',                 label: 'Address',              example: '123 Main St, Monsey NY 10952' },
   { key: 'unit',                 label: 'Unit',                 example: '201' },
@@ -398,7 +419,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
 
   const base = {
     display: 'flex', alignItems: 'center', justifyContent: col.type === 'number' ? 'flex-end' : 'center',
-    height: 40, padding: '0 10px', fontSize: 13, fontWeight: 500, cursor: 'default',
+    height: BOARD.ROW_H, padding: '0 10px', fontSize: 13, fontWeight: 500, cursor: 'default',
     boxSizing: 'border-box', overflow: 'hidden', position: 'relative',
   }
 
@@ -414,20 +435,28 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   if (col.key === '_agent') {
     const ag = agents.find(a => a.id === deal.agent_id)
     const agentOptions = agents.map(a => ({ value: a.id, label: a.name, hex: a.color || '#0086c0' }))
+    const initials = ag ? ag.name.split(' ').map(p => p[0]).slice(0,2).join('').toUpperCase() : '?'
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
-        <div style={{ ...base, overflow: 'visible', gap: 6, cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
+      <td style={{ height: BOARD.ROW_H, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, width: col.width, minWidth: col.width, verticalAlign: 'middle' }}>
+        <div style={{ display: 'flex', alignItems: 'center', height: BOARD.ROW_H, padding: '0 10px', gap: 8, cursor: 'pointer', justifyContent: 'flex-start' }} onClick={e => e.stopPropagation()}>
           <InlinePicker
             value={deal.agent_id}
             options={agentOptions}
             color={ag?.color}
             onSave={v => onQuickUpdate(deal, 'agent_id', v, false)}
-            renderValue={() => ag ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Avatar agent={ag} size={36} showHover={false} style={{ border: 'none' }} />
-                <span style={{ fontSize: 12, color: '#323338', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 70 }}>{ag.name.split(' ')[0]}</span>
+            renderValue={() => (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                {/* Fixed 28px circular avatar / initials — flex-shrink:0 prevents zigzag */}
+                <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: ag ? (ag.color || BOARD.blue) : '#c5c7d0' }}>
+                  {ag && ag.photo_url
+                    ? <img src={ag.photo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    : <span style={{ color: '#fff', fontSize: 11, fontWeight: 700, lineHeight: 1 }}>{initials}</span>}
+                </div>
+                <span style={{ fontSize: 12.5, fontWeight: 500, color: ag ? BOARD.text : '#c5c7d0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {ag ? ag.name.split(' ')[0] : 'No agent'}
+                </span>
               </div>
-            ) : <span style={{ color: '#c5c7d0', fontSize: 12 }}>No agent</span>}
+            )}
           />
         </div>
       </td>
@@ -437,7 +466,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   // Sensitive (financial/commission/private) column on another agent's deal → masked.
   if (sensitiveHidden) {
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
+      <td style={{ height: BOARD.ROW_H, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, width: col.width, minWidth: col.width, verticalAlign: 'middle' }}>
         <div style={{ ...base, color: '#c5c7d0', justifyContent: col.type === 'number' ? 'flex-end' : 'center' }} title="Hidden — another agent's deal">
           <span style={{ fontSize: 12 }}>—</span>
         </div>
@@ -457,7 +486,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const found = opts.find(o => o.value === raw)
     const bg = found?.hex || cellColor(col, raw) || '#c5c7d0'
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
+      <td style={{ height: BOARD.ROW_H, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, width: col.width, minWidth: col.width, verticalAlign: 'middle' }}>
         <div style={{ ...base, overflow: 'visible', cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
           <InlinePicker value={raw} options={opts} color={bg}
             onSave={v => onQuickUpdate(deal, col.key, v, col.custom)} />
@@ -469,7 +498,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   // Checkbox cell (custom fields)
   if (col.type === 'checkbox') {
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
+      <td style={{ height: BOARD.ROW_H, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, width: col.width, minWidth: col.width, verticalAlign: 'middle' }}>
         <div style={{ ...base, cursor: 'pointer' }} onClick={e => { e.stopPropagation(); onQuickUpdate(deal, col.key, !raw, col.custom) }}>
           <div style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid ' + (raw ? '#0073ea' : '#c5c7d0'), background: raw ? '#0073ea' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {raw && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
@@ -482,14 +511,14 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   // Number / currency cell
   if (col.type === 'number' || col.type === 'currency') {
     if (editing) return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
+      <td style={{ height: BOARD.ROW_H, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, width: col.width, minWidth: col.width, verticalAlign: 'middle' }}>
         <input ref={ref} type="number" value={val} onChange={e => setVal(e.target.value)}
           onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
-          style={{ width: '100%', height: 40, padding: '0 10px', border: '2px solid #0073ea', outline: 'none', fontSize: 13, fontFamily: ff, textAlign: 'right', background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
+          style={{ width: '100%', height: BOARD.ROW_H, padding: '0 10px', border: '2px solid ' + BOARD.blue, outline: 'none', fontSize: 13, fontFamily: ff, textAlign: 'right', background: '#fff', color: BOARD.text, boxSizing: 'border-box' }} />
       </td>
     )
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }} onClick={startEdit}>
+      <td style={{ height: BOARD.ROW_H, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, width: col.width, minWidth: col.width, verticalAlign: 'middle' }} onClick={startEdit}>
         <div style={{ ...base, cursor: 'text', justifyContent: 'flex-end', color: col.key === 'gci' ? '#037f4c' : '#323338', fontWeight: raw ? 600 : 400 }}>
           {raw ? fmtFull$(parseNum(raw)) : <span style={{ color: '#c5c7d0' }}>—</span>}
         </div>
@@ -504,14 +533,14 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
     const overdue = days !== null && days < 0
     const urgent  = days !== null && days >= 0 && days <= 7
     if (editing) return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
+      <td style={{ height: BOARD.ROW_H, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, width: col.width, minWidth: col.width, verticalAlign: 'middle' }}>
         <input ref={ref} type="date" value={val} onChange={e => setVal(e.target.value)}
           onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
-          style={{ width: '100%', height: 40, padding: '0 8px', border: '2px solid #0073ea', outline: 'none', fontSize: 12, fontFamily: ff, background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
+          style={{ width: '100%', height: BOARD.ROW_H, padding: '0 8px', border: '2px solid ' + BOARD.blue, outline: 'none', fontSize: 12, fontFamily: ff, background: '#fff', color: BOARD.text, boxSizing: 'border-box' }} />
       </td>
     )
     return (
-      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }} onClick={startEdit}>
+      <td style={{ height: BOARD.ROW_H, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, width: col.width, minWidth: col.width, verticalAlign: 'middle' }} onClick={startEdit}>
         <div style={{ ...base, cursor: 'text', color: overdue ? '#e2445c' : urgent ? '#fdab3d' : (col.color || '#323338'), fontWeight: (overdue || urgent) ? 700 : 400 }}>
           {display || <span style={{ color: '#c5c7d0' }}>—</span>}
           {days !== null && days >= 0 && days <= 14 && (
@@ -524,14 +553,14 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
 
   // Text cell (default)
   if (editing) return (
-    <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
+    <td style={{ height: BOARD.ROW_H, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, width: col.width, minWidth: col.width, verticalAlign: 'middle' }}>
       <input ref={ref} value={val} onChange={e => setVal(e.target.value)}
         onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
-        style={{ width: '100%', height: 40, padding: '0 10px', border: '2px solid #0073ea', outline: 'none', fontSize: 13, fontFamily: ff, background: '#fff', color: '#323338', boxSizing: 'border-box' }} />
+        style={{ width: '100%', height: BOARD.ROW_H, padding: '0 10px', border: '2px solid ' + BOARD.blue, outline: 'none', fontSize: 13, fontFamily: ff, background: '#fff', color: BOARD.text, boxSizing: 'border-box' }} />
     </td>
   )
   return (
-    <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }} onClick={startEdit}>
+    <td style={{ height: BOARD.ROW_H, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, width: col.width, minWidth: col.width, verticalAlign: 'middle' }} onClick={startEdit}>
       <div style={{ ...base, cursor: 'text', color: '#323338', justifyContent: 'flex-start' }}>
         {raw || <span style={{ color: '#c5c7d0' }}>—</span>}
       </div>
@@ -543,6 +572,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
 function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect, visibleCols, onDealDragStart, onDealDropOnRow }) {
   const [hover, setHover] = React.useState(false)
   const [dragOverRow, setDragOverRow] = React.useState(false)
+  const rowBg = isSelected ? BOARD.selected : hover ? BOARD.hover : '#fff'
 
   return (
     <tr
@@ -554,26 +584,28 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
       onDrop={e => { e.preventDefault(); e.stopPropagation(); setDragOverRow(false); onDealDropOnRow?.(deal) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', borderTop: dragOverRow ? '2px solid #0073ea' : '2px solid transparent', borderBottom: '1px solid #e6e9ef', transition: 'background .08s' }}>
+      style={{ height: BOARD.ROW_H, background: rowBg, boxShadow: dragOverRow ? 'inset 0 2px 0 ' + BOARD.blue : 'none', borderBottom: '1px solid ' + BOARD.cellBorder, transition: 'background .08s' }}>
 
       {/* Checkbox + color bar + drag handle */}
-      <td style={{ width: 50, padding: 0, borderRight: '1px solid #e6e9ef', position: 'sticky', left: 0, background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', zIndex: 2 }}>
-        <div style={{ display: 'flex', alignItems: 'center', height: 40, paddingLeft: 4, gap: 4 }}>
+      <td style={{ width: 50, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle', position: 'sticky', left: 0, background: rowBg, zIndex: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', height: BOARD.ROW_H, paddingLeft: 4, gap: 4 }}>
           <span title="Drag to change stage" style={{ cursor: 'grab', color: '#c5c7d0', fontSize: 12, opacity: hover ? 1 : 0, transition: 'opacity .1s', width: 12, flexShrink: 0, userSelect: 'none' }}>⠿</span>
-          <div style={{ width: 4, height: 24, borderRadius: 2, background: '#0073ea', opacity: hover || isSelected ? 1 : 0, transition: 'opacity .1s', flexShrink: 0 }} />
+          <div style={{ width: 4, height: 26, borderRadius: 2, background: BOARD.blue, opacity: hover || isSelected ? 1 : 0, transition: 'opacity .1s', flexShrink: 0 }} />
           <div onClick={e => { e.stopPropagation(); onToggleSelect(deal.id) }}
-            style={{ width: 16, height: 16, borderRadius: 3, border: '2px solid ' + (isSelected ? '#0073ea' : '#c5c7d0'), background: isSelected ? '#0073ea' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all .1s' }}>
+            style={{ width: 16, height: 16, borderRadius: 3, border: '2px solid ' + (isSelected ? BOARD.blue : '#c5c7d0'), background: isSelected ? BOARD.blue : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all .1s' }}>
             {isSelected && <span style={{ color: '#fff', fontSize: 9, fontWeight: 900, lineHeight: 1 }}>✓</span>}
           </div>
         </div>
       </td>
 
-      {/* Address — sticky, always visible */}
-      <td onClick={() => onOpen(deal)}
-        style={{ padding: '0 12px', height: 40, borderRight: '1px solid #e6e9ef', width: 250, minWidth: 220, maxWidth: 280, position: 'sticky', left: 50, background: isSelected ? '#dce9fc' : hover ? '#f5f6f8' : '#fff', zIndex: 2, cursor: 'pointer' }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#323338', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {deal.addr}
-          {deal.unit && <span style={{ color: '#676879', fontWeight: 400 }}> #{deal.unit}</span>}
+      {/* Address — sticky item column, single line, tooltip on hover */}
+      <td onClick={() => onOpen(deal)} title={(deal.addr || '') + (deal.unit ? ' #' + deal.unit : '')}
+        style={{ padding: '0 12px', height: BOARD.ROW_H, borderRight: '1px solid ' + BOARD.cellBorder, width: 260, minWidth: 240, maxWidth: 300, verticalAlign: 'middle', position: 'sticky', left: 50, background: rowBg, zIndex: 2, cursor: 'pointer' }}>
+        <div style={{ display: 'flex', alignItems: 'center', height: BOARD.ROW_H, fontSize: 13, fontWeight: 600, color: BOARD.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {deal.addr}
+            {deal.unit && <span style={{ color: BOARD.sub, fontWeight: 400 }}> #{deal.unit}</span>}
+          </span>
         </div>
       </td>
 
@@ -583,8 +615,8 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
       ))}
 
       {/* Open icon */}
-      <td style={{ width: 36, padding: 0, borderRight: '1px solid #e6e9ef' }} onClick={() => onOpen(deal)}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 40, cursor: 'pointer', opacity: hover ? 1 : 0, transition: 'opacity .1s', color: '#676879', fontSize: 14 }}>
+      <td style={{ width: 36, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle' }} onClick={() => onOpen(deal)}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: BOARD.ROW_H, cursor: 'pointer', opacity: hover ? 1 : 0, transition: 'opacity .1s', color: BOARD.sub, fontSize: 14 }}>
           ↗
         </div>
       </td>
@@ -610,7 +642,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
   const totalProd = deals.reduce((s, d) => s + parseNum(d.production), 0)
   const allSelected = deals.length > 0 && deals.every(d => selectedIds.includes(d.id))
 
-  const headerBg = group.color
+  const headerBg = group.color || stageAccent(group.label)
 
   return (
     <div
@@ -619,8 +651,8 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
       onDragLeave={onDragLeaveGroup}
       onDrop={e => { e.preventDefault(); onDropDeal?.() }}
       style={{ marginBottom: 0, outline: isDragOver ? '2px solid #0073ea' : 'none', outlineOffset: -2, transition: 'outline .1s' }}>
-      {/* ── Group header row (sticky below the column header at top:40) ── */}
-      <div style={{ display: 'flex', alignItems: 'center', height: 40, background: '#f5f6f8', borderTop: '1px solid #e6e9ef', borderBottom: '1px solid #e6e9ef', userSelect: 'none', position: 'sticky', top: 40, zIndex: 5 }}>
+      {/* ── Group header row (sticky below the column header) ── */}
+      <div style={{ display: 'flex', alignItems: 'center', height: BOARD.HEAD_H, background: headerBg + '12', borderTop: '1px solid ' + BOARD.cellBorder, borderBottom: '1px solid ' + BOARD.cellBorder, borderLeft: '3px solid ' + headerBg, userSelect: 'none', position: 'sticky', top: BOARD.HEAD_H, zIndex: 5 }}>
         {/* Checkbox */}
         <div style={{ width: 50, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
           <div onClick={e => { e.stopPropagation(); onSelectAll(deals.map(d => d.id)) }}
@@ -2254,11 +2286,11 @@ export function Production() {
       ) : viewMode === 'board' ? (
         /* BOARD VIEW — Monday.com style */
         <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid #e6e9ef', borderRadius: 4 }}>
-          {/* Sticky column header — Monday.com style */}
-          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f5f6f8', borderBottom: '1px solid #c5c7d0', display: 'flex', height: 40, minWidth: 'max-content', width: '100%' }}>
-            <div style={{ width: 50, flexShrink: 0, borderRight: '1px solid #e6e9ef', height: 40 }} />
-            <div style={{ width: 250, minWidth: 220, maxWidth: 280, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 12px', borderRight: '1px solid #e6e9ef', background: '#f5f6f8' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.06em' }}>Item</span>
+          {/* Sticky column header */}
+          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: BOARD.page, borderBottom: '2px solid ' + BOARD.border, display: 'flex', height: BOARD.HEAD_H, minWidth: 'max-content', width: '100%' }}>
+            <div style={{ width: 50, flexShrink: 0, borderRight: '1px solid ' + BOARD.cellBorder, height: BOARD.HEAD_H }} />
+            <div style={{ width: 260, minWidth: 240, maxWidth: 300, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 12px', borderRight: '1px solid ' + BOARD.cellBorder, background: BOARD.page }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: BOARD.sub, textTransform: 'uppercase', letterSpacing: '.06em' }}>Item</span>
             </div>
             {visibleCols.map(col => (
               <div key={col.key}
@@ -2266,11 +2298,11 @@ export function Production() {
                 onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', col.key); setDraggedColKey(col.key) }}
                 onDragOver={e => e.preventDefault()}
                 onDrop={e => { e.preventDefault(); handleColDrop(col.key) }}
-                style={{ minWidth: col.width, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: col.type==='number'?'flex-end':'center', padding: '0 10px', borderRight: '1px solid #e6e9ef', height: 40, cursor: 'grab', background: draggedColKey === col.key ? '#e6f0fd' : 'transparent' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#676879', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>⠿ {col.label}</span>
+                style={{ minWidth: col.width, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: col.type==='number'?'flex-end':'center', padding: '0 10px', borderRight: '1px solid ' + BOARD.cellBorder, height: BOARD.HEAD_H, cursor: 'grab', background: draggedColKey === col.key ? '#e6f0fd' : 'transparent' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: BOARD.sub, textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{col.label}</span>
               </div>
             ))}
-            <div style={{ minWidth: 36, flexShrink: 0, borderRight: '1px solid #e6e9ef' }} />
+            <div style={{ minWidth: 36, flexShrink: 0, borderRight: '1px solid ' + BOARD.cellBorder }} />
           </div>
 
           {/* Groups */}
