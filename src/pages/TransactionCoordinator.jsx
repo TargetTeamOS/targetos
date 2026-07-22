@@ -103,6 +103,16 @@ function deriveCardSignals(deal, tasks, roleSet) {
 }
 const URGENCY_COLOR = { red:'#DC2626', amber:'#F5A623', blue:'#3B82F6', gray:'var(--border)' }
 
+// Small labeled cell used in the Overview tab
+function OverviewCell({ title, children }) {
+  return (
+    <div style={{ background:'var(--dim)', borderRadius:8, padding:'10px 12px' }}>
+      <div style={{ fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:5 }}>{title}</div>
+      {children}
+    </div>
+  )
+}
+
 // ── TASK TEMPLATES PER PHASE ──────────────────────────────────────
 
 function addDays(n) {
@@ -234,7 +244,7 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
 
 // ── DEAL CARD ─────────────────────────────────────────────────────
 function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle }) {
-  const [subTab, setSubTab] = useState('tasks')   // tasks | people | photo | email
+  const [subTab, setSubTab] = useState('overview')   // overview | tasks | people | photo | email
   const phase    = PHASES.find(p => p.id === deal.tc_phase) || PHASES[0]
   const agent    = agents.find(a => a.id === deal.agent_id)
 
@@ -344,6 +354,7 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
           {/* Sub-tabs — keeps the card from dumping everything at once */}
           <div style={{ display:'flex', gap:2, padding:'8px 12px 0', background:'var(--dim)', borderBottom:'1px solid var(--border)' }}>
             {[
+              { id:'overview', label:'📋 Overview' },
               { id:'tasks',  label:'✓ Tasks', n: currentOpen.length },
               { id:'people', label:'👥 People & Parties' },
               { id:'photo',  label:'📸 Photography' },
@@ -357,6 +368,100 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
               </button>
             ))}
           </div>
+
+          {/* ── OVERVIEW TAB ── */}
+          {subTab === 'overview' && (
+            <div style={{ padding:'14px 16px' }}>
+              {/* Next step banner */}
+              <div style={{ padding:'10px 12px', background: nextTask ? 'rgba(204,34,0,.05)' : 'var(--dim)', borderRadius:10, marginBottom:14 }}>
+                <div style={{ fontSize:9.5, fontWeight:800, color:'var(--brand)', letterSpacing:'.05em', marginBottom:2 }}>NEXT STEP</div>
+                {nextTask ? (
+                  <div style={{ fontSize:14, fontWeight:700, color:'var(--text)' }}>
+                    {nextTask.title}
+                    {nextTask.due_date && (
+                      <span style={{ marginLeft:8, fontSize:12, fontWeight:700, color: overdueTasks.includes(nextTask)?'#DC2626':dueTodayTasks.includes(nextTask)?'#F5A623':'var(--muted)' }}>
+                        {overdueTasks.includes(nextTask)?'overdue':dueTodayTasks.includes(nextTask)?'due today':'due '+fmtDate(nextTask.due_date)}
+                      </span>
+                    )}
+                    {nextAgent && <span style={{ marginLeft:8, fontSize:12, color:nextAgent.color||'var(--muted)', fontWeight:700 }}>· {nextAgent.name.split(' ')[0]}</span>}
+                  </div>
+                ) : <div style={{ fontSize:14, fontWeight:700, color:'var(--muted)' }}>✓ Nothing open this stage</div>}
+              </div>
+
+              {/* At-a-glance grid */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px,1fr))', gap:10 }}>
+                {/* Stage + task summary */}
+                <OverviewCell title="Stage & tasks">
+                  <div style={{ fontSize:13, fontWeight:700, color:phase.color }}>{phase.icon} {phase.label}</div>
+                  <div style={{ fontSize:12, color:'var(--muted)', marginTop:3 }}>
+                    {overdue>0 && <span style={{ color:'#DC2626', fontWeight:700 }}>{overdue} overdue · </span>}
+                    {dueToday>0 && <span style={{ color:'#F5A623', fontWeight:700 }}>{dueToday} today · </span>}
+                    {currentOpen.length} current{carryover.length>0 && ' · '+carryover.length+' carryover'}
+                  </div>
+                </OverviewCell>
+
+                {/* Key dates */}
+                <OverviewCell title="Key dates">
+                  <div style={{ fontSize:12.5, color:'var(--text)' }}>
+                    {deal.ao_date ? 'AO ' + fmtDate(deal.ao_date) : 'AO —'}
+                    {'  ·  '}
+                    {deal.close_date ? 'Close ' + fmtDate(deal.close_date) : 'Close —'}
+                  </div>
+                  {deal.close_date && signals.closingSoon && <div style={{ fontSize:11, color:'#2563EB', fontWeight:700, marginTop:2 }}>Closing soon</div>}
+                </OverviewCell>
+
+                {/* Parties */}
+                <OverviewCell title="Parties">
+                  {(() => {
+                    const need = STAGE_CRITICAL_ROLES[deal.tc_phase] || []
+                    const have = need.filter(r => rolePresent(deal, roleSet, r))
+                    const miss = need.filter(r => !rolePresent(deal, roleSet, r))
+                    return (
+                      <div style={{ fontSize:12.5, color:'var(--text)' }}>
+                        {have.length>0 && <span>{have.map(r=>ROLE_LABEL[r]||r).join(', ')} set</span>}
+                        {miss.length>0 && <div style={{ color:'#DC2626', fontWeight:700, marginTop:2 }}>Missing: {miss.map(r=>ROLE_LABEL[r]||r).join(', ')}</div>}
+                        {need.length===0 && <span style={{ color:'var(--muted)' }}>—</span>}
+                      </div>
+                    )
+                  })()}
+                </OverviewCell>
+
+                {/* Price */}
+                <OverviewCell title="Price">
+                  <div style={{ fontSize:12.5, color:'var(--text)' }}>
+                    {deal.list_price ? 'List ' + fmt$(deal.list_price) : 'List —'}
+                    {deal.sale_price ? '  ·  Sale ' + fmt$(deal.sale_price) : ''}
+                  </div>
+                </OverviewCell>
+
+                {/* Marketing / photography (from linked listing, read-only) */}
+                <OverviewCell title="Marketing & photography">
+                  {deal.linked_listing_id ? (
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>See Photography tab · linked listing</div>
+                  ) : (
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>No linked listing yet</div>
+                  )}
+                </OverviewCell>
+
+                {/* Attorneys / mortgage (legacy text fields) */}
+                <OverviewCell title="Contacts on file">
+                  <div style={{ fontSize:12, color:'var(--text)', lineHeight:1.5 }}>
+                    {deal.attorney_name && <div>⚖️ {deal.attorney_name}</div>}
+                    {deal.mortgage_broker && <div>🏦 {deal.mortgage_broker}</div>}
+                    {deal.inspector && <div>🔍 {deal.inspector}</div>}
+                    {!deal.attorney_name && !deal.mortgage_broker && !deal.inspector && <span style={{ color:'var(--muted)' }}>—</span>}
+                  </div>
+                </OverviewCell>
+              </div>
+
+              {/* Quick jump to full detail */}
+              <div style={{ display:'flex', gap:8, marginTop:14 }}>
+                <button onClick={e=>{ e.stopPropagation(); setSubTab('tasks') }} style={{ fontSize:12, fontWeight:700, color:'var(--brand)', background:'transparent', border:'1px solid var(--border)', borderRadius:7, padding:'6px 12px', cursor:'pointer', fontFamily:ff }}>View tasks →</button>
+                <button onClick={e=>{ e.stopPropagation(); setSubTab('people') }} style={{ fontSize:12, fontWeight:700, color:'var(--brand)', background:'transparent', border:'1px solid var(--border)', borderRadius:7, padding:'6px 12px', cursor:'pointer', fontFamily:ff }}>People & parties →</button>
+                <button onClick={e=>{ e.stopPropagation(); onEditDeal(deal) }} style={{ fontSize:12, fontWeight:700, color:'var(--muted)', background:'transparent', border:'1px solid var(--border)', borderRadius:7, padding:'6px 12px', cursor:'pointer', fontFamily:ff }}>Edit file</button>
+              </div>
+            </div>
+          )}
 
           {/* ── TASKS TAB ── */}
           {subTab === 'tasks' && (
