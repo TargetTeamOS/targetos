@@ -18,7 +18,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import SellerContacts from '../components/SellerContacts'
+import ListingWorkspaceDrawer from '../components/ListingWorkspaceDrawer'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
@@ -63,149 +63,53 @@ function DOMBadge({ days }) {
   )
 }
 
-function ListingCard({ listing, showings, openHouses, onLogShowing, onScheduleOH, onPriceChange, onUpdateStatus, onToggleIvr, expanded, onToggle }) {
-  const dom    = daysOnMarket(listing.list_date)
+// Compact one-line listing row → opens the workspace drawer
+function ListingRow({ listing, showings, openHouses, onOpen }) {
+  const dom    = daysOnMarket(listing.listed_date || listing.list_date || listing.created_at)
   const status = listing.status || 'Active'
   const sc     = STATUS_COLORS[status] || '#94A3B8'
   const avgInterest = showings.length
     ? (showings.reduce((s, sh) => s + (sh.interest_level || 3), 0) / showings.length).toFixed(1)
     : null
+  const sellerStale = !listing.seller_updated_at || (Date.now() - new Date(listing.seller_updated_at).getTime() > 7 * 86400000)
+  // Next action / alert (light, from existing data)
+  let alert = null
+  if (sellerStale && (status === 'Active' || status === 'Coming Soon')) alert = { t: 'Seller update due', c: '#DC2626' }
+  else if (showings.length === 0 && (status === 'Active')) alert = { t: 'No showings yet', c: '#B45309' }
+  else if (dom != null && dom > 60 && status === 'Active') alert = { t: 'On market 60+ days', c: '#B45309' }
 
   return (
-    <div style={{ background: 'var(--panel)', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 12, overflow: 'hidden' }}>
-      {/* Header */}
-      <div onClick={onToggle} style={{ padding: '14px 16px', cursor: 'pointer', borderBottom: expanded ? '1px solid var(--border)' : 'none' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          {/* Status bar */}
-          <div style={{ width: 5, borderRadius: 99, background: sc, alignSelf: 'stretch', flexShrink: 0, minHeight: 40 }} />
-
-          {/* Main info */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>{listing.addr}</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: sc, padding: '2px 8px', borderRadius: 99 }}>{status}</span>
-              <DOMBadge days={dom} />
-            </div>
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              {listing.list_price && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{fmt$(listing.list_price)}</span>}
-              {listing.beds && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{listing.beds} bed</span>}
-              {listing.baths && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{listing.baths} bath</span>}
-              {listing.sqft && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{Number(listing.sqft).toLocaleString()} sqft</span>}
-              {listing.city && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{listing.city}</span>}
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text)' }}>{showings.length}</div>
-              <div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Showings</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text)' }}>{openHouses.length}</div>
-              <div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Open Houses</div>
-            </div>
-            {avgInterest && (
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: '#F5A623' }}>{avgInterest}</div>
-                <div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Avg Interest</div>
-              </div>
-            )}
-          </div>
-
-          <span style={{ color: 'var(--muted)', fontSize: 14, transition: 'transform .2s', transform: expanded ? 'rotate(0)' : 'rotate(-90deg)', flexShrink: 0 }}>▾</span>
+    <div onClick={() => onOpen(listing)}
+      style={{ background: 'var(--panel)', border: '0.5px solid var(--border)', borderLeft: '3px solid ' + sc,
+        borderRadius: 8, marginBottom: 6, padding: '9px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
+      {/* Left: address + city/status */}
+      <div style={{ minWidth: 150, maxWidth: 210, flexShrink: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{listing.addr || '—'}</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {listing.city ? listing.city + ' · ' : ''}<span style={{ color: sc, fontWeight: 700 }}>{status}</span>
         </div>
       </div>
-
-      {/* Expanded body */}
-      {expanded && (
-        <div>
-          {/* Seller contacts — agent manages their own listing's sellers */}
-          <div style={{ padding: '4px 16px 12px' }}>
-            <SellerContacts listingId={listing.id} listingAgentId={listing.agent_id} />
-          </div>
-          {/* Quick actions */}
-          <div style={{ padding: '10px 16px', background: 'var(--dim)', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => onLogShowing(listing)}
-              style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--brand)', background: 'rgba(204,34,0,.06)', color: 'var(--brand)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
-              🏠 Log Showing
-            </button>
-            <button onClick={() => onScheduleOH(listing)}
-              style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #3B82F6', background: 'rgba(59,130,246,.06)', color: '#3B82F6', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
-              🚪 Schedule Open House
-            </button>
-            <button onClick={() => onPriceChange(listing)}
-              style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #F5A623', background: 'rgba(245,166,35,.06)', color: '#B45309', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
-              💰 Price Change
-            </button>
-            <select value={status} onChange={e => onUpdateStatus(listing, e.target.value)}
-              style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: 12, fontFamily: ff, cursor: 'pointer' }}>
-              {LISTING_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <button onClick={() => onToggleIvr(listing)}
-              title={listing.ivr_enabled ? 'Visible in phone system — click to remove' : 'Not in phone system — click to feature it'}
-              style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + (listing.ivr_enabled ? '#10B981' : 'var(--border)'), background: listing.ivr_enabled ? 'rgba(16,185,129,.08)' : 'var(--dim)', color: listing.ivr_enabled ? '#10B981' : 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
-              📞 {listing.ivr_enabled ? 'Featured on Phone' : 'Not on Phone'}
-            </button>
-          </div>
-
-          {/* Showings */}
-          <div style={{ padding: '12px 16px', borderBottom: showings.length > 0 ? '1px solid var(--border)' : 'none' }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
-              🏠 Showings ({showings.length})
-            </div>
-            {showings.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>No showings logged yet</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {showings.slice(0, 5).map(s => {
-                  const il = INTEREST_LEVELS.find(i => i.value === s.interest_level) || INTEREST_LEVELS[2]
-                  return (
-                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', background: 'var(--dim)', borderRadius: 8 }}>
-                      <span style={{ fontSize: 16 }}>{il.emoji}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                          {s.buyer_name || 'Anonymous'}{s.agent_name ? ' via ' + s.agent_name : ''}
-                        </div>
-                        {s.feedback && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>"{s.feedback}"</div>}
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>{fmtDate(s.showing_date)}</div>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: il.color }}>{il.label}</div>
-                      </div>
-                    </div>
-                  )
-                })}
-                {showings.length > 5 && (
-                  <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', paddingTop: 4 }}>+{showings.length - 5} more showings</div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Open Houses */}
-          {openHouses.length > 0 && (
-            <div style={{ padding: '12px 16px' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
-                🚪 Open Houses ({openHouses.length})
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {openHouses.map(oh => (
-                  <div key={oh.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', background: 'var(--dim)', borderRadius: 8 }}>
-                    <span style={{ fontSize: 14 }}>🚪</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
-                        {fmtDate(oh.date)} {oh.start_time && '· ' + oh.start_time}{oh.end_time && ' – ' + oh.end_time}
-                      </div>
-                      {oh.visitors_count > 0 && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{oh.visitors_count} visitors signed in</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+      {/* Price */}
+      <div style={{ minWidth: 80, flexShrink: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{listing.list_price ? fmt$(listing.list_price) : '—'}</div>
+        {dom != null && <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{dom}d on market</div>}
+      </div>
+      {/* Counts */}
+      <div style={{ display: 'flex', gap: 14, flexShrink: 0 }}>
+        <div style={{ textAlign: 'center' }}><div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>{showings.length}</div><div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Show</div></div>
+        <div style={{ textAlign: 'center' }}><div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>{openHouses.length}</div><div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>OH</div></div>
+        <div style={{ textAlign: 'center' }}><div style={{ fontSize: 14, fontWeight: 800, color: avgInterest ? '#F5A623' : 'var(--muted)' }}>{avgInterest || '—'}</div><div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Int</div></div>
+      </div>
+      {/* Middle: next action / alert + last seller update */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {alert && <span style={{ fontSize: 11, fontWeight: 700, color: alert.c, background: alert.c + '18', padding: '2px 8px', borderRadius: 99 }}>{alert.t}</span>}
+        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: alert ? 3 : 0 }}>
+          Seller update: {listing.seller_updated_at ? fmtDate(listing.seller_updated_at) : 'never'}
         </div>
-      )}
+      </div>
+      {/* Open */}
+      <button onClick={(e) => { e.stopPropagation(); onOpen(listing) }}
+        style={{ flexShrink: 0, border: '1px solid var(--border)', background: 'transparent', color: 'var(--brand)', borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>Open →</button>
     </div>
   )
 }
@@ -221,6 +125,7 @@ export function MyListings() {
   const [openHouses, setOpenHouses] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [expanded,   setExpanded]   = useState({})
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [statusFilter,setStatusFilter] = useState('All')
   const [search,     setSearch]     = useState('')
 
@@ -478,21 +383,31 @@ export function MyListings() {
         <Empty text={listings.length === 0 ? 'No listings yet — click + New Listing' : 'No listings match your filter'} />
       ) : (
         filtered.map(listing => (
-          <ListingCard
+          <ListingRow
             key={listing.id}
             listing={listing}
             showings={showings.filter(s => s.listing_id === listing.id)}
             openHouses={openHouses.filter(oh => oh.listing_id === listing.id)}
-            expanded={!!expanded[listing.id]}
-            onToggle={() => setExpanded(p => ({ ...p, [listing.id]: !p[listing.id] }))}
-            onLogShowing={l => { setSelListing(l); setShowingModal(true) }}
-            onScheduleOH={l => { setSelListing(l); setOhModal(true) }}
-            onPriceChange={l => { setSelListing(l); setPriceForm({ list_price: l.list_price || '', reason: '' }); setPriceModal(true) }}
-            onUpdateStatus={updateStatus}
-            onToggleIvr={toggleIvr}
+            onOpen={l => { setSelListing(l); setDrawerOpen(true) }}
           />
         ))
       )}
+
+      {/* Full listing workspace drawer */}
+      <ListingWorkspaceDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        listing={selListing}
+        showings={selListing ? showings.filter(s => s.listing_id === selListing.id) : []}
+        openHouses={selListing ? openHouses.filter(oh => oh.listing_id === selListing.id) : []}
+        agents={[]}
+        statuses={LISTING_STATUSES}
+        onLogShowing={l => { setSelListing(l); setShowingModal(true) }}
+        onScheduleOH={l => { setSelListing(l); setOhModal(true) }}
+        onPriceChange={l => { setSelListing(l); setPriceForm({ list_price: l.list_price || '', reason: '' }); setPriceModal(true) }}
+        onUpdateStatus={updateStatus}
+        onToggleIvr={toggleIvr}
+      />
 
       {/* LOG SHOWING MODAL */}
       <Modal open={showingModal} onClose={() => setShowingModal(false)} title={'Log Showing — ' + (selListing?.addr || '')} width={500}>
