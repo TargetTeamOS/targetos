@@ -1221,10 +1221,10 @@ export function TransactionCoordinator() {
           { id:'missing',   label:'Missing info',    n:buckets.missing.length,       c:'var(--muted)',  bg:'var(--dim)' },
           { id:'photo',     label:'Photography',     n:buckets.photo.length,         c:'var(--muted)',  bg:'var(--dim)' },
         ].map(t => (
-          <button key={t.id} onClick={()=> t.n>0 && setDrawerTile(t.id)}
+          <button key={t.id} onClick={()=> { console.log('[TC tile click]', t.id, 'count=', t.n); setDrawerTile(t.id) }}
             style={{ display:'flex', alignItems:'baseline', gap:6, padding:'5px 11px', borderRadius:8,
-              border:'1px solid transparent', background:t.bg, cursor: t.n>0?'pointer':'default', fontFamily:ff,
-              opacity: t.n===0 ? 0.5 : 1 }}>
+              border:'1px solid transparent', background:t.bg, cursor:'pointer', fontFamily:ff,
+              opacity: t.n===0 ? 0.55 : 1 }}>
             <span style={{ fontSize:15, fontWeight:800, color:t.c }}>{t.n}</span>
             <span style={{ fontSize:12, color:t.c }}>{t.label}</span>
           </button>
