@@ -365,6 +365,11 @@ function ClientLinkCell({ deal, width }) {
 }
 
 // ── MONDAY.COM CELL ──────────────────────────────────────────────
+// Financial/commission/private columns hidden from agents on OTHER agents' deals.
+const SENSITIVE_COLS = new Set([
+  'gci','expected_gci','collected_gci','commission_received','agent_commission_sent',
+  'commission_status','payment_method','atty_name','atty_email',
+])
 function MondayCell({ col, deal, onQuickUpdate, agents }) {
   const navigate = useNavigate()
   const { agent: me, isAdmin, canManage, can } = useAuth()
@@ -373,8 +378,14 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
   const ref = React.useRef(null)
   const raw = col.custom ? (deal.custom_data || {})[col.key] : deal[col.key]
 
+  const isOwn = deal.agent_id === me?.id
+  const canEdit = isAdmin || canManage || isOwn
+  // Non-admins may not see sensitive fields on another agent's deal.
+  const sensitiveHidden = SENSITIVE_COLS.has(col.key) && !(isAdmin || canManage || isOwn)
+
   function startEdit(e) {
     e.stopPropagation()
+    if (!canEdit) return   // read-only for other agents' deals; no inline edit
     setVal(raw || '')
     setEditing(true)
     setTimeout(() => ref.current && ref.current.focus(), 20)
@@ -418,6 +429,17 @@ function MondayCell({ col, deal, onQuickUpdate, agents }) {
               </div>
             ) : <span style={{ color: '#c5c7d0', fontSize: 12 }}>No agent</span>}
           />
+        </div>
+      </td>
+    )
+  }
+
+  // Sensitive (financial/commission/private) column on another agent's deal → masked.
+  if (sensitiveHidden) {
+    return (
+      <td style={{ height: 40, padding: 0, borderRight: '1px solid #e6e9ef', width: col.width, minWidth: col.width }}>
+        <div style={{ ...base, color: '#c5c7d0', justifyContent: col.type === 'number' ? 'flex-end' : 'center' }} title="Hidden — another agent's deal">
+          <span style={{ fontSize: 12 }}>—</span>
         </div>
       </td>
     )
@@ -572,10 +594,16 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
 
 
 // ── MONDAY.COM GROUP ─────────────────────────────────────────────
-function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename, onDealDragStart, onDropDeal, isDragOver, onDragEnterGroup, onDragLeaveGroup, onDealDropOnRow }) {
+function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename, onDealDragStart, onDropDeal, isDragOver, onDragEnterGroup, onDragLeaveGroup, onDealDropOnRow, collapseSignal }) {
   const { can } = useAuth()
-  const showGci = can('deals.view_gci')
+  // Group GCI total spans all agents in the group → requires TEAM gci permission.
+  // Production volume stays visible to everyone (goal-driven team visibility).
+  const showGci = can('deals.view_team_gci')
   const [collapsed, setCollapsed] = React.useState(false)
+  // Sync to collapse-all / expand-all signal (still individually toggleable after).
+  React.useEffect(() => {
+    if (collapseSignal && collapseSignal.n > 0) setCollapsed(collapseSignal.collapsed)
+  }, [collapseSignal?.n])
   const [renaming,  setRenaming]  = React.useState(false)
   const [renameVal, setRenameVal] = React.useState(group.label)
   const totalGCI  = deals.reduce((s, d) => s + parseNum(d.gci), 0)
@@ -591,8 +619,8 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
       onDragLeave={onDragLeaveGroup}
       onDrop={e => { e.preventDefault(); onDropDeal?.() }}
       style={{ marginBottom: 0, outline: isDragOver ? '2px solid #0073ea' : 'none', outlineOffset: -2, transition: 'outline .1s' }}>
-      {/* ── Group header row ── */}
-      <div style={{ display: 'flex', alignItems: 'center', height: 40, background: '#f5f6f8', borderTop: '1px solid #e6e9ef', borderBottom: '1px solid #e6e9ef', userSelect: 'none' }}>
+      {/* ── Group header row (sticky below the column header at top:40) ── */}
+      <div style={{ display: 'flex', alignItems: 'center', height: 40, background: '#f5f6f8', borderTop: '1px solid #e6e9ef', borderBottom: '1px solid #e6e9ef', userSelect: 'none', position: 'sticky', top: 40, zIndex: 5 }}>
         {/* Checkbox */}
         <div style={{ width: 50, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
           <div onClick={e => { e.stopPropagation(); onSelectAll(deals.map(d => d.id)) }}
@@ -928,13 +956,16 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
 }
 
 // ── DEAL DETAIL DRAWER ─────────────────────────────────────────────
-function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, canManage }) {
-  const { can } = useAuth()
-  const showGciField = can('deals.view_gci')
+function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, canManage, readOnly = false }) {
+  const { can, agent: me } = useAuth()
+  // Own deal? Agents see financial/private info only on their own deals.
+  const isOwn = !deal || deal.agent_id === me?.id
+  const canViewFinance = isAdmin || canManage || (can('deals.view_gci') && isOwn)
+  const showGciField = canViewFinance
   const [form, setForm] = useState(() => ({ ...BLANK, ...deal }))
   const [tab,  setTab]  = useState('deal')
   const [confirmDel, setConfirmDel] = useState(false)
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const set = (k, v) => { if (readOnly) return; setForm(f => ({ ...f, [k]: v })) }
 
   useEffect(() => { setForm({ ...BLANK, ...deal }) }, [deal?.id])
 
@@ -955,12 +986,12 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
     </div>
   )
   const Inp = ({ k, type = 'text', placeholder, half }) => (
-    <input type={type} value={form[k] ?? ''} onChange={e => set(k, e.target.value)} placeholder={placeholder}
-      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, boxSizing: 'border-box' }} />
+    <input type={type} value={form[k] ?? ''} onChange={e => set(k, e.target.value)} placeholder={placeholder} disabled={readOnly} readOnly={readOnly}
+      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: readOnly ? 'var(--dim)' : 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, boxSizing: 'border-box', cursor: readOnly ? 'not-allowed' : 'text' }} />
   )
   const Sel = ({ k, options, placeholder }) => (
-    <select value={form[k] ?? ''} onChange={e => set(k, e.target.value)}
-      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
+    <select value={form[k] ?? ''} onChange={e => set(k, e.target.value)} disabled={readOnly}
+      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: readOnly ? 'var(--dim)' : 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, cursor: readOnly ? 'not-allowed' : 'pointer' }}>
       {placeholder && <option value="">{placeholder}</option>}
       {options.map(o => {
         const val = typeof o === 'string' ? o : o.value
@@ -1325,20 +1356,33 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
 
         {/* Footer */}
         <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
-          {deal?.id && (
-            <button onClick={() => setConfirmDel(true)}
-              style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #DC262644', background: '#FEF2F2', color: '#DC2626', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
-              Delete
-            </button>
+          {readOnly ? (
+            <>
+              <span style={{ fontSize: '12px', color: 'var(--muted)', fontFamily: ff }}>🔒 View only — this deal belongs to another agent.</span>
+              <div style={{ flex: 1 }} />
+              <button onClick={onClose}
+                style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: '13px', cursor: 'pointer', fontFamily: ff }}>
+                Close
+              </button>
+            </>
+          ) : (
+            <>
+              {deal?.id && can('deals.delete') && (
+                <button onClick={() => setConfirmDel(true)}
+                  style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #DC262644', background: '#FEF2F2', color: '#DC2626', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+                  Delete
+                </button>
+              )}
+              <div style={{ flex: 1 }} />
+              <button onClick={onClose}
+                style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: '13px', cursor: 'pointer', fontFamily: ff }}>
+                Cancel
+              </button>
+              <Btn onClick={() => onSave(form)} loading={saving}>
+                {deal?.id ? 'Save Changes' : 'Add Deal'}
+              </Btn>
+            </>
           )}
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose}
-            style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: '13px', cursor: 'pointer', fontFamily: ff }}>
-            Cancel
-          </button>
-          <Btn onClick={() => onSave(form)} loading={saving}>
-            {deal?.id ? 'Save Changes' : 'Add Deal'}
-          </Btn>
         </div>
       </div>
 
@@ -1386,6 +1430,21 @@ export function Production() {
 
   const [deals,    setDeals]    = useState([])
   const [loading,  setLoading]  = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  // Collapse-all / expand-all signal: bump a counter with the desired state;
+  // each BoardGroup syncs its own collapsed flag when the counter changes,
+  // while still allowing per-group toggling afterward.
+  const [collapseSignal, setCollapseSignal] = useState({ n: 0, collapsed: false })
+
+  // Own-vs-any edit guard (Access Model A): admins/managers edit any deal;
+  // agents edit ONLY their own. Every write handler calls this — not just the
+  // hidden buttons — so the guard can't be bypassed via inline edit, drag,
+  // reorder, drawer save, or bulk actions. (Frontend guard; DB RLS is still
+  // permissive and remains the future server-side boundary.)
+  function canEditDeal(deal) {
+    if (isAdmin || canManage) return true
+    return !!deal && deal.agent_id === agent?.id
+  }
   const [search,   setSearch]   = useState('')
   const [stageF,   setStageF]   = useState('')
   const [agentF,   setAgentF]   = useState('')
@@ -1489,19 +1548,25 @@ export function Production() {
 
   async function load() {
     setLoading(true)
+    setLoadError(null)
     try {
+      // Access Model A: everyone with deals.view_all sees the full team board.
+      // Only users WITHOUT view_all are scoped to their own deals. This is a
+      // FRONTEND read scope; DB RLS is still permissive (not the security boundary).
+      const seeAll = can('deals.view_all')
       let q = supabase.from('deals').select('*, agents(id,name,color)', { count: 'exact' }).order('ao_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
-      if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
+      if (!seeAll) q = q.eq('agent_id', agent?.id)
       // Load up to 5,000 deals — raised from 1,000 (July 2026) after the team
       // crossed 600-1000 deals and risked silently truncating the board.
       // True totals (GCI/production) below no longer depend on this cap at all.
       q = q.range(0, 4999)
-      const { data: dealsData, count: totalDeals } = await q
+      const { data: dealsData, count: totalDeals, error: dealsErr } = await q
+      if (dealsErr) throw dealsErr
       const deals = dealsData || []
 
       // True totals via server-side aggregate — always accurate regardless
       // of the row cap above. See production_totals.sql.
-      const scopeAgentId = (!isAdmin && !canManage) ? agent?.id : null
+      const scopeAgentId = seeAll ? null : agent?.id
       const { data: totalsData, error: totalsErr } = await supabase.rpc('production_totals', { p_agent_id: scopeAgentId })
       if (!totalsErr && totalsData?.[0]) {
         setTrueTotals(totalsData[0])
@@ -1537,7 +1602,10 @@ export function Production() {
       }
 
       setDeals(deals)
-    } catch(e) { toast('Could not load deals: ' + e.message, '#DC2626') }
+    } catch(e) {
+      setLoadError(e.message || 'Failed to load deals')
+      toast('Could not load deals: ' + e.message, '#DC2626')
+    }
     finally { setLoading(false) }
   }
 
@@ -1564,6 +1632,8 @@ export function Production() {
 
   async function saveDeal(form) {
     if (!form.addr?.trim()) { toast('Address is required', '#DC2626'); return }
+    // Editing an existing deal requires own-or-admin; creating a new deal is allowed.
+    if (form.id && !canEditDeal(form)) { toast('You can only edit your own deals', '#DC2626'); return }
     setSaving(true)
     try {
       if (form.id) {
@@ -1632,6 +1702,11 @@ export function Production() {
 
   async function bulkUpdateStage(stage) {
     if (!selectedIds.length) return
+    // Own-vs-any guard: non-admins may bulk-update only their own deals.
+    if (!(isAdmin || canManage)) {
+      const foreign = selectedIds.filter(id => { const d = deals.find(x => x.id === id); return d && d.agent_id !== agent?.id })
+      if (foreign.length) { toast('You can only update your own deals', '#DC2626'); return }
+    }
     try {
       const { error } = await supabase.from('deals').update({ stage, updated_at: new Date().toISOString() }).in('id', selectedIds)
       if (error) throw error
@@ -1699,6 +1774,10 @@ export function Production() {
   function handleDealDrop(group) {
     if (!draggedDealId || group.yearMatch) { setDraggedDealId(null); setDragOverGroupId(null); return }
     const deal = deals.find(d => d.id === draggedDealId)
+    if (deal && !canEditDeal(deal)) {
+      toast('You can only move your own deals', '#DC2626')
+      setDraggedDealId(null); setDragOverGroupId(null); return
+    }
     if (deal && group.stages?.[0] && deal.stage !== group.stages[0]) {
       quickUpdate(deal, 'stage', group.stages[0])
     }
@@ -1717,6 +1796,7 @@ export function Production() {
     if (!draggedId || draggedId === targetDeal.id || group.yearMatch) return
     const deal = deals.find(d => d.id === draggedId)
     if (!deal) return
+    if (!canEditDeal(deal)) { toast('You can only move your own deals', '#DC2626'); return }
 
     // Build the new order for this group: everyone currently in it
     // (excluding the dragged deal), with the dragged deal inserted
@@ -1770,6 +1850,7 @@ export function Production() {
   }
 
   async function quickUpdate(deal, field, value, isCustom) {
+    if (!canEditDeal(deal)) { toast('You can only edit your own deals', '#DC2626'); return }
     const today = new Date().toISOString().slice(0, 10)
 
     // Custom field — value lives in deal.custom_data, not a direct column
@@ -2029,6 +2110,16 @@ export function Production() {
               </button>
             ))}
           </div>
+          {viewMode === 'board' && (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => setCollapseSignal(s => ({ n: s.n + 1, collapsed: true }))}
+                style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}
+                title="Collapse all stage groups">⊟ Collapse All</button>
+              <button onClick={() => setCollapseSignal(s => ({ n: s.n + 1, collapsed: false }))}
+                style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}
+                title="Expand all stage groups">⊞ Expand All</button>
+            </div>
+          )}
           <ImportExport
             table="deals"
             data={filtered}
@@ -2150,7 +2241,14 @@ export function Production() {
       })()}
 
       {/* ── CONTENT ── */}
-      {loading ? <Loading /> : filtered.length === 0 ? (
+      {loadError ? (
+        <div style={{ padding: '48px 24px', textAlign: 'center', background: '#fff', border: '1px solid #e6e9ef', borderRadius: 6 }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>⚠️</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#323338', marginBottom: 4 }}>Couldn't load the board</div>
+          <div style={{ fontSize: 13, color: '#676879', marginBottom: 16 }}>{loadError}</div>
+          <Btn onClick={load}>↻ Retry</Btn>
+        </div>
+      ) : loading ? <Loading /> : filtered.length === 0 ? (
         <Empty icon="📊" title="No deals found" sub="Try adjusting your filters or add your first deal."
           action={<Btn onClick={openNew}>+ Add Deal</Btn>} />
       ) : viewMode === 'board' ? (
@@ -2197,6 +2295,7 @@ export function Production() {
               onDragEnterGroup={() => !group.yearMatch && setDragOverGroupId(group.id)}
               onDragLeaveGroup={() => setDragOverGroupId(null)}
               onDealDropOnRow={handleRowDrop}
+              collapseSignal={collapseSignal}
             />
           ))}
           <div onClick={addGroup}
@@ -2272,6 +2371,7 @@ export function Production() {
           saving={saving}
           isAdmin={isAdmin}
           canManage={canManage}
+          readOnly={selected?.id ? !canEditDeal(selected) : false}
           onSave={saveDeal}
           onClose={closeDrawer}
           onDelete={deleteDeal}

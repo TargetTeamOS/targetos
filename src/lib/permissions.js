@@ -24,14 +24,14 @@ export const DEFAULT_PERMISSIONS = {
 
   // --- Deals / Production ---
   'deals.view':             { admin:true,  secretary:true,  agent:true  },
-  'deals.view_all':         { admin:true,  secretary:true,  agent:false },
+  'deals.view_all':         { admin:true,  secretary:true,  agent:true  },
   'deals.create':           { admin:true,  secretary:true,  agent:true  },
   'deals.edit':             { admin:true,  secretary:true,  agent:true  },
   'deals.delete':           { admin:true,  secretary:false, agent:false },
   'deals.export':           { admin:true,  secretary:true,  agent:false },
   'deals.import':           { admin:true,  secretary:true,  agent:false },
   'deals.view_gci':         { admin:true,  secretary:true,  agent:true  },
-  'deals.view_team_gci':    { admin:true,  secretary:true,  agent:true  },
+  'deals.view_team_gci':    { admin:true,  secretary:true,  agent:false },
 
   // --- Listings ---
   'listings.view':          { admin:true,  secretary:true,  agent:true  },
