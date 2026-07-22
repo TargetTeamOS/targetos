@@ -26,7 +26,7 @@ import { DEFAULT_PHASE_TASKS, loadTcSettings } from '../lib/tcSettings'
 
 const PHASE_TASKS = DEFAULT_PHASE_TASKS
 import TCSyncHealth from '../components/TCSyncHealth'
-import TCMorningSummary from '../components/TCMorningSummary'
+import TCWorkQueueDrawer from '../components/TCWorkQueueDrawer'
 import { PeoplePanel, DocumentsPanel, PhotographyPanel } from '../components/TCDealPanels'
 import { TCParties, TCEmailLog } from '../components/TCBoardPanels'
 import { TCDealChat } from '../components/TCDealChat'
@@ -620,7 +620,7 @@ export function TransactionCoordinator() {
   const [search,      setSearch]      = useState('')
   const [phaseFilter, setPhaseFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('all')
-  const [dashTile,    setDashTile]    = useState('all')
+  const [drawerTile,  setDrawerTile]  = useState(null)   // opens the work-queue drawer
   const [expanded,    setExpanded]    = useState({})
   const [partsByDeal, setPartsByDeal] = useState({})
   const [saving,      setSaving]      = useState(false)
@@ -982,6 +982,25 @@ export function TransactionCoordinator() {
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
 
+  // Inline task edit from the work-queue drawer (existing tc_tasks rows only)
+  async function updateTask(taskId, patch) {
+    try {
+      const { error } = await supabase.from('tc_tasks').update({ ...patch, updated_at:new Date().toISOString() }).eq('id', taskId)
+      if (error) throw error
+      setTasks(p => p.map(t => t.id === taskId ? { ...t, ...patch } : t))
+    } catch (e) { alert('Could not update task: ' + (e.message || e)) }
+  }
+
+  // Open a deal's TC card: expand it (single-expand) + scroll into view
+  function openDealFile(dealId) {
+    if (!dealId) return
+    setExpanded({ [dealId]: true })
+    setTimeout(() => {
+      const el = document.getElementById('tc-deal-' + dealId)
+      if (el) el.scrollIntoView({ behavior:'smooth', block:'center' })
+    }, 120)
+  }
+
   async function checkTask(task) {
     if (task.status === 'done') return
     try {
@@ -1095,27 +1114,32 @@ export function TransactionCoordinator() {
 
   // Which deals fall in each dashboard bucket (memoized)
   const buckets = useMemo(() => {
-    const b = { attention:[], today:[], overdue:[], closing:[], wait_agent:[], wait_mtg:[], missing:[] }
-    const now = Date.now()
+    const b = { attention:[], today:[], week:[], overdue:[], closing:[], wait_agent:[], wait_attorney:[], wait_mtg:[], missing:[], photo:[] }
+    const t = new Date().toISOString().slice(0,10)
+    const wk = (()=>{ const d=new Date(); d.setDate(d.getDate()+7); return d.toISOString().slice(0,10) })()
     deals.forEach(d => {
       const s = signalsByDeal[d.id]; if (!s) return
+      const dTasks = (tasksByDeal[d.id] || []).filter(x => x.status !== 'done')
       if (s.level === 'red') b.attention.push(d.id)
-      if (s.dueToday > 0) b.today.push(d.id)
+      if (dTasks.some(x => x.due_date === t)) b.today.push(d.id)
+      if (dTasks.some(x => x.due_date && x.due_date > t && x.due_date <= wk)) b.week.push(d.id)
       if (s.overdue > 0) b.overdue.push(d.id)
       if (s.closingSoon) b.closing.push(d.id)
       if (s.missing.length) b.missing.push(d.id)
+      // waiting-on (APPROXIMATION from existing data — see note in drawer)
+      if (dTasks.some(x => x.agent_id)) b.wait_agent.push(d.id)
+      if (s.missing.includes('seller_attorney') || s.missing.includes('buyer_attorney')) b.wait_attorney.push(d.id)
       if (s.missing.includes('mortgage_broker') || s.missing.includes('title')) b.wait_mtg.push(d.id)
     })
     return b
-  }, [deals, signalsByDeal])
+  }, [deals, signalsByDeal, tasksByDeal])
 
   const filteredDeals = useMemo(() => deals.filter(d => {
     if (phaseFilter !== 'all' && d.tc_phase !== phaseFilter) return false
     if (agentFilter !== 'all' && d.agent_id !== agentFilter) return false
-    if (dashTile !== 'all' && !(buckets[dashTile] || []).includes(d.id)) return false
     if (search && !matchSearch(d, search, ['addr','attorney_name','mortgage_broker','notes'])) return false
     return true
-  }), [deals, phaseFilter, agentFilter, dashTile, buckets, search])
+  }), [deals, phaseFilter, agentFilter, search])
 
   const stats = useMemo(() => ({
     total:   deals.length,
@@ -1164,8 +1188,6 @@ export function TransactionCoordinator() {
         }
       />
 
-      <TCMorningSummary tasks={tasks} deals={deals} onCompleteTask={checkTask} />
-
       {/* Stats */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:16 }}>
         {[
@@ -1185,28 +1207,28 @@ export function TransactionCoordinator() {
         ))}
       </div>
 
-      {/* Office dashboard — compact clickable tiles */}
+      {/* Office dashboard — one strip; click a tile to open the work-queue drawer */}
       <div style={{ display:'flex', gap:6, marginBottom:14, flexWrap:'wrap' }}>
         {[
-          { id:'all',       label:'All files',       n:deals.length,              c:'var(--muted)',  bg:'var(--dim)' },
-          { id:'attention', label:'Needs attention', n:buckets.attention.length,  c:'#DC2626',       bg:'rgba(220,38,38,.1)' },
-          { id:'today',     label:'Due today',       n:buckets.today.length,      c:'#B45309',       bg:'rgba(245,166,35,.14)' },
-          { id:'overdue',   label:'Overdue',         n:buckets.overdue.length,    c:'#DC2626',       bg:'rgba(220,38,38,.1)' },
-          { id:'closing',   label:'Closing ≤7d',     n:buckets.closing.length,    c:'#2563EB',       bg:'rgba(59,130,246,.1)' },
-          { id:'wait_mtg',  label:'Wait mtg/title',  n:buckets.wait_mtg.length,   c:'var(--muted)',  bg:'var(--dim)' },
-          { id:'missing',   label:'Missing info',    n:buckets.missing.length,    c:'var(--muted)',  bg:'var(--dim)' },
-        ].map(t => {
-          const active = dashTile === t.id
-          return (
-            <button key={t.id} onClick={()=>setDashTile(active && t.id!=='all' ? 'all' : t.id)}
-              style={{ display:'flex', alignItems:'baseline', gap:6, padding:'5px 11px', borderRadius:8,
-                border:'1px solid '+(active?t.c:'transparent'), background:t.bg, cursor:'pointer', fontFamily:ff,
-                opacity:(t.n===0 && t.id!=='all')?0.5:1 }}>
-              <span style={{ fontSize:15, fontWeight:800, color:t.c }}>{t.n}</span>
-              <span style={{ fontSize:12, color:t.c }}>{t.label}</span>
-            </button>
-          )
-        })}
+          { id:'overdue',   label:'Overdue',         n:buckets.overdue.length,       c:'#DC2626',       bg:'rgba(220,38,38,.1)' },
+          { id:'today',     label:'Due today',       n:buckets.today.length,         c:'#B45309',       bg:'rgba(245,166,35,.14)' },
+          { id:'week',      label:'Due this week',   n:buckets.week.length,          c:'#2563EB',       bg:'rgba(59,130,246,.1)' },
+          { id:'attention', label:'Needs attention', n:buckets.attention.length,     c:'#DC2626',       bg:'rgba(220,38,38,.1)' },
+          { id:'closing',   label:'Closing ≤7d',     n:buckets.closing.length,       c:'#2563EB',       bg:'rgba(59,130,246,.1)' },
+          { id:'wait_agent',label:'Waiting agent',   n:buckets.wait_agent.length,    c:'var(--muted)',  bg:'var(--dim)' },
+          { id:'wait_attorney',label:'Waiting attorney', n:buckets.wait_attorney.length, c:'var(--muted)', bg:'var(--dim)' },
+          { id:'wait_mtg',  label:'Waiting mtg/title',n:buckets.wait_mtg.length,     c:'var(--muted)',  bg:'var(--dim)' },
+          { id:'missing',   label:'Missing info',    n:buckets.missing.length,       c:'var(--muted)',  bg:'var(--dim)' },
+          { id:'photo',     label:'Photography',     n:buckets.photo.length,         c:'var(--muted)',  bg:'var(--dim)' },
+        ].map(t => (
+          <button key={t.id} onClick={()=> t.n>0 && setDrawerTile(t.id)}
+            style={{ display:'flex', alignItems:'baseline', gap:6, padding:'5px 11px', borderRadius:8,
+              border:'1px solid transparent', background:t.bg, cursor: t.n>0?'pointer':'default', fontFamily:ff,
+              opacity: t.n===0 ? 0.5 : 1 }}>
+            <span style={{ fontSize:15, fontWeight:800, color:t.c }}>{t.n}</span>
+            <span style={{ fontSize:12, color:t.c }}>{t.label}</span>
+          </button>
+        ))}
       </div>
 
       {/* Filters */}
@@ -1249,8 +1271,8 @@ export function TransactionCoordinator() {
         </div>
       ) : (
         filteredDeals.map(deal => (
+          <div id={'tc-deal-' + deal.id} key={deal.id}>
           <DealCard
-            key={deal.id}
             deal={deal}
             tasks={tasksByDeal[deal.id] || []}
             roleSet={partsByDeal[deal.id]}
@@ -1263,8 +1285,73 @@ export function TransactionCoordinator() {
             onAddTask={d => { setSelDeal(d); setSelTask(null); setTaskForm({...TASK_BLANK}); setShowAddTask(true) }}
             onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'' }); setShowEditDeal(true) }}
           />
+          </div>
         ))
       )}
+
+      {/* ── WORK-QUEUE DRAWER (opened by dashboard tiles) ── */}
+      {(() => {
+        if (!drawerTile) return null
+        const t = new Date().toISOString().slice(0,10)
+        const wk = (()=>{ const d=new Date(); d.setDate(d.getDate()+7); return d.toISOString().slice(0,10) })()
+        const dealById = id => deals.find(d => d.id === id)
+        const openTasksFor = id => (tasksByDeal[id] || []).filter(x => x.status !== 'done')
+        const TITLES = {
+          overdue:'🔴 Overdue', today:'📌 Due today', week:'📆 Due this week', attention:'⚠️ Needs attention',
+          closing:'🏁 Closing ≤7 days', wait_agent:'👤 Waiting on agent', wait_attorney:'⚖️ Waiting on attorney',
+          wait_mtg:'🏦 Waiting on mortgage/title', missing:'❗ Missing info', photo:'📸 Photography',
+        }
+        const APPROX = {
+          wait_agent:'approx: open tasks assigned to an agent (no real waiting-on field yet)',
+          wait_attorney:'approx: derived from missing attorney party',
+          wait_mtg:'approx: derived from missing mortgage/title party',
+          photo:'derived from stage — full photography tracking coming later',
+        }
+        let rows = []
+        const dealIds = buckets[drawerTile] || []
+        if (['overdue','today','week','attention','wait_agent'].includes(drawerTile)) {
+          // task-level rows
+          dealIds.forEach(id => {
+            const deal = dealById(id)
+            openTasksFor(id).forEach(task => {
+              let include = true
+              if (drawerTile === 'overdue') include = task.due_date && task.due_date < t
+              else if (drawerTile === 'today') include = task.due_date === t
+              else if (drawerTile === 'week') include = task.due_date && task.due_date > t && task.due_date <= wk
+              else if (drawerTile === 'wait_agent') include = !!task.agent_id
+              else if (drawerTile === 'attention') include = (task.due_date && task.due_date <= t)
+              if (include) rows.push({ key:task.id, task, deal })
+            })
+          })
+        } else {
+          // deal-level rows (closing / missing / waiting party / photography)
+          rows = dealIds.map(id => {
+            const deal = dealById(id)
+            const s = signalsByDeal[id]
+            const actionLabel = drawerTile === 'closing' ? 'Closing prep'
+              : drawerTile === 'missing' ? ('Add ' + (s?.missing||[]).map(r=>({seller:'seller',buyer:'buyer',seller_attorney:'seller attorney',buyer_attorney:'buyer attorney',mortgage_broker:'mortgage',title:'title'}[r]||r)).join(', '))
+              : drawerTile === 'wait_attorney' ? 'Follow up with attorney'
+              : drawerTile === 'wait_mtg' ? 'Follow up with mortgage/title'
+              : drawerTile === 'photo' ? 'Schedule / confirm photography'
+              : '—'
+            return { key:id, task:null, deal, actionLabel }
+          })
+        }
+        return (
+          <TCWorkQueueDrawer
+            open={!!drawerTile}
+            onClose={()=>setDrawerTile(null)}
+            title={TITLES[drawerTile] || 'Work queue'}
+            approxNote={APPROX[drawerTile]}
+            rows={rows}
+            agents={agents}
+            phases={PHASES}
+            onUpdateTask={updateTask}
+            onCompleteTask={checkTask}
+            onOpenFile={openDealFile}
+          />
+        )
+      })()}
 
       {/* ── ADD DEAL MODAL ── */}
       <Modal open={showAddDeal} onClose={()=>setShowAddDeal(false)} title="New Deal" width={600}>
