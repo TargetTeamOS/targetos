@@ -146,6 +146,50 @@ export async function saveSideColors(map) {
 }
 export function invalidateSideCache() { _sideCache = null; _sideTime = 0 }
 
+// ── BUILT-IN FIELD COLOR OVERRIDES (Stage / Deal Status / CTC) ─────
+// Each lives in its OWN isolated system_settings row. Stored SPARSE:
+// only colors the admin explicitly overrode are persisted; source-code
+// colors remain the defaults. We never touch unrelated settings rows.
+export const STAGE_COLORS_KEY       = 'production_stage_colors'
+export const DEAL_STATUS_COLORS_KEY = 'production_deal_status_colors'
+export const CTC_COLORS_KEY         = 'production_ctc_colors'
+export const COMMAND_COLORS_KEY     = 'production_command_colors'
+
+export async function loadColorOverrides(key) {
+  try {
+    const { data } = await supabase.from('system_settings').select('value').eq('key', key).maybeSingle()
+    const v = data?.value
+    return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {}
+  } catch (e) { console.warn('loadColorOverrides(' + key + '):', e.message); return {} }
+}
+
+export async function saveColorOverrides(key, map) {
+  // Persist ONLY explicit overrides (truthy values); never touch other rows.
+  const clean = {}
+  for (const k in (map || {})) if (map[k]) clean[k] = map[k]
+  const { data: existing } = await supabase.from('system_settings').select('id').eq('key', key).maybeSingle()
+  if (existing) {
+    const { error } = await supabase.from('system_settings').update({ value: clean, updated_at: new Date().toISOString() }).eq('key', key)
+    if (error) throw error
+  } else {
+    const { error } = await supabase.from('system_settings').insert({ key, value: clean, created_at: new Date().toISOString() })
+    if (error) throw error
+  }
+  return clean
+}
+
+// ── SAVE OPTIONS FOR ONE CUSTOM FIELD (no clobber) ────────────────
+// Loads ALL field defs, replaces options on exactly the target field,
+// and writes the full list back — mirroring createCustomColumn so
+// other entities' / fields' definitions are never dropped.
+export async function saveFieldOptions(entity, key, options) {
+  const all = (await loadFieldDefs()) || []
+  const next = all.map(f => (f.entity === entity && f.key === key) ? { ...f, options } : f)
+  await saveFieldDefs(next)
+  invalidateFieldCache()
+  return next
+}
+
 // ── COMMAND FIELD SEEDS (idempotent) ──────────────────────────────
 const CMD_STATUS_KEY = 'command_documents_status'
 const CMD_LINK_KEY   = 'command_profile_link'
