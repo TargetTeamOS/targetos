@@ -59,13 +59,18 @@ async function main() {
     const byUser = {}
     for (const r of rows) (byUser[r.crm_user_id] = byUser[r.crm_user_id] || []).push(r)
     for (const uid of Object.keys(byUser)) {
-      const { data: existing } = await sb.from('email_connections')
+      const { data: existing, error: selErr } = await sb.from('email_connections')
         .select('id, status, updated_at, is_primary')
         .eq('crm_user_id', uid).order('updated_at', { ascending: false })
+      if (selErr) throw new Error('select connections for primary (user ' + uid + ') failed: ' + selErr.message)
       if (!existing || existing.length === 0) continue
       if (existing.some(r => r.is_primary)) continue // already has a primary
       const idx = pickPrimaryIndex(existing)
-      if (idx >= 0) await sb.from('email_connections').update({ is_primary: true }).eq('id', existing[idx].id)
+      if (idx >= 0) {
+        const { error: updErr } = await sb.from('email_connections')
+          .update({ is_primary: true }).eq('id', existing[idx].id)
+        if (updErr) throw new Error('set is_primary (connection ' + existing[idx].id + ') failed: ' + updErr.message)
+      }
     }
     console.log('[backfill] applied.')
   }

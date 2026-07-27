@@ -37,10 +37,13 @@ create table if not exists email_connections (
   updated_at                  timestamptz not null default now(),
   disconnected_at             timestamptz
 );
--- Idempotent backfill key + dedupe of a provider account per user.
+-- Idempotent backfill key. A NORMAL (non-partial) unique index so the
+-- Supabase upsert(onConflict:'source_integration_account_id') can infer the
+-- conflict target. Postgres allows multiple NULLs in a unique index, so rows
+-- without a legacy source remain valid. Drop any earlier partial version.
+drop index if exists uq_email_conn_source;
 create unique index if not exists uq_email_conn_source
-  on email_connections (source_integration_account_id)
-  where source_integration_account_id is not null;
+  on email_connections (source_integration_account_id);
 create unique index if not exists uq_email_conn_provider_acct
   on email_connections (crm_user_id, provider, provider_account_id)
   where provider_account_id is not null;

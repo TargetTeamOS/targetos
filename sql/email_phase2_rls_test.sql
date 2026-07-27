@@ -64,4 +64,19 @@ begin
   if n <> 1 then raise exception 'missing unique index on (connection_id, provider_message_id)'; end if;
 end $$;
 
+-- 7. The backfill conflict index exists and is a NORMAL (non-partial) unique
+--    index, so Supabase upsert(onConflict:'source_integration_account_id')
+--    can infer it. (Partial index would make the upsert fail.)
+do $$
+declare n int;
+begin
+  select count(*) into n
+    from pg_class c
+    join pg_index i on i.indexrelid = c.oid
+   where c.relname = 'uq_email_conn_source'
+     and i.indisunique
+     and i.indpred is null;   -- indpred is null => NOT partial
+  if n <> 1 then raise exception 'uq_email_conn_source must exist as a non-partial unique index'; end if;
+end $$;
+
 select 'phase2 structural RLS tests passed' as status;
