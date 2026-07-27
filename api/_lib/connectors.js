@@ -3,8 +3,32 @@
 // Reuses the service-key Supabase client pattern from _lib/phone.js.
 
 const { createClient } = require('@supabase/supabase-js')
+const emailCrypto = require('./emailCrypto')
 
 const SUPABASE_URL  = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
+
+// Encrypt only the per-user OAuth token fields at rest. Other secret
+// fields (client_secret, api_key, webhook_secret) are app-level config,
+// out of scope here. seal()/open() are pure passthroughs when
+// EMAIL_TOKEN_ENCRYPTION_KEY is unset, so legacy plaintext rows keep
+// working until the Phase 2 backfill runs.
+const TOKEN_FIELDS = ['access_token', 'refresh_token']
+function sealSecrets(secrets) {
+  if (!secrets || typeof secrets !== 'object') return secrets
+  const out = Object.assign({}, secrets)
+  for (const f of TOKEN_FIELDS) if (out[f]) out[f] = emailCrypto.seal(out[f])
+  return out
+}
+function openSecrets(secrets) {
+  if (!secrets || typeof secrets !== 'object') return secrets
+  const out = Object.assign({}, secrets)
+  for (const f of TOKEN_FIELDS) {
+    if (out[f] && emailCrypto.isEncrypted(out[f])) {
+      try { out[f] = emailCrypto.open(out[f]) } catch (e) { out[f] = null } // undecryptable → treat as absent
+    }
+  }
+  return out
+}
 
 function sb() {
   const key = process.env.SUPABASE_SERVICE_KEY ||
@@ -16,11 +40,13 @@ function sb() {
 async function getIntegration(id) {
   const { data, error } = await sb().from('integrations').select('*').eq('id', id).maybeSingle()
   if (error) throw new Error('integrations read failed: ' + error.message)
+  if (data && data.secrets) data.secrets = openSecrets(data.secrets)
   return data // may be null if sql/connectors.sql not run yet
 }
 
 async function patchIntegration(id, patch) {
   patch.updated_at = new Date().toISOString()
+  if (patch.secrets) patch = Object.assign({}, patch, { secrets: sealSecrets(patch.secrets) })
   const { error } = await sb().from('integrations').update(patch).eq('id', id)
   if (error) throw new Error('integrations update failed: ' + error.message)
 }
@@ -115,11 +141,13 @@ async function getAgentAccount(agentId, provider) {
   const { data, error } = await sb().from('integration_accounts')
     .select('*').eq('agent_id', agentId).eq('provider', provider).maybeSingle()
   if (error) throw new Error('integration_accounts read failed: ' + error.message)
+  if (data && data.secrets) data.secrets = openSecrets(data.secrets)
   return data
 }
 
 async function upsertAgentAccount(agentId, provider, patch) {
   patch.updated_at = new Date().toISOString()
+  if (patch.secrets) patch = Object.assign({}, patch, { secrets: sealSecrets(patch.secrets) })
   const existing = await getAgentAccount(agentId, provider)
   if (existing) {
     const { error } = await sb().from('integration_accounts').update(patch).eq('id', existing.id)
@@ -136,6 +164,7 @@ async function findAccountByState(provider, state) {
   const { data, error } = await sb().from('integration_accounts')
     .select('*').eq('provider', provider).eq('secrets->>oauth_state', state).maybeSingle()
   if (error) throw new Error('integration_accounts state lookup failed: ' + error.message)
+  if (data && data.secrets) data.secrets = openSecrets(data.secrets)
   return data
 }
 
