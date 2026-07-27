@@ -21,6 +21,8 @@
 
 const _connectors = require('./_lib/connectors')
 const _auth = require('./_lib/auth')
+const emailCrypto = require('./_lib/emailCrypto')
+const _emailStore = require('./_lib/emailStore')
 
 // Dependencies resolved through a single object so unit tests can override
 // them in-process (there is no HTTP surface for this). Defaults are the real
@@ -33,6 +35,7 @@ const deps = {
   getAgentForUser: _connectors.getAgentForUser,
   contactAccess: _connectors.contactAccess,
   insertContactTimeline: _connectors.insertContactTimeline,
+  persistOutboundGmail: _emailStore.persistOutboundGmail,
 }
 
 const ALLOWED_PROVIDERS = ['gmail', 'outlook']
@@ -192,6 +195,20 @@ async function handler(req, res) {
         return json(res, 502, { error: 'Gmail send failed: ' + errText })
       }
       await deps.logEvent('google', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: agent.id }, true)
+      // Phase 3: best-effort, idempotent persistence of the sent message into
+      // email_threads/messages/delivery_events. Only when token encryption is
+      // configured; the owner is derived from the authenticated connection
+      // (agent.id), never from the request. Never blocks the send response.
+      if (emailCrypto.keyringFromEnv().keyConfigured) {
+        let sendJson = {}
+        try { sendJson = await r.json() } catch (e) { sendJson = {} }
+        try {
+          await deps.persistOutboundGmail(agent.id, {
+            to, subject, html, text, fromAccount,
+            providerMessageId: sendJson.id, providerThreadId: sendJson.threadId, token,
+          })
+        } catch (e) { console.warn('[connector-send] outbound persist skipped: ' + sanitize(e.message)) }
+      }
     }
 
     // Contact timeline entry — already authorized above.
