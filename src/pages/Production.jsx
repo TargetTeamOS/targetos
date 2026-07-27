@@ -34,7 +34,10 @@ import { ClickToCall } from '../components/ClickToCall'
 import ContactPicker from '../components/ContactPicker'
 import { FilterBar } from '../components/FilterBar'
 import { ProductionWidgetEditor } from '../components/ProductionWidgetEditor'
-import { loadSideColors, saveSideColors, SIDE_COLOR_DEFAULTS, ensureCommandFields } from '../lib/customFields'
+import { loadSideColors, saveSideColors, SIDE_COLOR_DEFAULTS, ensureCommandFields,
+  normalizeOption, COMMAND_FIELD_KEYS,
+  STAGE_COLORS_KEY, DEAL_STATUS_COLORS_KEY, CTC_COLORS_KEY, COMMAND_COLORS_KEY,
+  loadColorOverrides, saveColorOverrides, saveFieldOptions } from '../lib/customFields'
 import { ImportExport } from '../components/ImportExport'
 import { loadFieldDefs, saveFieldDefs, getFieldsForEntity, labelToKey, FIELD_TYPES, invalidateFieldCache } from '../lib/customFields'
 import { CustomFieldRenderer } from '../components/CustomFieldRenderer'
@@ -78,19 +81,22 @@ function fmtWidget(v, format) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
-// Fixed leading columns (checkbox + sticky Item). Item narrowed from 260→190
-// so horizontal scrolling leaves more room for data on the right.
+// Fixed leading columns (checkbox + sticky Item). COL_ITEM is the DEFAULT
+// width; the Item column is user-resizable (min 180) and its live width is
+// threaded through BoardColgroup so header + every group table stay aligned.
 const COL_CHECK = 36
-const COL_ITEM  = 150
+const COL_ITEM  = 220
 const COL_OPEN  = 32
+const ITEM_MIN  = 180
+const SIDE_MIN  = 110
 
 // Shared <colgroup> — the ONE place widths are declared. Rendered identically
 // by the header table and every stage-group table so columns can never drift.
-function BoardColgroup({ visibleCols }) {
+function BoardColgroup({ visibleCols, itemW = COL_ITEM }) {
   return (
     <colgroup>
       <col style={{ width: COL_CHECK }} />
-      <col style={{ width: COL_ITEM }} />
+      <col style={{ width: itemW }} />
       {visibleCols.map(c => <col key={c.key} style={{ width: c.width }} />)}
       <col style={{ width: COL_OPEN }} />
     </colgroup>
@@ -141,7 +147,7 @@ const AGENT_COMM_OPTIONS   = ['Working on it', 'Done', 'Not Yet']
 const ALL_COLUMNS = [
   { key:'_client',             label:'Client',          width:170, type:'contacts', align:'left'   },
   { key:'_agent',              label:'Agent',           width:120, pin:true, align:'left'         },
-  { key:'side',                label:'Side',            width:90,  type:'select', align:'center', options:['Buyer','Seller','Dual','Referral'] },
+  { key:'side',                label:'Side',            width:135, type:'select', align:'center', options:DEAL_SIDES },
   { key:'stage',               label:'Stage',           width:150, type:'stage', align:'center'   },
   { key:'production',          label:'Production $',    width:120, type:'number', align:'right'   },
   { key:'gci',                 label:'GCI $',           width:100, type:'number', align:'right'   },
@@ -210,10 +216,45 @@ function cellColor(col, val) {
   return null
 }
 
+// ── BUILT-IN COLOR OVERRIDES (live maps + resolvers) ──────────────
+// Sparse admin overrides loaded from system_settings on board mount.
+// Resolvers fall back to the source-code defaults, so appearance is
+// unchanged until an admin explicitly overrides a color. These are the
+// SINGLE source of truth for Stage/Deal-Status/CTC colors everywhere
+// (pills, group headers/accents, drawer, filters).
+let STAGE_COLOR_OV = {}
+let DEAL_STATUS_COLOR_OV = {}
+let CTC_COLOR_OV = {}
+let CMD_COLOR_OV = {}
+function setStageColorOv(m)      { STAGE_COLOR_OV = { ...(m || {}) } }
+function setDealStatusColorOv(m) { DEAL_STATUS_COLOR_OV = { ...(m || {}) } }
+function setCtcColorOv(m)        { CTC_COLOR_OV = { ...(m || {}) } }
+function setCmdColorOv(m)        { CMD_COLOR_OV = { ...(m || {}) } }
+function stageColor(v) {
+  if (!v) return null
+  return STAGE_COLOR_OV[v] || (DEAL_STAGES.find(s => s.value === v)?.hex) || '#c4c4c4'
+}
+function dealStatusColor(v) {
+  if (!v) return null
+  return DEAL_STATUS_COLOR_OV[v] || STATUS_COLORS[v] || null
+}
+function ctcColor(v) {
+  if (!v) return null
+  return CTC_COLOR_OV[v] || (CTC_STAGES.find(s => s.value === v)?.hex) || STATUS_COLORS[v] || '#64748B'
+}
+function commandColor(v) {
+  if (!v) return null
+  return CMD_COLOR_OV[v] || (COMMAND_STATUSES.find(c => c.value === v)?.hex) || STATUS_COLORS[v] || '#94A3B8'
+}
+
+// Shared hex validation/normalization for every color editor.
+const HEX_RE = /^#[0-9A-Fa-f]{6}$/
+function normHex(s) { const t = (s || '').trim().toLowerCase(); return HEX_RE.test(t) ? t : null }
+
 const BOARD_GROUPS = [
-  { id: 'active',        label: 'Accepted Offers', stages: ['Negotiations','Offer Accapted'], color: '#037f4c', emoji: '🤝' },
-  { id: 'under_shtar',   label: 'Under Shtar',      stages: ['Under Shtar'],                   color: '#bb3354', emoji: '📝' },
-  { id: 'under_contract',label: 'Under Contract',   stages: ['Under Contract'],                color: '#757575', emoji: '📋' },
+  { id: 'active',        label: 'Accepted Offers', stages: ['Negotiations','Offer Accapted'], headerStage: 'Offer Accapted', color: '#037f4c', emoji: '🤝' },
+  { id: 'under_shtar',   label: 'Under Shtar',      stages: ['Under Shtar'],                   headerStage: 'Under Shtar',    color: '#bb3354', emoji: '📝' },
+  { id: 'under_contract',label: 'Under Contract',   stages: ['Under Contract'],                headerStage: 'Under Contract', color: '#757575', emoji: '📋' },
   // Closed/Fell-Through groups are generated dynamically per-year at runtime (see buildYearGroups below)
   // so any year present in the data gets its own group automatically — no hardcoded year list needed.
 ]
@@ -239,14 +280,14 @@ function buildYearGroups(deals) {
   const groups = []
 
   years.forEach(year => {
-    if (closedYears.has(year)) groups.push({ id:'closed_'+year, label:'Sold — '+year, stages:['Closed'], yearMatch:year, color:'#225091', emoji:'🎉' })
-    if (fellYears.has(year))   groups.push({ id:'fell_'+year,   label:'Deal Fell Through — '+year, stages:['Deal Fell Through'], yearMatch:year, color:'#ff007f', emoji:'💔' })
+    if (closedYears.has(year)) groups.push({ id:'closed_'+year, label:'Sold — '+year, stages:['Closed'], headerStage:'Closed', yearMatch:year, color:'#225091', emoji:'🎉' })
+    if (fellYears.has(year))   groups.push({ id:'fell_'+year,   label:'Deal Fell Through — '+year, stages:['Deal Fell Through'], headerStage:'Deal Fell Through', yearMatch:year, color:'#ff007f', emoji:'💔' })
   })
 
   // Catch-all for rows with a closed/fell-through stage but no usable date —
   // ensures nothing silently disappears from the board
-  if (closedNoDate > 0) groups.push({ id:'closed_nodate', label:'Sold — No Date', stages:['Closed'], yearMatch:'__NODATE__', color:'#94A3B8', emoji:'⚪' })
-  if (fellNoDate > 0)   groups.push({ id:'fell_nodate',   label:'Deal Fell Through — No Date', stages:['Deal Fell Through'], yearMatch:'__NODATE__', color:'#94A3B8', emoji:'⚪' })
+  if (closedNoDate > 0) groups.push({ id:'closed_nodate', label:'Sold — No Date', stages:['Closed'], headerStage:'Closed', yearMatch:'__NODATE__', color:'#94A3B8', emoji:'⚪' })
+  if (fellNoDate > 0)   groups.push({ id:'fell_nodate',   label:'Deal Fell Through — No Date', stages:['Deal Fell Through'], headerStage:'Deal Fell Through', yearMatch:'__NODATE__', color:'#94A3B8', emoji:'⚪' })
 
   return groups
 }
@@ -273,11 +314,11 @@ const BLANK = {
 
 // ── PILL / BADGE HELPERS ──────────────────────────────────────────
 function StagePill({ stage, small }) {
-  const def = DEAL_STAGES.find(s => s.value === stage)
-  const color = def?.hex || '#c4c4c4'
+  const color = stageColor(stage) || '#c4c4c4'
   return (
-    <span style={{
+    <span title={stage || ''} style={{
       display: 'inline-block',
+      maxWidth: '100%',
       padding: small ? '1px 6px' : '2px 8px',
       borderRadius: '20px',
       background: color + '22',
@@ -286,6 +327,10 @@ function StagePill({ stage, small }) {
       fontWeight: 700,
       border: "1px solid " + (color) + "44",
       whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      verticalAlign: 'middle',
+      boxSizing: 'border-box',
     }}>
       {stage || '—'}
     </span>
@@ -295,9 +340,10 @@ function StagePill({ stage, small }) {
 function StatusDot({ value, options, color = '#94A3B8' }) {
   if (!value) return <span style={{ color: 'var(--muted)', fontSize: '11px' }}>—</span>
   return (
-    <span style={{
-      display: 'inline-block', padding: '1px 7px', borderRadius: '20px',
+    <span title={String(value)} style={{
+      display: 'inline-block', maxWidth: '100%', padding: '1px 7px', borderRadius: '20px',
       background: color + '22', color, fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap',
+      overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle', boxSizing: 'border-box',
     }}>
       {value}
     </span>
@@ -311,7 +357,7 @@ function StatusDot({ value, options, color = '#94A3B8' }) {
 // clipping and sticky-header/z-index stacking. Positioned from the trigger's
 // bounding rect, flipping up / shifting left to stay in the viewport.
 const PICKER_Z = 10000
-function InlinePicker({ value, options, onSave, color, renderValue }) {
+function InlinePicker({ value, options, onSave, color, renderValue, footer }) {
   const [open, setOpen] = useState(false)
   const [menuPos, setMenuPos] = useState(null)   // { left, top, width, maxHeight, openUp }
   const triggerRef = useRef(null)
@@ -364,13 +410,15 @@ function InlinePicker({ value, options, onSave, color, renderValue }) {
   }, [open])
 
   return (
-    <div ref={triggerRef} style={{ display: 'inline-block' }}>
-      <div onClick={openMenu} style={{ cursor: 'pointer', userSelect: 'none' }}>
+    <div ref={triggerRef} style={{ display: 'inline-block', maxWidth: '100%', minWidth: 0 }}>
+      <div onClick={openMenu} style={{ cursor: 'pointer', userSelect: 'none', maxWidth: '100%', overflow: 'hidden' }}>
         {renderValue ? renderValue(value) : (
-          <span style={{
-            display: 'inline-block', padding: '2px 8px', borderRadius: '20px',
+          <span title={value ? String(value) : ''} style={{
+            display: 'inline-block', maxWidth: '100%', padding: '2px 8px', borderRadius: '20px',
             background: (color || '#94A3B8') + '22', color: color || '#94A3B8',
             fontSize: '10px', fontWeight: 700,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            verticalAlign: 'middle', boxSizing: 'border-box',
           }}>
             {value || '—'}
           </span>
@@ -410,6 +458,21 @@ function InlinePicker({ value, options, onSave, color, renderValue }) {
               </div>
             )
           })}
+          {footer && (
+            <div
+              onClick={e => { e.stopPropagation(); setOpen(false); footer.onClick?.() }}
+              style={{
+                position: 'sticky', bottom: 0, borderTop: '1px solid var(--border, #D0D4E4)',
+                background: 'var(--panel, #fff)', padding: '8px 12px', cursor: 'pointer',
+                fontSize: '12px', fontWeight: 700, color: '#0073ea',
+                display: 'flex', alignItems: 'center', gap: '6px',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--hov, #F0F3FF)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--panel, #fff)'}
+            >
+              <span aria-hidden>🎨</span><span>{footer.label}</span>
+            </div>
+          )}
         </div>,
         document.body
       )}
@@ -506,7 +569,7 @@ const SENSITIVE_COLS = new Set([
   'gci','expected_gci','collected_gci','commission_received','agent_commission_sent',
   'commission_status','payment_method','atty_name','atty_email',
 ])
-function MondayCell({ col, deal, onQuickUpdate, agents, rowH = BOARD.ROW_H }) {
+function MondayCell({ col, deal, onQuickUpdate, agents, rowH = BOARD.ROW_H, onEditColors }) {
   const navigate = useNavigate()
   const { agent: me, isAdmin, canManage, can } = useAuth()
   const [editing, setEditing] = React.useState(false)
@@ -592,22 +655,39 @@ function MondayCell({ col, deal, onQuickUpdate, agents, rowH = BOARD.ROW_H }) {
   // Status/stage/command/ctc cells — colored pill
   if (['stage','command','ctc'].includes(col.type) || col.type === 'select') {
     const optionsMap = {
-      stage:   DEAL_STAGES,
-      command: COMMAND_STATUSES.filter(c => c.value),
-      ctc:     CTC_STAGES,
+      stage:   DEAL_STAGES.map(s => ({ value: s.value, label: s.label, hex: stageColor(s.value) })),
+      command: COMMAND_STATUSES.filter(c => c.value).map(c => ({ value: c.value, label: c.label, hex: commandColor(c.value) })),
+      ctc:     CTC_STAGES.map(s => ({ value: s.value, label: s.label, hex: ctcColor(s.value) })),
       select:  (col.options||[]).map(o => {
         // Backward compatible: options may be plain strings OR {label,value,color}.
-        if (o && typeof o === 'object') return { value: o.value ?? o.label, label: o.label ?? String(o.value), hex: o.color || STATUS_COLORS[o.value ?? o.label] }
-        return { value: o, label: o, hex: STATUS_COLORS[o] }
+        const n = normalizeOption(o)
+        let hex = n.color
+        if (col.key === 'side')             hex = SIDE_COLORS[n.value] || STATUS_COLORS[n.value] || n.color
+        else if (col.key === 'deal_status') hex = dealStatusColor(n.value)
+        else                                hex = n.color || STATUS_COLORS[n.value]
+        return { value: n.value, label: n.label, hex }
       }),
     }
     const opts = optionsMap[col.type] || []
     const found = opts.find(o => o.value === raw)
     const bg = found?.hex || cellColor(col, raw) || '#c5c7d0'
+    // Admin-only in-dropdown color/label editor footer (agents & secretary excluded).
+    let footer = null
+    if (isAdmin && onEditColors) {
+      if (col.type === 'stage')                                   footer = { label: 'Edit Colors', onClick: () => onEditColors({ type: 'builtin', field: 'stage' }) }
+      else if (col.type === 'ctc')                                footer = { label: 'Edit Colors', onClick: () => onEditColors({ type: 'builtin', field: 'ctc' }) }
+      else if (col.type === 'command')                            footer = { label: 'Edit Colors', onClick: () => onEditColors({ type: 'builtin', field: 'command' }) }
+      else if (col.type === 'select' && col.key === 'side')        footer = { label: 'Edit Side Colors', onClick: () => onEditColors({ type: 'side' }) }
+      else if (col.type === 'select' && col.key === 'deal_status') footer = { label: 'Edit Colors', onClick: () => onEditColors({ type: 'builtin', field: 'deal_status' }) }
+      else if (col.type === 'select' && col.custom) {
+        const lbl = col.key === COMMAND_FIELD_KEYS.status ? 'Edit Status Labels & Colors' : 'Edit Labels & Colors'
+        footer = { label: lbl, onClick: () => onEditColors({ type: 'custom', fieldKey: col.key }) }
+      }
+    }
     return (
       <td style={{ height: rowH, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle', overflow: 'hidden' }}>
         <div style={{ ...base, overflow: 'visible', cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
-          <InlinePicker value={raw} options={opts} color={bg}
+          <InlinePicker value={raw} options={opts} color={bg} footer={footer}
             onSave={v => onQuickUpdate(deal, col.key, v, col.custom)} />
         </div>
       </td>
@@ -715,7 +795,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents, rowH = BOARD.ROW_H }) {
 }
 
 // ── MONDAY.COM ROW ────────────────────────────────────────────────
-function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect, visibleCols, onDealDragStart, onDealDropOnRow, rowH = BOARD.ROW_H }) {
+function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect, visibleCols, onDealDragStart, onDealDropOnRow, rowH = BOARD.ROW_H, onEditColors }) {
   const [hover, setHover] = React.useState(false)
   const [dragOverRow, setDragOverRow] = React.useState(false)
   const rowBg = isSelected ? BOARD.selected : hover ? BOARD.hover : '#fff'
@@ -757,7 +837,7 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
 
       {/* Dynamic columns */}
       {visibleCols.map(col => (
-        <MondayCell key={col.key} col={col} deal={deal} onQuickUpdate={onQuickUpdate} agents={agents} rowH={rowH} />
+        <MondayCell key={col.key} col={col} deal={deal} onQuickUpdate={onQuickUpdate} agents={agents} rowH={rowH} onEditColors={onEditColors} />
       ))}
 
       {/* Open icon */}
@@ -772,7 +852,7 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
 
 
 // ── MONDAY.COM GROUP ─────────────────────────────────────────────
-function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename, onDealDragStart, onDropDeal, isDragOver, onDragEnterGroup, onDragLeaveGroup, onDealDropOnRow, collapseSignal, rowH = BOARD.ROW_H }) {
+function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, selectedIds, onToggleSelect, onSelectAll, visibleCols, onAddDeal, onRename, onDealDragStart, onDropDeal, isDragOver, onDragEnterGroup, onDragLeaveGroup, onDealDropOnRow, collapseSignal, rowH = BOARD.ROW_H, itemW = COL_ITEM, onEditColors }) {
   const { can } = useAuth()
   // Group GCI total spans all agents in the group → requires TEAM gci permission.
   // Production volume stays visible to everyone (goal-driven team visibility).
@@ -788,7 +868,11 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
   const totalProd = deals.reduce((s, d) => s + parseNum(d.production), 0)
   const allSelected = deals.length > 0 && deals.every(d => selectedIds.includes(d.id))
 
-  const headerBg = group.color || stageAccent(group.label)
+  // Header/accent color = the group's canonical Stage color (override-aware),
+  // resolved from an explicit headerStage key rather than the display label
+  // (labels like "Accepted Offers" don't equal the stored Stage value).
+  // Existing group.color remains the fallback when no headerStage is set.
+  const headerBg = (group.headerStage && stageColor(group.headerStage)) || group.color || stageAccent(group.label)
 
   return (
     <div
@@ -846,14 +930,14 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
       {!collapsed && (
         <div style={{ borderBottom: '1px solid ' + BOARD.cellBorder }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', background: '#fff' }}>
-            <BoardColgroup visibleCols={visibleCols} />
+            <BoardColgroup visibleCols={visibleCols} itemW={itemW} />
             <tbody>
               {deals.map(d => (
                 <DealRow key={d.id} deal={d} agents={agents} onOpen={onOpen} onQuickUpdate={onQuickUpdate}
                   isAdmin={isAdmin} isSelected={selectedIds.includes(d.id)}
                   onToggleSelect={onToggleSelect} visibleCols={visibleCols}
                   onDealDragStart={onDealDragStart}
-                  onDealDropOnRow={onDealDropOnRow ? (targetDeal) => onDealDropOnRow(targetDeal, group) : undefined} rowH={rowH} />
+                  onDealDropOnRow={onDealDropOnRow ? (targetDeal) => onDealDropOnRow(targetDeal, group) : undefined} rowH={rowH} onEditColors={onEditColors} />
               ))}
             </tbody>
             {/* Totals footer */}
@@ -1198,7 +1282,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
 
   // Days to close indicator
   const daysToClose = form.expected_close_date ? getDaysUntil(form.expected_close_date) : null
-  const stageHex = DEAL_STAGES.find(s => s.value === form.stage)?.hex || '#c4c4c4'
+  const stageHex = stageColor(form.stage) || '#c4c4c4'
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', pointerEvents: 'none' }}>
@@ -1480,20 +1564,21 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
                 {CTC_STAGES.map((stage, i) => {
                   const isActive = form.ctc === stage.value
                   const isDone   = CTC_STAGES.findIndex(s => s.value === form.ctc) > i
+                  const chex = ctcColor(stage.value)
                   return (
                     <div key={stage.value}
                       onClick={() => set('ctc', stage.value)}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '10px',
                         padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
-                        background: isActive ? stage.hex + '18' : 'var(--dim)',
-                        border: "1px solid " + (isActive ? stage.hex : 'var(--border)'),
+                        background: isActive ? chex + '18' : 'var(--dim)',
+                        border: "1px solid " + (isActive ? chex : 'var(--border)'),
                         transition: 'all .12s',
                       }}>
-                      <div style={{ width: 20, height: 20, borderRadius: '50%', background: isActive || isDone ? stage.hex : 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ width: 20, height: 20, borderRadius: '50%', background: isActive || isDone ? chex : 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {(isActive || isDone) && <span style={{ color: '#fff', fontSize: '10px', fontWeight: 900 }}>✓</span>}
                       </div>
-                      <span style={{ fontSize: '13px', fontWeight: isActive ? 700 : 400, color: isActive ? stage.hex : 'var(--text)' }}>{stage.label}</span>
+                      <span style={{ fontSize: '13px', fontWeight: isActive ? 700 : 400, color: isActive ? chex : 'var(--text)' }}>{stage.label}</span>
                     </div>
                   )
                 })}
@@ -1655,12 +1740,32 @@ export function Production() {
   // Shared Side colors (cosmetic, from system_settings) + admin editor toggle.
   const [sideColors, setSideColorsState] = useState(SIDE_COLOR_DEFAULTS)
   const [sideEditorOpen, setSideEditorOpen] = useState(false)
+  // Sparse built-in color overrides (Stage / Deal Status / CTC) + active editor.
+  // The state values exist only to trigger re-render; the resolvers read the
+  // module-level maps that these loaders keep in sync.
+  const [stageOv,      setStageOv]      = useState({})
+  const [dealStatusOv, setDealStatusOv] = useState({})
+  const [ctcOv,        setCtcOv]        = useState({})
+  const [cmdOv,        setCmdOv]        = useState({})
+  const [editorSpec,   setEditorSpec]   = useState(null)   // { type:'builtin'|'custom', field?, fieldKey? }
 
-  // On mount: load shared Side colors and idempotently ensure the two Command
-  // custom fields exist. Both are best-effort; failures don't block the board.
+  // Dispatch an "Edit …" footer click from any board dropdown. Side reuses the
+  // existing SideColorEditor; everything else opens the scoped editor modal.
+  const handleEditColors = (spec) => {
+    if (spec?.type === 'side') setSideEditorOpen(true)
+    else setEditorSpec(spec)
+  }
+
+  // On mount: load shared Side colors, built-in color overrides, and
+  // idempotently ensure the two Command custom fields exist. All best-effort;
+  // failures don't block the board.
   useEffect(() => {
     let alive = true
     loadSideColors().then(m => { if (alive) { setSideColorsState(m); setSideColors(m) } }).catch(() => {})
+    loadColorOverrides(STAGE_COLORS_KEY).then(m => { if (alive) { setStageColorOv(m); setStageOv(m) } }).catch(() => {})
+    loadColorOverrides(DEAL_STATUS_COLORS_KEY).then(m => { if (alive) { setDealStatusColorOv(m); setDealStatusOv(m) } }).catch(() => {})
+    loadColorOverrides(CTC_COLORS_KEY).then(m => { if (alive) { setCtcColorOv(m); setCtcOv(m) } }).catch(() => {})
+    loadColorOverrides(COMMAND_COLORS_KEY).then(m => { if (alive) { setCmdColorOv(m); setCmdOv(m) } }).catch(() => {})
     ensureCommandFields()
       .then(() => { if (alive) { invalidateFieldCache(); getFieldsForEntity('deals').then(setCustomFieldDefs).catch(() => {}) } })
       .catch(e => console.warn('ensureCommandFields:', e?.message))
@@ -1683,14 +1788,30 @@ export function Production() {
   const rowH = density === 'compact' ? 39 : BOARD.ROW_H
   useEffect(() => { try { localStorage.setItem('prod_density', density) } catch {} }, [density])
 
-  // Per-column resize clamps.
-  const colClamp = (key, w) => Math.max(64, Math.min(520, w))
+  // Per-column resize clamps. Item and Side carry higher minimums so the
+  // sticky address and the wider Side pills ("Dual Listing"/"Dual Buyer")
+  // never collapse below a legible width.
+  const colClamp = (key, w) => {
+    const min = key === '_item' ? ITEM_MIN : key === 'side' ? SIDE_MIN : 64
+    return Math.max(min, Math.min(520, w))
+  }
   function setColWidth(key, w) {
     setColWidths(prev => {
       const next = { ...prev, [key]: colClamp(key, w) }
       try { localStorage.setItem('prod_col_widths', JSON.stringify(next)) } catch {}
       return next
     })
+  }
+  // Live Item-column width (default COL_ITEM, user-resizable, min ITEM_MIN).
+  const itemW = colClamp('_item', colWidths['_item'] || COL_ITEM)
+  function startItemResize(e) {
+    e.preventDefault(); e.stopPropagation()
+    const startX = e.clientX, startW = itemW
+    const onMove = ev => setColWidth('_item', startW + (ev.clientX - startX))
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); document.body.style.cursor = '' }
+    document.body.style.cursor = 'col-resize'
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
   }
   function resetColWidths() {
     setColWidths({})
@@ -2338,8 +2459,8 @@ export function Production() {
           }}
           definitions={[
             { key:'yearF',    label:'Year',      options:years.map(y=>({value:y,label:y})) },
-            { key:'stageF',   label:'Stage',     options:DEAL_STAGES.map(s=>({value:s.value,label:s.label})) },
-            { key:'sideF',    label:'Side',      options:DEAL_SIDES.map(s=>({value:s,label:s})) },
+            { key:'stageF',   label:'Stage',     options:DEAL_STAGES.map(s=>({value:s.value,label:s.label,color:stageColor(s.value)})) },
+            { key:'sideF',    label:'Side',      options:DEAL_SIDES.map(s=>({value:s,label:s,color:SIDE_COLORS[s]||null})) },
             ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', options:agents.map(a=>({value:a.id,label:a.name})) }]:[]),
             { key:'saleTypeF',label:'Sale Type', options:['On Market','Off Market','FSBO'].map(s=>({value:s,label:s})) },
             { key:'propTypeF',label:'Type',      options:['Single Family','Condo','New Construction','Multi Family','Duplex','Flip','Land','Commercial'].map(s=>({value:s,label:s})) },
@@ -2538,7 +2659,7 @@ export function Production() {
             {/* By stage mini breakdown */}
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {Object.entries(byStage).map(([stage, count]) => {
-                const hex = DEAL_STAGES.find(s => s.value === stage)?.hex || '#94A3B8'
+                const hex = stageColor(stage) || '#94A3B8'
                 return (
                   <div key={stage} style={{ padding: '2px 8px', borderRadius: '12px', background: hex + '33', border: "1px solid " + (hex) + "66" }}>
                     <span style={{ fontSize: '10px', color: hex, fontWeight: 700 }}>{count} {stage}</span>
@@ -2598,12 +2719,16 @@ export function Production() {
         <div ref={boardScrollRef} onScroll={onBoardScroll} style={{ overflowX: 'auto', background: '#fff', border: '1px solid ' + BOARD.border, borderRadius: 6 }}>
           {/* Sticky column header — SAME colgroup as every row table → exact alignment */}
           <table style={{ position: 'sticky', top: 0, zIndex: 10, borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', background: BOARD.page }}>
-            <BoardColgroup visibleCols={visibleCols} />
+            <BoardColgroup visibleCols={visibleCols} itemW={itemW} />
             <thead>
               <tr style={{ height: BOARD.HEAD_H, borderBottom: '2px solid ' + BOARD.border }}>
                 <th style={{ borderRight: '1px solid ' + BOARD.cellBorder, position: 'sticky', left: 0, background: BOARD.page, zIndex: 11 }} />
                 <th style={{ borderRight: '1px solid ' + BOARD.cellBorder, textAlign: 'left', padding: '0 12px', position: 'sticky', left: COL_CHECK, background: BOARD.page, zIndex: 11 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: BOARD.sub, textTransform: 'uppercase', letterSpacing: '.06em' }}>Item</span>
+                  {/* Drag-resize grip on the right edge (min ITEM_MIN) */}
+                  <span onMouseDown={startItemResize} onClick={e => e.stopPropagation()}
+                    title="Drag to resize"
+                    style={{ position: 'absolute', top: 0, right: 0, width: 8, height: '100%', cursor: 'col-resize', zIndex: 12 }} />
                 </th>
                 {visibleCols.map(col => (
                   <th key={col.key}
@@ -2648,6 +2773,8 @@ export function Production() {
               onDealDropOnRow={handleRowDrop}
               collapseSignal={collapseSignal}
               rowH={rowH}
+              itemW={itemW}
+              onEditColors={handleEditColors}
             />
           ))}
           <div onClick={addGroup}
@@ -2685,7 +2812,7 @@ export function Production() {
             <tbody>
               {filtered.map((d, i) => {
                 const a = agents.find(x => x.id === d.agent_id)
-                const cmdDef = COMMAND_STATUSES.find(s => s.value === d.command)
+                const cmdHex = commandColor(d.command) || '#94A3B8'
                 return (
                   <tr key={d.id} onClick={() => openDeal(d)} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)', background: selectedIds.includes(d.id) ? 'rgba(204,34,0,.04)' : '' }}
                     onMouseEnter={e => { if (!selectedIds.includes(d.id)) e.currentTarget.style.background = 'var(--hov)' }}
@@ -2710,7 +2837,7 @@ export function Production() {
                     <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmtDateShort(d.ao_date) || '—'}</td>
                     <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmtDateShort(d.expected_close_date) || '—'}</td>
                     <td style={{ padding: '9px 12px' }}>
-                      {d.command && <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '10px', background: (cmdDef?.hex || '#94A3B8') + '22', color: cmdDef?.hex || '#94A3B8', fontWeight: 700 }}>{d.command}</span>}
+                      {d.command && <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '10px', background: cmdHex + '22', color: cmdHex, fontWeight: 700 }}>{d.command}</span>}
                     </td>
                     <td style={{ padding: '9px 12px', fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{d.sales_source || '—'}</td>
                   </tr>
@@ -2759,6 +2886,31 @@ export function Production() {
           onSaved={(m) => { setSideColorsState(m); setSideColors(m); setSideEditorOpen(false) }}
         />
       )}
+
+      {/* ── BUILT-IN COLOR EDITOR (Stage / Deal Status / CTC — admin only) ── */}
+      {isAdmin && editorSpec?.type === 'builtin' && (
+        <BuiltinColorEditor
+          field={editorSpec.field}
+          initial={editorSpec.field === 'stage' ? stageOv : editorSpec.field === 'deal_status' ? dealStatusOv : editorSpec.field === 'command' ? cmdOv : ctcOv}
+          onClose={() => setEditorSpec(null)}
+          onSaved={(saved) => {
+            if (editorSpec.field === 'stage')            { setStageColorOv(saved); setStageOv(saved) }
+            else if (editorSpec.field === 'deal_status') { setDealStatusColorOv(saved); setDealStatusOv(saved) }
+            else if (editorSpec.field === 'command')     { setCmdColorOv(saved); setCmdOv(saved) }
+            else                                         { setCtcColorOv(saved); setCtcOv(saved) }
+            setEditorSpec(null)
+          }}
+        />
+      )}
+
+      {/* ── CUSTOM SELECT LABEL/COLOR EDITOR (admin only) ── */}
+      {isAdmin && editorSpec?.type === 'custom' && (
+        <CustomSelectEditor
+          fieldKey={editorSpec.fieldKey}
+          onClose={() => setEditorSpec(null)}
+          onSaved={() => { invalidateFieldCache(); getFieldsForEntity('deals').then(setCustomFieldDefs).catch(() => {}); setEditorSpec(null) }}
+        />
+      )}
     </div>
   )
 }
@@ -2768,9 +2920,14 @@ function SideColorEditor({ initial, onClose, onSaved }) {
   const [busy, setBusy] = React.useState(false)
   const [err, setErr] = React.useState('')
   const sides = DEAL_SIDES
+  const badSide = (s) => { const v = map[s]; return v != null && v !== '' && !HEX_RE.test(String(v).trim()) }
+  const anyInvalid = sides.some(badSide)
   async function doSave() {
+    if (anyInvalid) return
+    const clean = {}
+    for (const s of sides) { const n = normHex(map[s]); if (n) clean[s] = n }
     setBusy(true); setErr('')
-    try { const saved = await saveSideColors(map); onSaved?.(saved) }
+    try { const saved = await saveSideColors(clean); onSaved?.(saved) }
     catch (e) { setErr(e.message || 'Save failed') } finally { setBusy(false) }
   }
   return (
@@ -2786,23 +2943,205 @@ function SideColorEditor({ initial, onClose, onSaved }) {
           {err && <div style={{ background: '#FEF2F2', border: '1px solid #E2445C55', color: '#B42318', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 12 }}>{err}</div>}
           <div style={{ fontSize: 12, color: BOARD.sub, marginBottom: 12 }}>These colors are shared — everyone sees the same Side label colors.</div>
           {sides.map(s => (
-            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div key={s} style={{ marginBottom: 8 }}>
+             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 120 }}>
-                <span style={{ width: 20, height: 20, borderRadius: '50%', background: map[s] || '#c5c7d0', boxShadow: '0 0 0 1px ' + BOARD.border }} />
+                <span style={{ width: 20, height: 20, borderRadius: '50%', background: HEX_RE.test(String(map[s]||'').trim()) ? map[s] : '#c5c7d0', boxShadow: '0 0 0 1px ' + BOARD.border }} />
                 <span style={{ fontSize: 13, color: BOARD.text }}>{s}</span>
               </span>
-              <input type="color" value={map[s] || '#cccccc'} onChange={e => setMap(m => ({ ...m, [s]: e.target.value }))}
+              <input type="color" value={HEX_RE.test(String(map[s]||'').trim()) ? String(map[s]).trim() : '#cccccc'} onChange={e => setMap(m => ({ ...m, [s]: e.target.value }))}
                 style={{ width: 36, height: 28, border: '1px solid ' + BOARD.border, borderRadius: 6, background: '#fff', cursor: 'pointer' }} />
               <input value={map[s] || ''} onChange={e => setMap(m => ({ ...m, [s]: e.target.value }))} placeholder="#RRGGBB"
-                style={{ width: 96, padding: '6px 8px', borderRadius: 6, border: '1px solid ' + BOARD.border, fontSize: 12, fontFamily: ff }} />
+                style={{ width: 96, padding: '6px 8px', borderRadius: 6, border: '1px solid ' + (badSide(s) ? '#E2445C' : BOARD.border), fontSize: 12, fontFamily: ff }} />
               <button onClick={() => setMap(m => ({ ...m, [s]: SIDE_COLOR_DEFAULTS[s] || '#cccccc' }))}
                 title="Reset to default" style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid ' + BOARD.border, background: '#fff', color: BOARD.sub, fontSize: 11, cursor: 'pointer' }}>Reset</button>
+             </div>
+             {badSide(s) && <div style={{ fontSize: 11, color: '#B42318', marginTop: 3, marginLeft: 126 }}>Use a 6-digit hex like #f59e0b.</div>}
             </div>
           ))}
         </div>
         <div style={{ padding: '12px 18px', borderTop: '1px solid ' + BOARD.border, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} disabled={busy} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid ' + BOARD.border, background: 'transparent', color: BOARD.sub, fontSize: 13, cursor: 'pointer', fontFamily: ff }}>Cancel</button>
-          <button onClick={doSave} disabled={busy} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: BOARD.blue, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>{busy ? 'Saving…' : 'Save'}</button>
+          <button onClick={doSave} disabled={busy || anyInvalid} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: BOARD.blue, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>{busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── BUILT-IN COLOR EDITOR (Stage / Deal Status / CTC — admin) ─────
+// Edits colors only (labels/values are fixed to protect stored data).
+// Persists a SPARSE override map to an isolated system_settings row.
+function BuiltinColorEditor({ field, initial, onClose, onSaved }) {
+  const CFG = {
+    stage:       { key: STAGE_COLORS_KEY,       title: 'Edit Stage Colors',
+      opts: DEAL_STAGES.map(s => ({ value: s.value, label: s.label, def: s.hex })) },
+    deal_status: { key: DEAL_STATUS_COLORS_KEY, title: 'Edit Deal Status Colors',
+      opts: DEAL_STATUS_OPTIONS.map(v => ({ value: v, label: v, def: STATUS_COLORS[v] || '#c5c7d0' })) },
+    ctc:         { key: CTC_COLORS_KEY,          title: 'Edit CTC Colors',
+      opts: CTC_STAGES.map(s => ({ value: s.value, label: s.label, def: s.hex })) },
+    command:     { key: COMMAND_COLORS_KEY,      title: 'Edit Command Colors',
+      opts: COMMAND_STATUSES.filter(c => c.value).map(c => ({ value: c.value, label: c.label, def: c.hex || '#c5c7d0' })) },
+  }
+  const cfg = CFG[field] || CFG.stage
+  const [map, setMap] = React.useState({ ...(initial || {}) })
+  const [busy, setBusy] = React.useState(false)
+  const [err, setErr] = React.useState('')
+  // A row is invalid only if it has a non-empty value that isn't a #RRGGBB hex.
+  // Blank is allowed and means "use the source default".
+  const badKey = (k) => { const v = map[k]; return v != null && v !== '' && !HEX_RE.test(String(v).trim()) }
+  const anyInvalid = Object.keys(map).some(badKey)
+  async function doSave() {
+    if (anyInvalid) return
+    const clean = {}
+    for (const k in map) { const n = normHex(map[k]); if (n) clean[k] = n }   // trim + lowercase; drop blanks/invalid
+    setBusy(true); setErr('')
+    try { const saved = await saveColorOverrides(cfg.key, clean); onSaved?.(saved) }
+    catch (e) { setErr(e.message || 'Save failed') } finally { setBusy(false) }
+  }
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.3)' }} />
+      <div style={{ position:'relative', width:'min(440px,100%)', maxHeight:'85vh', overflowY:'auto', background:'#fff', borderRadius:12, boxShadow:'0 12px 40px rgba(0,0,0,.2)', fontFamily:ff }}>
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid '+BOARD.border, display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ fontSize:15, fontWeight:800, color:BOARD.text }}>{cfg.title}</div>
+          <div style={{ flex:1 }} />
+          <button onClick={onClose} style={{ background:'transparent', border:'none', fontSize:20, color:BOARD.sub, cursor:'pointer' }}>×</button>
+        </div>
+        <div style={{ padding:'14px 18px' }}>
+          {err && <div style={{ background:'#FEF2F2', border:'1px solid #E2445C55', color:'#B42318', borderRadius:8, padding:'8px 12px', fontSize:12, marginBottom:12 }}>{err}</div>}
+          <div style={{ fontSize:12, color:BOARD.sub, marginBottom:12 }}>Shared colors. Reset = source default. Changes apply to pills, group headers/accents, the deal drawer, and filters.</div>
+          {cfg.opts.map(o => {
+            const cur = map[o.value] || o.def
+            const bad = badKey(o.value)
+            return (
+              <div key={o.value} style={{ marginBottom:8 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ display:'inline-flex', alignItems:'center', gap:6, minWidth:150 }}>
+                    <span style={{ width:20, height:20, borderRadius:'50%', background:HEX_RE.test(String(cur).trim()) ? cur : (o.def || '#c5c7d0'), boxShadow:'0 0 0 1px '+BOARD.border }} />
+                    <span style={{ fontSize:13, color:BOARD.text }}>{o.label}</span>
+                  </span>
+                  <input type="color" value={HEX_RE.test(String(cur).trim()) ? String(cur).trim() : (o.def || '#cccccc')} onChange={e => setMap(m => ({ ...m, [o.value]: e.target.value }))}
+                    style={{ width:36, height:28, border:'1px solid '+BOARD.border, borderRadius:6, background:'#fff', cursor:'pointer' }} />
+                  <input value={map[o.value] || ''} onChange={e => setMap(m => ({ ...m, [o.value]: e.target.value }))} placeholder={o.def}
+                    style={{ width:96, padding:'6px 8px', borderRadius:6, border:'1px solid '+(bad ? '#E2445C' : BOARD.border), fontSize:12, fontFamily:ff }} />
+                  <button onClick={() => setMap(m => { const n = { ...m }; delete n[o.value]; return n })}
+                    title="Reset to default" style={{ padding:'5px 8px', borderRadius:6, border:'1px solid '+BOARD.border, background:'#fff', color:BOARD.sub, fontSize:11, cursor:'pointer' }}>Reset</button>
+                </div>
+                {bad && <div style={{ fontSize:11, color:'#B42318', marginTop:3, marginLeft:150 }}>Use a 6-digit hex like #00c875, or clear to use the default.</div>}
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ padding:'12px 18px', borderTop:'1px solid '+BOARD.border, display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button onClick={onClose} disabled={busy} style={{ padding:'8px 14px', borderRadius:8, border:'1px solid '+BOARD.border, background:'transparent', color:BOARD.sub, fontSize:13, cursor:'pointer', fontFamily:ff }}>Cancel</button>
+          <button onClick={doSave} disabled={busy || anyInvalid} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:BOARD.blue, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>{busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── CUSTOM SELECT LABEL/COLOR EDITOR (admin) ──────────────────────
+// Full CRUD over one custom-field's options. Reads legacy strings AND
+// {label,value,color} objects; writes objects. Existing options keep
+// their stored `value` so saved deal data still matches; only their
+// label/color change. Persists via saveFieldOptions (no clobber).
+function CustomSelectEditor({ fieldKey, onClose, onSaved }) {
+  const [rows, setRows] = React.useState(null)
+  const [title, setTitle] = React.useState('Edit Labels & Colors')
+  const [busy, setBusy] = React.useState(false)
+  const [err, setErr] = React.useState('')
+  React.useEffect(() => {
+    let alive = true
+    loadFieldDefs().then(all => {
+      const f = (all || []).find(x => x.entity === 'deals' && x.key === fieldKey)
+      if (!alive) return
+      if (f) {
+        setTitle('Edit Labels & Colors — ' + f.label)
+        setRows((f.options || []).map(o => { const n = normalizeOption(o); return { label: n.label, value: n.value, color: n.color || '' } }))
+      } else { setRows([]) }
+    }).catch(e => { if (alive) { setErr(e.message || 'Load failed'); setRows([]) } })
+    return () => { alive = false }
+  }, [fieldKey])
+
+  function patch(i, p) { setRows(rs => rs.map((r, idx) => idx === i ? { ...r, ...p } : r)) }
+  function move(i, dir) { setRows(rs => { const n = [...rs]; const j = i + dir; if (j < 0 || j >= n.length) return n; const t = n[i]; n[i] = n[j]; n[j] = t; return n }) }
+  function remove(i) { setRows(rs => rs.filter((_, idx) => idx !== i)) }
+  function add() { setRows(rs => [...(rs || []), { label: '', value: '', color: '', _new: true }]) }
+
+  // Effective value per row: existing rows keep their stored value; new rows
+  // derive it from the trimmed label. This preserves stored deal data when an
+  // admin changes only an option's displayed label.
+  const norm = (rows || []).map(r => {
+    const label = (r.label || '').trim()
+    const value = (r._new ? label : (r.value ?? '')).toString().trim()
+    const color = (r.color || '').trim()
+    return { label, value, color }
+  })
+  const valueCounts = {}
+  norm.forEach(n => { if (n.value) valueCounts[n.value] = (valueCounts[n.value] || 0) + 1 })
+  function rowError(i) {
+    const n = norm[i]; if (!n) return null
+    if (!n.label) return 'Label required'
+    if (!n.value) return 'Value required'
+    if (valueCounts[n.value] > 1) return 'Duplicate value'
+    if (n.color && !HEX_RE.test(n.color)) return 'Invalid color (use #RRGGBB)'
+    return null
+  }
+  const anyError = (rows || []).some((_, i) => !!rowError(i))
+
+  async function doSave() {
+    if (anyError) return
+    setBusy(true); setErr('')
+    try {
+      // Persist as {label,value,color}; color normalized (trim+lowercase) or null.
+      const options = norm.map(n => ({ label: n.label, value: n.value, color: normHex(n.color) }))
+      await saveFieldOptions('deals', fieldKey, options)
+      onSaved?.()
+    } catch (e) { setErr(e.message || 'Save failed') } finally { setBusy(false) }
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.3)' }} />
+      <div style={{ position:'relative', width:'min(520px,100%)', maxHeight:'85vh', overflowY:'auto', background:'#fff', borderRadius:12, boxShadow:'0 12px 40px rgba(0,0,0,.2)', fontFamily:ff }}>
+        <div style={{ padding:'14px 18px', borderBottom:'1px solid '+BOARD.border, display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ fontSize:15, fontWeight:800, color:BOARD.text }}>{title}</div>
+          <div style={{ flex:1 }} />
+          <button onClick={onClose} style={{ background:'transparent', border:'none', fontSize:20, color:BOARD.sub, cursor:'pointer' }}>×</button>
+        </div>
+        <div style={{ padding:'14px 18px' }}>
+          {err && <div style={{ background:'#FEF2F2', border:'1px solid #E2445C55', color:'#B42318', borderRadius:8, padding:'8px 12px', fontSize:12, marginBottom:12 }}>{err}</div>}
+          {rows === null ? (
+            <div style={{ fontSize:13, color:BOARD.sub, padding:'8px 0' }}>Loading…</div>
+          ) : rows.length === 0 ? (
+            <div style={{ fontSize:13, color:BOARD.sub, padding:'8px 0' }}>No options yet. Add one below.</div>
+          ) : rows.map((r, i) => {
+            const rowErr = rowError(i)
+            return (
+            <div key={i} style={{ marginBottom:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                  <button onClick={() => move(i,-1)} disabled={i===0} title="Move up" style={{ lineHeight:1, padding:'0 5px', border:'1px solid '+BOARD.border, borderRadius:4, background:'#fff', color:BOARD.sub, cursor:i===0?'default':'pointer', fontSize:10 }}>▲</button>
+                  <button onClick={() => move(i,1)} disabled={i===rows.length-1} title="Move down" style={{ lineHeight:1, padding:'0 5px', border:'1px solid '+BOARD.border, borderRadius:4, background:'#fff', color:BOARD.sub, cursor:i===rows.length-1?'default':'pointer', fontSize:10 }}>▼</button>
+                </div>
+                <input type="color" value={HEX_RE.test((r.color||'').trim()) ? (r.color||'').trim() : '#cccccc'} onChange={e => patch(i,{ color:e.target.value })}
+                  style={{ width:34, height:30, border:'1px solid '+BOARD.border, borderRadius:6, background:'#fff', cursor:'pointer', flexShrink:0 }} />
+                <input value={r.label} onChange={e => patch(i,{ label:e.target.value })} placeholder="Label"
+                  style={{ flex:1, minWidth:0, padding:'7px 9px', borderRadius:6, border:'1px solid '+((rowErr==='Label required'||rowErr==='Duplicate value'||rowErr==='Value required')?'#E2445C':BOARD.border), fontSize:13, fontFamily:ff }} />
+                <input value={r.color} onChange={e => patch(i,{ color:e.target.value })} placeholder="#RRGGBB"
+                  style={{ width:92, padding:'7px 8px', borderRadius:6, border:'1px solid '+((rowErr||'').startsWith('Invalid color')?'#E2445C':BOARD.border), fontSize:12, fontFamily:ff, flexShrink:0 }} />
+                <button onClick={() => remove(i)} title="Remove" style={{ padding:'6px 9px', borderRadius:6, border:'1px solid '+BOARD.border, background:'#fff', color:'#E2445C', fontSize:13, cursor:'pointer', flexShrink:0 }}>✕</button>
+              </div>
+              {rowErr && <div style={{ fontSize:11, color:'#B42318', marginTop:3, marginLeft:34 }}>{rowErr}</div>}
+            </div>
+          )})}
+          <button onClick={add} style={{ marginTop:6, padding:'7px 12px', borderRadius:8, border:'1px dashed '+BOARD.blue, background:'transparent', color:BOARD.blue, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>+ Add option</button>
+        </div>
+        <div style={{ padding:'12px 18px', borderTop:'1px solid '+BOARD.border, display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button onClick={onClose} disabled={busy} style={{ padding:'8px 14px', borderRadius:8, border:'1px solid '+BOARD.border, background:'transparent', color:BOARD.sub, fontSize:13, cursor:'pointer', fontFamily:ff }}>Cancel</button>
+          <button onClick={doSave} disabled={busy || rows===null || anyError} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:BOARD.blue, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>{busy ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
     </div>
