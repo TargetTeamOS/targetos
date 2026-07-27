@@ -36,38 +36,62 @@ function parseKeyMaterial(raw) {
   return null
 }
 
-// A keyring maps version -> 32-byte Buffer, plus the current version.
+// A keyring maps version -> 32-byte Buffer, plus the current version and
+// config-health flags so callers can distinguish "no key configured"
+// (legacy passthrough allowed) from "key present but invalid" (fail closed).
+const VERSION_RE = /^[A-Za-z0-9_-]+$/
 function keyringFromEnv(env) {
   env = env || process.env
-  const currentVersion = String(env.EMAIL_TOKEN_KEY_VERSION || '1')
+  const rawVersion = env.EMAIL_TOKEN_KEY_VERSION
+  const currentVersion = String(rawVersion == null || rawVersion === '' ? '1' : rawVersion)
+  const rawKey = env.EMAIL_TOKEN_ENCRYPTION_KEY
+  const keyConfigured = rawKey != null && String(rawKey) !== ''
+  const versionInvalid = rawVersion != null && rawVersion !== '' && !VERSION_RE.test(String(rawVersion))
   const keys = {}
-  const cur = parseKeyMaterial(env.EMAIL_TOKEN_ENCRYPTION_KEY)
-  if (cur) keys[currentVersion] = cur
+  let keyInvalid = false
+  if (keyConfigured) {
+    const cur = parseKeyMaterial(rawKey)
+    if (cur) keys[currentVersion] = cur
+    else keyInvalid = true            // present but wrong length/format
+  }
   for (const k of Object.keys(env)) {
     const m = /^EMAIL_TOKEN_ENCRYPTION_KEY_V(.+)$/.exec(k)
-    if (m) { const km = parseKeyMaterial(env[k]); if (km) keys[m[1]] = km }
+    if (m) {
+      if (!VERSION_RE.test(m[1])) { keyInvalid = true; continue }
+      const km = parseKeyMaterial(env[k])
+      if (km) keys[m[1]] = km; else keyInvalid = true
+    }
   }
-  return { currentVersion, keys }
+  return { currentVersion, keys, keyConfigured, keyInvalid, versionInvalid }
 }
 
-// Test/DI helper: build a keyring from an explicit {version: material} map.
+// Test/DI helper: build a healthy keyring from an explicit {version: material} map.
 function makeKeyring(map, currentVersion) {
   const keys = {}
   for (const v of Object.keys(map || {})) {
+    if (!VERSION_RE.test(v)) throw new Error('invalid key version')
     const km = parseKeyMaterial(map[v])
     if (!km) throw new Error('invalid key material for version ' + v)
     keys[v] = km
   }
   const cv = String(currentVersion != null ? currentVersion : Object.keys(keys)[0])
   if (!keys[cv]) throw new Error('current version has no key')
-  return { currentVersion: cv, keys }
+  return { currentVersion: cv, keys, keyConfigured: true, keyInvalid: false, versionInvalid: false }
 }
 
+// Resolve a usable keyring or throw a GENERIC config error (never echoing
+// key material). Absence is handled by seal()/open(), not here.
 function resolveKeyring(explicit) {
-  if (explicit && explicit.keys) return explicit
-  const kr = keyringFromEnv()
-  if (!kr.keys[kr.currentVersion]) {
+  if (explicit && explicit.keys && explicit.keys[explicit.currentVersion] &&
+      !explicit.keyInvalid && !explicit.versionInvalid) {
+    return explicit
+  }
+  const kr = explicit && explicit.keys ? explicit : keyringFromEnv()
+  if (!kr.keyConfigured && !(kr.keys && kr.keys[kr.currentVersion])) {
     throw new Error('email token encryption key not configured')
+  }
+  if (kr.keyInvalid || kr.versionInvalid || !kr.keys || !kr.keys[kr.currentVersion]) {
+    throw new Error('email token encryption is misconfigured')
   }
   return kr
 }
@@ -129,7 +153,12 @@ function rotate(envelope, keyring) {
 function seal(value, keyring) {
   if (value == null || value === '') return value
   const kr = keyring || keyringFromEnv()
-  if (!kr.keys || !kr.keys[kr.currentVersion]) return value // no key → passthrough (legacy)
+  // Key completely absent → documented legacy passthrough (until Phase 2).
+  if (kr.keyConfigured === false && !(kr.keys && kr.keys[kr.currentVersion])) return value
+  // Key present but malformed / bad version → FAIL CLOSED, never store plaintext.
+  if (kr.keyInvalid || kr.versionInvalid || !kr.keys || !kr.keys[kr.currentVersion]) {
+    throw new Error('email token encryption is misconfigured')
+  }
   if (isEncrypted(value)) return value
   return encrypt(value, kr)
 }

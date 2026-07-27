@@ -1,26 +1,41 @@
 'use strict'
 // api/connector-send.js — send an email through the SIGNED-IN user's own
 // connected mailbox (Gmail via Gmail API, or Outlook via Microsoft Graph).
-// The message goes out FROM the user's real connected address and lands in
-// that mailbox's Sent folder; TargetOS logs the send to integration_events
-// and (optionally) the contact timeline.
+// FROM the user's real connected address; lands in that mailbox's Sent
+// folder; the send is logged to integration_events and (optionally) the
+// contact timeline.
 //
-// PHASE 1 HARDENING (Connected Email):
-//   • Hard auth on every call — no AUTH_ENFORCE log-only bypass here.
-//   • The sender is resolved from the authenticated Supabase JWT ONLY.
-//     A caller-supplied agent_id is ignored (it is not authorization).
-//   • Sending is allowed only through an ACTIVE connection owned by that
-//     CRM user. The org/office ("system") mailbox is NOT reachable from
-//     this user route — automations use the server-only system pathway.
-//   • Any supplied From must match the connected account; else rejected.
-//   • CORS is restricted to the app's approved origin(s), not '*'.
-//   • Provider errors are sanitized before logging or returning.
-// Body: { provider:'outlook'|'gmail', to, subject, html|text, from?, contact_id? }
+// SECURITY (Phase 1 + v2 corrections):
+//   • Hard auth on every call (no AUTH_ENFORCE bypass).
+//   • provider must be exactly 'gmail' or 'outlook' (else 400).
+//   • Sender resolved from the authenticated JWT only; caller-supplied
+//     agent_id is ignored. Org/system mailbox is not reachable here.
+//   • Sending requires the user's own ACTIVE connection with a non-empty
+//     account_email; a supplied From must match it.
+//   • MIME header-injection guarded: CR/LF rejected in to/subject/from;
+//     recipient must be a valid single address.
+//   • contact_id timeline writes are authorized against existing contact
+//     permissions BEFORE anything is sent or written (403/404 otherwise).
+//   • CORS limited to APP_ORIGINS; provider errors sanitized.
+// Body: { provider:'gmail'|'outlook', to, subject, html|text, from?, contact_id? }
 
-const {
-  logEvent, sb, getAgentAccount, freshAccountToken, agentIdFromAuthUser,
-} = require('./_lib/connectors')
-const { requireUser } = require('./_lib/auth')
+const _connectors = require('./_lib/connectors')
+const _auth = require('./_lib/auth')
+
+// Dependencies resolved through a single object so unit tests can override
+// them in-process (there is no HTTP surface for this). Defaults are the real
+// modules; __setDepsForTests is used only by the route test suite.
+const deps = {
+  requireUser: _auth.requireUser,
+  logEvent: _connectors.logEvent,
+  getAgentAccount: _connectors.getAgentAccount,
+  freshAccountToken: _connectors.freshAccountToken,
+  getAgentForUser: _connectors.getAgentForUser,
+  contactAccess: _connectors.contactAccess,
+  insertContactTimeline: _connectors.insertContactTimeline,
+}
+
+const ALLOWED_PROVIDERS = ['gmail', 'outlook']
 
 const ALLOWED_ORIGINS = String(process.env.APP_ORIGINS || 'https://app.targetreteam.com')
   .split(',').map(s => s.trim()).filter(Boolean)
@@ -36,14 +51,30 @@ function applyCors(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
 }
 
-// Strip anything token-like from provider error text before it is logged
-// or returned to the client.
 function sanitize(msg) {
   return String(msg == null ? '' : msg)
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
     .replace(/(access_token|refresh_token|client_secret|id_token)"?\s*[:=]\s*"?[A-Za-z0-9._~+/=-]+/gi, '$1=[redacted]')
     .replace(/enc:v\d+:[A-Za-z0-9+/=]+/g, '[enc]')
     .slice(0, 300)
+}
+
+// Header-injection guard: no CR/LF allowed in any value used to build a
+// MIME header (to, subject, from, and future cc/bcc).
+function hasHeaderInjection(v) { return /[\r\n]/.test(String(v == null ? '' : v)) }
+
+// Minimal single-address validator (no server-side util exists in-repo).
+// Rejects whitespace/control chars; keeps Unicode subjects unaffected.
+function isValidEmail(v) {
+  const s = String(v == null ? '' : v)
+  if (!s || /\s/.test(s) || hasHeaderInjection(s)) return false
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)
+}
+
+function json(res, code, obj) {
+  res.statusCode = code
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(obj))
 }
 
 async function parseBody(req) {
@@ -56,51 +87,68 @@ async function parseBody(req) {
   })
 }
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   applyCors(req, res)
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end() }
-  if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'Method not allowed' })) }
-  res.setHeader('Content-Type', 'application/json')
+  if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' })
 
-  // Hard authentication — always required, no log-only bypass.
-  const user = await requireUser(req)
-  if (!user) { res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' })) }
+  // Hard authentication — always required.
+  const user = await deps.requireUser(req)
+  if (!user) return json(res, 401, { error: 'unauthorized' })
 
   try {
     const body = await parseBody(req)
-    const provider = body.provider === 'gmail' ? 'gmail' : 'outlook'
+
+    // (1) provider allowlist — never silently default.
+    const provider = body.provider
+    if (!ALLOWED_PROVIDERS.includes(provider)) {
+      return json(res, 400, { error: "provider must be 'gmail' or 'outlook'" })
+    }
     const acctProvider = provider === 'gmail' ? 'google' : 'outlook'
+
     const to = String(body.to || '').trim()
     const subject = String(body.subject || '').trim() || '(no subject)'
     const html = body.html || null
     const text = body.text || ''
-    if (!to) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'missing "to"' })) }
+
+    // (4) header-injection + recipient validation.
+    if (hasHeaderInjection(to) || hasHeaderInjection(subject) || hasHeaderInjection(body.from)) {
+      return json(res, 400, { error: 'invalid characters in email headers' })
+    }
+    if (!isValidEmail(to)) return json(res, 400, { error: 'invalid recipient address' })
 
     // Sender is the authenticated CRM user — never a caller-supplied agent_id.
-    const senderAgentId = await agentIdFromAuthUser(user.id)
-    if (!senderAgentId) { res.statusCode = 403; return res.end(JSON.stringify({ error: 'no CRM agent is linked to this login' })) }
+    const agent = await deps.getAgentForUser(user.id)
+    if (!agent || !agent.id) return json(res, 403, { error: 'no CRM agent is linked to this login' })
 
-    const acct = await getAgentAccount(senderAgentId, acctProvider)
-    if (!acct || acct.status !== 'connected') {
-      res.statusCode = 400
-      return res.end(JSON.stringify({ error: 'Connect your ' + (provider === 'gmail' ? 'Google' : 'Outlook') + ' account in Settings → Email Accounts first' }))
+    // (2) Authorize contact BEFORE sending or writing anything.
+    if (body.contact_id != null && body.contact_id !== '') {
+      let access
+      try { access = await deps.contactAccess(body.contact_id, agent) }
+      catch (e) { return json(res, 500, { error: 'contact check failed' }) }
+      if (!access.exists) return json(res, 404, { error: 'contact not found' })
+      if (!access.allowed) return json(res, 403, { error: 'not authorized for that contact' })
     }
 
-    // From-address authorization: a supplied From must be the user's own
-    // connected address. Otherwise we always send as the connected account.
+    // Require the user's own ACTIVE connection with a real From address.
+    const acct = await deps.getAgentAccount(agent.id, acctProvider)
+    if (!acct || acct.status !== 'connected') {
+      return json(res, 400, { error: 'Connect your ' + (provider === 'gmail' ? 'Google' : 'Outlook') + ' account in Settings → Email Accounts first' })
+    }
     const fromAccount = String(acct.account_email || '').trim()
+    if (!fromAccount) {
+      return json(res, 409, { error: 'Your connected account has no email address — reconnect it' })
+    }
     if (body.from && String(body.from).trim().toLowerCase() !== fromAccount.toLowerCase()) {
-      res.statusCode = 403
-      return res.end(JSON.stringify({ error: 'From address is not authorized for your connected account' }))
+      return json(res, 403, { error: 'From address is not authorized for your connected account' })
     }
 
     let token
     try {
-      token = await freshAccountToken(acctProvider, acct)
+      token = await deps.freshAccountToken(acctProvider, acct)
     } catch (e) {
-      await logEvent(acctProvider, 'out', 'email.send', { to, subject, error: sanitize(e.message) }, false)
-      res.statusCode = 502
-      return res.end(JSON.stringify({ error: 'Could not refresh your mailbox authorization — reconnect the account' }))
+      await deps.logEvent(acctProvider, 'out', 'email.send', { to, subject, error: sanitize(e.message) }, false)
+      return json(res, 502, { error: 'Could not refresh your mailbox authorization — reconnect the account' })
     }
 
     if (provider === 'outlook') {
@@ -118,10 +166,10 @@ module.exports = async function handler(req, res) {
       })
       if (r.status !== 202) {
         const errText = sanitize(await r.text())
-        await logEvent('outlook', 'out', 'email.send', { to, subject, error: errText }, false)
-        res.statusCode = 502; return res.end(JSON.stringify({ error: 'Graph sendMail failed: ' + errText }))
+        await deps.logEvent('outlook', 'out', 'email.send', { to, subject, error: errText }, false)
+        return json(res, 502, { error: 'Graph sendMail failed: ' + errText })
       }
-      await logEvent('outlook', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: senderAgentId }, true)
+      await deps.logEvent('outlook', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: agent.id }, true)
     } else {
       const mimeLines = [
         'To: ' + to,
@@ -140,29 +188,25 @@ module.exports = async function handler(req, res) {
       })
       if (!r.ok) {
         const errText = sanitize(await r.text())
-        await logEvent('google', 'out', 'email.send', { to, subject, error: errText }, false)
-        res.statusCode = 502; return res.end(JSON.stringify({ error: 'Gmail send failed: ' + errText }))
+        await deps.logEvent('google', 'out', 'email.send', { to, subject, error: errText }, false)
+        return json(res, 502, { error: 'Gmail send failed: ' + errText })
       }
-      await logEvent('google', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: senderAgentId }, true)
+      await deps.logEvent('google', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: agent.id }, true)
     }
 
-    // CRM timeline entry on the contact, if one was given.
-    if (body.contact_id) {
+    // Contact timeline entry — already authorized above.
+    if (body.contact_id != null && body.contact_id !== '') {
       try {
-        await sb().from('tasks').insert([{
-          contact_id: body.contact_id,
-          title: 'Email sent via ' + (provider === 'gmail' ? 'Gmail' : 'Outlook') + ': ' + subject,
-          notes: 'To: ' + to + ' — from ' + fromAccount,
-          priority: 'note',
-          status: 'done',
-        }])
+        await deps.insertContactTimeline({ contactId: body.contact_id, provider, subject, to, fromAccount })
       } catch (e) { console.warn('[connector-send] timeline log failed: ' + sanitize(e.message)) }
     }
 
-    res.statusCode = 200
-    res.end(JSON.stringify({ ok: true, provider, from: fromAccount }))
+    return json(res, 200, { ok: true, provider, from: fromAccount })
   } catch (e) {
     console.error('[connector-send] ' + sanitize(e.message))
-    res.statusCode = 500; res.end(JSON.stringify({ error: 'send failed' }))
+    return json(res, 500, { error: 'send failed' })
   }
 }
+
+module.exports = handler
+module.exports.__setDepsForTests = (d) => { Object.assign(deps, d) }

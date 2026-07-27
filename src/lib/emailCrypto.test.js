@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 // project's existing `vitest run` (which only discovers src/**/*.test.js).
 import * as emailCrypto from '../../api/_lib/emailCrypto.js'
 
-const { encrypt, decrypt, rotate, isEncrypted, makeKeyring } = emailCrypto
+const { encrypt, decrypt, rotate, isEncrypted, makeKeyring, keyringFromEnv } = emailCrypto
 
 // Deterministic keyrings for tests (no env needed). 32-byte keys.
 const KEY1 = Buffer.alloc(32, 1)
@@ -66,11 +66,53 @@ describe('emailCrypto AES-256-GCM', () => {
   })
 
   it('seal() passes through when no key is configured (legacy safety)', () => {
-    const emptyKr = { currentVersion: '1', keys: {} }
+    const emptyKr = keyringFromEnv({})                 // key completely absent
+    expect(emptyKr.keyConfigured).toBe(false)
     expect(emailCrypto.seal('plain', emptyKr)).toBe('plain')     // no key → unchanged
     expect(emailCrypto.open('plain', kr1)).toBe('plain')         // legacy plaintext read
     const env = emailCrypto.seal('x', kr1)
     expect(isEncrypted(env)).toBe(true)
     expect(emailCrypto.open(env, kr1)).toBe('x')
+  })
+})
+
+describe('emailCrypto config safety (fail closed)', () => {
+  const VALID_B64 = Buffer.alloc(32, 9).toString('base64')
+
+  it('key completely missing → documented legacy passthrough', () => {
+    const kr = keyringFromEnv({})
+    expect(kr.keyConfigured).toBe(false)
+    expect(emailCrypto.seal('plain-token', kr)).toBe('plain-token')
+  })
+
+  it('key present but wrong length/format → rejected (no plaintext stored)', () => {
+    const kr = keyringFromEnv({ EMAIL_TOKEN_ENCRYPTION_KEY: 'too-short' })
+    expect(kr.keyConfigured).toBe(true)
+    expect(kr.keyInvalid).toBe(true)
+    expect(() => emailCrypto.seal('secret', kr)).toThrow(/misconfigured/)
+    // error must not contain the supplied key material
+    try { emailCrypto.seal('secret', kr) } catch (e) { expect(e.message).not.toContain('too-short') }
+  })
+
+  it('invalid key version → rejected', () => {
+    const kr = keyringFromEnv({ EMAIL_TOKEN_ENCRYPTION_KEY: VALID_B64, EMAIL_TOKEN_KEY_VERSION: 'bad version!' })
+    expect(kr.versionInvalid).toBe(true)
+    expect(() => emailCrypto.seal('secret', kr)).toThrow(/misconfigured/)
+  })
+
+  it('accepts valid base64, hex, and raw 32-byte key formats', () => {
+    const forms = [
+      Buffer.alloc(32, 3).toString('base64'),  // base64 (44 chars)
+      Buffer.alloc(32, 4).toString('hex'),     // hex (64 chars)
+      'x'.repeat(32),                          // raw 32-byte utf8
+    ]
+    for (const k of forms) {
+      const kr = keyringFromEnv({ EMAIL_TOKEN_ENCRYPTION_KEY: k })
+      expect(kr.keyConfigured).toBe(true)
+      expect(kr.keyInvalid).toBe(false)
+      const env = emailCrypto.seal('secret-value', kr)
+      expect(isEncrypted(env)).toBe(true)
+      expect(decrypt(env, kr)).toBe('secret-value')
+    }
   })
 })
