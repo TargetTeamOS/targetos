@@ -7,8 +7,10 @@
 // tests via __setIO / opts.
 
 const connectors = require('./connectors')
+const crypto = require('crypto')
 
 const TIMEOUT_MS = 10000
+const CLAIM_TTL_SECONDS = 300 // lease must comfortably exceed the Graph timeout
 const io = { sb: connectors.sb, fetchImpl: null }
 function __setIO(p) { Object.assign(io, p) }
 function iso() { return new Date().toISOString() }
@@ -60,18 +62,32 @@ async function graphSend(token, mailbox, message, fetchImpl) {
   } finally { clearTimeout(t) }
 }
 
-async function getLog(key) {
-  const { data, error } = await io.sb().from('system_email_log').select('status, attempts').eq('idempotency_key', key).maybeSingle()
-  if (error) throw new Error('system log read failed')
-  return data || null
+// Atomic claim via the claim_system_email() RPC. Returns 'claimed',
+// 'duplicate' (already sent), or 'in_progress' (a live lease is held).
+async function claim(key, token) {
+  const { data, error } = await io.sb().rpc('claim_system_email', { p_key: key, p_token: token, p_ttl_seconds: CLAIM_TTL_SECONDS })
+  if (error) throw new Error('system claim failed')
+  return data
 }
-async function upsertLog(key, patch) {
-  const row = Object.assign({ idempotency_key: key, provider: 'microsoft', updated_at: iso() }, patch)
-  const { error } = await io.sb().from('system_email_log').upsert(row, { onConflict: 'idempotency_key' })
-  if (error) throw new Error('system log write failed')
+// Finalize the row — ONLY if we still hold this claim_token. Returns true if
+// the guarded update matched our row (a stale worker whose lease was taken
+// over matches 0 rows and therefore cannot finalize another worker's claim).
+async function finalize(key, token, { status, attempts, code }) {
+  const { data, error } = await io.sb().from('system_email_log')
+    .update({ status, attempts, last_error_code: code || null, claim_token: null, claim_until: null, updated_at: iso() })
+    .eq('idempotency_key', key).eq('claim_token', token).select('idempotency_key')
+  if (error) throw new Error('system log finalize failed')
+  return !!(data && data.length)
 }
 
-// Send one automated system email. Returns { ok, skipped?, attempts, code? }.
+// Send one automated system email. Returns:
+//   { ok:true, attempts }                 delivered and finalized
+//   { ok:true, accepted:true, warning }    Graph accepted (202) but the final
+//                                          log write failed / claim was lost —
+//                                          the email was NOT re-sent
+//   { ok:true, skipped:'duplicate' }       already delivered
+//   { ok:false, skipped:'in_progress' }    another worker owns the claim
+//   { ok:false, error, code, attempts }    failed before Graph accepted it
 // Throws only for fail-closed misconfiguration.
 async function sendSystemEmail(input = {}, opts = {}) {
   const { to, subject, html, text, idempotencyKey } = input
@@ -83,10 +99,14 @@ async function sendSystemEmail(input = {}, opts = {}) {
   const maxAttempts = opts.maxAttempts || 3
   const key = idempotencyKey || null
 
+  // Atomically claim the key. Exactly one concurrent caller gets 'claimed'.
+  let claimToken = null
   if (key) {
-    const existing = await getLog(key)
-    if (existing && existing.status === 'sent') return { ok: true, skipped: 'duplicate' }
-    await upsertLog(key, { to_address: String(to), subject: subject || null, status: 'pending' })
+    claimToken = crypto.randomUUID()
+    const decision = await claim(key, claimToken)
+    if (decision === 'duplicate') return { ok: true, skipped: 'duplicate' }
+    if (decision === 'in_progress') return { ok: false, skipped: 'in_progress' }
+    // 'claimed' → we are the sole sender for this key
   }
 
   const message = {
@@ -98,22 +118,37 @@ async function sendSystemEmail(input = {}, opts = {}) {
     saveToSentItems: true,
   }
 
-  let attempt = 0, lastCode = null
+  // Bounded retries apply ONLY to failures BEFORE Graph accepts the message
+  // (timeout / 429 / 5xx). Once Graph returns 202 we stop the loop forever.
+  let attempt = 0, lastCode = null, accepted = false
   while (attempt < maxAttempts) {
     attempt++
+    let r = null
     try {
       const token = await appToken(c, fetchImpl)
-      const r = await graphSend(token, c.mailbox, message, fetchImpl)
-      if (r.status === 202) {
-        if (key) await upsertLog(key, { status: 'sent', attempts: attempt, last_error_code: null })
-        return { ok: true, attempts: attempt }
-      }
-      lastCode = 'graph_' + r.status
-      if (r.status === 429 || r.status >= 500) { await doSleep(backoff(attempt)); continue } // retryable
-      break // non-retryable 4xx
-    } catch (e) { lastCode = 'send_error'; await doSleep(backoff(attempt)) }
+      r = await graphSend(token, c.mailbox, message, fetchImpl)
+    } catch (e) { lastCode = 'send_error'; await doSleep(backoff(attempt)); continue } // pre-accept failure → retry
+    if (r.status === 202) { accepted = true; break }        // ACCEPTED — never send again
+    lastCode = 'graph_' + r.status
+    if (r.status === 429 || r.status >= 500) { await doSleep(backoff(attempt)); continue } // pre-accept retry
+    break // non-retryable 4xx → stop, not accepted
   }
-  if (key) await upsertLog(key, { status: 'error', attempts: attempt, last_error_code: sanitizeCode(lastCode) })
+
+  if (accepted) {
+    // CRITICAL: the message is already delivered. Do NOT re-send under any
+    // circumstance. If finalizing the log fails or our claim was lost, return
+    // accepted with a sanitized warning instead of retrying Graph.
+    if (key) {
+      let held = false
+      try { held = await finalize(key, claimToken, { status: 'sent', attempts: attempt, code: null }) }
+      catch (e) { return { ok: true, accepted: true, attempts: attempt, warning: 'delivered; delivery-log finalize failed' } }
+      if (!held) return { ok: true, accepted: true, attempts: attempt, warning: 'delivered; claim lease was lost before finalize' }
+    }
+    return { ok: true, attempts: attempt }
+  }
+
+  // Not accepted → record a sanitized error (holder only; ignore if lost).
+  if (key) { try { await finalize(key, claimToken, { status: 'error', attempts: attempt, code: sanitizeCode(lastCode) }) } catch (e) { /* best-effort */ } }
   return { ok: false, error: 'system email send failed', code: sanitizeCode(lastCode), attempts: attempt }
 }
 
@@ -129,4 +164,4 @@ async function status() {
   return out
 }
 
-module.exports = { __setIO, io, config, isConfigured, appToken, resetTokenCache, sendSystemEmail, status, sanitizeCode }
+module.exports = { __setIO, io, config, isConfigured, appToken, resetTokenCache, sendSystemEmail, status, sanitizeCode, claim, finalize, CLAIM_TTL_SECONDS }
