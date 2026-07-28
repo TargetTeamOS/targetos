@@ -58,4 +58,14 @@ describe('gmailParse', () => {
     expect(m.has_attachments).toBe(false)
     expect(m.body_text).toBe('hi')
   })
+
+  it('does not treat an attached text file as the email body', () => {
+    const m = P.parseGmailMessage({ id: 'x', threadId: 't', payload: {
+      mimeType: 'multipart/mixed', headers: [], parts: [
+        { mimeType: 'text/plain', filename: 'notes.txt', body: { data: b64url('attachment text'), size: 15 } },
+      ],
+    } }, 'inbound')
+    expect(m.has_attachments).toBe(true)
+    expect(m.body_text).toBe(null)
+  })
 })

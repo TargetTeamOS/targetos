@@ -30,7 +30,7 @@ function makeGmail(over = {}) {
     getProfile: vi.fn(async () => ({ ok: true, json: { historyId: '200' } })),
     historyList: vi.fn(async () => ({ ok: true, status: 200, json: { historyId: '150', history: [{ messagesAdded: [{ message: { id: 'gm1' } }] }] } })),
     getMessage: vi.fn(async (t, id) => msgResource(id)),
-    getThread: vi.fn(async () => ({ ok: true, json: { messages: [msgResource('recovered-1')] } })),
+    getThread: vi.fn(async () => ({ ok: true, status: 200, json: { messages: [msgResource('recovered-1').json] } })),
   }, over)
 }
 afterEach(() => { vi.unstubAllEnvs() })
@@ -154,6 +154,34 @@ describe('runIncrementalSync', () => {
     expect(gmail.getMessage).not.toHaveBeenCalled()          // inbox never imported
     expect(store.insertMessage).toHaveBeenCalled()           // missed reply recovered
     expect(store.releaseSync).toHaveBeenCalledWith('conn-1', 'lock-1', expect.objectContaining({ gmail_history_id: '200' }))
+  })
+
+  it('captures the recovery cursor before fetching threads, preventing a mid-recovery reply gap', async () => {
+    const order = []
+    const store = makeStore({
+      listTrackedThreads: vi.fn(async () => { order.push('list'); return [{ id: 'thr-1', provider_thread_id: 'pt-1', contact_id: null }] }),
+    })
+    const gmail = makeGmail({
+      historyList: vi.fn(async () => ({ ok: false, status: 404 })),
+      getProfile: vi.fn(async () => { order.push('profile'); return { ok: true, json: { historyId: '210' } } }),
+      getThread: vi.fn(async () => { order.push('thread'); return { ok: true, status: 200, json: { messages: [] } } }),
+    })
+    const r = await runIncrementalSync(CONN, { store, gmail })
+    expect(r.recovered).toBe(true)
+    expect(order).toEqual(['profile', 'list', 'thread'])
+    expect(store.releaseSync).toHaveBeenCalledWith('conn-1', 'lock-1', expect.objectContaining({ gmail_history_id: '210' }))
+  })
+
+  it('retains the old cursor when threads.get returns a malformed recovery body', async () => {
+    const store = makeStore({ listTrackedThreads: vi.fn(async () => [{ id: 'thr-1', provider_thread_id: 'pt-1', contact_id: null }]) })
+    const gmail = makeGmail({
+      historyList: vi.fn(async () => ({ ok: false, status: 404 })),
+      getThread: vi.fn(async () => ({ ok: true, status: 200, json: {} })),
+    })
+    const r = await runIncrementalSync(CONN, { store, gmail })
+    expect(r.error).toBeTruthy()
+    const patch = store.releaseSync.mock.calls.at(-1)[2]
+    expect(patch.gmail_history_id).toBeUndefined()
   })
 
   it('sanitizes errors (no token leakage)', async () => {

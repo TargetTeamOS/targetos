@@ -19,11 +19,11 @@ const OPTIONS = {
   allowedAttributes: {
     a: ['href', 'name', 'target', 'rel'],
     img: ['src', 'alt', 'title', 'width', 'height'],
-    '*': ['style', 'align', 'colspan', 'rowspan'],
+    '*': ['align', 'colspan', 'rowspan'],
   },
   // Only safe URL schemes; blocks javascript:, data: (for links), vbscript:, file:
   allowedSchemes: ['http', 'https', 'mailto', 'tel'],
-  allowedSchemesByTag: { img: ['http', 'https', 'cid', 'data'] }, // inline images may use data:/cid:
+  allowedSchemesByTag: { img: ['http', 'https', 'cid'] }, // inline images may use cid:
   allowedSchemesAppliedToAttributes: ['href', 'src'],
   allowProtocolRelative: false,
   // Drop the CONTENTS of executable/embedding tags entirely.

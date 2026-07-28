@@ -196,20 +196,29 @@ async function findTrackedThread(connectionId, parsed) {
   return await threadForInternetId(connectionId, parsed.internet_message_id)
 }
 async function listTrackedThreads(connectionId, max = 200) {
+  const limit = Number.isInteger(max) && max > 0 ? max : 200
   const { data, error } = await io.sb().from('email_threads')
     .select('id, provider_thread_id, contact_id')
-    .eq('connection_id', connectionId).not('provider_thread_id', 'is', null).limit(max)
+    .eq('connection_id', connectionId).not('provider_thread_id', 'is', null).limit(limit + 1)
   if (error) throw new Error('tracked-thread list failed: ' + error.message)
+  if ((data || []).length > limit) throw new Error('tracked-thread recovery limit exceeded')
   return data || []
 }
 async function createThread({ connection, parsed, contactId }) {
-  const { data, error } = await io.sb().from('email_threads').insert([{
+  const row = {
     owner_crm_user_id: connection.crm_user_id, provider: 'google', connection_id: connection.id,
     provider_thread_id: parsed.provider_thread_id, subject: parsed.subject,
     contact_id: contactId || null, last_message_at: parsed.sent_at || nowIso(),
-  }]).select('*').maybeSingle()
-  if (error) throw new Error('thread insert failed: ' + error.message)
-  return data
+  }
+  const { data, error } = await io.sb().from('email_threads').insert([row]).select('*').maybeSingle()
+  if (!error) return data
+  // An outbound send and a webhook can race to create the same Gmail thread.
+  // Recover from the unique-key race by loading the already-created row.
+  if (error.code === '23505' && parsed.provider_thread_id) {
+    const existing = await findThreadByProviderThreadId(connection.id, parsed.provider_thread_id)
+    if (existing) return existing
+  }
+  throw new Error('thread insert failed: ' + error.message)
 }
 
 // Idempotent message write. HTML is sanitized BEFORE storage. On a genuinely

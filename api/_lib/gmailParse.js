@@ -26,9 +26,11 @@ function collectBodies(payload, acc) {
   const filename = payload.filename || ''
   const bodyData = payload.body && payload.body.data
   const attachmentId = payload.body && payload.body.attachmentId
-  if (filename && (attachmentId || (payload.body && payload.body.size))) acc.hasAttachments = true
-  if (mime === 'text/plain' && bodyData && !acc.text) acc.text = b64urlDecode(bodyData)
-  else if (mime === 'text/html' && bodyData && !acc.html) acc.html = b64urlDecode(bodyData)
+  const isAttachment = !!(filename || attachmentId)
+  if (isAttachment && (attachmentId || (payload.body && payload.body.size))) acc.hasAttachments = true
+  // Never treat an attached text/html or text/plain file as the message body.
+  if (!isAttachment && mime === 'text/plain' && bodyData && !acc.text) acc.text = b64urlDecode(bodyData)
+  else if (!isAttachment && mime === 'text/html' && bodyData && !acc.html) acc.html = b64urlDecode(bodyData)
   for (const p of (payload.parts || [])) collectBodies(p, acc)
   return acc
 }

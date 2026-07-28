@@ -115,6 +115,36 @@ describe('emailStore token refresh', () => {
   })
 })
 
+describe('emailStore tracked-thread safety', () => {
+  it('fails rather than silently truncating stale-cursor recovery', async () => {
+    resolver = () => ({ data: [{ id: '1' }, { id: '2' }, { id: '3' }], error: null })
+    await expect(store.listTrackedThreads('c1', 2)).rejects.toThrow(/limit exceeded/)
+    const q = captures.find(c => c.table === 'email_threads')
+    expect(q.limit).toBe(3)
+  })
+
+  it('recovers from a concurrent unique-key thread creation race', async () => {
+    let inserts = 0
+    resolver = (ctx) => {
+      if (ctx.table === 'email_threads' && ctx.op === 'insert') {
+        inserts++
+        return { data: null, error: { code: '23505', message: 'duplicate' } }
+      }
+      if (ctx.table === 'email_threads' && ctx.op === 'select') {
+        return { data: { id: 'existing-thread', provider_thread_id: 'pt-1' }, error: null }
+      }
+      return { data: null, error: null }
+    }
+    const t = await store.createThread({
+      connection: { id: 'c1', crm_user_id: 'a1' },
+      parsed: { provider_thread_id: 'pt-1', subject: 'x', sent_at: null },
+      contactId: null,
+    })
+    expect(inserts).toBe(1)
+    expect(t.id).toBe('existing-thread')
+  })
+})
+
 describe('emailStore sync lock', () => {
   it('claimSync returns a token when unlocked and null when already locked', async () => {
     // first claim: conditional update returns a row; second: no row (locked)

@@ -62,25 +62,36 @@ async function storeParsedIntoThread(store, connection, owner, thread, parsed) {
 // tracked-thread fetch failure.
 async function recoverTrackedThreads(ctx) {
   const { connection, token, store, gmail, fetchImpl, lockToken, state } = ctx
+  // Capture the recovery baseline BEFORE fetching tracked threads. Any mail
+  // that arrives during recovery will have a history id after this baseline
+  // and will therefore be picked up by the next incremental sync.
+  const prof = await gmail.getProfile(token, { fetchImpl })
+  const hid = prof && prof.ok && prof.json ? prof.json.historyId : null
+  if (!prof || !prof.ok || !isDecimalString(hid)) {
+    await store.releaseSync(connection.id, lockToken, { last_error_code: 'recovery_no_history', last_error_at: nowIso(), retry_count: ((state && state.retry_count) || 0) + 1 })
+    return { retryable: true, reason: 'recovery_profile' }
+  }
+
   const owner = await store.ownerFor(connection)
   const threads = await store.listTrackedThreads(connection.id, maxRecoveryThreads())
   for (const th of threads) {
     if (!th.provider_thread_id) continue
     const gt = await gmail.getThread(token, th.provider_thread_id, { fetchImpl })
-    if (!gt.ok || !gt.json) throw new Error('threads.get failed during recovery status ' + (gt && gt.status))
-    for (const m of (gt.json.messages || [])) {
+    if (!gt || !gt.ok || !gt.json || !Array.isArray(gt.json.messages)) {
+      throw new Error('threads.get failed during recovery status ' + (gt && gt.status))
+    }
+    for (const m of gt.json.messages) {
       const parsed = parseGmailMessage(m, 'inbound')
       await storeParsedIntoThread(store, connection, owner, th, parsed)
     }
   }
-  const prof = await gmail.getProfile(token, { fetchImpl })
-  const hid = prof && prof.ok && prof.json ? prof.json.historyId : null
-  if (!prof.ok || !isDecimalString(hid)) {
-    await store.releaseSync(connection.id, lockToken, { last_error_code: 'recovery_no_history', last_error_at: nowIso(), retry_count: ((state && state.retry_count) || 0) + 1 })
-    return { retryable: true, reason: 'recovery_profile' }
-  }
-  await store.releaseSync(connection.id, lockToken, { gmail_history_id: hid, watch_status: 'active', last_successful_sync_at: nowIso(), retry_count: 0, last_error_code: null })
-  return { recovered: true, historyId: hid, threads: threads.length }
+
+  await store.releaseSync(connection.id, lockToken, {
+    gmail_history_id: String(hid), watch_status: 'active',
+    last_successful_sync_at: nowIso(), retry_count: 0,
+    last_error_code: null, last_error_at: null,
+  })
+  return { recovered: true, historyId: String(hid), threads: threads.length }
 }
 
 async function runIncrementalSync(connection, deps = {}) {
@@ -106,7 +117,7 @@ async function runIncrementalSync(connection, deps = {}) {
         await store.releaseSync(connection.id, lockToken, { last_error_code: 'baseline_no_history', last_error_at: nowIso(), retry_count: ((state && state.retry_count) || 0) + 1 })
         return { retryable: true, reason: 'baseline' }
       }
-      await store.releaseSync(connection.id, lockToken, { provider: 'google', gmail_history_id: hid, watch_status: 'active', last_successful_sync_at: nowIso(), retry_count: 0, last_notification_at: nowIso() })
+      await store.releaseSync(connection.id, lockToken, { provider: 'google', gmail_history_id: hid, watch_status: 'active', last_successful_sync_at: nowIso(), retry_count: 0, last_notification_at: nowIso(), last_error_code: null, last_error_at: null })
       return { baseline: true, historyId: hid }
     }
 
@@ -141,7 +152,7 @@ async function runIncrementalSync(connection, deps = {}) {
     }
 
     // Advance ONLY after all pages and messages processed successfully.
-    await store.releaseSync(connection.id, lockToken, { gmail_history_id: newest, watch_status: 'active', last_successful_sync_at: nowIso(), retry_count: 0, last_error_code: null })
+    await store.releaseSync(connection.id, lockToken, { gmail_history_id: newest, watch_status: 'active', last_successful_sync_at: nowIso(), retry_count: 0, last_error_code: null, last_error_at: null })
     return { processed, historyId: newest, pages }
   } catch (e) {
     const st = state || await store.loadSyncState(connection.id).catch(() => null)

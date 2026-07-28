@@ -29,6 +29,11 @@ describe('emailSanitize', () => {
     const out = s('<p><strong>Bold</strong> and <a href="https://x.com">link</a></p>')
     expect(out).toContain('<strong>'); expect(out).toContain('href="https://x.com"')
   })
+  it('strips inline style and data-image URLs from provider HTML', () => {
+    const out = s('<div style="background:url(javascript:alert(1))">x</div><img src="data:image/svg+xml,bad">')
+    expect(out).not.toMatch(/style=/i)
+    expect(out).not.toMatch(/data:/i)
+  })
 })
 
 describe('oauth-google scopes', () => {
