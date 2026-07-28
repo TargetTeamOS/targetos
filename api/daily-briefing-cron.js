@@ -17,6 +17,7 @@
 const { getSupabase } = require('./_lib/phone')
 const { getTodaysQuote, buildEmailHTML, isDueToday, isOverdue, getDaysUntil, DEFAULT_PREFS, DEFAULT_STYLE } = require('./_lib/briefing')
 const { notifyAgent } = require('./_lib/notify')
+const { sendSystemEmail, isConfigured } = require('./_lib/systemMailer')
 
 async function gatherAgentData(supabase, agentId) {
   const today   = new Date().toISOString().slice(0, 10)
@@ -63,8 +64,8 @@ module.exports = async function handler(req, res) {
   const supabase = getSupabase()
   if (!supabase) return res.status(200).json({ ok: false, error: 'no supabase client' })
 
-  const RESEND_KEY = process.env.RESEND_API_KEY
-  if (!RESEND_KEY) return res.status(200).json({ ok: false, error: 'RESEND_API_KEY not set' })
+  // Daily briefings now go through the Microsoft system mailbox (not Resend).
+  if (!isConfigured()) return res.status(200).json({ ok: false, error: 'System mailbox not configured' })
 
   // Current time in the team's timezone, floored to the half hour, so
   // each agent gets their briefing in the 30-minute slot matching
@@ -118,17 +119,14 @@ module.exports = async function handler(req, res) {
         const data = await gatherAgentData(supabase, agentRow.id)
         const html = buildEmailHTML(agentRow.name, data, prefs, quote, customMsg, emailStyle)
 
-        const emailRes = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from: 'TargetOS Daily Briefing <office@targetreteam.com>',
-            to: [agentRow.email],
-            subject: '☀️ Your Daily Briefing — ' + new Date().toLocaleDateString('en-US', { month:'short', day:'numeric' }),
-            html,
-          }),
+        const day = new Date().toISOString().slice(0, 10)
+        const emailRes = await sendSystemEmail({
+          to: agentRow.email,
+          subject: '☀️ Your Daily Briefing — ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          html,
+          idempotencyKey: 'briefing:' + agentRow.id + ':' + day,
         })
-        if (!emailRes.ok) throw new Error('Resend API error: ' + emailRes.status)
+        if (!emailRes.ok) throw new Error('System mailer error: ' + (emailRes.code || 'send failed'))
         sent++
         notifyAgent(supabase, agentRow.id, 'dailyBriefing', {
           title: 'Daily briefing ready',

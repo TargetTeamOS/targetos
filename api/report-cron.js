@@ -8,6 +8,7 @@
 'use strict'
 const { getSupabase } = require('./_lib/phone')
 const { computeReport, renderReportHtml } = require('./_lib/reportEngine')
+const { sendSystemEmail, isConfigured } = require('./_lib/systemMailer')
 
 const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
 
@@ -19,8 +20,8 @@ module.exports = async function handler(req, res) {
     console.warn('[report-cron] BLOCKED unauthorized invocation')
     return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
   }
-  const RESEND_KEY = process.env.RESEND_API_KEY
-  if (!RESEND_KEY) return res.status(500).end(JSON.stringify({ error: 'Email service not configured' }))
+  // Scheduled reports now go through the Microsoft system mailbox (not Resend).
+  if (!isConfigured()) return res.status(500).end(JSON.stringify({ error: 'System mailbox not configured' }))
 
   const supabase = getSupabase()
 
@@ -52,12 +53,13 @@ module.exports = async function handler(req, res) {
       try {
         const data = await computeReport(supabase, def)
         const html = renderReportHtml(def, data)
-        const resp = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ from: FROM, to: recipients, subject: def.name + ' — ' + data.range.from + ' to ' + data.range.to, html }),
-        })
-        if (resp.ok) { sent++; await supabase.from('report_definitions').update({ last_sent_at: new Date().toISOString() }).eq('id', def.id) }
+        const subject = def.name + ' — ' + data.range.from + ' to ' + data.range.to
+        let allOk = true
+        for (const rcpt of recipients) {
+          const r = await sendSystemEmail({ to: rcpt, subject, html, idempotencyKey: 'report:' + def.id + ':' + todayStr + ':' + hour + ':' + rcpt })
+          if (!r.ok && !r.skipped) allOk = false
+        }
+        if (allOk) { sent++; await supabase.from('report_definitions').update({ last_sent_at: new Date().toISOString() }).eq('id', def.id) }
         else failed++
       } catch (e) { console.error('[report-cron] send failed for', def.id, e.message); failed++ }
     }

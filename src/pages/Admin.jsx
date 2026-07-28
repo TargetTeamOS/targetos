@@ -19,6 +19,7 @@ import {
 import { FeatureFlagsPanel } from '../components/FeatureFlagsPanel'
 import { ContactLayoutEditor } from '../components/ContactLayoutEditor'
 import { ConnectorsPanel } from '../components/ConnectorsPanel'
+import { SystemMailerStatus } from '../components/SystemMailerStatus'
 import { TVStudio } from '../components/TVStudio'
 
 // Shared helper — every admin-users call needs the current session's
@@ -707,6 +708,7 @@ export function Admin() {
         <div style={{ paddingTop: '10px' }}>
 
           <ConnectorsPanel />
+          <SystemMailerStatus />
 
         </div>
 
