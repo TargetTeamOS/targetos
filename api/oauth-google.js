@@ -12,6 +12,7 @@ const { getIntegration, patchIntegration, logEvent, baseUrl, upsertAgentAccount,
 
 const SCOPE = [
   'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/userinfo.email',
@@ -114,3 +115,5 @@ module.exports = async function handler(req, res) {
     res.statusCode = 500; res.end('Error: ' + e.message)
   }
 }
+
+module.exports.SCOPE = SCOPE
