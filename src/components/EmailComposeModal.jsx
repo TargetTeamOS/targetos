@@ -7,14 +7,23 @@
 // app via mailto.
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Btn, Modal, ModalActions } from './UI'
-import { sendContactEmail } from '../lib/emailService'
+import { sendContactEmail, getConnectedOutlookAccount } from '../lib/emailService'
 
 export function EmailComposeModal({ open, onClose, contact, agent, toast }) {
   const [subject, setSubject] = useState('')
   const [body, setBody]       = useState('')
   const [sending, setSending] = useState(false)
+  const [outlook, setOutlook] = useState(null) // { connected, from } | null while loading
+
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    setOutlook(null)
+    getConnectedOutlookAccount().then(a => { if (alive) setOutlook(a) })
+    return () => { alive = false }
+  }, [open])
 
   const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, background: 'var(--bg)', color: 'var(--text)', boxSizing: 'border-box' }
   const name = contact ? ((contact.first_name || '') + ' ' + (contact.last_name || '')).trim() : ''
@@ -29,8 +38,11 @@ export function EmailComposeModal({ open, onClose, contact, agent, toast }) {
         subject: subject.trim(), body: body.trim(),
         agentName: agent?.name || 'Target Team', agentEmail: agent?.email || null,
       })
-      if (r && r.ok === false) throw new Error(r.error || 'send failed')
-      toast?.('📨 Email sent to ' + (name || contact.email))
+      if (!r || r.success === false) {
+        if (r && r.needsConnect) { toast?.(r.error, '#DC2626'); return }
+        throw new Error((r && r.error) || 'send failed')
+      }
+      toast?.('📨 Email sent from ' + (r.from || 'your Outlook') + ' to ' + (name || contact.email))
       setSubject(''); setBody('')
       onClose()
     } catch (e) {
@@ -44,6 +56,13 @@ export function EmailComposeModal({ open, onClose, contact, agent, toast }) {
         To: <b>{contact?.email || '— no email on file —'}</b>
         {agent?.email ? <> · Replies go to <b>{agent.email}</b></> : null}
       </div>
+      <div style={{ fontSize: 12, marginBottom: 10 }}>
+        {outlook === null
+          ? <span style={{ color: 'var(--muted)' }}>Checking your Outlook connection…</span>
+          : outlook.connected
+            ? <span style={{ color: 'var(--muted)' }}>Sending from <b style={{ color: 'var(--text)' }}>{outlook.from}</b> (your connected Outlook)</span>
+            : <span style={{ color: '#DC2626' }}>No Outlook account connected — connect one in Settings → Email Accounts to send.</span>}
+      </div>
       <input style={inp} placeholder="Subject" value={subject} onChange={e => setSubject(e.target.value)} />
       <textarea style={{ ...inp, marginTop: 8, minHeight: 180, resize: 'vertical' }}
                 placeholder={'Write your message…\n\nIt will be sent in the Target Team branded template with your name in the footer.'}
@@ -51,7 +70,7 @@ export function EmailComposeModal({ open, onClose, contact, agent, toast }) {
       <ModalActions>
         <Btn variant="secondary" onClick={() => window.open('mailto:' + (contact?.email || ''))}>Open in mail app instead</Btn>
         <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-        <Btn onClick={send} loading={sending} disabled={!contact?.email}>Send Email</Btn>
+        <Btn onClick={send} loading={sending} disabled={!contact?.email || (outlook !== null && !outlook.connected)}>Send Email</Btn>
       </ModalActions>
     </Modal>
   )
