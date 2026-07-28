@@ -80,6 +80,27 @@ async function finalize(key, token, { status, attempts, code }) {
   return !!(data && data.length)
 }
 
+// Record delivery metadata BEFORE sending, guarded by our claim token (keeps
+// the lease). Returns { held } — false means our lease was lost.
+async function recordMetadata(key, token, { to, subject }) {
+  const { data, error } = await io.sb().from('system_email_log')
+    .update({ to_address: String(to), subject: subject == null ? null : String(subject), updated_at: iso() })
+    .eq('idempotency_key', key).eq('claim_token', token).select('idempotency_key')
+  if (error) throw new Error('system log metadata write failed')
+  return { held: !!(data && data.length) }
+}
+
+// Post-202 finalize: retry the claim-token-guarded DB write ONLY (never
+// Graph) up to `attempts` times with short bounded backoff. Returns
+// { ok, held }. ok=false means every DB attempt threw.
+async function finalizeWithRetry(key, token, patch, doSleep, attempts = 3) {
+  for (let i = 0; i < attempts; i++) {
+    try { return { ok: true, held: await finalize(key, token, patch) } }
+    catch (e) { if (i < attempts - 1) await doSleep(backoff(i + 1)) }
+  }
+  return { ok: false, held: false }
+}
+
 // Send one automated system email. Returns:
 //   { ok:true, attempts }                 delivered and finalized
 //   { ok:true, accepted:true, warning }    Graph accepted (202) but the final
@@ -106,7 +127,13 @@ async function sendSystemEmail(input = {}, opts = {}) {
     const decision = await claim(key, claimToken)
     if (decision === 'duplicate') return { ok: true, skipped: 'duplicate' }
     if (decision === 'in_progress') return { ok: false, skipped: 'in_progress' }
-    // 'claimed' → we are the sole sender for this key
+    if (decision !== 'claimed') throw new Error('system claim failed') // fail closed on null/unknown
+    // Record delivery metadata before sending; if this guarded write fails
+    // or our lease was lost, FAIL BEFORE calling Graph.
+    let meta
+    try { meta = await recordMetadata(key, claimToken, { to, subject }) }
+    catch (e) { return { ok: false, error: 'system claim failed', code: 'metadata_write_failed' } }
+    if (!meta.held) return { ok: false, error: 'system claim lost before send', code: 'claim_lost' }
   }
 
   const message = {
@@ -135,14 +162,13 @@ async function sendSystemEmail(input = {}, opts = {}) {
   }
 
   if (accepted) {
-    // CRITICAL: the message is already delivered. Do NOT re-send under any
-    // circumstance. If finalizing the log fails or our claim was lost, return
-    // accepted with a sanitized warning instead of retrying Graph.
+    // CRITICAL: the message is already delivered. NEVER re-send. Retry only
+    // the claim-token-guarded DB finalize (up to 3x, bounded backoff). If it
+    // ultimately fails, return accepted with a sanitized warning.
     if (key) {
-      let held = false
-      try { held = await finalize(key, claimToken, { status: 'sent', attempts: attempt, code: null }) }
-      catch (e) { return { ok: true, accepted: true, attempts: attempt, warning: 'delivered; delivery-log finalize failed' } }
-      if (!held) return { ok: true, accepted: true, attempts: attempt, warning: 'delivered; claim lease was lost before finalize' }
+      const fin = await finalizeWithRetry(key, claimToken, { status: 'sent', attempts: attempt, code: null }, doSleep, 3)
+      if (!fin.ok) return { ok: true, accepted: true, attempts: attempt, warning: 'delivered; delivery-log finalize failed' }
+      if (!fin.held) return { ok: true, accepted: true, attempts: attempt, warning: 'delivered; claim lease was lost before finalize' }
     }
     return { ok: true, attempts: attempt }
   }
@@ -164,4 +190,4 @@ async function status() {
   return out
 }
 
-module.exports = { __setIO, io, config, isConfigured, appToken, resetTokenCache, sendSystemEmail, status, sanitizeCode, claim, finalize, CLAIM_TTL_SECONDS }
+module.exports = { __setIO, io, config, isConfigured, appToken, resetTokenCache, sendSystemEmail, status, sanitizeCode, claim, finalize, recordMetadata, finalizeWithRetry, CLAIM_TTL_SECONDS }

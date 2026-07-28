@@ -8,7 +8,7 @@
 -- database operation. Rollback: email_phase4_system_mailer_rollback.sql
 -- ═══════════════════════════════════════════════════════════════
 
-create table if not exists system_email_log (
+create table if not exists public.system_email_log (
   id               uuid primary key default gen_random_uuid(),
   idempotency_key  text unique,
   provider         text not null default 'microsoft',
@@ -23,17 +23,17 @@ create table if not exists system_email_log (
   updated_at       timestamptz not null default now()
 );
 -- Idempotent add for tables created before the claim lease existed.
-alter table system_email_log add column if not exists claim_token uuid;
-alter table system_email_log add column if not exists claim_until timestamptz;
+alter table public.system_email_log add column if not exists claim_token uuid;
+alter table public.system_email_log add column if not exists claim_until timestamptz;
 
-create index if not exists idx_system_email_status on system_email_log (status);
+create index if not exists idx_system_email_status on public.system_email_log (status);
 
-alter table system_email_log enable row level security;
+alter table public.system_email_log enable row level security;
 
 -- Admins may read the log (status indicator). No secrets are stored here.
 -- Writes happen only via the service role.
-drop policy if exists system_email_log_select on system_email_log;
-create policy system_email_log_select on system_email_log
+drop policy if exists system_email_log_select on public.system_email_log;
+create policy system_email_log_select on public.system_email_log
 for select to authenticated
 using (public.current_agent_is_admin());
 
@@ -44,26 +44,31 @@ using (public.current_agent_is_admin());
 --   'in_progress'  another live claim holds the lease — do not send
 -- A single INSERT..ON CONFLICT DO NOTHING decides the first claimant; an
 -- existing row is inspected under a row lock so an expired lease can be
--- safely taken over. SECURITY DEFINER so it runs with table-owner rights;
--- callers use the service role anyway.
+-- safely taken over.
+--
+-- SECURITY DEFINER with a PINNED search_path (pg_catalog, public) so a
+-- caller cannot influence name resolution; all objects are schema-qualified.
+-- EXECUTE is granted only to service_role (the backend); PUBLIC/anon/
+-- authenticated are revoked.
 -- ───────────────────────────────────────────────────────────────
-create or replace function claim_system_email(p_key text, p_token uuid, p_ttl_seconds int)
+create or replace function public.claim_system_email(p_key text, p_token uuid, p_ttl_seconds integer)
 returns text
 language plpgsql
 security definer
+set search_path = pg_catalog, public
 as $$
 declare
   v_now  timestamptz := now();
-  v_row  system_email_log%rowtype;
+  v_row  public.system_email_log%rowtype;
 begin
-  insert into system_email_log (idempotency_key, provider, status, attempts, claim_token, claim_until, updated_at)
+  insert into public.system_email_log (idempotency_key, provider, status, attempts, claim_token, claim_until, updated_at)
   values (p_key, 'microsoft', 'pending', 0, p_token, v_now + make_interval(secs => p_ttl_seconds), v_now)
   on conflict (idempotency_key) do nothing;
   if found then
     return 'claimed';           -- we inserted the row -> first claimant
   end if;
 
-  select * into v_row from system_email_log where idempotency_key = p_key for update;
+  select * into v_row from public.system_email_log where idempotency_key = p_key for update;
   if v_row.status = 'sent' then
     return 'duplicate';
   end if;
@@ -72,7 +77,7 @@ begin
   end if;
 
   -- lease absent or expired -> take it over with a fresh token
-  update system_email_log
+  update public.system_email_log
      set claim_token = p_token,
          claim_until = v_now + make_interval(secs => p_ttl_seconds),
          status      = 'pending',
@@ -81,7 +86,11 @@ begin
   return 'claimed';
 end $$;
 
-revoke all on function claim_system_email(text, uuid, int) from public, anon, authenticated;
+-- Lock down execution to the backend service role only.
+revoke all on function public.claim_system_email(text, uuid, integer) from public;
+revoke all on function public.claim_system_email(text, uuid, integer) from anon;
+revoke all on function public.claim_system_email(text, uuid, integer) from authenticated;
+grant execute on function public.claim_system_email(text, uuid, integer) to service_role;
 
 -- VERIFY (service role): table + claim columns + RPC exist.
 select

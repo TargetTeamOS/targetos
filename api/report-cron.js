@@ -12,6 +12,15 @@ const { sendSystemEmail, isConfigured } = require('./_lib/systemMailer')
 
 const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
 
+// A recipient counts as delivered ONLY if the system mailer accepted it
+// (ok) or it was already delivered by a prior run (skipped:'duplicate').
+// skipped:'in_progress' means another worker currently owns the claim — it is
+// NOT delivered by us, so the report must not be marked sent / last_sent_at
+// must not be updated on account of it. Any error also fails the recipient.
+function reportRecipientDelivered(r) {
+  return !!(r && (r.ok === true || r.skipped === 'duplicate'))
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
@@ -57,7 +66,7 @@ module.exports = async function handler(req, res) {
         let allOk = true
         for (const rcpt of recipients) {
           const r = await sendSystemEmail({ to: rcpt, subject, html, idempotencyKey: 'report:' + def.id + ':' + todayStr + ':' + hour + ':' + rcpt })
-          if (!r.ok && !r.skipped) allOk = false
+          if (!reportRecipientDelivered(r)) allOk = false // in_progress / error → not sent
         }
         if (allOk) { sent++; await supabase.from('report_definitions').update({ last_sent_at: new Date().toISOString() }).eq('id', def.id) }
         else failed++
@@ -184,3 +193,5 @@ module.exports = async function handler(req, res) {
     return result
   }
 }
+
+module.exports.reportRecipientDelivered = reportRecipientDelivered
