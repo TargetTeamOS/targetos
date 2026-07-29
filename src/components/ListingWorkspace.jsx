@@ -117,7 +117,7 @@ export default function ListingWorkspace({
   // scheduled photography shoot never showed up here. This now reads the
   // real table too, read-only, without touching TCDealPanels.jsx.
   useEffect(() => {
-    if (tab !== 'marketing') return
+    if (tab !== 'marketing' && tab !== 'report') return
     let alive = true
     ;(async () => {
       try {
@@ -458,7 +458,10 @@ export default function ListingWorkspace({
     if (listing.original_price && listing.list_price && listing.original_price !== listing.list_price) {
       lines.push('- Price moved ' + fmt$(listing.original_price) + ' → ' + fmt$(listing.list_price) + ' (' + ph.length + ' change' + (ph.length!==1?'s':'') + ')')
     }
-    lines.push('- Marketing: ' + (mktStatus || 'not set'))
+    lines.push('- Marketing: ' + (mktStatus || 'not set') + (mktTasks && mktTasks.length ? ' · ' + mktTasks.filter(t=>t.status==='done').length + '/' + mktTasks.length + ' items done' : '') + (photography ? ' · Photography: ' + (photography.status||'Needs Prep') : ''))
+    if (mktTasks && mktTasks.filter(t=>t.status==='done').length>0) {
+      lines.push('  Completed: ' + mktTasks.filter(t=>t.status==='done').map(t=>t.title).join(', '))
+    }
     const positives = themeSummary.filter(t => t.id === 'positive')
     if (objections.length) {
       lines.push('')
@@ -817,17 +820,21 @@ export default function ListingWorkspace({
               </div>
             </div>
           )}
-          {showings.length===0 ? <div style={{ padding:30, textAlign:'center', color:'var(--muted)' }}>No showings logged yet.</div> :
-            Object.entries(groups).sort((a,b)=>b[1].length-a[1].length).map(([name,list])=>(
-              <div key={name} style={{ marginBottom:14, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-                <div style={{ padding:'8px 12px', background:'var(--dim)', fontSize:13, fontWeight:800, display:'flex', justifyContent:'space-between' }}>
-                  <span>👤 {name}</span><span style={{ color:'var(--muted)' }}>{list.length} showing{list.length!==1?'s':''}</span>
+          {showings.length===0 ? <div style={{ padding:30, textAlign:'center', color:'var(--muted)' }}>No showings logged yet.</div> : (
+            <>
+              <div style={sectionTitle}>Showings by agent</div>
+              {Object.entries(groups).sort((a,b)=>b[1].length-a[1].length).map(([name,list])=>(
+                <div key={name} style={{ marginBottom:14, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
+                  <div style={{ padding:'10px 14px', background:'rgba(139,92,246,.08)', borderBottom:'2px solid #8B5CF6', fontSize:14, fontWeight:800, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span>Agent: {name}</span><span style={{ color:'#8B5CF6' }}>{list.length} showing{list.length!==1?'s':''}</span>
+                  </div>
+                  {list.map(s=>(
+                    <ShowingRow key={s.id} showing={s} onUpdate={patch => updateShowing(s.id, patch)} />
+                  ))}
                 </div>
-                {list.map(s=>(
-                  <ShowingRow key={s.id} showing={s} onUpdate={patch => updateShowing(s.id, patch)} />
-                ))}
-              </div>
-            ))}
+              ))}
+            </>
+          )}
           {/* Open houses */}
           <div style={{ marginTop:18 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
@@ -877,7 +884,10 @@ export default function ListingWorkspace({
             <div>• Feedback captured on <strong>{showings.filter(s=>s.feedback).length}</strong> of {showings.length} showings</div>
             {showings.length>0 && <div>• Unique buyers: <strong>{buyerStats.uniqueBuyers}</strong> · 👍 {buyerStats.interested} interested · 🤔 {buyerStats.neutral} neutral · 👎 {buyerStats.notInterested} not interested{buyerStats.noFeedback>0?' · '+buyerStats.noFeedback+' no feedback':''}</div>}
             {listing.original_price&&listing.list_price&&listing.original_price!==listing.list_price && <div>• Price moved {fmt$(listing.original_price)} → {fmt$(listing.list_price)} ({ph.length} change{ph.length!==1?'s':''})</div>}
-            <div>• Marketing: {mktStatus || 'not set'}</div>
+            <div>• Marketing: {mktStatus || 'not set'}{mktTasks && mktTasks.length ? ' · ' + mktTasks.filter(t=>t.status==='done').length + '/' + mktTasks.length + ' items done' : ''}{photography ? ' · Photography: ' + (photography.status || 'Needs Prep') : ''}</div>
+            {mktTasks && mktTasks.filter(t=>t.status==='done').length>0 && (
+              <div style={{ fontSize:12, color:'var(--muted)' }}>&nbsp;&nbsp;Completed: {mktTasks.filter(t=>t.status==='done').map(t=>t.title).join(', ')}</div>
+            )}
           </div>
 
           {objections.length>0 && (
@@ -1316,6 +1326,7 @@ function ShowingRow({ showing, onUpdate }) {
       <div onClick={()=>setOpen(p=>!p)} style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 12px', cursor:'pointer' }}>
         <span style={{ fontSize:12.5, fontWeight:700, color:'var(--text)', minWidth:88, flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{showing.buyer_name || 'Buyer'}</span>
         <span style={{ fontSize:11, color:'var(--muted)', minWidth:58, flexShrink:0 }}>{showing.showing_date ? fmtDate(showing.showing_date) : '—'}</span>
+        <span style={{ fontSize:9.5, color:'var(--muted)', flexShrink:0 }}>Status:</span>
         <span style={{ fontSize:10, fontWeight:700, color:interestColor(showing.interest_level||3), background:interestColor(showing.interest_level||3)+'18', padding:'2px 7px', borderRadius:99, flexShrink:0, whiteSpace:'nowrap' }}>{interestLbl}</span>
         {mainTheme && <span style={{ fontSize:10, fontWeight:600, color:'#B45309', background:'rgba(245,166,35,.14)', padding:'2px 7px', borderRadius:99, flexShrink:0, whiteSpace:'nowrap' }}>{themeLabel(mainTheme)}</span>}
         <span style={{ fontSize:11.5, color:hasFeedback?'var(--muted)':'#DC2626', fontStyle:hasFeedback?'normal':'italic', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
