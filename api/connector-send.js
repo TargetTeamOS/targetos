@@ -172,7 +172,15 @@ async function handler(req, res) {
         await deps.logEvent('outlook', 'out', 'email.send', { to, subject, error: errText }, false)
         return json(res, 502, { error: 'Graph sendMail failed: ' + errText })
       }
-      await deps.logEvent('outlook', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: agent.id }, true)
+      // Microsoft Graph 202 is the AUTHORITATIVE acceptance point: the email
+      // is already sent. Success telemetry must never convert that into a
+      // failure, so it is best-effort and cannot reach the outer catch. Never
+      // call Graph again from here.
+      try {
+        await deps.logEvent('outlook', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: agent.id }, true)
+      } catch (e) {
+        console.warn('[connector-send] outlook send-event log failed after Graph 202: ' + sanitize(e.message))
+      }
     } else {
       const mimeLines = [
         'To: ' + to,

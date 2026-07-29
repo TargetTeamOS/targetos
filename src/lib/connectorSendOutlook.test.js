@@ -62,3 +62,49 @@ describe('connector-send via Outlook (Graph)', () => {
     expect(status).toBe(502); expect(json.error).not.toContain('EwAToken.SECRET')
   })
 })
+
+describe('connector-send Outlook post-202 accepted-send boundary', () => {
+  const graphCalls = () => fetch.mock.calls.filter(c => String(c[0]).includes('graph.microsoft.com'))
+
+  it('202 + success telemetry OK → 200 ok:true with from; Graph called once', async () => {
+    const { status, json } = await call(okBody())
+    expect(status).toBe(200)
+    expect(json).toMatchObject({ ok: true, provider: 'outlook', from: 'agent1@outlook.com' })
+    expect(graphCalls().length).toBe(1)
+  })
+
+  it('202 + post-accept success logEvent THROWS → still 200 ok:true; Graph once; no second Graph call; no raw DB error', async () => {
+    // Throw ONLY for the post-202 success telemetry call (5th arg === true),
+    // so this proves the accepted-send boundary, not a pre-send logging path.
+    D.logEvent = vi.fn(async (provider, dir, action, meta, success) => {
+      if (success === true) throw new Error('db down: secret internal detail 0xDEADBEEF')
+    })
+    handler.__setDepsForTests(D)
+    const { status, json } = await call(okBody())
+    expect(status).toBe(200)
+    expect(json).toMatchObject({ ok: true, provider: 'outlook', from: 'agent1@outlook.com' })
+    expect(graphCalls().length).toBe(1)                       // exactly one Graph send, no retry
+    expect(JSON.stringify(json)).not.toContain('db down')     // no raw DB error leaked
+    expect(JSON.stringify(json)).not.toContain('0xDEADBEEF')
+  })
+
+  it('non-202 Graph result → sanitized failure, success not reported, no accepted-send', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 400, ok: false, text: async () => 'Bearer EwA.TOKEN bad request' })))
+    const { status, json } = await call(okBody())
+    expect(status).toBe(502)
+    expect(json.ok).not.toBe(true)
+    expect(JSON.stringify(json)).not.toContain('EwA.TOKEN')
+    // the success-telemetry (5th arg true) must NOT have been called
+    expect(D.logEvent.mock.calls.some(c => c[4] === true)).toBe(false)
+  })
+
+  it('202 + post-accept contact-timeline failure → still 200; Graph called once', async () => {
+    D.insertContactTimeline = vi.fn(async () => { throw new Error('timeline db down') })
+    handler.__setDepsForTests(D)
+    const { status, json } = await call(okBody({ contact_id: 'c-1' }))
+    expect(status).toBe(200)
+    expect(json).toMatchObject({ ok: true, provider: 'outlook', from: 'agent1@outlook.com' })
+    expect(graphCalls().length).toBe(1)
+    expect(JSON.stringify(json)).not.toContain('timeline db down')
+  })
+})
