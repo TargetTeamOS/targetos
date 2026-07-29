@@ -24,6 +24,7 @@ import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
 import { logRecordChange } from '../lib/recordActivity'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
+import { ListingWorkspace } from '../components/ListingWorkspace'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -62,7 +63,7 @@ function DOMBadge({ days }) {
   )
 }
 
-function ListingCard({ listing, showings, openHouses, onLogShowing, onScheduleOH, onPriceChange, onUpdateStatus, onToggleIvr, expanded, onToggle }) {
+function ListingCard({ listing, showings, openHouses, onLogShowing, onScheduleOH, onPriceChange, onUpdateStatus, onToggleIvr, onOpenWorkspace, expanded, onToggle }) {
   const dom    = daysOnMarket(listing.list_date)
   const status = listing.status || 'Active'
   const sc     = STATUS_COLORS[status] || '#94A3B8'
@@ -121,6 +122,10 @@ function ListingCard({ listing, showings, openHouses, onLogShowing, onScheduleOH
         <div>
           {/* Quick actions */}
           <div style={{ padding: '10px 16px', background: 'var(--dim)', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={(e) => { e.stopPropagation(); onOpenWorkspace(listing) }}
+              style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #10B981', background: 'rgba(16,185,129,.08)', color: '#10B981', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+              📋 Open Full Report
+            </button>
             <button onClick={() => onLogShowing(listing)}
               style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--brand)', background: 'rgba(204,34,0,.06)', color: 'var(--brand)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
               🏠 Log Showing
@@ -218,6 +223,7 @@ export function MyListings() {
   const [expanded,   setExpanded]   = useState({})
   const [statusFilter,setStatusFilter] = useState('All')
   const [search,     setSearch]     = useState('')
+  const [openListingId, setOpenListingId] = useState(null)
 
   // Modals
   const [showingModal, setShowingModal] = useState(false)
@@ -424,6 +430,28 @@ export function MyListings() {
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}><Loading /></div>
 
+  const openListing = openListingId ? listings.find(l => l.id === openListingId) : null
+
+  if (openListing) {
+    return (
+      <div style={{ fontFamily: ff }}>
+        <ListingWorkspace
+          listing={openListing}
+          showings={showings.filter(s => s.listing_id === openListing.id)}
+          openHouses={openHouses.filter(oh => oh.listing_id === openListing.id)}
+          isAdmin={isAdmin}
+          agent={agent}
+          onClose={() => setOpenListingId(null)}
+          onLogShowing={l => { setSelListing(l); setShowingModal(true) }}
+          onScheduleOH={l => { setSelListing(l); setOhModal(true) }}
+          onPriceChange={l => { setSelListing(l); setPriceForm({ list_price: l.list_price || '', reason: '' }); setPriceModal(true) }}
+          onRefresh={loadAll}
+        />
+        {renderModals()}
+      </div>
+    )
+  }
+
   return (
     <div style={{ fontFamily: ff }}>
       <PageHeader
@@ -485,10 +513,18 @@ export function MyListings() {
             onPriceChange={l => { setSelListing(l); setPriceForm({ list_price: l.list_price || '', reason: '' }); setPriceModal(true) }}
             onUpdateStatus={updateStatus}
             onToggleIvr={toggleIvr}
+            onOpenWorkspace={l => setOpenListingId(l.id)}
           />
         ))
       )}
 
+      {renderModals()}
+    </div>
+  )
+
+  function renderModals() {
+    return (
+    <>
       {/* LOG SHOWING MODAL */}
       <Modal open={showingModal} onClose={() => setShowingModal(false)} title={'Log Showing — ' + (selListing?.addr || '')} width={500}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -577,6 +613,7 @@ export function MyListings() {
           <Btn onClick={updatePrice} loading={saving}>Update Price</Btn>
         </ModalActions>
       </Modal>
-    </div>
-  )
+    </>
+    )
+  }
 }
