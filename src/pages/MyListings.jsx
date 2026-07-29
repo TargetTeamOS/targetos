@@ -507,6 +507,7 @@ export function MyListings() {
           agent={agentsMap[wl.agent_id]}
           canViewAdminLog={canManage || can('listings.view_all')}
           canManage={canManage || can('listings.view_all')}
+          toast={toast}
           showings={showings.filter(s => s.listing_id === wl.id)}
           openHouses={openHouses.filter(oh => oh.listing_id === wl.id)}
           onBack={() => setWorkspaceListing(null)}

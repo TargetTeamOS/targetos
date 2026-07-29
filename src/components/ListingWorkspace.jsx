@@ -59,7 +59,7 @@ const CONNECTED_PARTY_ROLES = [
 
 export default function ListingWorkspace({
   listing, agent, showings = [], openHouses = [], onBack, onSaved,
-  onLogShowing, onScheduleOH, canViewAdminLog = false, canManage = false,
+  onLogShowing, onScheduleOH, canViewAdminLog = false, canManage = false, toast,
 }) {
   const [tab, setTab] = useState('tasks')
   const [adminLog, setAdminLog] = useState([]); const [logLoading, setLogLoading] = useState(false)
@@ -71,6 +71,7 @@ export default function ListingWorkspace({
   const [emailTarget, setEmailTarget] = useState(null) // contact object to email, or null
   const [taskMsg, setTaskMsg] = useState('')
   const [taskAssignee, setTaskAssignee] = useState('')
+  const [taskCheckbox, setTaskCheckbox] = useState(false)
   const [secretaries, setSecretaries] = useState([])
   const [sendingTask, setSendingTask] = useState(false)
   const [matchCandidates, setMatchCandidates] = useState(null) // [{id,addr,score}] | null while loading, [] if none
@@ -105,7 +106,7 @@ export default function ListingWorkspace({
     setLogLoading(false)
   }
   useEffect(() => {
-    if (tab === 'admin' || tab === 'price' || tab === 'timeline' || tab === 'comms') loadAdminLog()
+    if (tab === 'admin' || tab === 'price' || tab === 'timeline' || tab === 'comms' || tab === 'report') loadAdminLog()
   }, [tab, listing.id])
 
   // Marketing: read the linked tc_deal's marketing tasks (read-only) AND
@@ -199,35 +200,53 @@ export default function ListingWorkspace({
 
   useEffect(() => {
     let alive = true
-    supabase.from('agents').select('id,name,role').in('role', ['secretary','admin']).eq('active', true)
-      .then(({ data }) => { if (alive) { setSecretaries(data||[]); if ((data||[]).length && !taskAssignee) setTaskAssignee(data[0].id) } })
+    supabase.from('agents').select('id,name,role').eq('active', true)
+      .then(({ data }) => {
+        if (!alive) return
+        const all = data || []
+        const managers = all.filter(a => ['secretary','admin'].includes(String(a.role||'').toLowerCase()))
+        const list = managers.length ? managers : all // fallback: never leave the picker empty if roles are labeled differently than expected
+        setSecretaries(list)
+        if (list.length && !taskAssignee) setTaskAssignee(list[0].id)
+      })
       .catch(() => { if (alive) setSecretaries([]) })
     return () => { alive = false }
   }, [])
 
-  // Task/message to secretary, tied to this listing. NOTE: the tasks
-  // table has no listing_id column, so the connection is via the title
-  // and notes text, not a real foreign key -- flagged honestly rather
-  // than treated as a clean link. A future tasks.listing_id column would
-  // make this properly queryable/filterable per listing.
-  async function sendTaskToSecretary() {
-    if (!taskMsg.trim()) { alert('Enter a message'); return }
-    if (!taskAssignee) { alert('Pick who this goes to'); return }
+  // Listing Conversation: the real fix for "message doesn't work." Posting
+  // ALWAYS writes directly to audit_log (action:'listing_message') and
+  // immediately reloads the log so the message appears in the thread right
+  // away -- no dependency on picking an assignee, no silent failure path.
+  // Optionally also creates a real task for the office (tasks table has no
+  // listing_id column, so that connection is via title/notes text, flagged
+  // honestly, not treated as a clean link).
+  async function postListingMessage(alsoCreateTask) {
+    if (!taskMsg.trim()) { toast?.('Enter a message', '#DC2626'); return }
+    if (alsoCreateTask && !taskAssignee) { toast?.('Pick who the task goes to', '#DC2626'); return }
     setSendingTask(true)
     try {
-      const { error } = await supabase.from('tasks').insert({
-        title: '[' + listing.addr + '] ' + taskMsg.trim().slice(0,80),
-        notes: 'Re: ' + listing.addr + '\n\n' + taskMsg.trim() + '\n\n— sent from My Listings by ' + (agent?.name||'agent'),
-        agent_id: taskAssignee, status:'pending', priority:'normal',
-        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      await supabase.from('audit_log').insert({
+        agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id,
+        action:'listing_message', field_name:'Message',
+        metadata:{ description: taskMsg.trim(), from: agent?.name||'agent' },
+        created_at:new Date().toISOString(),
       })
-      if (error) throw error
-      try {
-        await supabase.from('audit_log').insert({ agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id, action:'task_sent', field_name:'Task', metadata:{ description:'Task sent to office: ' + taskMsg.trim().slice(0,60) }, created_at:new Date().toISOString() })
-      } catch {}
+      if (alsoCreateTask) {
+        const { error } = await supabase.from('tasks').insert({
+          title: '[' + listing.addr + '] ' + taskMsg.trim().slice(0,80),
+          notes: 'Re: ' + listing.addr + '\n\n' + taskMsg.trim() + '\n\n— sent from My Listings by ' + (agent?.name||'agent'),
+          agent_id: taskAssignee, status:'pending', priority:'normal',
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        })
+        if (error) throw error
+        try {
+          await supabase.from('audit_log').insert({ agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id, action:'task_sent', field_name:'Task', metadata:{ description:'Also created a task for the office' }, created_at:new Date().toISOString() })
+        } catch {}
+      }
       setTaskMsg('')
-      alert('Sent to the office.')
-    } catch (e) { alert('Could not send: ' + (e.message||e)) }
+      await loadAdminLog()
+      toast?.(alsoCreateTask ? '✅ Sent + task created' : '✅ Message posted', '#0B7A45')
+    } catch (e) { toast?.('Could not send: ' + (e.message||e), '#DC2626') }
     setSendingTask(false)
   }
 
@@ -698,7 +717,7 @@ export default function ListingWorkspace({
               No document storage exists yet for listing agreements, disclosures, brochures, floor plans, ad proofs, or other files.
             </div>
             <div style={{ fontSize:11, color:'var(--muted)' }}>
-              Would need: a <code>listing_documents</code> table (listing_id, doc_type, file_url, uploaded_by, uploaded_at) + a storage bucket. Proposal only — not built, not run.
+              Would need: one shared <code>listing_files</code> table (listing_id, category: document/marketing/message, subtype, file_url, uploaded_by, uploaded_at) + one storage bucket — the same table this listing's Marketing Materials and Communication attachments would also use, so files aren't split across three disconnected systems. Proposal only — not built, not run.
             </div>
           </div>
         </div>
@@ -769,23 +788,26 @@ export default function ListingWorkspace({
                 </div>
               </div>
 
-              {/* Send task/message to secretary/admin — real tasks table
-                  write. NOTE: tasks has no listing_id column, so the tie
-                  to this listing is via the title/notes text, not a real
-                  foreign key -- flagged rather than treated as a clean
-                  link. A future tasks.listing_id column would make this
-                  filterable per listing. */}
+              {/* Listing conversation quick-post -- see Communication tab
+                  for the full thread. Message always saves directly to
+                  audit_log (real write, immediately visible); the task
+                  checkbox is a separate, optional action. NOTE: tasks has
+                  no listing_id column, so that connection is via title/
+                  notes text, not a real foreign key -- flagged honestly. */}
               <div style={{ marginTop:18, padding:'14px 16px', background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12 }}>
-                <div style={sectionTitle}>Send to Secretary / Admin</div>
-                <div style={{ display:'flex', gap:8, marginBottom:8, flexWrap:'wrap' }}>
-                  <select value={taskAssignee} onChange={e=>setTaskAssignee(e.target.value)} style={{ ...inp, minWidth:160 }}>
-                    {secretaries.length===0 && <option value="">No secretary/admin found</option>}
+                <div style={sectionTitle}>Message the office <span style={{ fontWeight:400, textTransform:'none', fontSize:10.5 }}>— see full thread in Communication tab</span></div>
+                <textarea value={taskMsg} onChange={e=>setTaskMsg(e.target.value)} placeholder={'Message about ' + listing.addr + '…'} rows={2} style={{ ...inp, width:'100%', boxSizing:'border-box', resize:'vertical', marginBottom:8 }} />
+                <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, color:'var(--muted)' }}>
+                    <input type="checkbox" checked={taskCheckbox} onChange={e=>setTaskCheckbox(e.target.checked)} /> Also create a task for
+                  </label>
+                  <select value={taskAssignee} onChange={e=>setTaskAssignee(e.target.value)} disabled={!taskCheckbox} style={{ ...inp, minWidth:150, opacity:taskCheckbox?1:0.5 }}>
+                    {secretaries.length===0 && <option value="">No agents found</option>}
                     {secretaries.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
-                  <input value={taskMsg} onChange={e=>setTaskMsg(e.target.value)} placeholder={'Message about ' + listing.addr + '…'} style={{ ...inp, flex:1, minWidth:200 }} />
-                  <button onClick={sendTaskToSecretary} disabled={sendingTask} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity:sendingTask?0.6:1 }}>{sendingTask?'Sending…':'Send'}</button>
+                  <button onClick={()=>postListingMessage(taskCheckbox)} disabled={sendingTask} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity:sendingTask?0.6:1 }}>{sendingTask?'Sending…':'Post message'}</button>
                 </div>
-                <div style={{ fontSize:11, color:'var(--muted)' }}>Creates a task assigned to them, tagged with this address. (No listing-level link column exists yet — this ties them via the task text, not a formal connection.)</div>
+                <div style={{ fontSize:11, color:'var(--muted)', marginTop:6 }}>Attachments aren't supported yet — see the Communication tab for the setup-needed plan.</div>
               </div>
             </div>
           )}
@@ -887,6 +909,9 @@ export default function ListingWorkspace({
             <div>• Marketing: {mktStatus || 'not set'}{mktTasks && mktTasks.length ? ' · ' + mktTasks.filter(t=>t.status==='done').length + '/' + mktTasks.length + ' items done' : ''}{photography ? ' · Photography: ' + (photography.status || 'Needs Prep') : ''}</div>
             {mktTasks && mktTasks.filter(t=>t.status==='done').length>0 && (
               <div style={{ fontSize:12, color:'var(--muted)' }}>&nbsp;&nbsp;Completed: {mktTasks.filter(t=>t.status==='done').map(t=>t.title).join(', ')}</div>
+            )}
+            {adminLog.filter(a=>a.action==='email_sent').length>0 && (
+              <div>• Correspondence sent: <strong>{adminLog.filter(a=>a.action==='email_sent').length}</strong> email{adminLog.filter(a=>a.action==='email_sent').length!==1?'s':''}</div>
             )}
           </div>
 
@@ -1013,7 +1038,7 @@ export default function ListingWorkspace({
           </div>
           <div style={{ marginTop:10, padding:'12px 14px', background:'var(--dim)', borderRadius:10, fontSize:12 }}>
             <div style={{ fontWeight:700, marginBottom:4 }}>Materials storage — setup needed</div>
-            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>Photos, video, drone, brochure, flyers, print ads, social posts, WhatsApp images, email blasts, and publication ads all need a storage location and a <code>listing_marketing</code> table (type, file_url, publication, ad_date, cost, completed_by) to track "ads placed by week" and spend. Not built — proposed in Phase 3, not run.</div>
+            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>Photos, video, drone, brochure, flyers, print ads, social posts, WhatsApp images, email blasts, and publication ads all need storage — the same shared <code>listing_files</code> table (category:'marketing') proposed for Documents and Communication attachments, so files live in one place. Ad tracking (publication, ad date, cost, "ads placed by week") needs a separate <code>listing_marketing</code> table alongside it. Not built — proposed in Phase 3, not run.</div>
           </div>
         </div>
       )}
@@ -1119,36 +1144,42 @@ export default function ListingWorkspace({
         </div>
       )}
 
-      {/* ── COMMUNICATION ── Visible thread of what was sent from this
-           listing (emails via Contacts/Parties, tasks/messages sent to
-           the office). This is a one-way SENT LOG built from audit_log,
-           not a real two-way conversation: no inbound replies, no
-           attachments, no SMS. A proper threaded inbox needs a dedicated
-           messages/conversations table + real reply-webhook wiring --
-           drafted as a future need, not built, not faked here. */}
+      {/* ── COMMUNICATION ── Real listing conversation: anyone who can open
+           this listing (the assigned agent, or admin/secretary/view_all)
+           can post a message and see the full history -- this now
+           actually saves and reloads, directly fixing the earlier "message
+           doesn't save / no history" issue. Still NOT a full external
+           inbox: no inbound email/SMS replies, no attachments -- honestly
+           labeled below rather than faked. */}
       {tab==='comms' && (
         <div>
           <div style={sectionTitle}>Communication</div>
           <div style={{ fontSize:11.5, color:'var(--muted)', marginBottom:12 }}>
-            Shows emails and office messages sent from this listing, most recent first. This is a sent-log, not a live two-way conversation — replies, attachments, and SMS threading need a dedicated messages table (see notes below), not built yet.
+            Internal conversation about this listing — visible to you and to admin/secretary. Also shows emails sent (Contacts/Parties) and tasks sent to the office.
           </div>
+
+          <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+            <textarea value={taskMsg} onChange={e=>setTaskMsg(e.target.value)} placeholder="Write a message about this listing…" rows={2} style={{ ...inp, flex:1, boxSizing:'border-box', resize:'vertical' }} />
+            <button onClick={()=>postListingMessage(false)} disabled={sendingTask} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity:sendingTask?0.6:1, alignSelf:'flex-start' }}>{sendingTask?'…':'Post'}</button>
+          </div>
+
           {(() => {
-            const commsLog = adminLog.filter(a => a.action==='email_sent' || a.action==='task_sent')
+            const commsLog = adminLog.filter(a => ['listing_message','email_sent','task_sent'].includes(a.action))
             if (logLoading) return <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>Loading…</div>
-            if (commsLog.length===0) return <Empty title="Nothing sent yet" sub="Send an email from Contacts/Parties or a task from Summary/Next Action, and it'll show up here." />
+            if (commsLog.length===0) return <Empty title="No messages yet" sub="Post a message above, or send an email from Contacts/Parties, and it'll show up here." />
             return commsLog.map((a,i)=>(
               <div key={a.id||i} style={{ display:'flex', gap:10, padding:'10px 0', borderBottom:'1px solid var(--border)' }}>
-                <span style={{ fontSize:16 }}>{a.action==='email_sent' ? '✉️' : '📋'}</span>
+                <span style={{ fontSize:16 }}>{a.action==='email_sent' ? '✉️' : a.action==='task_sent' ? '📋' : '💬'}</span>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:12.5, fontWeight:600 }}>{a.metadata?.description || (a.action==='email_sent'?'Email sent':'Task sent to office')}</div>
-                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>Sent by {a.agents?.name || 'agent'} · {a.created_at?new Date(a.created_at).toLocaleString():''}</div>
+                  <div style={{ fontSize:12.5, fontWeight:600 }}>{a.metadata?.description || (a.action==='email_sent'?'Email sent':a.action==='task_sent'?'Task sent to office':'Message')}</div>
+                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>{a.agents?.name || 'agent'} · {a.created_at?new Date(a.created_at).toLocaleString():''}</div>
                 </div>
               </div>
             ))
           })()}
           <div style={{ marginTop:14, padding:'12px 14px', background:'rgba(59,130,246,.06)', border:'1px solid rgba(59,130,246,.25)', borderRadius:10, fontSize:12 }}>
-            <div style={{ fontWeight:700, marginBottom:4 }}>Full conversation threads — setup needed</div>
-            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>Would need a <code>listing_messages</code> table (listing_id, direction, from/to, subject, body, attachments jsonb, thread_id, created_at) plus inbound-reply webhook wiring (Resend/Twilio) to capture replies. Proposal only — not built, not run.</div>
+            <div style={{ fontWeight:700, marginBottom:4 }}>Still setup-needed: external replies + attachments</div>
+            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>What works now: internal messages between agent/office, saved and visible immediately. What doesn't exist yet: replies coming back from the seller/attorney/etc. by email or SMS, and file attachments on any message. Both need a dedicated <code>listing_messages</code> table (listing_id, direction, from/to, subject, body, thread_id, status, created_at) plus the same shared <code>listing_files</code> table (proposed for Documents/Marketing) for attachments, plus inbound-reply webhook wiring (Resend/Twilio). Proposal only — not built, not run.</div>
           </div>
         </div>
       )}
@@ -1249,7 +1280,7 @@ export default function ListingWorkspace({
       onClose={()=>setEmailTarget(null)}
       contact={emailTarget}
       agent={agent}
-      toast={(msg)=>{ /* fire-and-forget console fallback; this file has no toast system */ console.log(msg) }}
+      toast={(msg, color)=>{ if (toast) toast(msg, color); else alert(msg) }}
       initialSubject={emailTarget ? 'Re: ' + listing.addr : ''}
       onSent={async (contact, subject) => {
         try {

@@ -33,7 +33,7 @@ export function EmailComposeModal({ open, onClose, contact, agent, toast, initia
         subject: subject.trim(), body: body.trim(),
         agentName: agent?.name || 'Target Team', agentEmail: agent?.email || null,
       })
-      if (r && r.ok === false) throw new Error(r.error || 'send failed')
+      if (r && r.success === false) throw new Error(r.error || 'Send failed')
       toast?.('📨 Email sent to ' + (name || contact.email))
       onSent?.(contact, subject.trim())
       setSubject(''); setBody('')
