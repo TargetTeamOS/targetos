@@ -3,8 +3,41 @@
 // Reuses the service-key Supabase client pattern from _lib/phone.js.
 
 const { createClient } = require('@supabase/supabase-js')
+const emailCrypto = require('./emailCrypto')
 
 const SUPABASE_URL  = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
+
+// Encrypt only the per-user OAuth token fields at rest. Other secret
+// fields (client_secret, api_key, webhook_secret) are app-level config,
+// out of scope here. seal()/open() are pure passthroughs when
+// EMAIL_TOKEN_ENCRYPTION_KEY is unset, so legacy plaintext rows keep
+// working until the Phase 2 backfill runs.
+// Encrypt per-user OAuth token fields at rest. For the Google/Outlook
+// ORG integrations we also encrypt the OAuth client_secret. Other secret
+// fields (api_key, webhook_secret) and unrelated integrations are left
+// untouched. seal()/open() pass through when no key is configured, and
+// FAIL CLOSED if a key is present but malformed.
+function fieldsFor(id) {
+  const f = ['access_token', 'refresh_token']
+  if (id === 'google' || id === 'outlook') f.push('client_secret')
+  return f
+}
+function sealSecrets(secrets, id) {
+  if (!secrets || typeof secrets !== 'object') return secrets
+  const out = Object.assign({}, secrets)
+  for (const f of fieldsFor(id)) if (out[f]) out[f] = emailCrypto.seal(out[f])
+  return out
+}
+function openSecrets(secrets, id) {
+  if (!secrets || typeof secrets !== 'object') return secrets
+  const out = Object.assign({}, secrets)
+  for (const f of fieldsFor(id)) {
+    if (out[f] && emailCrypto.isEncrypted(out[f])) {
+      try { out[f] = emailCrypto.open(out[f]) } catch (e) { out[f] = null } // undecryptable → treat as absent
+    }
+  }
+  return out
+}
 
 function sb() {
   const key = process.env.SUPABASE_SERVICE_KEY ||
@@ -16,11 +49,13 @@ function sb() {
 async function getIntegration(id) {
   const { data, error } = await sb().from('integrations').select('*').eq('id', id).maybeSingle()
   if (error) throw new Error('integrations read failed: ' + error.message)
+  if (data && data.secrets) data.secrets = openSecrets(data.secrets, id)
   return data // may be null if sql/connectors.sql not run yet
 }
 
 async function patchIntegration(id, patch) {
   patch.updated_at = new Date().toISOString()
+  if (patch.secrets) patch = Object.assign({}, patch, { secrets: sealSecrets(patch.secrets, id) })
   const { error } = await sb().from('integrations').update(patch).eq('id', id)
   if (error) throw new Error('integrations update failed: ' + error.message)
 }
@@ -115,11 +150,13 @@ async function getAgentAccount(agentId, provider) {
   const { data, error } = await sb().from('integration_accounts')
     .select('*').eq('agent_id', agentId).eq('provider', provider).maybeSingle()
   if (error) throw new Error('integration_accounts read failed: ' + error.message)
+  if (data && data.secrets) data.secrets = openSecrets(data.secrets)
   return data
 }
 
 async function upsertAgentAccount(agentId, provider, patch) {
   patch.updated_at = new Date().toISOString()
+  if (patch.secrets) patch = Object.assign({}, patch, { secrets: sealSecrets(patch.secrets) })
   const existing = await getAgentAccount(agentId, provider)
   if (existing) {
     const { error } = await sb().from('integration_accounts').update(patch).eq('id', existing.id)
@@ -136,6 +173,7 @@ async function findAccountByState(provider, state) {
   const { data, error } = await sb().from('integration_accounts')
     .select('*').eq('provider', provider).eq('secrets->>oauth_state', state).maybeSingle()
   if (error) throw new Error('integration_accounts state lookup failed: ' + error.message)
+  if (data && data.secrets) data.secrets = openSecrets(data.secrets)
   return data
 }
 
@@ -185,11 +223,48 @@ async function agentIdFromAuthUser(authUserId) {
   return data ? data.id : null
 }
 
+// Resolve the CRM agent (id + role) for an authenticated Supabase user.
+async function getAgentForUser(authUserId) {
+  if (!authUserId) return null
+  const { data } = await sb().from('agents').select('id, role').eq('auth_user_id', authUserId).maybeSingle()
+  return data ? { id: data.id, role: data.role } : null
+}
+
+// Contact access check that MIRRORS sql/private_contacts_rls.sql
+// (contacts_select): visible when not private, OR owned by this agent,
+// OR the agent is an admin. Server routes use the service key and bypass
+// RLS, so this must be enforced in code. Returns { exists, allowed }.
+async function contactAccess(contactId, agent) {
+  if (!contactId) return { exists: false, allowed: false }
+  const { data, error } = await sb().from('contacts')
+    .select('id, is_private, agent_id').eq('id', contactId).maybeSingle()
+  if (error) throw new Error('contact lookup failed')
+  if (!data) return { exists: false, allowed: false }
+  const allowed =
+    data.is_private === false ||
+    (agent && data.agent_id === agent.id) ||
+    (agent && agent.role === 'admin')
+  return { exists: true, allowed: !!allowed }
+}
+
+async function insertContactTimeline({ contactId, provider, subject, to, fromAccount }) {
+  await sb().from('tasks').insert([{
+    contact_id: contactId,
+    title: 'Email sent via ' + (provider === 'gmail' ? 'Gmail' : 'Outlook') + ': ' + subject,
+    notes: 'To: ' + to + ' — from ' + fromAccount,
+    priority: 'note',
+    status: 'done',
+  }])
+}
+
 module.exports.getAgentAccount = getAgentAccount
 module.exports.upsertAgentAccount = upsertAgentAccount
 module.exports.findAccountByState = findAccountByState
 module.exports.freshAccountToken = freshAccountToken
 module.exports.agentIdFromAuthUser = agentIdFromAuthUser
+module.exports.getAgentForUser = getAgentForUser
+module.exports.contactAccess = contactAccess
+module.exports.insertContactTimeline = insertContactTimeline
 
 // ── Team chat (Slack or Teams incoming webhook) ───────────────────
 // Both platforms accept POST {"text": "..."} on incoming webhooks.

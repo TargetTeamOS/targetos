@@ -7,6 +7,7 @@
 
 const { getSupabase } = require('./_lib/phone')
 const { notifyAgent, loadAgentNotificationPrefs } = require('./_lib/notify')
+const { sendSystemEmail, isConfigured } = require('./_lib/systemMailer')
 
 module.exports = async function handler(req, res) {
   // Vercel automatically sends 'Authorization: Bearer <CRON_SECRET>' when
@@ -113,8 +114,8 @@ module.exports = async function handler(req, res) {
       byAgent[agentId].tasks.push(t)
     })
 
-    const RESEND_KEY = process.env.RESEND_API_KEY
-    if (!RESEND_KEY) return res.status(500).json({ error: 'RESEND_API_KEY not set' })
+    // Reminders now go through the Microsoft system mailbox (not Resend).
+    if (!isConfigured()) return res.status(500).json({ error: 'System mailbox not configured' })
 
     let sent = 0
     for (const [agentId, group] of Object.entries(byAgent)) {
@@ -197,17 +198,10 @@ module.exports = async function handler(req, res) {
           </div>
         </div>`
 
-      const r = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: 'TargetOS <office@targetreteam.com>',
-          to: [ag.email],
-          subject, html,
-        }),
-      })
+      const day = new Date().toISOString().slice(0, 10)
+      const r = await sendSystemEmail({ to: ag.email, subject, html, idempotencyKey: 'reminder:' + agentId + ':' + day })
       if (r.ok) sent++
-      else console.warn('Failed to send to', ag.email, await r.text())
+      else console.warn('Failed to send reminder to', ag.email, r.code || r.skipped || 'error')
     }
 
     return res.status(200).json({

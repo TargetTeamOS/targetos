@@ -12,6 +12,19 @@ const { getIntegration, patchIntegration, logEvent, baseUrl, upsertAgentAccount,
 
 const SCOPE = 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read https://graph.microsoft.com/Calendars.ReadWrite'
 
+// Build the Microsoft consent URL. prompt=select_account lets an agent pick
+// which Outlook account to connect (and switch accounts on reconnect).
+function authorizeUrl(clientId, redirectUri, state) {
+  return 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
+    + '?client_id=' + encodeURIComponent(clientId)
+    + '&response_type=code'
+    + '&redirect_uri=' + encodeURIComponent(redirectUri)
+    + '&response_mode=query'
+    + '&scope=' + encodeURIComponent(SCOPE)
+    + '&prompt=select_account'
+    + '&state=' + state
+}
+
 module.exports = async function handler(req, res) {
   try {
     const url = new URL(req.url, 'https://x')
@@ -35,13 +48,7 @@ module.exports = async function handler(req, res) {
         // org-level (office account) connect
         await patchIntegration('outlook', { secrets: Object.assign({}, sec, { oauth_state: state }) })
       }
-      const auth = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
-        + '?client_id=' + encodeURIComponent(cfg.client_id)
-        + '&response_type=code'
-        + '&redirect_uri=' + encodeURIComponent(redirectUri)
-        + '&response_mode=query'
-        + '&scope=' + encodeURIComponent(SCOPE)
-        + '&state=' + state
+      const auth = authorizeUrl(cfg.client_id, redirectUri, state)
       res.statusCode = 302; res.setHeader('Location', auth); return res.end()
     }
 
@@ -110,3 +117,6 @@ module.exports = async function handler(req, res) {
     res.statusCode = 500; res.end('Error: ' + e.message)
   }
 }
+
+module.exports.authorizeUrl = authorizeUrl
+module.exports.SCOPE = SCOPE
