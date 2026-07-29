@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { postConnectorOutlook, getConnectedOutlookAccount, buildContactEmailHtml } from '../lib/emailService'
-import { composeSendOutlook } from '../lib/contactEmailSend'
+import { composeSendOutlook, makeAuditLogActivity, applyComposeResult } from '../lib/contactEmailSend'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 
@@ -142,7 +142,8 @@ export function EmailCompose({ contact, contactId, onSent, onCancel }) {
     if (!contact?.email) { toast('Contact has no email address', '#DC2626'); return }
     if (!subject.trim())  { toast('Subject is required', '#DC2626'); return }
     if (!body.trim())     { toast('Message body is required', '#DC2626'); return }
-    if (!outlook || outlook.connected !== true) {
+    if (outlook === null) { toast('Checking Outlook connection…', '#DC2626'); return }
+    if (outlook.connected !== true) {
       toast('Connect your Outlook account in Settings → Email Accounts to send email.', '#DC2626'); return
     }
     setSending(true)
@@ -157,26 +158,20 @@ export function EmailCompose({ contact, contactId, onSent, onCancel }) {
           buildHtml: buildContactEmailHtml,
           // Delegated Outlook send (Microsoft Graph) — NO Resend fallback.
           send: postConnectorOutlook,
-          // Log the contact activity ONLY after Graph confirms success.
-          logActivity: async ({ subject, body, to, from }) => {
-            await supabase.from('audit_log').insert({
-              agent_id:   agent?.id,
-              table_name: 'contacts',
-              record_id:  contactId,
-              action:     'note',
-              field_name: 'email',
-              new_value:  body.slice(0, 200),
-              metadata: { type: 'email', description: 'Email sent: ' + subject, subject, body, to, from },
-              created_at: new Date().toISOString(),
-            })
-          },
+          // Log the contact activity ONLY after Graph confirms success; the
+          // factory inspects Supabase's returned { error } (it does not throw)
+          // and raises a generic marker so no raw DB text reaches the user.
+          logActivity: makeAuditLogActivity(supabase, { agentId: agent?.id, contactId }),
         },
       })
-      if (!result.ok) { toast('❌ Failed to send: ' + result.error, '#DC2626'); return }
-      toast('✅ Email sent from ' + (result.from || 'your Outlook') + ' to ' + contact.email)
-      setSubject('')
-      setBody('')
-      onSent?.()
+      // Single toast; clears the draft + calls onSent ONCE only on success
+      // (including the sent-but-log-failed warning case); keeps the draft and
+      // does not notify on a pre-send failure.
+      applyComposeResult(result, contact.email, {
+        toast,
+        clearDraft: () => { setSubject(''); setBody('') },
+        onSent,
+      })
     } catch (e) {
       toast('❌ Failed to send: ' + e.message, '#DC2626')
     } finally {
@@ -247,10 +242,10 @@ export function EmailCompose({ contact, contactId, onSent, onCancel }) {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span style={{ fontSize:10, color: (outlook && outlook.connected === false) ? '#DC2626' : 'var(--muted)' }}>
             {outlook === null
-              ? body.length + ' chars · checking Outlook connection…'
+              ? 'Checking Outlook connection…'
               : outlook.connected
-                ? body.length + ' chars · From: ' + outlook.from + ' (your Outlook)'
-                : 'No Outlook account connected — connect one in Settings → Email Accounts to send.'}
+                ? 'From: ' + outlook.from + ' (your Outlook)'
+                : 'No Outlook account connected — connect one in Settings → Email Accounts.'}
           </span>
           {(() => {
             const canSend = !sending && !!contact?.email && outlook !== null && outlook.connected === true

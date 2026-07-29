@@ -72,8 +72,23 @@ export async function getConnectedOutlookAccount() {
   } catch (e) { return { connected: false, from: null } }
 }
 
-// Branded contact-email HTML (shared by the composers).
+// Escape HTML-sensitive characters so plain-text composer input cannot
+// become executable email markup. Escape &,<,>,",' then turn newlines into
+// <br/> (after escaping, so typed "<br>" is neutralized).
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+// Branded contact-email HTML (shared by the composers). Body + agentName are
+// user-supplied and therefore escaped before insertion.
 export function buildContactEmailHtml({ body, agentName }) {
+  const safeBody = escapeHtml(body).replace(/\n/g, '<br/>')
+  const safeAgent = escapeHtml(agentName || 'Target Team')
   return `
     <div style="font-family:Inter,sans-serif;max-width:600px;margin:0 auto;">
       <div style="background:#1B2B4B;padding:20px 24px;border-radius:12px 12px 0 0;">
@@ -81,10 +96,10 @@ export function buildContactEmailHtml({ body, agentName }) {
         <div style="color:rgba(255,255,255,.5);font-size:11px;">Keller Williams Valley Realty</div>
       </div>
       <div style="background:#fff;padding:28px 24px;border:1px solid #E2E8F0;border-top:none;">
-        <p style="color:#1E293B;font-size:15px;margin:0 0 16px;">${String(body || '').replace(/\n/g, '<br/>')}</p>
+        <p style="color:#1E293B;font-size:15px;margin:0 0 16px;">${safeBody}</p>
       </div>
       <div style="background:#F8FAFC;padding:16px 24px;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 12px 12px;font-size:12px;color:#94A3B8;">
-        ${agentName || 'Target Team'} · Target Team · Keller Williams Valley Realty<br/>
+        ${safeAgent} · Target Team · Keller Williams Valley Realty<br/>
         845.424.1014 · <a href="https://app.targetreteam.com" style="color:#CC2200;">app.targetreteam.com</a>
       </div>
     </div>`
@@ -92,32 +107,48 @@ export function buildContactEmailHtml({ body, agentName }) {
 
 // Send a personal contact email through the SIGNED-IN AGENT'S connected
 // Outlook mailbox via the delegated /api/connector-send endpoint. Attaches
-// the agent's Supabase session JWT. Never touches Resend. Returns
-// { ok, from, status, error, needsConnect }.
+// the agent's Supabase session JWT. Never touches Resend. All failures are
+// normalized to safe, user-facing messages (no raw server/OAuth/token/HTML
+// content is surfaced). Returns { ok, from, code, needsConnect, error }.
 export async function postConnectorOutlook({ to, subject, html }) {
-  const { data: { session } } = await supabase.auth.getSession()
-  const res = await fetch('/api/connector-send', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}),
-    },
-    body: JSON.stringify({ provider: 'outlook', to, subject, html }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    const needsConnect = res.status === 400 && /connect/i.test(data.error || '')
-    return { ok: false, status: res.status, needsConnect, error: needsConnect ? 'Connect your Outlook account in Settings → Email Accounts to send email.' : (data.error || 'Send failed') }
+  // 1) Read the session BEFORE any network call.
+  let session = null
+  try { const s = await supabase.auth.getSession(); session = s && s.data ? s.data.session : null } catch (e) { session = null }
+  const token = session && session.access_token
+  // 2) No token → do NOT call fetch.
+  if (!token) return { ok: false, code: 'auth_required', error: 'Your TargetOS session has expired. Please sign in again.' }
+
+  // 3) Token present → Authorization is ALWAYS attached.
+  let res
+  try {
+    res = await fetch('/api/connector-send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ provider: 'outlook', to, subject, html }),
+    })
+  } catch (e) {
+    return { ok: false, code: 'unavailable', error: 'The Outlook email service is temporarily unavailable. Please try again.' }
   }
-  return { ok: true, status: res.status, from: data.from || null }
+
+  let data = {}
+  try { data = await res.json() } catch (e) { data = {} }
+
+  if (res.ok) return { ok: true, status: res.status, from: (data && data.from) || null }
+
+  // Normalize failures to safe messages; never surface raw server output.
+  const status = res.status
+  if (status === 401 || status === 403) return { ok: false, status, code: 'auth_required', error: 'Your TargetOS session has expired. Please sign in again.' }
+  if (status === 400 && /connect/i.test((data && data.error) || '')) return { ok: false, status, needsConnect: true, code: 'needs_connect', error: 'Connect your Outlook account in Settings → Email Accounts to send email.' }
+  if (status === 429) return { ok: false, status, code: 'rate_limited', error: 'Microsoft is temporarily limiting email requests. Please try again shortly.' }
+  if (status >= 500) return { ok: false, status, code: 'unavailable', error: 'The Outlook email service is temporarily unavailable. Please try again.' }
+  return { ok: false, status, code: 'rejected', error: 'Outlook could not send this email. Please review the recipient and try again.' }
 }
 
 // ── CONTACT EMAIL ─────────────────────────────────────────────
 // Agent-composed contact emails now go OUT THROUGH THE AGENT'S OWN
 // connected Outlook mailbox (Microsoft Graph, via /api/connector-send), so
 // the message lands in the agent's Sent Items and the From is the agent's
-// real address. Resend/office@ is no longer used for these. When the agent
-// has no active Outlook connection we surface a clear Connect-Outlook error.
+// real address. Resend/office@ is no longer used for these.
 export async function sendContactEmail({ contactEmail, contactName, subject, body, agentName, agentEmail }) {
   const html = buildContactEmailHtml({ body, agentName })
   const r = await postConnectorOutlook({ to: contactEmail, subject, html })
