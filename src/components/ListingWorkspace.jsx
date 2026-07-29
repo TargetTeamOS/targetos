@@ -10,10 +10,11 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate } from '../lib/utils'
-import { Avatar } from './UI'
+import { Avatar, Empty } from './UI'
 import SellerContacts from './SellerContacts'
 import { BoardLinks } from './BoardLinks'
 import { contactName } from './ContactPicker'
+import ContactPicker from './ContactPicker'
 import { THEME_DEFS, themeLabel, mainThemeFor, buildThemeSummary, buildBuyerStats, buildSummarySentences } from '../lib/feedbackThemes'
 import { EmailComposeModal } from './EmailComposeModal'
 
@@ -25,6 +26,7 @@ const ALL_TABS = [
   { id:'marketing', label:'Marketing' },
   { id:'price',     label:'Price & Activity' },
   { id:'parties',   label:'Contacts / Parties' },
+  { id:'comms',     label:'Communication' },
   { id:'notes',     label:'Notes' },
   { id:'timeline',  label:'Timeline' },
   { id:'admin',     label:'Admin Log', adminOnly:true },
@@ -62,6 +64,8 @@ export default function ListingWorkspace({
   const [tab, setTab] = useState('tasks')
   const [adminLog, setAdminLog] = useState([]); const [logLoading, setLogLoading] = useState(false)
   const [mktTasks, setMktTasks] = useState(null)   // null=not loaded, []=none
+  const [photography, setPhotography] = useState(undefined) // undefined=not loaded, null=no TC file, {}=row
+  const [photographerContact, setPhotographerContact] = useState(null)
   const [connected, setConnected] = useState(null) // { tcDeal, productionDeal } | null while loading
   const [parties, setParties] = useState(null)     // { role: contact } | null while loading, {} if no TC deal linked
   const [emailTarget, setEmailTarget] = useState(null) // contact object to email, or null
@@ -70,6 +74,9 @@ export default function ListingWorkspace({
   const [secretaries, setSecretaries] = useState([])
   const [sendingTask, setSendingTask] = useState(false)
   const [matchCandidates, setMatchCandidates] = useState(null) // [{id,addr,score}] | null while loading, [] if none
+  const [editingAddr, setEditingAddr] = useState(false)
+  const [addrBuf, setAddrBuf] = useState({ addr:listing.addr||'', city:listing.city||'', state:listing.state||'', zip:listing.zip||'' })
+  const [addingRole, setAddingRole] = useState(null)
   const [saving, setSaving] = useState('')
   const [copyLabel, setCopyLabel] = useState('Copy Seller Report')
 
@@ -84,6 +91,8 @@ export default function ListingWorkspace({
     setStatus(listing.status || 'Active'); setPrice(listing.list_price || '')
     setSellerDate(listing.seller_updated_at ? listing.seller_updated_at.slice(0,10) : '')
     setMktStatus(listing.marketing_status || ''); setNotes(listing.notes || ''); setTab('tasks')
+    setAddrBuf({ addr:listing.addr||'', city:listing.city||'', state:listing.state||'', zip:listing.zip||'' })
+    setEditingAddr(false)
   }, [listing.id])
 
   async function loadAdminLog() {
@@ -96,24 +105,45 @@ export default function ListingWorkspace({
     setLogLoading(false)
   }
   useEffect(() => {
-    if (tab === 'admin' || tab === 'price' || tab === 'timeline') loadAdminLog()
+    if (tab === 'admin' || tab === 'price' || tab === 'timeline' || tab === 'comms') loadAdminLog()
   }, [tab, listing.id])
 
-  // Marketing: read the linked tc_deal's marketing tasks (read-only)
+  // Marketing: read the linked tc_deal's marketing tasks (read-only) AND
+  // the real tc_photography row. INSPECTION FINDING: TC Board's photography
+  // scheduler (PhotographyPanel in TCDealPanels.jsx) writes to a dedicated
+  // tc_photography table (status, scheduled_at, photographer_contact_id,
+  // services jsonb, readiness jsonb, total) -- NOT to tc_tasks. The old
+  // marketing tab only ever read tc_tasks via a title regex, so a
+  // scheduled photography shoot never showed up here. This now reads the
+  // real table too, read-only, without touching TCDealPanels.jsx.
   useEffect(() => {
     if (tab !== 'marketing') return
     let alive = true
     ;(async () => {
       try {
         const r = await supabase.from('tc_deals').select('id').eq('linked_listing_id', listing.id).maybeSingle()
-        if (!r.data?.id) { if (alive) setMktTasks([]); return }
-        const t = await supabase.from('tc_tasks').select('id,title,status,due_date,phase').eq('deal_id', r.data.id)
+        if (!r.data?.id) { if (alive) { setMktTasks([]); setPhotography(undefined) }; return }
+        const [t, p] = await Promise.all([
+          supabase.from('tc_tasks').select('id,title,status,due_date,phase').eq('deal_id', r.data.id),
+          supabase.from('tc_photography').select('*').eq('tc_deal_id', r.data.id).order('created_at',{ascending:false}).limit(1),
+        ])
         const MKT = /photo|mls|brochure|social|ad\b|ads|marketing|drone|floor plan|flyer|sign|video|publication|email blast/i
-        if (alive) setMktTasks((t.data || []).filter(x => MKT.test(x.title || '')))
-      } catch { if (alive) setMktTasks([]) }
+        if (alive) {
+          setMktTasks((t.data || []).filter(x => MKT.test(x.title || '')))
+          setPhotography(p.data?.[0] || null)
+        }
+      } catch { if (alive) { setMktTasks([]); setPhotography(null) } }
     })()
     return () => { alive = false }
   }, [tab, listing.id])
+
+  useEffect(() => {
+    let alive = true
+    if (!photography?.photographer_contact_id) { setPhotographerContact(null); return }
+    supabase.from('contacts').select('id,first_name,last_name,email,phone').eq('id', photography.photographer_contact_id).maybeSingle()
+      .then(({data}) => { if (alive) setPhotographerContact(data||null) }).catch(() => { if (alive) setPhotographerContact(null) })
+    return () => { alive = false }
+  }, [photography?.photographer_contact_id])
 
   // Connected Records (read-only): find the linked TC file and/or Production
   // deal for this listing via the existing link columns (tc_deals.linked_
@@ -225,31 +255,59 @@ export default function ListingWorkspace({
     } catch (e) { alert('Could not link: ' + (e.message||e)) }
   }
 
-  // Contacts / Parties (read-only): if a TC file is linked, read its
+  // Contacts / Parties: if a TC file is linked, read/write its
   // tc_participants (same table/roles TCBoardPanels.jsx's TCParties uses)
-  // joined to contacts for display names. Never creates or edits a
-  // participant from here -- view only, matching 'do not touch TC Board'.
+  // joined to contacts for display names. setTcParty/removeTcParty below
+  // mirror TCParties' setParty/removeParty exactly -- same tables, same
+  // seller-sync side effect -- without editing TCBoardPanels.jsx at all.
+  async function loadParties() {
+    if (!connected?.tcDeal?.id) { setParties({}); return }
+    try {
+      const { data: rows } = await supabase.from('tc_participants')
+        .select('role, contact_id').eq('tc_deal_id', connected.tcDeal.id)
+      const ids = [...new Set((rows||[]).map(r=>r.contact_id).filter(Boolean))]
+      let contactsById = {}
+      if (ids.length) {
+        const { data: cs } = await supabase.from('contacts').select('id,first_name,last_name,email,phone').in('id', ids)
+        ;(cs||[]).forEach(c => { contactsById[c.id] = c })
+      }
+      const byRole = {}
+      ;(rows||[]).forEach(r => { if (r.contact_id && contactsById[r.contact_id]) byRole[r.role] = contactsById[r.contact_id] })
+      setParties(byRole)
+    } catch { setParties({}) }
+  }
   useEffect(() => {
     if (tab !== 'parties' || !connected) return
     let alive = true
-    ;(async () => {
-      if (!connected.tcDeal?.id) { if (alive) setParties({}); return }
-      try {
-        const { data: rows } = await supabase.from('tc_participants')
-          .select('role, contact_id').eq('tc_deal_id', connected.tcDeal.id)
-        const ids = [...new Set((rows||[]).map(r=>r.contact_id).filter(Boolean))]
-        let contactsById = {}
-        if (ids.length) {
-          const { data: cs } = await supabase.from('contacts').select('id,first_name,last_name,email,phone').in('id', ids)
-          ;(cs||[]).forEach(c => { contactsById[c.id] = c })
-        }
-        const byRole = {}
-        ;(rows||[]).forEach(r => { if (r.contact_id && contactsById[r.contact_id]) byRole[r.role] = contactsById[r.contact_id] })
-        if (alive) setParties(byRole)
-      } catch { if (alive) setParties({}) }
-    })()
+    loadParties().catch(()=>{})
     return () => { alive = false }
   }, [tab, connected, listing.id])
+
+  async function setTcParty(role, contact) {
+    if (!connected?.tcDeal?.id) return
+    try {
+      await supabase.from('tc_participants').delete().eq('tc_deal_id', connected.tcDeal.id).eq('role', role)
+      await supabase.from('tc_participants').insert({ tc_deal_id: connected.tcDeal.id, role, contact_id: contact.id })
+      if (role === 'seller') {
+        const { data: existing } = await supabase.from('listing_contacts').select('id').eq('listing_id', listing.id).eq('role','seller')
+        const isFirst = !existing || existing.length === 0
+        await supabase.from('listing_contacts').upsert({ listing_id:listing.id, contact_id:contact.id, role:'seller', primary_contact:isFirst }, { onConflict:'listing_id,contact_id' })
+        if (isFirst) await supabase.from('listings').update({ seller_contact_id: contact.id }).eq('id', listing.id)
+      }
+      try {
+        await supabase.from('audit_log').insert({ agent_id:agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id, action:'party_linked', field_name:'Party', metadata:{ description: contactName(contact) + ' linked as ' + role }, created_at:new Date().toISOString() })
+      } catch {}
+      setAddingRole(null)
+      loadParties()
+    } catch (e) { alert('Could not save: ' + (e.message||e)) }
+  }
+  async function removeTcParty(role) {
+    if (!connected?.tcDeal?.id) return
+    try {
+      await supabase.from('tc_participants').delete().eq('tc_deal_id', connected.tcDeal.id).eq('role', role)
+      loadParties()
+    } catch (e) { alert('Could not remove: ' + (e.message||e)) }
+  }
 
   async function saveField(key, value, label) {
     setSaving(key)
@@ -258,6 +316,26 @@ export default function ListingWorkspace({
       if (error) throw error
       onSaved?.({ ...listing, [key]: value })
     } catch (e) { alert('Could not save ' + (label||key) + ': ' + (e.message||e)) }
+    setSaving('')
+  }
+  async function saveAddress() {
+    if (!addrBuf.addr.trim()) { alert('Address is required'); return }
+    const addrChanged = addrBuf.addr.trim() !== (listing.addr||'')
+    if (addrChanged && connected?.tcDeal) {
+      const ok = window.confirm('This listing is linked to a TC file by address. Changing the address here does NOT rename the TC file, and could make future matching less reliable. Continue?')
+      if (!ok) return
+    }
+    setSaving('addr')
+    try {
+      const patch = { addr:addrBuf.addr.trim(), city:addrBuf.city.trim()||null, state:addrBuf.state.trim()||null, zip:addrBuf.zip.trim()||null }
+      const { error } = await supabase.from('listings').update({ ...patch, updated_at:new Date().toISOString() }).eq('id', listing.id)
+      if (error) throw error
+      onSaved?.({ ...listing, ...patch })
+      try {
+        await supabase.from('audit_log').insert({ agent_id:agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id, action:'updated', field_name:'Address', old_value:listing.addr, new_value:patch.addr, metadata:{ description:'Address updated' }, created_at:new Date().toISOString() })
+      } catch {}
+      setEditingAddr(false)
+    } catch (e) { alert('Could not save address: ' + (e.message||e)) }
     setSaving('')
   }
   async function savePrice() {
@@ -450,18 +528,36 @@ export default function ListingWorkspace({
 
             {/* Address + meta */}
             <div style={{ flex:1, minWidth:240 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-                <span style={{ fontSize:26, fontWeight:900, color:'var(--text)', letterSpacing:'-.01em' }}>{listing.addr || '—'}</span>
-                <span style={{ fontSize:12, fontWeight:800, color:'#fff', background:sc, padding:'3px 12px', borderRadius:99 }}>{status}</span>
-              </div>
-              <div style={{ fontSize:13.5, color:'var(--muted)', marginTop:5 }}>
-                {[listing.city, listing.state, listing.zip].filter(Boolean).join(', ') || listing.city || ''}
-              </div>
+              {editingAddr ? (
+                <div style={{ display:'flex', flexDirection:'column', gap:6, maxWidth:420 }}>
+                  <input value={addrBuf.addr} onChange={e=>setAddrBuf(p=>({...p,addr:e.target.value}))} placeholder="Street address" style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', fontSize:14, fontFamily:ff }} />
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 90px', gap:6 }}>
+                    <input value={addrBuf.city} onChange={e=>setAddrBuf(p=>({...p,city:e.target.value}))} placeholder="City" style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', fontSize:13, fontFamily:ff }} />
+                    <input value={addrBuf.state} onChange={e=>setAddrBuf(p=>({...p,state:e.target.value}))} placeholder="State" style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', fontSize:13, fontFamily:ff }} />
+                    <input value={addrBuf.zip} onChange={e=>setAddrBuf(p=>({...p,zip:e.target.value}))} placeholder="Zip" style={{ padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', fontSize:13, fontFamily:ff }} />
+                  </div>
+                  <div style={{ fontSize:10.5, color:'var(--muted)' }}>No separate unit field exists on listings today — include unit # in the street address if needed.</div>
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button onClick={saveAddress} disabled={saving==='addr'} style={{ padding:'6px 14px', borderRadius:7, border:'none', background:'var(--brand)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>{saving==='addr'?'Saving…':'Save'}</button>
+                    <button onClick={()=>{ setEditingAddr(false); setAddrBuf({ addr:listing.addr||'', city:listing.city||'', state:listing.state||'', zip:listing.zip||'' }) }} style={{ padding:'6px 14px', borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:26, fontWeight:900, color:'var(--text)', letterSpacing:'-.01em' }}>{listing.addr || '—'}</span>
+                    <span style={{ fontSize:12, fontWeight:800, color:'#fff', background:sc, padding:'3px 12px', borderRadius:99 }}>{status}</span>
+                    <button onClick={()=>setEditingAddr(true)} style={{ fontSize:11.5, color:'var(--brand)', background:'none', border:'none', cursor:'pointer', fontFamily:ff, fontWeight:700 }}>✎ Edit</button>
+                  </div>
+                  <div style={{ fontSize:13.5, color:'var(--muted)', marginTop:5 }}>
+                    {[listing.city, listing.state, listing.zip].filter(Boolean).join(', ') || listing.city || ''}
+                  </div>
+                </>
+              )}
               <div style={{ display:'flex', gap:16, flexWrap:'wrap', marginTop:8, fontSize:12.5, color:'var(--muted)' }}>
                 {d!=null && <span>DOM <strong style={{ color:'var(--text)' }}>{d}</strong></span>}
                 {listing.mls_number && <span>MLS <strong style={{ color:'var(--text)' }}>{listing.mls_number}</strong></span>}
                 {listing.source && <span>Source <strong style={{ color:'var(--text)' }}>{listing.source}</strong></span>}
-                {listing.mls_link && <a href={listing.mls_link} target="_blank" rel="noreferrer" style={{ color:'#3B82F6', fontWeight:700, textDecoration:'none' }}>MLS link ↗</a>}
               </div>
             </div>
 
@@ -530,6 +626,25 @@ export default function ListingWorkspace({
                 {listing.mls_number && (
                   <div><div style={cLabel}>MLS #</div><div style={{ fontSize:12.5, fontWeight:700 }}>{listing.mls_number}</div></div>
                 )}
+                {(listing.mls_link || listing.photo_url) && (
+                  <div>
+                    <div style={cLabel}>Listing links</div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      {listing.mls_link && (
+                        <div style={{ display:'flex', gap:6 }}>
+                          <button onClick={()=>navigator.clipboard.writeText(listing.mls_link)} style={{ fontSize:11, padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--text)', cursor:'pointer', fontFamily:ff }}>Copy MLS Link</button>
+                          <a href={listing.mls_link} target="_blank" rel="noreferrer" style={{ fontSize:11, padding:'3px 8px', borderRadius:6, border:'1px solid #3B82F6', color:'#3B82F6', textDecoration:'none' }}>Open MLS</a>
+                        </div>
+                      )}
+                      {listing.photo_url && (
+                        <div style={{ display:'flex', gap:6 }}>
+                          <button onClick={()=>navigator.clipboard.writeText(listing.photo_url)} style={{ fontSize:11, padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--text)', cursor:'pointer', fontFamily:ff }}>Copy Photo Link</button>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ fontSize:10.5, color:'var(--muted)', marginTop:4 }}>No public company-website listing link field exists yet — not shown rather than faked.</div>
+                  </div>
+                )}
                 <div>
                   <div style={cLabel}>TC Board file</div>
                   {connected.tcDeal ? (
@@ -556,7 +671,7 @@ export default function ListingWorkspace({
                     <div style={{ fontSize:12, color:'var(--muted)' }}>Not linked yet</div>
                   )}
                 </div>
-                <BoardLinks listingId={listing.id} />
+                <BoardLinks listingId={listing.id} hideTc={!canManage} />
                 {!connected.tcDeal && matchCandidates && matchCandidates.length === 0 && (
                   <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
                     No likely TC file match found by address{!canManage ? ' among your own TC files' : ''}. Matching is address-token-based today (case/typo-tolerant, not unit-aware yet) — the drafted Phase 1 normalized-address work would make this more precise.
@@ -802,6 +917,31 @@ export default function ListingWorkspace({
           </div>
           {listing.photo_url && <div style={{ marginTop:14 }}><div style={sectionTitle}>Primary photo</div><img src={listing.photo_url} alt="listing" style={{ maxWidth:'100%', borderRadius:10, border:'1px solid var(--border)' }} onError={e=>{e.target.style.display='none'}} /></div>}
 
+          {/* Photography (real data from TC Board's tc_photography table --
+              see inspection note on the loading effect above) */}
+          {photography !== undefined && (
+            <div style={{ marginBottom:18 }}>
+              <div style={sectionTitle}>Photography</div>
+              {photography === null ? (
+                <div style={{ fontSize:12.5, color:'var(--muted)' }}>No TC file linked, or no photography order started yet.</div>
+              ) : (
+                <div style={card}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                    <span style={{ fontSize:12.5, fontWeight:800 }}>{photography.status || 'Needs Prep'}</span>
+                    {photography.scheduled_at && <span style={{ fontSize:11.5, color:'var(--muted)' }}>{new Date(photography.scheduled_at).toLocaleString()}</span>}
+                  </div>
+                  {photographerContact && <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>Photographer: {contactName(photographerContact)}</div>}
+                  {Array.isArray(photography.services) && photography.services.length>0 && (
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>
+                      {photography.services.map(s=>s.label).join(', ')}
+                      {canManage && photography.total ? ' · ' + fmt$(photography.total) : ''}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Marketing progress from linked TC deal (read-only) */}
           <div style={{ marginTop:16 }}>
             <div style={sectionTitle}>Marketing progress (from TC file)</div>
@@ -933,25 +1073,73 @@ export default function ListingWorkspace({
               {CONNECTED_PARTY_ROLES.filter(r=>r.key!=='seller').map(r => {
                 const c = parties[r.key]
                 return (
-                  <div key={r.key} style={card}>
+                  <div key={r.key} style={{ ...card, position:'relative' }}>
                     <div style={cLabel}>{r.label}</div>
                     {c ? (
                       <div>
                         <div style={{ fontSize:12.5, fontWeight:700 }}>{contactName(c)}</div>
                         {c.phone && <div style={{ fontSize:11, color:'var(--muted)' }}>{c.phone}</div>}
-                        {c.email && (
-                          <button onClick={()=>setEmailTarget(c)} style={{ marginTop:5, padding:'3px 9px', borderRadius:6, border:'1px solid var(--brand)', background:'transparent', color:'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>✉️ Email</button>
-                        )}
+                        <div style={{ display:'flex', gap:6, marginTop:5, flexWrap:'wrap' }}>
+                          {c.email && (
+                            <button onClick={()=>setEmailTarget(c)} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid var(--brand)', background:'transparent', color:'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>✉️ Email</button>
+                          )}
+                          <button onClick={()=>setAddingRole(r.key)} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:11, cursor:'pointer', fontFamily:ff }}>Change</button>
+                          <button onClick={()=>removeTcParty(r.key)} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid #DC2626', background:'transparent', color:'#DC2626', fontSize:11, cursor:'pointer', fontFamily:ff }}>Remove</button>
+                        </div>
                       </div>
                     ) : (
-                      <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Missing</div>
+                      <div>
+                        <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic', marginBottom:6 }}>Missing</div>
+                        <button onClick={()=>setAddingRole(r.key)} style={{ padding:'4px 10px', borderRadius:6, border:'1px solid var(--brand)', background:'rgba(204,34,0,.06)', color:'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>+ Link contact</button>
+                      </div>
+                    )}
+                    {addingRole===r.key && (
+                      <div style={{ position:'absolute', zIndex:50, top:'100%', left:0, marginTop:4, background:'var(--panel)', border:'1px solid var(--border)', borderRadius:10, padding:10, width:280, boxShadow:'0 8px 24px rgba(0,0,0,.2)' }}>
+                        <div style={{ fontSize:11, fontWeight:700, marginBottom:6 }}>Link a contact as {r.label}</div>
+                        <ContactPicker placeholder="Search contacts…" onSelect={c2=>setTcParty(r.key, c2)} agentId={listing.agent_id} />
+                        <button onClick={()=>setAddingRole(null)} style={{ marginTop:6, fontSize:11, color:'var(--muted)', background:'none', border:'none', cursor:'pointer' }}>Cancel</button>
+                      </div>
                     )}
                   </div>
                 )
               })}
-              <div style={card}><div style={cLabel}>Photographer</div><div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Not tracked yet — no photographer role exists on the TC Board today.</div></div>
+              <div style={card}><div style={cLabel}>Photographer</div><div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Not tracked yet — no photographer role exists on the TC Board today. TC Board's Photography panel (tc_photography table) tracks the photographer separately — see the Marketing tab.</div></div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── COMMUNICATION ── Visible thread of what was sent from this
+           listing (emails via Contacts/Parties, tasks/messages sent to
+           the office). This is a one-way SENT LOG built from audit_log,
+           not a real two-way conversation: no inbound replies, no
+           attachments, no SMS. A proper threaded inbox needs a dedicated
+           messages/conversations table + real reply-webhook wiring --
+           drafted as a future need, not built, not faked here. */}
+      {tab==='comms' && (
+        <div>
+          <div style={sectionTitle}>Communication</div>
+          <div style={{ fontSize:11.5, color:'var(--muted)', marginBottom:12 }}>
+            Shows emails and office messages sent from this listing, most recent first. This is a sent-log, not a live two-way conversation — replies, attachments, and SMS threading need a dedicated messages table (see notes below), not built yet.
+          </div>
+          {(() => {
+            const commsLog = adminLog.filter(a => a.action==='email_sent' || a.action==='task_sent')
+            if (logLoading) return <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>Loading…</div>
+            if (commsLog.length===0) return <Empty title="Nothing sent yet" sub="Send an email from Contacts/Parties or a task from Summary/Next Action, and it'll show up here." />
+            return commsLog.map((a,i)=>(
+              <div key={a.id||i} style={{ display:'flex', gap:10, padding:'10px 0', borderBottom:'1px solid var(--border)' }}>
+                <span style={{ fontSize:16 }}>{a.action==='email_sent' ? '✉️' : '📋'}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:12.5, fontWeight:600 }}>{a.metadata?.description || (a.action==='email_sent'?'Email sent':'Task sent to office')}</div>
+                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>Sent by {a.agents?.name || 'agent'} · {a.created_at?new Date(a.created_at).toLocaleString():''}</div>
+                </div>
+              </div>
+            ))
+          })()}
+          <div style={{ marginTop:14, padding:'12px 14px', background:'rgba(59,130,246,.06)', border:'1px solid rgba(59,130,246,.25)', borderRadius:10, fontSize:12 }}>
+            <div style={{ fontWeight:700, marginBottom:4 }}>Full conversation threads — setup needed</div>
+            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>Would need a <code>listing_messages</code> table (listing_id, direction, from/to, subject, body, attachments jsonb, thread_id, created_at) plus inbound-reply webhook wiring (Resend/Twilio) to capture replies. Proposal only — not built, not run.</div>
+          </div>
         </div>
       )}
 
@@ -965,15 +1153,23 @@ export default function ListingWorkspace({
         </div>
       )}
 
-      {/* ── AGENT-FACING TIMELINE (same audit_log source as Admin Log, but
-           friendly sentences, no raw old/new diff clutter -- visible to
-           every agent on their own listing, not gated) ── */}
+      {/* ── AGENT-FACING TIMELINE ── deliberately different from Admin Log:
+           same audit_log source, but filtered to a safe whitelist of
+           events (showing added/updated, seller updated, price changed,
+           status changed, marketing status changed) and rendered as
+           friendly sentences with no raw old/new values. Internal-only
+           events (linking, tasks sent to office, emails sent) are
+           excluded here and only appear in the admin-gated Admin Log. ── */}
       {tab==='timeline' && (
         <div>
-          <div style={sectionTitle}>Activity timeline</div>
-          {logLoading ? <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>Loading…</div> :
-            adminLog.length===0 ? <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>No activity recorded yet.</div> :
-            adminLog.map((a,i)=>(
+          <div style={sectionTitle}>Activity timeline <span style={{ fontWeight:400, textTransform:'none', fontSize:10.5 }}>— agent-safe, seller-reporting friendly</span></div>
+          {(() => {
+            const SAFE_ACTIONS = ['showing_added','showing_updated']
+            const SAFE_FIELDS = ['Status','Price','list_price','Seller Update','Marketing Status','marketing_status','Notes','Address']
+            const safeLog = adminLog.filter(a => SAFE_ACTIONS.includes(a.action) || SAFE_FIELDS.includes(a.field_name))
+            if (logLoading) return <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>Loading…</div>
+            if (safeLog.length===0) return <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>No activity recorded yet.</div>
+            return safeLog.map((a,i)=>(
               <div key={a.id||i} style={{ display:'flex', gap:10, padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
                 <div style={{ width:6, height:6, borderRadius:99, background:'#0B7A45', marginTop:6, flexShrink:0 }} />
                 <div style={{ flex:1 }}>
@@ -981,15 +1177,16 @@ export default function ListingWorkspace({
                   <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>{(a.agents?.name||'')}{a.agents?.name?' · ':''}{a.created_at?new Date(a.created_at).toLocaleString():''}</div>
                 </div>
               </div>
-            ))}
-          <div style={{ marginTop:12, fontSize:11, color:'var(--muted)' }}>Shows status, price, seller-update, marketing, and note changes, plus showings added/edited. Task completions and file uploads aren't logged here yet.</div>
+            ))
+          })()}
+          <div style={{ marginTop:12, fontSize:11, color:'var(--muted)' }}>Shows status, price, seller-update, marketing, notes, and address changes, plus showings added/edited. Task-completion and file-upload events aren't logged yet. Internal office actions (linking, tasks sent, emails sent) are intentionally left out of this view — see Admin Log.</div>
         </div>
       )}
 
       {/* ── ADMIN LOG (gated; reads audit_log) ── */}
       {tab==='admin' && canViewAdminLog && (
         <div>
-          <div style={sectionTitle}>Internal change log</div>
+          <div style={sectionTitle}>Admin Log <span style={{ fontWeight:400, textTransform:'none', fontSize:10.5 }}>— full internal audit trail, admin/secretary only</span></div>
           {logLoading ? <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>Loading…</div> :
             adminLog.length===0 ? <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>No changes recorded yet.</div> :
             adminLog.map((a,i)=>(

@@ -10,7 +10,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
-export function BoardLinks({ listingId = null, dealId = null, tcDealId = null }) {
+export function BoardLinks({ listingId = null, dealId = null, tcDealId = null, hideTc = false }) {
   const navigate = useNavigate()
   const [links, setLinks] = useState(null)
 
@@ -45,7 +45,7 @@ export function BoardLinks({ listingId = null, dealId = null, tcDealId = null })
   const chips = []
   if (links.listing && !listingId) chips.push({ label: '🏠 View on Listings',   to: '/listings?open=' + links.listing })
   if (links.deal && !dealId)       chips.push({ label: '💼 View on Production', to: '/production?open=' + links.deal })
-  if (links.tc && !tcDealId)       chips.push({ label: '📋 View on TC Board',   to: '/tc?open=' + links.tc })
+  if (links.tc && !tcDealId && !hideTc) chips.push({ label: '📋 View on TC Board',   to: '/tc?open=' + links.tc })
   if (!chips.length) return null
 
   return (
