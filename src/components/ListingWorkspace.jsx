@@ -40,6 +40,7 @@ export default function ListingWorkspace({
   const [adminLog, setAdminLog] = useState([]); const [logLoading, setLogLoading] = useState(false)
   const [mktTasks, setMktTasks] = useState(null)   // null=not loaded, []=none
   const [saving, setSaving] = useState('')
+  const [copyLabel, setCopyLabel] = useState('Copy Seller Report')
 
   // editable field buffers
   const [status, setStatus] = useState(listing.status || 'Active')
@@ -132,24 +133,73 @@ export default function ListingWorkspace({
   const ph = Array.isArray(listing.price_history) ? listing.price_history : []
   const sellerOverdue = !listing.seller_updated_at || (Date.now() - new Date(listing.seller_updated_at).getTime() > 7*86400000)
 
-  // Derive common objections/themes from existing feedback text (keyword frequency)
-  const objections = (() => {
-    const THEMES = [
-      ['price','too expensive|overpriced|price|expensive|high'],
-      ['size','too small|small|tight|cramped|space'],
-      ['condition','needs work|dated|old|repair|fix|condition|renovat'],
-      ['layout','layout|flow|floor plan|awkward'],
-      ['location','location|street|busy|noise|neighborhood'],
-      ['kitchen','kitchen'],
-      ['parking','parking|garage|driveway'],
-    ]
-    const counts = {}
+  // Derive common feedback themes from existing feedback + notes text.
+  // Keyword-based, with an explicit positive-override check so common
+  // false positives ("great price", "loved the kitchen", "beautiful
+  // bedrooms") are NOT counted as objections.
+  const THEME_DEFS = [
+    { id:'price',     label:'Price too high',              negative:['too expensive','overpriced','over priced','price too high','too high','price is high','pricey','out of budget','above budget'],
+                       positive:['great price','good price','priced right','fair price','price is right','well priced','reasonably priced','good value','great value'] },
+    { id:'taxes',      label:'Taxes too high',              negative:['taxes too high','taxes are high','high taxes','tax burden'], positive:[] },
+    { id:'negotiate',  label:'Wants to negotiate',          negative:['negotiate','room to negotiate','flexible on price','open to offers below','will they take'], positive:[] },
+    { id:'size',       label:'Size too small',              negative:['too small','not enough space','feels small','felt small','smaller than expected','cramped','tight'], positive:['not too small'] },
+    { id:'bedrooms',   label:'Needs more bedrooms',         negative:['need more bedroom','needs more bedroom','not enough bedroom','too few bedroom'], positive:[] },
+    { id:'bathrooms',  label:'Needs more bathrooms',        negative:['need more bathroom','needs more bathroom','not enough bathroom','too few bathroom'], positive:[] },
+    { id:'basement',   label:'Basement concern',            negative:['basement is small','basement issue','basement concern','unfinished basement','basement flood','basement damp','basement musty'], positive:['loved the basement','great basement','finished basement'] },
+    { id:'condition',  label:'Needs updates / condition',   negative:['needs work','needs updating','needs updates','dated','outdated','needs renovation','run down','fixer'], positive:[] },
+    { id:'layout',     label:'Layout concern',              negative:['awkward layout','layout issue','weird layout',"layout doesn't work","layout didn't work",'poor flow'], positive:['great layout','loved the layout','good flow'] },
+    { id:'location',   label:'Location concern',            negative:['bad location','busy street','traffic noise','too far','location concern','far from'], positive:['great location','loved the location','perfect location'] },
+    { id:'kitchen',    label:'Kitchen concern',              negative:['kitchen is small','kitchen issue','kitchen needs','dated kitchen','outdated kitchen'], positive:['loved the kitchen','great kitchen','beautiful kitchen'] },
+    { id:'parking',    label:'Parking / driveway issue',    negative:['no parking','parking issue','driveway issue','street parking only','tight driveway','not enough parking'], positive:[] },
+    { id:'positive',   label:'Positive feedback',            negative:['loved it','love it','great price','perfect','beautiful','stunning','would offer','we love','they loved'], positive:[] },
+    { id:'second_showing', label:'Wants second showing',    negative:['second showing','come back','another showing','wants to see again','bring the family'], positive:[] },
+    { id:'offer_coming',   label:'Offer coming / serious interest', negative:['offer coming','writing an offer','putting in an offer','submitting an offer','very interested','serious interest'], positive:[] },
+  ]
+  function detectThemes(text) {
+    if (!text) return []
+    const t = text.toLowerCase()
+    const found = []
+    for (const theme of THEME_DEFS) {
+      const hasNegative = theme.negative.some(p => t.includes(p))
+      if (!hasNegative) continue
+      const hasPositiveOverride = theme.positive.some(p => t.includes(p))
+      if (hasPositiveOverride && theme.id !== 'positive') continue
+      found.push(theme.id)
+    }
+    return found
+  }
+  const themeSummary = (() => {
+    const counts = {}; const examples = {}
     showings.forEach(s => {
-      const txt = (s.feedback || '').toLowerCase()
-      if (!txt) return
-      THEMES.forEach(([label, re]) => { if (new RegExp(re).test(txt)) counts[label] = (counts[label]||0)+1 })
+      const text = [s.feedback, s.notes].filter(Boolean).join('. ')
+      detectThemes(text).forEach(id => {
+        counts[id] = (counts[id]||0) + 1
+        if (!examples[id]) examples[id] = []
+        if (examples[id].length < 5) examples[id].push({ text, buyer: s.buyer_name || 'Anonymous', date: s.showing_date })
+      })
     })
-    return Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5)
+    return THEME_DEFS
+      .filter(t => counts[t.id] > 0)
+      .map(t => ({ id: t.id, label: t.label, count: counts[t.id], examples: examples[t.id] }))
+      .sort((a,b) => b.count - a.count)
+  })()
+  // Objections = themes minus the positive/momentum ones, kept as
+  // [id, count] tuples so existing 'price' checks below still work.
+  const objections = themeSummary.filter(t => !['positive','second_showing','offer_coming'].includes(t.id)).map(t => [t.id, t.count]).slice(0,5)
+  const themeLabel = id => (THEME_DEFS.find(t => t.id === id) || {}).label || id
+
+  // Buyer feedback breakdown (interested/neutral/not-interested/no-feedback + unique buyers)
+  const buyerStats = (() => {
+    const total = showings.length
+    const uniqueBuyers = new Set(showings.map(s => (s.buyer_name||'').trim().toLowerCase()).filter(Boolean)).size
+    const withFeedback = showings.filter(s => (s.feedback && s.feedback.trim()) || (s.notes && s.notes.trim())).length
+    return {
+      total, uniqueBuyers,
+      interested: showings.filter(s => (s.interest_level||3) >= 4).length,
+      neutral: showings.filter(s => (s.interest_level||3) === 3).length,
+      notInterested: showings.filter(s => (s.interest_level||3) <= 2).length,
+      noFeedback: total - withFeedback,
+    }
   })()
 
   // Recommended next action (from existing data)
@@ -167,7 +217,52 @@ export default function ListingWorkspace({
   const groups = {}
   showings.forEach(s => { const k = s.agent_name || agentName() || 'Unknown agent'; (groups[k]=groups[k]||[]).push(s) })
 
-  const card = { background:'var(--dim)', borderRadius:8, padding:'10px 12px' }
+  // Build the plain-text seller report used by the Copy button
+  function buildReportText() {
+    const lines = []
+    lines.push(listing.addr + ([listing.city, listing.state].filter(Boolean).join(', ') ? ', ' + [listing.city, listing.state].filter(Boolean).join(', ') : ''))
+    lines.push('Status: ' + status + '  ·  List Price: ' + fmt$(listing.list_price))
+    lines.push('')
+    lines.push('SELLER-READY SUMMARY')
+    lines.push('- ' + showings.length + ' showings' + (avgInterest ? ' · average interest ' + avgInterest + '/5' : ''))
+    lines.push('- ' + openHouses.length + ' open houses')
+    lines.push('- Feedback captured on ' + showings.filter(s=>s.feedback).length + ' of ' + showings.length + ' showings')
+    lines.push('- Unique buyers: ' + buyerStats.uniqueBuyers + '  ·  Interested: ' + buyerStats.interested + '  ·  Neutral: ' + buyerStats.neutral + '  ·  Not interested: ' + buyerStats.notInterested)
+    if (listing.original_price && listing.list_price && listing.original_price !== listing.list_price) {
+      lines.push('- Price moved ' + fmt$(listing.original_price) + ' → ' + fmt$(listing.list_price) + ' (' + ph.length + ' change' + (ph.length!==1?'s':'') + ')')
+    }
+    lines.push('- Marketing: ' + (mktStatus || 'not set'))
+    const positives = themeSummary.filter(t => t.id === 'positive')
+    if (objections.length) {
+      lines.push('')
+      lines.push('MAIN OBJECTIONS')
+      objections.forEach(([id,count]) => lines.push('- ' + themeLabel(id) + ' (' + count + ')'))
+    }
+    if (positives.length) {
+      lines.push('')
+      lines.push('POSITIVE FEEDBACK')
+      positives.forEach(t => lines.push('- ' + t.label + ' (' + t.count + ')'))
+    }
+    const feedbackLines = showings.filter(s=>s.feedback).slice(0,6)
+    if (feedbackLines.length) {
+      lines.push('')
+      lines.push('RECENT BUYER FEEDBACK')
+      feedbackLines.forEach(s => lines.push('- "' + s.feedback + '" — ' + (s.buyer_name||'buyer') + (s.interest_level?' (' + s.interest_level + '/5)':'')))
+    }
+    lines.push('')
+    lines.push('RECOMMENDED NEXT STEP')
+    lines.push('- ' + recommendation)
+    return lines.join('\n')
+  }
+  async function copyReport() {
+    try {
+      await navigator.clipboard.writeText(buildReportText())
+      setCopyLabel('Copied!')
+      setTimeout(() => setCopyLabel('Copy Seller Report'), 1800)
+    } catch (e) { console.warn('clipboard failed:', e.message) }
+  }
+
+
   const cLabel = { fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:4 }
   const inp = { padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }
   const saveBtn = k => ({ padding:'7px 12px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity: saving===k?0.6:1 })
@@ -346,10 +441,23 @@ export default function ListingWorkspace({
 
       {tab==='feedback' && (
         <div>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
             <div style={{ fontSize:14 }}><strong>{showings.length}</strong> showings{avgInterest?<> · avg interest <strong style={{ color:interestColor(+avgInterest) }}>{avgInterest}</strong></>:''}</div>
             <button onClick={()=>onLogShowing?.(listing)} style={{ ...inp, cursor:'pointer', color:'var(--brand)', fontWeight:700 }}>+ Add showing</button>
           </div>
+          {showings.length>0 && (
+            <div style={{ fontSize:12.5, color:'var(--muted)', marginBottom:16 }}>
+              Unique buyers: <strong style={{ color:'var(--text)' }}>{buyerStats.uniqueBuyers}</strong> · 👍 {buyerStats.interested} interested · 🤔 {buyerStats.neutral} neutral · 👎 {buyerStats.notInterested} not interested{buyerStats.noFeedback>0?' · '+buyerStats.noFeedback+' no feedback':''}
+            </div>
+          )}
+          {themeSummary.length>0 && (
+            <div style={{ marginBottom:18 }}>
+              <div style={sectionTitle}>Theme summary <span style={{ fontWeight:400, textTransform:'none', fontSize:10.5 }}>— based on feedback text</span></div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {themeSummary.map(t => <ThemeRow key={t.id} theme={t} />)}
+              </div>
+            </div>
+          )}
           {showings.length===0 ? <div style={{ padding:30, textAlign:'center', color:'var(--muted)' }}>No showings logged yet.</div> :
             Object.entries(groups).sort((a,b)=>b[1].length-a[1].length).map(([name,list])=>(
               <div key={name} style={{ marginBottom:14, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
@@ -402,6 +510,8 @@ export default function ListingWorkspace({
             </div>
             <button onClick={()=>{ const today=new Date().toISOString().slice(0,10); setSellerDate(today); saveField('seller_updated_at', today, 'seller update date') }}
               style={{ padding:'11px 16px', borderRadius:9, border:'none', background:'#0B7A45', color:'#fff', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:ff }}>✓ Mark seller updated (today)</button>
+            <button onClick={copyReport}
+              style={{ padding:'11px 16px', borderRadius:9, border:'1px solid var(--brand)', background:'var(--panel)', color:'var(--brand)', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:ff }}>{copyLabel}</button>
           </div>
 
           <div style={sectionTitle}>Seller-ready summary</div>
@@ -409,6 +519,7 @@ export default function ListingWorkspace({
             <div>• <strong>{showings.length}</strong> showings{avgInterest?' · average interest '+avgInterest+'/5':''}</div>
             <div>• <strong>{openHouses.length}</strong> open houses</div>
             <div>• Feedback captured on <strong>{showings.filter(s=>s.feedback).length}</strong> of {showings.length} showings</div>
+            {showings.length>0 && <div>• Unique buyers: <strong>{buyerStats.uniqueBuyers}</strong> · 👍 {buyerStats.interested} interested · 🤔 {buyerStats.neutral} neutral · 👎 {buyerStats.notInterested} not interested{buyerStats.noFeedback>0?' · '+buyerStats.noFeedback+' no feedback':''}</div>}
             {listing.original_price&&listing.list_price&&listing.original_price!==listing.list_price && <div>• Price moved {fmt$(listing.original_price)} → {fmt$(listing.list_price)} ({ph.length} change{ph.length!==1?'s':''})</div>}
             <div>• Marketing: {mktStatus || 'not set'}</div>
           </div>
@@ -416,8 +527,8 @@ export default function ListingWorkspace({
           {objections.length>0 && (
             <div style={{ marginTop:14 }}>
               <div style={cLabel}>Common feedback / objections</div>
-              {objections.map(([word,count],i)=>(
-                <span key={i} style={{ display:'inline-block', fontSize:12, fontWeight:700, color:'#B45309', background:'rgba(245,166,35,.14)', padding:'3px 10px', borderRadius:99, marginRight:6, marginTop:6 }}>{word} ({count})</span>
+              {objections.map(([id,count],i)=>(
+                <span key={i} style={{ display:'inline-block', fontSize:12, fontWeight:700, color:'#B45309', background:'rgba(245,166,35,.14)', padding:'3px 10px', borderRadius:99, marginRight:6, marginTop:6 }}>{themeLabel(id)} ({count})</span>
               ))}
             </div>
           )}
@@ -584,3 +695,24 @@ export default function ListingWorkspace({
     </div>
   )
 }
+
+// Expandable theme row: click to reveal up to 5 example quotes.
+function ThemeRow({ theme }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ background:'var(--dim)', borderRadius:8, padding:'8px 10px' }}>
+      <div onClick={()=>setOpen(p=>!p)} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer' }}>
+        <span style={{ fontSize:12.5, fontWeight:700, color:'var(--text)' }}>{theme.label}</span>
+        <span style={{ fontSize:12.5, fontWeight:800, color:'var(--brand)' }}>{theme.count} {open?'▴':'▾'}</span>
+      </div>
+      {open && (
+        <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
+          {theme.examples.map((ex,i)=>(
+            <div key={i} style={{ fontSize:11.5, color:'var(--muted)' }}>"{ex.text}" — {ex.buyer}{ex.date?', '+fmtDate(ex.date):''}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
