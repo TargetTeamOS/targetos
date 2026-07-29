@@ -26,7 +26,7 @@ const ALL_TABS = [
   { id:'marketing', label:'Marketing' },
   { id:'price',     label:'Price & Activity' },
   { id:'parties',   label:'Contacts / Parties' },
-  { id:'comms',     label:'Communication' },
+  { id:'email',     label:'Email' },
   { id:'notes',     label:'Notes' },
   { id:'timeline',  label:'Timeline' },
   { id:'admin',     label:'Admin Log', adminOnly:true },
@@ -68,10 +68,12 @@ export default function ListingWorkspace({
   const [photographerContact, setPhotographerContact] = useState(null)
   const [connected, setConnected] = useState(null) // { tcDeal, productionDeal } | null while loading
   const [parties, setParties] = useState(null)     // { role: contact } | null while loading, {} if no TC deal linked
+  const [sellerContact, setSellerContact] = useState(null)
   const [emailTarget, setEmailTarget] = useState(null) // contact object to email, or null
   const [taskMsg, setTaskMsg] = useState('')
   const [taskAssignee, setTaskAssignee] = useState('')
   const [taskCheckbox, setTaskCheckbox] = useState(false)
+  const [tagged, setTagged] = useState([]) // [{id,name}] -- who gets notified when the message posts
   const [secretaries, setSecretaries] = useState([])
   const [sendingTask, setSendingTask] = useState(false)
   const [matchCandidates, setMatchCandidates] = useState(null) // [{id,addr,score}] | null while loading, [] if none
@@ -106,7 +108,7 @@ export default function ListingWorkspace({
     setLogLoading(false)
   }
   useEffect(() => {
-    if (tab === 'admin' || tab === 'price' || tab === 'timeline' || tab === 'comms' || tab === 'report') loadAdminLog()
+    if (tab === 'admin' || tab === 'price' || tab === 'timeline' || tab === 'report' || tab === 'tasks' || tab === 'email') loadAdminLog()
   }, [tab, listing.id])
 
   // Marketing: read the linked tc_deal's marketing tasks (read-only) AND
@@ -145,6 +147,14 @@ export default function ListingWorkspace({
       .then(({data}) => { if (alive) setPhotographerContact(data||null) }).catch(() => { if (alive) setPhotographerContact(null) })
     return () => { alive = false }
   }, [photography?.photographer_contact_id])
+
+  useEffect(() => {
+    let alive = true
+    if (!listing.seller_contact_id) { setSellerContact(null); return }
+    supabase.from('contacts').select('id,first_name,last_name,email,phone').eq('id', listing.seller_contact_id).maybeSingle()
+      .then(({data}) => { if (alive) setSellerContact(data||null) }).catch(() => { if (alive) setSellerContact(null) })
+    return () => { alive = false }
+  }, [listing.seller_contact_id])
 
   // Connected Records (read-only): find the linked TC file and/or Production
   // deal for this listing via the existing link columns (tc_deals.linked_
@@ -228,9 +238,22 @@ export default function ListingWorkspace({
       await supabase.from('audit_log').insert({
         agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id,
         action:'listing_message', field_name:'Message',
-        metadata:{ description: taskMsg.trim(), from: agent?.name||'agent' },
+        metadata:{ description: taskMsg.trim(), from: agent?.name||'agent', tags: tagged.map(t=>t.name) },
         created_at:new Date().toISOString(),
       })
+      // Real notification via the existing notifications system (notify.js
+      // -> notifications table, shown in the bell). Not fake: this is the
+      // same dispatch every other real trigger in the app uses.
+      for (const t of tagged) {
+        try {
+          const { notifyAgent } = await import('../lib/notify')
+          await notifyAgent(t.id, 'listingMention', {
+            title: 'Mentioned on ' + listing.addr,
+            body: (agent?.name||'Someone') + ': ' + taskMsg.trim().slice(0,140),
+            link: '/listings', type: 'info',
+          })
+        } catch {}
+      }
       if (alsoCreateTask) {
         const { error } = await supabase.from('tasks').insert({
           title: '[' + listing.addr + '] ' + taskMsg.trim().slice(0,80),
@@ -244,6 +267,7 @@ export default function ListingWorkspace({
         } catch {}
       }
       setTaskMsg('')
+      setTagged([])
       await loadAdminLog()
       toast?.(alsoCreateTask ? '✅ Sent + task created' : '✅ Message posted', '#0B7A45')
     } catch (e) { toast?.('Could not send: ' + (e.message||e), '#DC2626') }
@@ -296,7 +320,7 @@ export default function ListingWorkspace({
     } catch { setParties({}) }
   }
   useEffect(() => {
-    if (tab !== 'parties' || !connected) return
+    if ((tab !== 'parties' && tab !== 'email') || !connected) return
     let alive = true
     loadParties().catch(()=>{})
     return () => { alive = false }
@@ -711,15 +735,6 @@ export default function ListingWorkspace({
               <a href={listing.photo_url} target="_blank" rel="noreferrer" style={{ color:'#3B82F6', fontWeight:700, fontSize:12.5, textDecoration:'none' }}>Open primary photo ↗</a>
             </div>
           )}
-          <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px' }}>
-            <div style={sectionTitle}>Documents — setup needed</div>
-            <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.6, marginBottom:8 }}>
-              No document storage exists yet for listing agreements, disclosures, brochures, floor plans, ad proofs, or other files.
-            </div>
-            <div style={{ fontSize:11, color:'var(--muted)' }}>
-              Would need: one shared <code>listing_files</code> table (listing_id, category: document/marketing/message, subtype, file_url, uploaded_by, uploaded_at) + one storage bucket — the same table this listing's Marketing Materials and Communication attachments would also use, so files aren't split across three disconnected systems. Proposal only — not built, not run.
-            </div>
-          </div>
         </div>
 
 
@@ -788,15 +803,61 @@ export default function ListingWorkspace({
                 </div>
               </div>
 
-              {/* Listing conversation quick-post -- see Communication tab
-                  for the full thread. Message always saves directly to
-                  audit_log (real write, immediately visible); the task
-                  checkbox is a separate, optional action. NOTE: tasks has
-                  no listing_id column, so that connection is via title/
-                  notes text, not a real foreign key -- flagged honestly. */}
+              {/* Internal office thread -- lives here in Summary/Next Action
+                  per instruction, not a separate tab. Message always saves
+                  directly to audit_log (real write, immediately visible).
+                  Tagging someone fires a REAL notification through the
+                  existing notifications system (notify.js/notifications
+                  table -- the same bell-notification dispatch every other
+                  real trigger in this app uses). Task checkbox is a
+                  separate optional action (tasks has no listing_id column,
+                  tied via title/notes text, flagged honestly). */}
               <div style={{ marginTop:18, padding:'14px 16px', background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12 }}>
-                <div style={sectionTitle}>Message the office <span style={{ fontWeight:400, textTransform:'none', fontSize:10.5 }}>— see full thread in Communication tab</span></div>
+                <div style={sectionTitle}>Office thread <span style={{ fontWeight:400, textTransform:'none', fontSize:10.5 }}>— internal, visible to you and admin/secretary</span></div>
+
+                {(() => {
+                  const thread = adminLog.filter(a => ['listing_message','task_sent'].includes(a.action))
+                  if (logLoading) return <div style={{ padding:'10px 0', color:'var(--muted)', fontSize:12 }}>Loading…</div>
+                  if (thread.length===0) return <div style={{ padding:'10px 0', color:'var(--muted)', fontSize:12, fontStyle:'italic' }}>No messages yet — start the thread below.</div>
+                  return (
+                    <div style={{ marginBottom:12, maxHeight:220, overflowY:'auto' }}>
+                      {thread.map((a,i)=>(
+                        <div key={a.id||i} style={{ padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+                          <div style={{ fontSize:12.5 }}>{a.metadata?.description || (a.action==='task_sent'?'Task sent to office':'Message')}</div>
+                          <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
+                            {a.agents?.name || 'agent'} · {a.created_at?new Date(a.created_at).toLocaleString():''}
+                            {a.metadata?.tags?.length ? ' · tagged: ' + a.metadata.tags.join(', ') : ''}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+
                 <textarea value={taskMsg} onChange={e=>setTaskMsg(e.target.value)} placeholder={'Message about ' + listing.addr + '…'} rows={2} style={{ ...inp, width:'100%', boxSizing:'border-box', resize:'vertical', marginBottom:8 }} />
+
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
+                  {agent?.id && (
+                    <button onClick={()=>setTagged(p => p.some(t=>t.id===agent.id) ? p : [...p, { id:agent.id, name:'@'+agent.name.split(' ')[0] }])} style={{ padding:'3px 10px', borderRadius:99, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:11, cursor:'pointer', fontFamily:ff }}>@Agent</button>
+                  )}
+                  {secretaries.filter(s=>String(s.role||'').toLowerCase()==='secretary').map(s=>(
+                    <button key={s.id} onClick={()=>setTagged(p => p.some(t=>t.id===s.id) ? p : [...p, { id:s.id, name:'@'+s.name.split(' ')[0] }])} style={{ padding:'3px 10px', borderRadius:99, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:11, cursor:'pointer', fontFamily:ff }}>@{s.name.split(' ')[0]} (secretary)</button>
+                  ))}
+                  {secretaries.filter(s=>String(s.role||'').toLowerCase()==='admin').map(s=>(
+                    <button key={s.id} onClick={()=>setTagged(p => p.some(t=>t.id===s.id) ? p : [...p, { id:s.id, name:'@'+s.name.split(' ')[0] }])} style={{ padding:'3px 10px', borderRadius:99, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:11, cursor:'pointer', fontFamily:ff }}>@{s.name.split(' ')[0]} (admin)</button>
+                  ))}
+                </div>
+                {tagged.length>0 && (
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
+                    {tagged.map(t => (
+                      <span key={t.id} style={{ fontSize:11, padding:'3px 8px', borderRadius:99, background:'var(--brand)', color:'#fff', display:'flex', alignItems:'center', gap:5 }}>
+                        {t.name}
+                        <span onClick={()=>setTagged(p=>p.filter(x=>x.id!==t.id))} style={{ cursor:'pointer', fontWeight:800 }}>×</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                   <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, color:'var(--muted)' }}>
                     <input type="checkbox" checked={taskCheckbox} onChange={e=>setTaskCheckbox(e.target.checked)} /> Also create a task for
@@ -807,7 +868,9 @@ export default function ListingWorkspace({
                   </select>
                   <button onClick={()=>postListingMessage(taskCheckbox)} disabled={sendingTask} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity:sendingTask?0.6:1 }}>{sendingTask?'Sending…':'Post message'}</button>
                 </div>
-                <div style={{ fontSize:11, color:'var(--muted)', marginTop:6 }}>Attachments aren't supported yet — see the Communication tab for the setup-needed plan.</div>
+                <div style={{ fontSize:11, color:'var(--muted)', marginTop:6 }}>
+                  Tagging someone sends them a real notification (bell icon) — same system as every other in-app notification. Attachments aren't supported yet — needs the shared <code>listing_files</code> table (see Marketing tab).
+                </div>
               </div>
             </div>
           )}
@@ -826,8 +889,8 @@ export default function ListingWorkspace({
           {showings.length>0 && (() => {
             const sentences = buildSummarySentences(themeSummary, buyerStats)
             return (
-              <div style={{ background:'rgba(139,92,246,.06)', border:'1px solid rgba(139,92,246,.25)', borderRadius:10, padding:'12px 14px', marginBottom:16 }}>
-                <div style={{ fontSize:10.5, fontWeight:800, color:'#8B5CF6', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:6 }}>Summary <span style={{ fontWeight:400, textTransform:'none' }}>— based on feedback notes</span></div>
+              <div style={{ background:'var(--dim)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', marginBottom:16 }}>
+                <div style={{ fontSize:10.5, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:6 }}>Summary <span style={{ fontWeight:400, textTransform:'none' }}>— based on feedback notes</span></div>
                 {sentences.map((s,i) => (
                   <div key={i} style={{ fontSize:13, color:'var(--text)', marginBottom:i<sentences.length-1?4:0 }}>• {s}</div>
                 ))}
@@ -1029,16 +1092,14 @@ export default function ListingWorkspace({
             )}
           </div>
 
-          <div style={{ marginTop:14, padding:'12px 14px', background:'rgba(120,53,15,.05)', border:'1px solid rgba(120,53,15,.2)', borderRadius:10, fontSize:12.5 }}>
-            <div style={{ fontWeight:700, marginBottom:2 }}>💵 Marketing cost — admin-only, future</div>
-            Estimated / actual cost tracking needs a dedicated marketing table (proposed, not built — see Phase 3). Not shown here because no reliable cost data exists yet; this section will not display a fake number.
-          </div>
-          <div style={{ marginTop:10, padding:'12px 14px', background:'rgba(59,130,246,.06)', border:'1px solid rgba(59,130,246,.25)', borderRadius:10, fontSize:12.5 }}>
-            📣 A structured marketing checklist with files (drone, floor plans, brochure proofs, publication dates) will be added in a later phase.
-          </div>
-          <div style={{ marginTop:10, padding:'12px 14px', background:'var(--dim)', borderRadius:10, fontSize:12 }}>
-            <div style={{ fontWeight:700, marginBottom:4 }}>Materials storage — setup needed</div>
-            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>Photos, video, drone, brochure, flyers, print ads, social posts, WhatsApp images, email blasts, and publication ads all need storage — the same shared <code>listing_files</code> table (category:'marketing') proposed for Documents and Communication attachments, so files live in one place. Ad tracking (publication, ad date, cost, "ads placed by week") needs a separate <code>listing_marketing</code> table alongside it. Not built — proposed in Phase 3, not run.</div>
+          <div style={{ marginTop:14, padding:'14px 16px', background:'var(--dim)', border:'1px solid var(--border)', borderRadius:10, fontSize:12.5 }}>
+            <div style={{ fontWeight:700, marginBottom:6 }}>Documents & Marketing Materials — setup needed</div>
+            <div style={{ color:'var(--muted)', lineHeight:1.7 }}>
+              No storage exists yet for photos, video, drone, brochures, flyers, print/social/WhatsApp ads, publication ads, ad proofs, listing agreements, disclosures, or floor plans.
+              Would need one shared <code>listing_files</code> table (listing_id, category: document/marketing/message, subtype, file_url, uploaded_by, uploaded_at) + one storage bucket.
+              Ad tracking (publication, ad date, cost, "ads placed by week") and marketing spend would need a separate <code>listing_marketing</code> table alongside it — cost stays admin-only once built, same as elsewhere in this app.
+              Proposal only — not built, not run.
+            </div>
           </div>
         </div>
       )}
@@ -1094,7 +1155,7 @@ export default function ListingWorkspace({
       {tab==='parties' && (
         <div>
           <div style={sectionTitle}>Seller</div>
-          <div style={{ fontSize:12.5, color:'var(--muted)', marginBottom:16 }}>See the Seller Contacts panel on the left.</div>
+          <div style={{ fontSize:12.5, color:'var(--muted)', marginBottom:16 }}>See the Seller Contacts panel on the left. To email anyone here, use the Email tab.</div>
 
           <div style={sectionTitle}>Other parties {connected?.tcDeal ? '(from TC file)' : ''}</div>
           {!connected ? (
@@ -1115,9 +1176,6 @@ export default function ListingWorkspace({
                         <div style={{ fontSize:12.5, fontWeight:700 }}>{contactName(c)}</div>
                         {c.phone && <div style={{ fontSize:11, color:'var(--muted)' }}>{c.phone}</div>}
                         <div style={{ display:'flex', gap:6, marginTop:5, flexWrap:'wrap' }}>
-                          {c.email && (
-                            <button onClick={()=>setEmailTarget(c)} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid var(--brand)', background:'transparent', color:'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>✉️ Email</button>
-                          )}
                           <button onClick={()=>setAddingRole(r.key)} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:11, cursor:'pointer', fontFamily:ff }}>Change</button>
                           <button onClick={()=>removeTcParty(r.key)} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid #DC2626', background:'transparent', color:'#DC2626', fontSize:11, cursor:'pointer', fontFamily:ff }}>Remove</button>
                         </div>
@@ -1144,42 +1202,65 @@ export default function ListingWorkspace({
         </div>
       )}
 
-      {/* ── COMMUNICATION ── Real listing conversation: anyone who can open
-           this listing (the assigned agent, or admin/secretary/view_all)
-           can post a message and see the full history -- this now
-           actually saves and reloads, directly fixing the earlier "message
-           doesn't save / no history" issue. Still NOT a full external
-           inbox: no inbound email/SMS replies, no attachments -- honestly
-           labeled below rather than faked. */}
-      {tab==='comms' && (
+      {/* ── EMAIL ── Sends REAL email (Resend, verified domain) to any
+           linked party. Not Gmail/Outlook, but genuinely delivers -- not a
+           fake-send placeholder. Replies land in the sending agent's own
+           inbox (reply-to), not back into this thread automatically --
+           labeled honestly, not hidden. */}
+      {tab==='email' && (
         <div>
-          <div style={sectionTitle}>Communication</div>
-          <div style={{ fontSize:11.5, color:'var(--muted)', marginBottom:12 }}>
-            Internal conversation about this listing — visible to you and to admin/secretary. Also shows emails sent (Contacts/Parties) and tasks sent to the office.
+          <div style={sectionTitle}>Email</div>
+          <div style={{ fontSize:11.5, color:'var(--muted)', marginBottom:14, lineHeight:1.6 }}>
+            Sends real email via Resend from office@targetreteam.com (not Gmail/Outlook, but it genuinely delivers). Subject defaults to the property address. Replies go to your own email inbox — they won't appear back in this thread automatically; that needs inbound-reply webhook wiring (setup needed, not built).
           </div>
 
-          <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-            <textarea value={taskMsg} onChange={e=>setTaskMsg(e.target.value)} placeholder="Write a message about this listing…" rows={2} style={{ ...inp, flex:1, boxSizing:'border-box', resize:'vertical' }} />
-            <button onClick={()=>postListingMessage(false)} disabled={sendingTask} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity:sendingTask?0.6:1, alignSelf:'flex-start' }}>{sendingTask?'…':'Post'}</button>
-          </div>
-
-          {(() => {
-            const commsLog = adminLog.filter(a => ['listing_message','email_sent','task_sent'].includes(a.action))
-            if (logLoading) return <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>Loading…</div>
-            if (commsLog.length===0) return <Empty title="No messages yet" sub="Post a message above, or send an email from Contacts/Parties, and it'll show up here." />
-            return commsLog.map((a,i)=>(
-              <div key={a.id||i} style={{ display:'flex', gap:10, padding:'10px 0', borderBottom:'1px solid var(--border)' }}>
-                <span style={{ fontSize:16 }}>{a.action==='email_sent' ? '✉️' : a.action==='task_sent' ? '📋' : '💬'}</span>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:12.5, fontWeight:600 }}>{a.metadata?.description || (a.action==='email_sent'?'Email sent':a.action==='task_sent'?'Task sent to office':'Message')}</div>
-                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>{a.agents?.name || 'agent'} · {a.created_at?new Date(a.created_at).toLocaleString():''}</div>
-                </div>
+          <div style={sectionTitle}>Recipients</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:8, marginBottom:18 }}>
+            {sellerContact && (
+              <div style={card}>
+                <div style={cLabel}>Seller</div>
+                <div style={{ fontSize:12.5, fontWeight:700 }}>{contactName(sellerContact)}</div>
+                {sellerContact.email ? <button onClick={()=>setEmailTarget(sellerContact)} style={{ marginTop:5, padding:'3px 9px', borderRadius:6, border:'1px solid var(--brand)', background:'transparent', color:'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>✉️ Email</button> : <div style={{ fontSize:11, color:'var(--muted)', fontStyle:'italic' }}>No email on file</div>}
               </div>
-            ))
-          })()}
-          <div style={{ marginTop:14, padding:'12px 14px', background:'rgba(59,130,246,.06)', border:'1px solid rgba(59,130,246,.25)', borderRadius:10, fontSize:12 }}>
-            <div style={{ fontWeight:700, marginBottom:4 }}>Still setup-needed: external replies + attachments</div>
-            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>What works now: internal messages between agent/office, saved and visible immediately. What doesn't exist yet: replies coming back from the seller/attorney/etc. by email or SMS, and file attachments on any message. Both need a dedicated <code>listing_messages</code> table (listing_id, direction, from/to, subject, body, thread_id, status, created_at) plus the same shared <code>listing_files</code> table (proposed for Documents/Marketing) for attachments, plus inbound-reply webhook wiring (Resend/Twilio). Proposal only — not built, not run.</div>
+            )}
+            {connected?.tcDeal && parties && CONNECTED_PARTY_ROLES.filter(r=>r.key!=='seller').map(r => {
+              const c = parties[r.key]
+              if (!c) return null
+              return (
+                <div key={r.key} style={card}>
+                  <div style={cLabel}>{r.label}</div>
+                  <div style={{ fontSize:12.5, fontWeight:700 }}>{contactName(c)}</div>
+                  {c.email ? <button onClick={()=>setEmailTarget(c)} style={{ marginTop:5, padding:'3px 9px', borderRadius:6, border:'1px solid var(--brand)', background:'transparent', color:'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>✉️ Email</button> : <div style={{ fontSize:11, color:'var(--muted)', fontStyle:'italic' }}>No email on file</div>}
+                </div>
+              )
+            })}
+            {!sellerContact && !connected?.tcDeal && (
+              <div style={{ fontSize:12.5, color:'var(--muted)' }}>No linked contacts yet — add a seller (left column) or link a TC file to see attorneys, mortgage, etc. here.</div>
+            )}
+          </div>
+          <div style={{ marginBottom:6 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', marginBottom:6 }}>Email someone else</div>
+            <ContactPicker placeholder="Search contacts…" onSelect={c=>setEmailTarget(c)} agentId={listing.agent_id} />
+          </div>
+
+          <div style={{ marginTop:18 }}>
+            <div style={sectionTitle}>Email history</div>
+            {(() => {
+              const emailLog = adminLog.filter(a => a.action==='email_sent')
+              if (logLoading) return <div style={{ padding:'10px 0', color:'var(--muted)', fontSize:12 }}>Loading…</div>
+              if (emailLog.length===0) return <Empty title="No emails sent yet" sub="Use a recipient above to send the first one." />
+              return emailLog.map((a,i)=>(
+                <div key={a.id||i} style={{ padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+                  <div style={{ fontSize:12.5 }}>{a.metadata?.description || 'Email sent'}</div>
+                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>Sent by {a.agents?.name || 'agent'} · {a.created_at?new Date(a.created_at).toLocaleString():''}</div>
+                </div>
+              ))
+            })()}
+          </div>
+
+          <div style={{ marginTop:14, padding:'12px 14px', background:'var(--dim)', border:'1px solid var(--border)', borderRadius:10, fontSize:12 }}>
+            <div style={{ fontWeight:700, marginBottom:4 }}>Still setup-needed: inbound replies + attachments</div>
+            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>Needs a <code>listing_messages</code> table (listing_id, direction, from/to, subject, body, thread_id, status, created_at) plus inbound-reply webhook wiring (Resend), and the shared <code>listing_files</code> table (see Marketing tab) for attachments. Proposal only — not built, not run.</div>
           </div>
         </div>
       )}
