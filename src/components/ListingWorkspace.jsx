@@ -16,7 +16,7 @@ import { BoardLinks } from './BoardLinks'
 import { contactName } from './ContactPicker'
 import ContactPicker from './ContactPicker'
 import { THEME_DEFS, themeLabel, mainThemeFor, buildThemeSummary, buildBuyerStats, buildSummarySentences } from '../lib/feedbackThemes'
-import { EmailComposeModal } from './EmailComposeModal'
+import { sendContactEmail } from '../lib/emailService'
 
 const ff = 'Inter,system-ui,sans-serif'
 const ALL_TABS = [
@@ -70,6 +70,13 @@ export default function ListingWorkspace({
   const [parties, setParties] = useState(null)     // { role: contact } | null while loading, {} if no TC deal linked
   const [sellerContact, setSellerContact] = useState(null)
   const [emailTarget, setEmailTarget] = useState(null) // contact object to email, or null
+  const [connectedEmailAccount, setConnectedEmailAccount] = useState(undefined) // undefined=checking, null=none connected, {provider,account_email}=connected
+  const [composeSubject, setComposeSubject] = useState('')
+  const [composeBody, setComposeBody] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [allAgents, setAllAgents] = useState([]) // for @mention search
+  const [mentionQuery, setMentionQuery] = useState(null) // null=hidden, string=search text
+  const [showTagPicker, setShowTagPicker] = useState(false)
   const [taskMsg, setTaskMsg] = useState('')
   const [taskAssignee, setTaskAssignee] = useState('')
   const [taskCheckbox, setTaskCheckbox] = useState(false)
@@ -214,14 +221,40 @@ export default function ListingWorkspace({
       .then(({ data }) => {
         if (!alive) return
         const all = data || []
+        setAllAgents(all)
         const managers = all.filter(a => ['secretary','admin'].includes(String(a.role||'').toLowerCase()))
         const list = managers.length ? managers : all // fallback: never leave the picker empty if roles are labeled differently than expected
         setSecretaries(list)
         if (list.length && !taskAssignee) setTaskAssignee(list[0].id)
       })
-      .catch(() => { if (alive) setSecretaries([]) })
+      .catch(() => { if (alive) { setSecretaries([]); setAllAgents([]) } })
     return () => { alive = false }
   }, [])
+
+  // Connected email account check (real Outlook/Gmail connection from
+  // Settings -> My Email Accounts, via api/connectors 'my_accounts').
+  // If the signed-in agent has connected Outlook, sends from Listing Hub
+  // should use it (via api/connector-send) instead of the generic Resend
+  // sender -- this effect just checks status, doesn't send anything.
+  useEffect(() => {
+    let alive = true
+    if (!agent?.id) { setConnectedEmailAccount(null); return }
+    ;(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const res = await fetch('/api/connectors', {
+          method:'POST',
+          headers: { 'Content-Type':'application/json', ...(session?.access_token ? { Authorization:'Bearer '+session.access_token } : {}) },
+          body: JSON.stringify({ action:'my_accounts', agent_id: agent.id }),
+        })
+        const j = await res.json()
+        const outlook = (j.accounts||[]).find(a => a.provider==='outlook' && a.status==='connected')
+        const gmail = (j.accounts||[]).find(a => a.provider==='google' && a.status==='connected')
+        if (alive) setConnectedEmailAccount(outlook || gmail || null)
+      } catch { if (alive) setConnectedEmailAccount(null) }
+    })()
+    return () => { alive = false }
+  }, [agent?.id])
 
   // Listing Conversation: the real fix for "message doesn't work." Posting
   // ALWAYS writes directly to audit_log (action:'listing_message') and
@@ -230,6 +263,54 @@ export default function ListingWorkspace({
   // Optionally also creates a real task for the office (tasks table has no
   // listing_id column, so that connection is via title/notes text, flagged
   // honestly, not treated as a clean link).
+  useEffect(() => {
+    if (emailTarget) { setComposeSubject('Re: ' + listing.addr); setComposeBody('') }
+  }, [emailTarget, listing.addr])
+
+  // Real email send. Prefers the agent's own connected Outlook/Gmail
+  // account (via api/connector-send, checked above) so the email truly
+  // comes from the logged-in user, not a generic sender. Falls back to
+  // the office Resend sender ONLY if no personal account is connected --
+  // and says so honestly in the log, not silently.
+  async function sendListingEmail() {
+    if (!emailTarget?.email) { toast?.('Pick a recipient with an email on file', '#DC2626'); return }
+    if (!composeSubject.trim() || !composeBody.trim()) { toast?.('Subject and message are required', '#DC2626'); return }
+    setSendingEmail(true)
+    const html = '<div style="font-family:sans-serif;font-size:14px;color:#1E293B;white-space:pre-wrap;">' + composeBody.replace(/</g,'&lt;') + '</div>'
+    try {
+      let usedAccount = null
+      if (connectedEmailAccount) {
+        const { data: { session } } = await supabase.auth.getSession()
+        const res = await fetch('/api/connector-send', {
+          method:'POST',
+          headers: { 'Content-Type':'application/json', ...(session?.access_token ? { Authorization:'Bearer '+session.access_token } : {}) },
+          body: JSON.stringify({ provider: connectedEmailAccount.provider==='google'?'gmail':'outlook', to: emailTarget.email, subject: composeSubject.trim(), html, text: composeBody.trim(), contact_id: emailTarget.id, agent_id: agent?.id }),
+        })
+        const j = await res.json()
+        if (!res.ok || j?.error) throw new Error(j?.error || 'Send failed')
+        usedAccount = connectedEmailAccount.account_email || connectedEmailAccount.provider
+      } else {
+        const r = await sendContactEmail({ contactEmail: emailTarget.email, contactName: contactName(emailTarget), subject: composeSubject.trim(), body: composeBody.trim(), agentName: agent?.name, agentEmail: agent?.email })
+        if (r && r.success === false) throw new Error(r.error || 'Send failed')
+        usedAccount = 'office system (Resend), not your personal account'
+      }
+      try {
+        await supabase.from('audit_log').insert({
+          agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id,
+          action:'email_sent', field_name:'Email',
+          metadata:{ description: 'Email to ' + contactName(emailTarget) + ': ' + composeSubject.trim() + ' (sent via ' + usedAccount + ')' },
+          created_at:new Date().toISOString(),
+        })
+      } catch {}
+      toast?.('📨 Sent via ' + usedAccount, '#0B7A45')
+      setComposeBody('')
+      await loadAdminLog()
+    } catch (e) {
+      toast?.('Send failed: ' + (e.message||e), '#DC2626')
+    }
+    setSendingEmail(false)
+  }
+
   async function postListingMessage(alsoCreateTask) {
     if (!taskMsg.trim()) { toast?.('Enter a message', '#DC2626'); return }
     if (alsoCreateTask && !taskAssignee) { toast?.('Pick who the task goes to', '#DC2626'); return }
@@ -816,17 +897,17 @@ export default function ListingWorkspace({
                 <div style={sectionTitle}>Office thread <span style={{ fontWeight:400, textTransform:'none', fontSize:10.5 }}>— internal, visible to you and admin/secretary</span></div>
 
                 {(() => {
-                  const thread = adminLog.filter(a => ['listing_message','task_sent'].includes(a.action))
+                  const thread = adminLog.filter(a => ['listing_message','task_sent'].includes(a.action)).slice().reverse()
                   if (logLoading) return <div style={{ padding:'10px 0', color:'var(--muted)', fontSize:12 }}>Loading…</div>
                   if (thread.length===0) return <div style={{ padding:'10px 0', color:'var(--muted)', fontSize:12, fontStyle:'italic' }}>No messages yet — start the thread below.</div>
                   return (
-                    <div style={{ marginBottom:12, maxHeight:220, overflowY:'auto' }}>
+                    <div style={{ marginBottom:12, maxHeight:260, overflowY:'auto' }}>
                       {thread.map((a,i)=>(
                         <div key={a.id||i} style={{ padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
                           <div style={{ fontSize:12.5 }}>{a.metadata?.description || (a.action==='task_sent'?'Task sent to office':'Message')}</div>
                           <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
                             {a.agents?.name || 'agent'} · {a.created_at?new Date(a.created_at).toLocaleString():''}
-                            {a.metadata?.tags?.length ? ' · tagged: ' + a.metadata.tags.join(', ') : ''}
+                            {a.metadata?.tags?.length ? ' · tagged: ' + a.metadata.tags.join(', ') + ' (in-app notification sent)' : ''}
                           </div>
                         </div>
                       ))}
@@ -834,19 +915,48 @@ export default function ListingWorkspace({
                   )
                 })()}
 
-                <textarea value={taskMsg} onChange={e=>setTaskMsg(e.target.value)} placeholder={'Message about ' + listing.addr + '…'} rows={2} style={{ ...inp, width:'100%', boxSizing:'border-box', resize:'vertical', marginBottom:8 }} />
+                <textarea
+                  value={taskMsg}
+                  onChange={e=>{
+                    const val = e.target.value
+                    setTaskMsg(val)
+                    const m = val.match(/@([a-zA-Z]*)$/)
+                    if (m) { setMentionQuery(m[1]); setShowTagPicker(true) }
+                    else if (mentionQuery !== null) { setMentionQuery(null); setShowTagPicker(false) }
+                  }}
+                  placeholder={'Message about ' + listing.addr + '… (type @ to tag someone)'} rows={2}
+                  style={{ ...inp, width:'100%', boxSizing:'border-box', resize:'vertical', marginBottom:6 }} />
 
-                <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
-                  {agent?.id && (
-                    <button onClick={()=>setTagged(p => p.some(t=>t.id===agent.id) ? p : [...p, { id:agent.id, name:'@'+agent.name.split(' ')[0] }])} style={{ padding:'3px 10px', borderRadius:99, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:11, cursor:'pointer', fontFamily:ff }}>@Agent</button>
-                  )}
-                  {secretaries.filter(s=>String(s.role||'').toLowerCase()==='secretary').map(s=>(
-                    <button key={s.id} onClick={()=>setTagged(p => p.some(t=>t.id===s.id) ? p : [...p, { id:s.id, name:'@'+s.name.split(' ')[0] }])} style={{ padding:'3px 10px', borderRadius:99, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:11, cursor:'pointer', fontFamily:ff }}>@{s.name.split(' ')[0]} (secretary)</button>
-                  ))}
-                  {secretaries.filter(s=>String(s.role||'').toLowerCase()==='admin').map(s=>(
-                    <button key={s.id} onClick={()=>setTagged(p => p.some(t=>t.id===s.id) ? p : [...p, { id:s.id, name:'@'+s.name.split(' ')[0] }])} style={{ padding:'3px 10px', borderRadius:99, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:11, cursor:'pointer', fontFamily:ff }}>@{s.name.split(' ')[0]} (admin)</button>
-                  ))}
+                <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:8 }}>
+                  <button onClick={()=>{ setShowTagPicker(p=>!p); setMentionQuery(showTagPicker?null:'') }} style={{ padding:'3px 10px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:11, cursor:'pointer', fontFamily:ff }}>{showTagPicker?'Cancel tag':'+ Tag someone'}</button>
                 </div>
+
+                {/* Mention picker: hidden unless the user typed @ or clicked
+                    "Tag someone" above -- real CRM agents (allAgents, loaded
+                    from the agents table), not a hard-coded list. */}
+                {showTagPicker && (
+                  <div style={{ marginBottom:8, padding:8, background:'var(--dim)', border:'1px solid var(--border)', borderRadius:8, maxHeight:160, overflowY:'auto' }}>
+                    {allAgents
+                      .filter(a => !mentionQuery || a.name.toLowerCase().includes(mentionQuery.toLowerCase()))
+                      .filter(a => !tagged.some(t=>t.id===a.id))
+                      .slice(0, 8)
+                      .map(a => (
+                        <div key={a.id} onClick={()=>{
+                          setTagged(p => [...p, { id:a.id, name:'@'+a.name.split(' ')[0] }])
+                          setTaskMsg(prev => prev.replace(/@([a-zA-Z]*)$/, ''))
+                          setShowTagPicker(false); setMentionQuery(null)
+                        }} style={{ padding:'6px 8px', borderRadius:6, cursor:'pointer', fontSize:12.5, display:'flex', justifyContent:'space-between' }}
+                        onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                          <span>{a.name}</span>
+                          <span style={{ color:'var(--muted)', fontSize:10.5, textTransform:'capitalize' }}>{a.role||'agent'}</span>
+                        </div>
+                      ))}
+                    {allAgents.filter(a => !mentionQuery || a.name.toLowerCase().includes(mentionQuery.toLowerCase())).filter(a => !tagged.some(t=>t.id===a.id)).length===0 && (
+                      <div style={{ padding:'6px 8px', fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>No matching team members</div>
+                    )}
+                  </div>
+                )}
+
                 {tagged.length>0 && (
                   <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
                     {tagged.map(t => (
@@ -855,6 +965,7 @@ export default function ListingWorkspace({
                         <span onClick={()=>setTagged(p=>p.filter(x=>x.id!==t.id))} style={{ cursor:'pointer', fontWeight:800 }}>×</span>
                       </span>
                     ))}
+                    <span style={{ fontSize:10.5, color:'var(--muted)', alignSelf:'center' }}>Tagging sends a real in-app notification (bell icon) — not email or SMS.</span>
                   </div>
                 )}
 
@@ -1202,35 +1313,41 @@ export default function ListingWorkspace({
         </div>
       )}
 
-      {/* ── EMAIL ── Sends REAL email (Resend, verified domain) to any
-           linked party. Not Gmail/Outlook, but genuinely delivers -- not a
-           fake-send placeholder. Replies land in the sending agent's own
-           inbox (reply-to), not back into this thread automatically --
-           labeled honestly, not hidden. */}
+      {/* ── EMAIL ── Prefers the agent's own connected Outlook/Gmail account
+           (Settings -> My Email Accounts, api/connector-send) so the send
+           truly comes from the logged-in user. Falls back to the office
+           Resend sender ONLY if nothing is connected -- and says so
+           honestly, in the UI and in the saved log, never implying a
+           personal send that didn't happen. */}
       {tab==='email' && (
         <div>
           <div style={sectionTitle}>Email</div>
-          <div style={{ fontSize:11.5, color:'var(--muted)', marginBottom:14, lineHeight:1.6 }}>
-            Sends real email via Resend from office@targetreteam.com (not Gmail/Outlook, but it genuinely delivers). Subject defaults to the property address. Replies go to your own email inbox — they won't appear back in this thread automatically; that needs inbound-reply webhook wiring (setup needed, not built).
-          </div>
+
+          {connectedEmailAccount === undefined ? (
+            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:14 }}>Checking your connected email account…</div>
+          ) : connectedEmailAccount ? (
+            <div style={{ fontSize:12, color:'#0B7A45', fontWeight:600, marginBottom:14 }}>✓ Sending as you, via your connected {connectedEmailAccount.provider==='google'?'Gmail':'Outlook'} ({connectedEmailAccount.account_email || 'connected'}).</div>
+          ) : (
+            <div style={{ fontSize:12, color:'#B45309', fontWeight:600, marginBottom:14 }}>⚠ Outlook/Gmail not connected — sends will go through the office system, not your personal account. Connect yours in Settings → My Email Accounts.</div>
+          )}
 
           <div style={sectionTitle}>Recipients</div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:8, marginBottom:18 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:8, marginBottom:14 }}>
             {sellerContact && (
-              <div style={card}>
+              <div style={{ ...card, ...(emailTarget?.id===sellerContact.id?{border:'1px solid var(--brand)'}:{}) }}>
                 <div style={cLabel}>Seller</div>
                 <div style={{ fontSize:12.5, fontWeight:700 }}>{contactName(sellerContact)}</div>
-                {sellerContact.email ? <button onClick={()=>setEmailTarget(sellerContact)} style={{ marginTop:5, padding:'3px 9px', borderRadius:6, border:'1px solid var(--brand)', background:'transparent', color:'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>✉️ Email</button> : <div style={{ fontSize:11, color:'var(--muted)', fontStyle:'italic' }}>No email on file</div>}
+                {sellerContact.email ? <button onClick={()=>setEmailTarget(sellerContact)} style={{ marginTop:5, padding:'3px 9px', borderRadius:6, border:'1px solid var(--brand)', background: emailTarget?.id===sellerContact.id?'var(--brand)':'transparent', color: emailTarget?.id===sellerContact.id?'#fff':'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>{emailTarget?.id===sellerContact.id?'Selected':'Select'}</button> : <div style={{ fontSize:11, color:'var(--muted)', fontStyle:'italic' }}>No email on file</div>}
               </div>
             )}
             {connected?.tcDeal && parties && CONNECTED_PARTY_ROLES.filter(r=>r.key!=='seller').map(r => {
               const c = parties[r.key]
               if (!c) return null
               return (
-                <div key={r.key} style={card}>
+                <div key={r.key} style={{ ...card, ...(emailTarget?.id===c.id?{border:'1px solid var(--brand)'}:{}) }}>
                   <div style={cLabel}>{r.label}</div>
                   <div style={{ fontSize:12.5, fontWeight:700 }}>{contactName(c)}</div>
-                  {c.email ? <button onClick={()=>setEmailTarget(c)} style={{ marginTop:5, padding:'3px 9px', borderRadius:6, border:'1px solid var(--brand)', background:'transparent', color:'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>✉️ Email</button> : <div style={{ fontSize:11, color:'var(--muted)', fontStyle:'italic' }}>No email on file</div>}
+                  {c.email ? <button onClick={()=>setEmailTarget(c)} style={{ marginTop:5, padding:'3px 9px', borderRadius:6, border:'1px solid var(--brand)', background: emailTarget?.id===c.id?'var(--brand)':'transparent', color: emailTarget?.id===c.id?'#fff':'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>{emailTarget?.id===c.id?'Selected':'Select'}</button> : <div style={{ fontSize:11, color:'var(--muted)', fontStyle:'italic' }}>No email on file</div>}
                 </div>
               )
             })}
@@ -1238,17 +1355,27 @@ export default function ListingWorkspace({
               <div style={{ fontSize:12.5, color:'var(--muted)' }}>No linked contacts yet — add a seller (left column) or link a TC file to see attorneys, mortgage, etc. here.</div>
             )}
           </div>
-          <div style={{ marginBottom:6 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', marginBottom:6 }}>Email someone else</div>
+          <div style={{ marginBottom:16 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', marginBottom:6 }}>Or email someone else</div>
             <ContactPicker placeholder="Search contacts…" onSelect={c=>setEmailTarget(c)} agentId={listing.agent_id} />
           </div>
 
-          <div style={{ marginTop:18 }}>
+          {emailTarget && (
+            <div style={{ ...card, marginBottom:18 }}>
+              <div style={cLabel}>Compose — to {contactName(emailTarget)} ({emailTarget.email})</div>
+              <input value={composeSubject} onChange={e=>setComposeSubject(e.target.value)} placeholder="Subject" style={{ ...inp, width:'100%', boxSizing:'border-box', marginBottom:8, marginTop:6 }} />
+              <textarea value={composeBody} onChange={e=>setComposeBody(e.target.value)} placeholder="Write your message…" rows={5} style={{ ...inp, width:'100%', boxSizing:'border-box', resize:'vertical', marginBottom:8 }} />
+              <button onClick={sendListingEmail} disabled={sendingEmail} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity:sendingEmail?0.6:1 }}>{sendingEmail?'Sending…':'Send'}</button>
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:6 }}>Attachments aren't supported yet — needs the shared <code>listing_files</code> table (see Marketing tab).</div>
+            </div>
+          )}
+
+          <div style={{ marginTop:6 }}>
             <div style={sectionTitle}>Email history</div>
             {(() => {
               const emailLog = adminLog.filter(a => a.action==='email_sent')
               if (logLoading) return <div style={{ padding:'10px 0', color:'var(--muted)', fontSize:12 }}>Loading…</div>
-              if (emailLog.length===0) return <Empty title="No emails sent yet" sub="Use a recipient above to send the first one." />
+              if (emailLog.length===0) return <Empty title="No emails sent yet" sub="Select a recipient above to send the first one." />
               return emailLog.map((a,i)=>(
                 <div key={a.id||i} style={{ padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
                   <div style={{ fontSize:12.5 }}>{a.metadata?.description || 'Email sent'}</div>
@@ -1356,24 +1483,6 @@ export default function ListingWorkspace({
 
       </div>
     </div>
-    <EmailComposeModal
-      open={!!emailTarget}
-      onClose={()=>setEmailTarget(null)}
-      contact={emailTarget}
-      agent={agent}
-      toast={(msg, color)=>{ if (toast) toast(msg, color); else alert(msg) }}
-      initialSubject={emailTarget ? 'Re: ' + listing.addr : ''}
-      onSent={async (contact, subject) => {
-        try {
-          await supabase.from('audit_log').insert({
-            agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id,
-            action:'email_sent', field_name:'Email',
-            metadata:{ description:'Email sent to ' + (contact?.first_name||contact?.email||'contact') + ': ' + subject },
-            created_at:new Date().toISOString(),
-          })
-        } catch {}
-      }}
-    />
     </>
   )
 }
