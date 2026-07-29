@@ -263,6 +263,7 @@ export default function ListingWorkspace({
   }
 
 
+  const card = { background:'var(--dim)', borderRadius:8, padding:'10px 12px' }
   const cLabel = { fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:4 }
   const inp = { padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }
   const saveBtn = k => ({ padding:'7px 12px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity: saving===k?0.6:1 })
