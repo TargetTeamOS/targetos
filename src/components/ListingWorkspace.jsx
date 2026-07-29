@@ -14,7 +14,8 @@ import { Avatar } from './UI'
 import SellerContacts from './SellerContacts'
 import { BoardLinks } from './BoardLinks'
 import { contactName } from './ContactPicker'
-import { THEME_DEFS, themeLabel, mainThemeFor, buildThemeSummary, buildBuyerStats } from '../lib/feedbackThemes'
+import { THEME_DEFS, themeLabel, mainThemeFor, buildThemeSummary, buildBuyerStats, buildSummarySentences } from '../lib/feedbackThemes'
+import { EmailComposeModal } from './EmailComposeModal'
 
 const ff = 'Inter,system-ui,sans-serif'
 const ALL_TABS = [
@@ -56,13 +57,19 @@ const CONNECTED_PARTY_ROLES = [
 
 export default function ListingWorkspace({
   listing, agent, showings = [], openHouses = [], onBack, onSaved,
-  onLogShowing, onScheduleOH, canViewAdminLog = false,
+  onLogShowing, onScheduleOH, canViewAdminLog = false, canManage = false,
 }) {
   const [tab, setTab] = useState('tasks')
   const [adminLog, setAdminLog] = useState([]); const [logLoading, setLogLoading] = useState(false)
   const [mktTasks, setMktTasks] = useState(null)   // null=not loaded, []=none
   const [connected, setConnected] = useState(null) // { tcDeal, productionDeal } | null while loading
   const [parties, setParties] = useState(null)     // { role: contact } | null while loading, {} if no TC deal linked
+  const [emailTarget, setEmailTarget] = useState(null) // contact object to email, or null
+  const [taskMsg, setTaskMsg] = useState('')
+  const [taskAssignee, setTaskAssignee] = useState('')
+  const [secretaries, setSecretaries] = useState([])
+  const [sendingTask, setSendingTask] = useState(false)
+  const [matchCandidates, setMatchCandidates] = useState(null) // [{id,addr,score}] | null while loading, [] if none
   const [saving, setSaving] = useState('')
   const [copyLabel, setCopyLabel] = useState('Copy Seller Report')
 
@@ -127,6 +134,96 @@ export default function ListingWorkspace({
     })()
     return () => { alive = false }
   }, [listing.id])
+
+  // Possible-match detection (schema-free, reverse direction of the
+  // existing LinkListingControl.jsx logic on the TC Board -- mirrors its
+  // scoreMatch algorithm rather than importing from that file, so this
+  // never touches TC Board code). Only runs once we know there's no
+  // existing link. Scoped to the current agent's own TC files unless the
+  // viewer can manage all (admin/secretary/listings.view_all) -- an agent
+  // should not see or link to another agent's TC files here.
+  useEffect(() => {
+    if (!connected || connected.tcDeal) { setMatchCandidates([]); return }
+    let alive = true
+    ;(async () => {
+      try {
+        let q = supabase.from('tc_deals').select('id,addr,agent_id,tc_phase').is('linked_listing_id', null)
+        if (!canManage) q = q.eq('agent_id', listing.agent_id)
+        const { data } = await q.limit(500)
+        const norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim()
+        const at = norm(listing.addr).split(' ').filter(Boolean)
+        const bset0 = new Set(at)
+        const scored = (data||[]).map(d => {
+          const bt = norm(d.addr).split(' ').filter(Boolean)
+          const bset = new Set(bt)
+          let shared = 0; at.forEach(t => { if (bset.has(t)) shared++ })
+          const aNum = at.find(t=>/^\d+$/.test(t)), bNum = bt.find(t=>/^\d+$/.test(t))
+          const numBonus = aNum && bNum && aNum===bNum ? 2 : 0
+          return { ...d, score: (at.length&&bt.length ? shared/Math.max(at.length,bt.length) : 0) + numBonus }
+        }).filter(d => d.score > 0.3).sort((a,b)=>b.score-a.score).slice(0,3)
+        if (alive) setMatchCandidates(scored)
+      } catch { if (alive) setMatchCandidates([]) }
+    })()
+    return () => { alive = false }
+  }, [connected, listing.id, canManage])
+
+  useEffect(() => {
+    let alive = true
+    supabase.from('agents').select('id,name,role').in('role', ['secretary','admin']).eq('active', true)
+      .then(({ data }) => { if (alive) { setSecretaries(data||[]); if ((data||[]).length && !taskAssignee) setTaskAssignee(data[0].id) } })
+      .catch(() => { if (alive) setSecretaries([]) })
+    return () => { alive = false }
+  }, [])
+
+  // Task/message to secretary, tied to this listing. NOTE: the tasks
+  // table has no listing_id column, so the connection is via the title
+  // and notes text, not a real foreign key -- flagged honestly rather
+  // than treated as a clean link. A future tasks.listing_id column would
+  // make this properly queryable/filterable per listing.
+  async function sendTaskToSecretary() {
+    if (!taskMsg.trim()) { alert('Enter a message'); return }
+    if (!taskAssignee) { alert('Pick who this goes to'); return }
+    setSendingTask(true)
+    try {
+      const { error } = await supabase.from('tasks').insert({
+        title: '[' + listing.addr + '] ' + taskMsg.trim().slice(0,80),
+        notes: 'Re: ' + listing.addr + '\n\n' + taskMsg.trim() + '\n\n— sent from My Listings by ' + (agent?.name||'agent'),
+        agent_id: taskAssignee, status:'pending', priority:'normal',
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      })
+      if (error) throw error
+      try {
+        await supabase.from('audit_log').insert({ agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id, action:'task_sent', field_name:'Task', metadata:{ description:'Task sent to office: ' + taskMsg.trim().slice(0,60) }, created_at:new Date().toISOString() })
+      } catch {}
+      setTaskMsg('')
+      alert('Sent to the office.')
+    } catch (e) { alert('Could not send: ' + (e.message||e)) }
+    setSendingTask(false)
+  }
+
+  async function linkToTcDeal(tcDealId) {
+    try {
+      const { error } = await supabase.from('tc_deals').update({ linked_listing_id: listing.id }).eq('id', tcDealId)
+      if (error) throw error
+      // Back-sync seller (mirrors LinkListingControl.jsx's linkTo -- same
+      // write pattern, kept local here rather than importing from the
+      // TC Board's file).
+      try {
+        const { data: parts } = await supabase.from('tc_participants').select('contact_id').eq('tc_deal_id', tcDealId).eq('role','seller')
+        const sellerIds = [...new Set((parts||[]).map(p=>p.contact_id).filter(Boolean))]
+        for (let i=0;i<sellerIds.length;i++) {
+          const cid = sellerIds[i], isFirst = i===0
+          await supabase.from('listing_contacts').upsert({ listing_id:listing.id, contact_id:cid, role:'seller', primary_contact:isFirst }, { onConflict:'listing_id,contact_id' })
+          if (isFirst) await supabase.from('listings').update({ seller_contact_id: cid }).eq('id', listing.id)
+        }
+      } catch {}
+      try {
+        await supabase.from('audit_log').insert({ agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id, action:'linked', field_name:'TC File', metadata:{ description:'Linked to TC Board file' }, created_at:new Date().toISOString() })
+      } catch {}
+      setConnected(c => ({ ...c, tcDeal:{ id:tcDealId } }))
+      setMatchCandidates([])
+    } catch (e) { alert('Could not link: ' + (e.message||e)) }
+  }
 
   // Contacts / Parties (read-only): if a TC file is linked, read its
   // tc_participants (same table/roles TCBoardPanels.jsx's TCParties uses)
@@ -334,7 +431,8 @@ export default function ListingWorkspace({
   )
 
   return (
-    // Full-screen breakout: escape Layout's 1400px padded container
+    <>
+    {/* Full-screen breakout: escape Layout's 1400px padded container */}
     <div style={{ fontFamily:ff, position:'relative', left:'50%', right:'50%', marginLeft:'-50vw', marginRight:'-50vw', width:'100vw', minHeight:'100vh', marginTop:-28, background:'var(--bg)' }}>
 
       {/* ══ FULL PROPERTY HEADER ══ */}
@@ -436,6 +534,16 @@ export default function ListingWorkspace({
                   <div style={cLabel}>TC Board file</div>
                   {connected.tcDeal ? (
                     <div style={{ fontSize:12.5, fontWeight:700, color:'#0B7A45' }}>✓ Linked{connected.tcDeal.tc_phase ? ' · ' + connected.tcDeal.tc_phase : ''}</div>
+                  ) : matchCandidates && matchCandidates.length > 0 ? (
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:700, color:'#B45309', marginBottom:6 }}>Possible match found</div>
+                      {matchCandidates.map(m => (
+                        <div key={m.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:6, padding:'6px 8px', background:'var(--dim)', borderRadius:8, marginBottom:4 }}>
+                          <span style={{ fontSize:11.5 }}>{m.addr}{m.tc_phase?' · '+m.tc_phase:''}</span>
+                          <button onClick={()=>linkToTcDeal(m.id)} style={{ padding:'3px 10px', borderRadius:6, border:'none', background:'var(--brand)', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff, flexShrink:0 }}>Link</button>
+                        </div>
+                      ))}
+                    </div>
                   ) : (
                     <div style={{ fontSize:12, color:'#B45309', fontWeight:600 }}>Not linked yet</div>
                   )}
@@ -449,9 +557,9 @@ export default function ListingWorkspace({
                   )}
                 </div>
                 <BoardLinks listingId={listing.id} />
-                {!connected.tcDeal && (
+                {!connected.tcDeal && matchCandidates && matchCandidates.length === 0 && (
                   <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
-                    Reverse matching (suggesting a TC file from this side) isn't built yet — today linking only works from the TC Board's "Connect listing" control. This is exactly what the proposed Phase 1 normalized-address work would add here.
+                    No likely TC file match found by address{!canManage ? ' among your own TC files' : ''}. Matching is address-token-based today (case/typo-tolerant, not unit-aware yet) — the drafted Phase 1 normalized-address work would make this more precise.
                   </div>
                 )}
               </div>
@@ -467,8 +575,13 @@ export default function ListingWorkspace({
             </div>
           )}
           <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px' }}>
-            <div style={sectionTitle}>Documents</div>
-            <div style={{ fontSize:12, color:'var(--muted)' }}>Document storage (agreement, disclosures, brochure, floor plans) is a later phase — no documents table yet.</div>
+            <div style={sectionTitle}>Documents — setup needed</div>
+            <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.6, marginBottom:8 }}>
+              No document storage exists yet for listing agreements, disclosures, brochures, floor plans, ad proofs, or other files.
+            </div>
+            <div style={{ fontSize:11, color:'var(--muted)' }}>
+              Would need: a <code>listing_documents</code> table (listing_id, doc_type, file_url, uploaded_by, uploaded_at) + a storage bucket. Proposal only — not built, not run.
+            </div>
           </div>
         </div>
 
@@ -537,6 +650,25 @@ export default function ListingWorkspace({
                   </div>
                 </div>
               </div>
+
+              {/* Send task/message to secretary/admin — real tasks table
+                  write. NOTE: tasks has no listing_id column, so the tie
+                  to this listing is via the title/notes text, not a real
+                  foreign key -- flagged rather than treated as a clean
+                  link. A future tasks.listing_id column would make this
+                  filterable per listing. */}
+              <div style={{ marginTop:18, padding:'14px 16px', background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12 }}>
+                <div style={sectionTitle}>Send to Secretary / Admin</div>
+                <div style={{ display:'flex', gap:8, marginBottom:8, flexWrap:'wrap' }}>
+                  <select value={taskAssignee} onChange={e=>setTaskAssignee(e.target.value)} style={{ ...inp, minWidth:160 }}>
+                    {secretaries.length===0 && <option value="">No secretary/admin found</option>}
+                    {secretaries.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <input value={taskMsg} onChange={e=>setTaskMsg(e.target.value)} placeholder={'Message about ' + listing.addr + '…'} style={{ ...inp, flex:1, minWidth:200 }} />
+                  <button onClick={sendTaskToSecretary} disabled={sendingTask} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity:sendingTask?0.6:1 }}>{sendingTask?'Sending…':'Send'}</button>
+                </div>
+                <div style={{ fontSize:11, color:'var(--muted)' }}>Creates a task assigned to them, tagged with this address. (No listing-level link column exists yet — this ties them via the task text, not a formal connection.)</div>
+              </div>
             </div>
           )}
 
@@ -551,6 +683,17 @@ export default function ListingWorkspace({
               Unique buyers: <strong style={{ color:'var(--text)' }}>{buyerStats.uniqueBuyers}</strong> · 👍 {buyerStats.interested} interested · 🤔 {buyerStats.neutral} neutral · 👎 {buyerStats.notInterested} not interested{buyerStats.noFeedback>0?' · '+buyerStats.noFeedback+' no feedback':''}
             </div>
           )}
+          {showings.length>0 && (() => {
+            const sentences = buildSummarySentences(themeSummary, buyerStats)
+            return (
+              <div style={{ background:'rgba(139,92,246,.06)', border:'1px solid rgba(139,92,246,.25)', borderRadius:10, padding:'12px 14px', marginBottom:16 }}>
+                <div style={{ fontSize:10.5, fontWeight:800, color:'#8B5CF6', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:6 }}>Summary <span style={{ fontWeight:400, textTransform:'none' }}>— based on feedback notes</span></div>
+                {sentences.map((s,i) => (
+                  <div key={i} style={{ fontSize:13, color:'var(--text)', marginBottom:i<sentences.length-1?4:0 }}>• {s}</div>
+                ))}
+              </div>
+            )
+          })()}
           {themeSummary.length>0 && (
             <div style={{ marginBottom:18 }}>
               <div style={sectionTitle}>Theme summary <span style={{ fontWeight:400, textTransform:'none', fontSize:10.5 }}>— based on feedback text</span></div>
@@ -718,6 +861,10 @@ export default function ListingWorkspace({
           <div style={{ marginTop:10, padding:'12px 14px', background:'rgba(59,130,246,.06)', border:'1px solid rgba(59,130,246,.25)', borderRadius:10, fontSize:12.5 }}>
             📣 A structured marketing checklist with files (drone, floor plans, brochure proofs, publication dates) will be added in a later phase.
           </div>
+          <div style={{ marginTop:10, padding:'12px 14px', background:'var(--dim)', borderRadius:10, fontSize:12 }}>
+            <div style={{ fontWeight:700, marginBottom:4 }}>Materials storage — setup needed</div>
+            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>Photos, video, drone, brochure, flyers, print ads, social posts, WhatsApp images, email blasts, and publication ads all need a storage location and a <code>listing_marketing</code> table (type, file_url, publication, ad_date, cost, completed_by) to track "ads placed by week" and spend. Not built — proposed in Phase 3, not run.</div>
+          </div>
         </div>
       )}
 
@@ -789,7 +936,13 @@ export default function ListingWorkspace({
                   <div key={r.key} style={card}>
                     <div style={cLabel}>{r.label}</div>
                     {c ? (
-                      <div style={{ fontSize:12.5, fontWeight:700 }}>{contactName(c)}{c.phone?<div style={{ fontSize:11, color:'var(--muted)', fontWeight:400 }}>{c.phone}</div>:null}</div>
+                      <div>
+                        <div style={{ fontSize:12.5, fontWeight:700 }}>{contactName(c)}</div>
+                        {c.phone && <div style={{ fontSize:11, color:'var(--muted)' }}>{c.phone}</div>}
+                        {c.email && (
+                          <button onClick={()=>setEmailTarget(c)} style={{ marginTop:5, padding:'3px 9px', borderRadius:6, border:'1px solid var(--brand)', background:'transparent', color:'var(--brand)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>✉️ Email</button>
+                        )}
+                      </div>
                     ) : (
                       <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Missing</div>
                     )}
@@ -884,6 +1037,25 @@ export default function ListingWorkspace({
 
       </div>
     </div>
+    <EmailComposeModal
+      open={!!emailTarget}
+      onClose={()=>setEmailTarget(null)}
+      contact={emailTarget}
+      agent={agent}
+      toast={(msg)=>{ /* fire-and-forget console fallback; this file has no toast system */ console.log(msg) }}
+      initialSubject={emailTarget ? 'Re: ' + listing.addr : ''}
+      onSent={async (contact, subject) => {
+        try {
+          await supabase.from('audit_log').insert({
+            agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id,
+            action:'email_sent', field_name:'Email',
+            metadata:{ description:'Email sent to ' + (contact?.first_name||contact?.email||'contact') + ': ' + subject },
+            created_at:new Date().toISOString(),
+          })
+        } catch {}
+      }}
+    />
+    </>
   )
 }
 

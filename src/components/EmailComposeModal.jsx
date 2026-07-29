@@ -7,14 +7,18 @@
 // app via mailto.
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Btn, Modal, ModalActions } from './UI'
 import { sendContactEmail } from '../lib/emailService'
 
-export function EmailComposeModal({ open, onClose, contact, agent, toast }) {
-  const [subject, setSubject] = useState('')
-  const [body, setBody]       = useState('')
+export function EmailComposeModal({ open, onClose, contact, agent, toast, initialSubject = '', initialBody = '', onSent }) {
+  const [subject, setSubject] = useState(initialSubject)
+  const [body, setBody]       = useState(initialBody)
   const [sending, setSending] = useState(false)
+
+  useEffect(() => {
+    if (open) { setSubject(initialSubject || ''); setBody(initialBody || '') }
+  }, [open, initialSubject, initialBody])
 
   const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, background: 'var(--bg)', color: 'var(--text)', boxSizing: 'border-box' }
   const name = contact ? ((contact.first_name || '') + ' ' + (contact.last_name || '')).trim() : ''
@@ -31,6 +35,7 @@ export function EmailComposeModal({ open, onClose, contact, agent, toast }) {
       })
       if (r && r.ok === false) throw new Error(r.error || 'send failed')
       toast?.('📨 Email sent to ' + (name || contact.email))
+      onSent?.(contact, subject.trim())
       setSubject(''); setBody('')
       onClose()
     } catch (e) {

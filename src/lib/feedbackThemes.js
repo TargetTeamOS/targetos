@@ -86,3 +86,45 @@ export function buildBuyerStats(showings) {
     noFeedback: total - withFeedback,
   }
 }
+
+// Plain-English, seller-ready sentences built from the same theme counts
+// and buyer stats used everywhere else -- no paid AI/API call, just local
+// keyword logic already computed. Always label as "Based on feedback notes."
+export function buildSummarySentences(themeSummary, buyerStats) {
+  const sentences = []
+  const byId = id => themeSummary.find(t => t.id === id)
+  const price = byId('price'), taxes = byId('taxes'), condition = byId('condition')
+  const location = byId('location'), positive = byId('positive'), offer = byId('offer_coming')
+  const second = byId('second_showing')
+
+  if (!buyerStats.total) return ['No showings logged yet — nothing to summarize.']
+
+  if (price && price.count >= 2) sentences.push('Several buyers felt the home is overpriced (' + price.count + ' mentioned it).')
+  else if (price) sentences.push('One buyer felt the home is overpriced.')
+
+  if (taxes && taxes.count >= 1) sentences.push('Taxes came up as a concern' + (taxes.count>1?' with ' + taxes.count + ' buyers':'') + '.')
+
+  if (location && positive) sentences.push('Buyers like the location, but ' + (condition ? 'condition/updates are' : 'other concerns are') + ' holding some back.')
+  else if (location) sentences.push('Location came up as a concern for some buyers.')
+
+  if (condition && condition.count >= 2) sentences.push(condition.count + ' buyers mentioned the property needs updates.')
+
+  if (positive && positive.count > 0 && (price || condition || taxes)) {
+    sentences.push('Feedback is mixed — positive overall, but ' + [price&&'price', condition&&'condition', taxes&&'taxes'].filter(Boolean).join(' and ') + ' keep coming up.')
+  } else if (positive && positive.count > 0) {
+    sentences.push('Feedback has been positive overall.')
+  }
+
+  if (offer) sentences.push(offer.count + ' buyer' + (offer.count!==1?'s have':' has') + ' signaled real interest — follow up directly.')
+  if (second) sentences.push(second.count + ' buyer' + (second.count!==1?'s want':' wants') + ' a second showing.')
+
+  if (buyerStats.noFeedback > 0 && buyerStats.total > buyerStats.noFeedback) {
+    sentences.push('Follow-up is still needed on ' + buyerStats.noFeedback + ' showing' + (buyerStats.noFeedback!==1?'s':'') + ' with no feedback recorded.')
+  }
+
+  if (sentences.length === 0) {
+    sentences.push(buyerStats.total + ' showing' + (buyerStats.total!==1?'s':'') + ' logged so far, no strong pattern in the feedback yet.')
+  }
+  return sentences
+}
+

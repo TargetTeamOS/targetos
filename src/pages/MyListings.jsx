@@ -99,6 +99,12 @@ function ListingRow({ listing, agent, showings, openHouses, onOpen, connected })
     <div onClick={() => onOpen(listing)}
       style={{ background:'var(--panel)', border:'0.5px solid var(--border)', borderLeft:'3px solid '+sc,
         borderRadius:8, marginBottom:6, padding:'9px 12px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
+      {/* House image thumbnail */}
+      {listing.photo_url ? (
+        <img src={listing.photo_url} alt="" style={{ width:34, height:34, borderRadius:8, objectFit:'cover', flexShrink:0 }} onError={e=>{e.target.style.display='none'}} />
+      ) : (
+        <div style={{ width:34, height:34, borderRadius:8, background:'var(--dim)', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>🏡</div>
+      )}
       {/* Agent avatar */}
       {agent ? <Avatar agent={agent} size={34} showHover={false} /> : <div style={{ width:34, height:34, borderRadius:'50%', background:'var(--dim)', flexShrink:0 }} />}
       {/* Address + agent/city/status */}
@@ -138,6 +144,7 @@ function ListingRow({ listing, agent, showings, openHouses, onOpen, connected })
           <span>{listing.marketing_status ? listing.marketing_status + ' · ' : ''}Seller upd: {listing.seller_updated_at ? fmtDate(listing.seller_updated_at) : 'never'}</span>
           {connected?.tc && <span style={{ color:'#0B7A45', fontWeight:700 }}>📋 TC</span>}
           {connected?.prod && <span style={{ color:'#0B7A45', fontWeight:700 }}>💼 Production</span>}
+          {listing.mls_link && <a href={listing.mls_link} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{ color:'#3B82F6', fontWeight:700, textDecoration:'none' }}>MLS ↗</a>}
         </div>
       </div>
       {/* Open */}
@@ -499,6 +506,7 @@ export function MyListings() {
           listing={wl}
           agent={agentsMap[wl.agent_id]}
           canViewAdminLog={canManage || can('listings.view_all')}
+          canManage={canManage || can('listings.view_all')}
           showings={showings.filter(s => s.listing_id === wl.id)}
           openHouses={openHouses.filter(oh => oh.listing_id === wl.id)}
           onBack={() => setWorkspaceListing(null)}
