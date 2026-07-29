@@ -72,6 +72,46 @@ export async function getConnectedOutlookAccount() {
   } catch (e) { return { connected: false, from: null } }
 }
 
+// Branded contact-email HTML (shared by the composers).
+export function buildContactEmailHtml({ body, agentName }) {
+  return `
+    <div style="font-family:Inter,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:#1B2B4B;padding:20px 24px;border-radius:12px 12px 0 0;">
+        <div style="color:#fff;font-size:18px;font-weight:800;">Target<span style="color:#F5A623;">OS</span></div>
+        <div style="color:rgba(255,255,255,.5);font-size:11px;">Keller Williams Valley Realty</div>
+      </div>
+      <div style="background:#fff;padding:28px 24px;border:1px solid #E2E8F0;border-top:none;">
+        <p style="color:#1E293B;font-size:15px;margin:0 0 16px;">${String(body || '').replace(/\n/g, '<br/>')}</p>
+      </div>
+      <div style="background:#F8FAFC;padding:16px 24px;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 12px 12px;font-size:12px;color:#94A3B8;">
+        ${agentName || 'Target Team'} · Target Team · Keller Williams Valley Realty<br/>
+        845.424.1014 · <a href="https://app.targetreteam.com" style="color:#CC2200;">app.targetreteam.com</a>
+      </div>
+    </div>`
+}
+
+// Send a personal contact email through the SIGNED-IN AGENT'S connected
+// Outlook mailbox via the delegated /api/connector-send endpoint. Attaches
+// the agent's Supabase session JWT. Never touches Resend. Returns
+// { ok, from, status, error, needsConnect }.
+export async function postConnectorOutlook({ to, subject, html }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/api/connector-send', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}),
+    },
+    body: JSON.stringify({ provider: 'outlook', to, subject, html }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const needsConnect = res.status === 400 && /connect/i.test(data.error || '')
+    return { ok: false, status: res.status, needsConnect, error: needsConnect ? 'Connect your Outlook account in Settings → Email Accounts to send email.' : (data.error || 'Send failed') }
+  }
+  return { ok: true, status: res.status, from: data.from || null }
+}
+
 // ── CONTACT EMAIL ─────────────────────────────────────────────
 // Agent-composed contact emails now go OUT THROUGH THE AGENT'S OWN
 // connected Outlook mailbox (Microsoft Graph, via /api/connector-send), so
@@ -79,46 +119,10 @@ export async function getConnectedOutlookAccount() {
 // real address. Resend/office@ is no longer used for these. When the agent
 // has no active Outlook connection we surface a clear Connect-Outlook error.
 export async function sendContactEmail({ contactEmail, contactName, subject, body, agentName, agentEmail }) {
-  const html = `
-    <div style="font-family:Inter,sans-serif;max-width:600px;margin:0 auto;">
-      <div style="background:#1B2B4B;padding:20px 24px;border-radius:12px 12px 0 0;">
-        <div style="color:#fff;font-size:18px;font-weight:800;">Target<span style="color:#F5A623;">OS</span></div>
-        <div style="color:rgba(255,255,255,.5);font-size:11px;">Keller Williams Valley Realty</div>
-      </div>
-      <div style="background:#fff;padding:28px 24px;border:1px solid #E2E8F0;border-top:none;">
-        <p style="color:#1E293B;font-size:15px;margin:0 0 16px;">${body.replace(/\n/g, '<br/>')}</p>
-      </div>
-      <div style="background:#F8FAFC;padding:16px 24px;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 12px 12px;font-size:12px;color:#94A3B8;">
-        ${agentName} · Target Team · Keller Williams Valley Realty<br/>
-        845.424.1014 · <a href="https://app.targetreteam.com" style="color:#CC2200;">app.targetreteam.com</a>
-      </div>
-    </div>`
-  try {
-    const { data: { session } } = await supabase.auth.getSession()
-    const res = await fetch('/api/connector-send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}),
-      },
-      body: JSON.stringify({ provider: 'outlook', to: contactEmail, subject, html }),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      // connector-send returns 400 with a "Connect your Outlook account…" message
-      const needsConnect = res.status === 400 && /connect/i.test(data.error || '')
-      return {
-        success: false, ok: false,
-        needsConnect,
-        error: needsConnect
-          ? 'Connect your Outlook account in Settings → Email Accounts to send email.'
-          : (data.error || 'Send failed'),
-      }
-    }
-    return { success: true, ok: true, from: data.from || null }
-  } catch (e) {
-    return { success: false, ok: false, error: e.message }
-  }
+  const html = buildContactEmailHtml({ body, agentName })
+  const r = await postConnectorOutlook({ to: contactEmail, subject, html })
+  if (!r.ok) return { success: false, ok: false, needsConnect: r.needsConnect, error: r.error }
+  return { success: true, ok: true, from: r.from }
 }
 
 // ── TASK REMINDER ─────────────────────────────────────────────

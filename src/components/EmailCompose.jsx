@@ -3,7 +3,8 @@
 // Features: subject, body, template selector, send + log to timeline.
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { sendContactEmail } from '../lib/emailService'
+import { postConnectorOutlook, getConnectedOutlookAccount, buildContactEmailHtml } from '../lib/emailService'
+import { composeSendOutlook } from '../lib/contactEmailSend'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 
@@ -114,6 +115,13 @@ export function EmailCompose({ contact, contactId, onSent, onCancel }) {
   const [templates,setTemplates]= useState(BUILTIN_TEMPLATES)
   const [showTpls, setShowTpls] = useState(false)
   const [dbTpls,   setDbTpls]   = useState([])
+  const [outlook,  setOutlook]  = useState(null) // { connected, from } | null while loading
+
+  useEffect(() => {
+    let alive = true
+    getConnectedOutlookAccount().then(a => { if (alive) setOutlook(a) })
+    return () => { alive = false }
+  }, [])
 
   useEffect(() => {
     // Load custom templates from DB
@@ -134,44 +142,42 @@ export function EmailCompose({ contact, contactId, onSent, onCancel }) {
     if (!contact?.email) { toast('Contact has no email address', '#DC2626'); return }
     if (!subject.trim())  { toast('Subject is required', '#DC2626'); return }
     if (!body.trim())     { toast('Message body is required', '#DC2626'); return }
+    if (!outlook || outlook.connected !== true) {
+      toast('Connect your Outlook account in Settings → Email Accounts to send email.', '#DC2626'); return
+    }
     setSending(true)
     try {
-      // Send the email
-      const result = await sendContactEmail({
-        contactEmail: contact.email,
-        contactName:  [contact.first_name, contact.last_name].filter(Boolean).join(' '),
-        subject,
-        body,
-        agentName:  agent?.name || 'Target Team',
-        agentEmail: agent?.email || 'office@targetreteam.com',
-      })
-
-      if (!result.success) throw new Error(result.error || 'Send failed')
-
-      // Log to timeline
-      await supabase.from('audit_log').insert({
-        agent_id:   agent?.id,
-        table_name: 'contacts',
-        record_id:  contactId,
-        action:     'note',
-        field_name: 'email',
-        new_value:  body.slice(0, 200),
-        metadata: {
-          type:    'email',
-          description: 'Email sent: ' + subject,
-          subject,
-          body,
-          to:      contact.email,
-          sent_id: result.id,
+      const result = await composeSendOutlook({
+        to: contact.email,
+        subject: subject.trim(),
+        body: body.trim(),
+        agentName: agent?.name || 'Target Team',
+        outlook,
+        deps: {
+          buildHtml: buildContactEmailHtml,
+          // Delegated Outlook send (Microsoft Graph) — NO Resend fallback.
+          send: postConnectorOutlook,
+          // Log the contact activity ONLY after Graph confirms success.
+          logActivity: async ({ subject, body, to, from }) => {
+            await supabase.from('audit_log').insert({
+              agent_id:   agent?.id,
+              table_name: 'contacts',
+              record_id:  contactId,
+              action:     'note',
+              field_name: 'email',
+              new_value:  body.slice(0, 200),
+              metadata: { type: 'email', description: 'Email sent: ' + subject, subject, body, to, from },
+              created_at: new Date().toISOString(),
+            })
+          },
         },
-        created_at: new Date().toISOString(),
       })
-
-      toast('✅ Email sent to ' + contact.email)
+      if (!result.ok) { toast('❌ Failed to send: ' + result.error, '#DC2626'); return }
+      toast('✅ Email sent from ' + (result.from || 'your Outlook') + ' to ' + contact.email)
       setSubject('')
       setBody('')
       onSent?.()
-    } catch(e) {
+    } catch (e) {
       toast('❌ Failed to send: ' + e.message, '#DC2626')
     } finally {
       setSending(false)
@@ -239,15 +245,25 @@ export function EmailCompose({ contact, contactId, onSent, onCancel }) {
           style={{ ...inp, resize:'vertical', lineHeight:1.6 }}
         />
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span style={{ fontSize:10, color:'var(--muted)' }}>
-            {body.length} chars · From: {agent?.email || 'office@targetreteam.com'}
+          <span style={{ fontSize:10, color: (outlook && outlook.connected === false) ? '#DC2626' : 'var(--muted)' }}>
+            {outlook === null
+              ? body.length + ' chars · checking Outlook connection…'
+              : outlook.connected
+                ? body.length + ' chars · From: ' + outlook.from + ' (your Outlook)'
+                : 'No Outlook account connected — connect one in Settings → Email Accounts to send.'}
           </span>
-          <button
-            onClick={send}
-            disabled={sending || !contact?.email}
-            style={{ padding:'8px 20px', borderRadius:8, border:'none', background:contact?.email?'var(--brand)':'var(--dim)', color:'#fff', fontSize:13, fontWeight:700, cursor:contact?.email?'pointer':'not-allowed', fontFamily:ff, opacity:sending?.7:1 }}>
-            {sending ? '⏳ Sending...' : '📤 Send Email'}
-          </button>
+          {(() => {
+            const canSend = !sending && !!contact?.email && outlook !== null && outlook.connected === true
+            return (
+              <button
+                onClick={send}
+                disabled={!canSend}
+                title={outlook && outlook.connected === false ? 'Connect your Outlook account to send' : undefined}
+                style={{ padding:'8px 20px', borderRadius:8, border:'none', background:canSend?'var(--brand)':'var(--dim)', color:'#fff', fontSize:13, fontWeight:700, cursor:canSend?'pointer':'not-allowed', fontFamily:ff, opacity:sending?.7:1 }}>
+                {sending ? '⏳ Sending...' : outlook === null ? '⏳ Checking…' : '📤 Send Email'}
+              </button>
+            )
+          })()}
         </div>
       </div>
     </div>
