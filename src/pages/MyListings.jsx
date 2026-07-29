@@ -25,6 +25,7 @@ import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { PageHeader, Btn, Modal, ModalActions, Loading, Empty, Avatar } from '../components/UI'
 import { logRecordChange } from '../lib/recordActivity'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
+import { mainThemeFor, themeLabel } from '../lib/feedbackThemes'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -64,7 +65,7 @@ function DOMBadge({ days }) {
 }
 
 // Compact one-line listing row → opens the full workspace
-function ListingRow({ listing, agent, showings, openHouses, onOpen }) {
+function ListingRow({ listing, agent, showings, openHouses, onOpen, connected }) {
   const dom    = daysOnMarket(listing.listed_date || listing.list_date || listing.created_at)
   const status = listing.status || 'Active'
   const sc     = STATUS_COLORS[status] || '#94A3B8'
@@ -76,6 +77,14 @@ function ListingRow({ listing, agent, showings, openHouses, onOpen }) {
   const sellerStale = !listing.seller_updated_at || (Date.now() - new Date(listing.seller_updated_at).getTime() > 7 * 86400000)
   const priceChanged = (listing.original_price && listing.list_price && listing.original_price !== listing.list_price) || priceChanges > 0
   const closingSoon = status === 'Under Contract'
+  // Top feedback theme across this listing's showings — same shared engine
+  // used by the workspace's Buyer Feedback tab and Seller Report.
+  const topTheme = (() => {
+    const counts = {}
+    showings.forEach(s => { const id = mainThemeFor(s); if (id) counts[id] = (counts[id]||0)+1 })
+    const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1])
+    return sorted.length ? { id: sorted[0][0], count: sorted[0][1] } : null
+  })()
 
   // Alert chips
   const chips = []
@@ -118,12 +127,17 @@ function ListingRow({ listing, agent, showings, openHouses, onOpen }) {
       {/* Chips + marketing/seller-update */}
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-          {chips.slice(0,4).map((c,i)=>(
+          {topTheme && (
+            <span style={{ fontSize:10, fontWeight:700, color:'#B45309', background:'rgba(245,166,35,.14)', padding:'1px 7px', borderRadius:99, whiteSpace:'nowrap' }}>{themeLabel(topTheme.id)} ({topTheme.count})</span>
+          )}
+          {chips.slice(0,3).map((c,i)=>(
             <span key={i} style={{ fontSize:10, fontWeight:700, color:c.c, background:c.c+'18', padding:'1px 7px', borderRadius:99, whiteSpace:'nowrap' }}>{c.t}</span>
           ))}
         </div>
-        <div style={{ fontSize:10, color:'var(--muted)', marginTop:3 }}>
-          {listing.marketing_status ? listing.marketing_status + ' · ' : ''}Seller upd: {listing.seller_updated_at ? fmtDate(listing.seller_updated_at) : 'never'}
+        <div style={{ fontSize:10, color:'var(--muted)', marginTop:3, display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+          <span>{listing.marketing_status ? listing.marketing_status + ' · ' : ''}Seller upd: {listing.seller_updated_at ? fmtDate(listing.seller_updated_at) : 'never'}</span>
+          {connected?.tc && <span style={{ color:'#0B7A45', fontWeight:700 }}>📋 TC</span>}
+          {connected?.prod && <span style={{ color:'#0B7A45', fontWeight:700 }}>💼 Production</span>}
         </div>
       </div>
       {/* Open */}
@@ -145,6 +159,7 @@ export function MyListings() {
   const [loading,    setLoading]    = useState(true)
   const [expanded,   setExpanded]   = useState({})
   const [agentsMap,  setAgentsMap]  = useState({})
+  const [connectedMap, setConnectedMap] = useState({}) // listing_id -> { tc: bool, prod: bool }
   const [workspaceListing, setWorkspaceListing] = useState(null)  // when set, show full workspace
   const [statusFilter,setStatusFilter] = useState('All')
   const [search,     setSearch]     = useState('')
@@ -195,6 +210,18 @@ export function MyListings() {
         const { data: ags } = await supabase.from('agents').select('id,name,color,photo_url,email').eq('active', true)
         setAgentsMap(Object.fromEntries((ags || []).map(a => [a.id, a])))
       } catch { setAgentsMap({}) }
+      // Connected-board indicators (batched, not per-row, to avoid N+1 queries)
+      try {
+        const [tcRes, prodRes] = listingIds.length ? await Promise.all([
+          supabase.from('tc_deals').select('linked_listing_id').in('linked_listing_id', listingIds),
+          supabase.from('deals').select('listing_id').in('listing_id', listingIds),
+        ]) : [{ data: [] }, { data: [] }]
+        const tcSet = new Set((tcRes.data||[]).map(r=>r.linked_listing_id).filter(Boolean))
+        const prodSet = new Set((prodRes.data||[]).map(r=>r.listing_id).filter(Boolean))
+        const map = {}
+        listingIds.forEach(id => { map[id] = { tc: tcSet.has(id), prod: prodSet.has(id) } })
+        setConnectedMap(map)
+      } catch { setConnectedMap({}) }
     } catch(e) { toast('Load failed: ' + e.message, '#DC2626') }
     finally { setLoading(false) }
   }
@@ -226,6 +253,14 @@ export function MyListings() {
         created_at:    new Date().toISOString(),
       })
       toast('✅ Showing logged')
+      try {
+        await supabase.from('audit_log').insert({
+          agent_id: agent?.id, table_name:'listings', record_id: selListing.id,
+          action:'showing_added', field_name:'Showing',
+          metadata:{ description:'Showing logged' + (showingForm.buyer_name ? ' for ' + showingForm.buyer_name : '') },
+          created_at: new Date().toISOString(),
+        })
+      } catch {}
       setShowingModal(false)
       setShowingForm({ buyer_name:'', agent_name:'', showing_date:new Date().toISOString().slice(0,10), showing_time:'', interest_level:3, feedback:'', notes:'' })
       loadAll()
@@ -537,6 +572,7 @@ export function MyListings() {
             showings={showings.filter(s => s.listing_id === listing.id)}
             openHouses={openHouses.filter(oh => oh.listing_id === listing.id)}
             onOpen={l => setWorkspaceListing(l)}
+            connected={connectedMap[listing.id]}
           />
         ))
       )}

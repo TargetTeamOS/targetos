@@ -12,15 +12,20 @@ import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate } from '../lib/utils'
 import { Avatar } from './UI'
 import SellerContacts from './SellerContacts'
+import { BoardLinks } from './BoardLinks'
+import { contactName } from './ContactPicker'
+import { THEME_DEFS, themeLabel, mainThemeFor, buildThemeSummary, buildBuyerStats } from '../lib/feedbackThemes'
 
 const ff = 'Inter,system-ui,sans-serif'
 const ALL_TABS = [
-  { id:'tasks',     label:'Tasks / Next Action' },
+  { id:'tasks',     label:'Summary / Next Action' },
   { id:'feedback',  label:'Buyer Feedback' },
   { id:'report',    label:'Seller Report' },
   { id:'marketing', label:'Marketing' },
   { id:'price',     label:'Price & Activity' },
+  { id:'parties',   label:'Contacts / Parties' },
   { id:'notes',     label:'Notes' },
+  { id:'timeline',  label:'Timeline' },
   { id:'admin',     label:'Admin Log', adminOnly:true },
 ]
 const LISTING_STATUSES = ['Active','Coming Soon','Under Contract','Sold','Expired','Withdrawn']
@@ -33,52 +38,21 @@ function dom(l) {
 const interestColor = n => n >= 4 ? '#10B981' : n >= 3 ? '#F5A623' : '#DC2626'
 const INTEREST_LABELS = { 5:'Very interested', 4:'Interested', 3:'Neutral', 2:'Lukewarm', 1:'Not interested' }
 
-// Feedback theme engine — keyword-based, with an explicit positive-override
-// check so common false positives ("great price", "loved the kitchen",
-// "beautiful bedrooms") are NOT counted as objections. Module-scope so it
-// can be shared by the workspace, the compact showing rows, and the
-// seller report text builder.
-const THEME_DEFS = [
-  { id:'price',     label:'Price too high',              negative:['too expensive','overpriced','over priced','price too high','too high','price is high','pricey','out of budget','above budget'],
-                     positive:['great price','good price','priced right','fair price','price is right','well priced','reasonably priced','good value','great value'] },
-  { id:'taxes',      label:'Taxes too high',              negative:['taxes too high','taxes are high','high taxes','tax burden'], positive:[] },
-  { id:'negotiate',  label:'Wants to negotiate',          negative:['negotiate','room to negotiate','flexible on price','open to offers below','will they take'], positive:[] },
-  { id:'size',       label:'Size too small',              negative:['too small','not enough space','feels small','felt small','smaller than expected','cramped','tight'], positive:['not too small'] },
-  { id:'bedrooms',   label:'Needs more bedrooms',         negative:['need more bedroom','needs more bedroom','not enough bedroom','too few bedroom'], positive:[] },
-  { id:'bathrooms',  label:'Needs more bathrooms',        negative:['need more bathroom','needs more bathroom','not enough bathroom','too few bathroom'], positive:[] },
-  { id:'basement',   label:'Basement concern',            negative:['basement is small','basement issue','basement concern','unfinished basement','basement flood','basement damp','basement musty'], positive:['loved the basement','great basement','finished basement'] },
-  { id:'condition',  label:'Needs updates / condition',   negative:['needs work','needs updating','needs updates','dated','outdated','needs renovation','run down','fixer'], positive:[] },
-  { id:'layout',     label:'Layout concern',              negative:['awkward layout','layout issue','weird layout',"layout doesn't work","layout didn't work",'poor flow'], positive:['great layout','loved the layout','good flow'] },
-  { id:'location',   label:'Location concern',            negative:['bad location','busy street','traffic noise','too far','location concern','far from'], positive:['great location','loved the location','perfect location'] },
-  { id:'kitchen',    label:'Kitchen concern',              negative:['kitchen is small','kitchen issue','kitchen needs','dated kitchen','outdated kitchen'], positive:['loved the kitchen','great kitchen','beautiful kitchen'] },
-  { id:'parking',    label:'Parking / driveway issue',    negative:['no parking','parking issue','driveway issue','street parking only','tight driveway','not enough parking'], positive:[] },
-  { id:'positive',   label:'Positive feedback',            negative:['loved it','love it','great price','perfect','beautiful','stunning','would offer','we love','they loved'], positive:[] },
-  { id:'second_showing', label:'Wants second showing',    negative:['second showing','come back','another showing','wants to see again','bring the family'], positive:[] },
-  { id:'offer_coming',   label:'Offer coming / serious interest', negative:['offer coming','writing an offer','putting in an offer','submitting an offer','very interested','serious interest'], positive:[] },
+// Party roles tracked today on the TC Board (mirrors TCBoardPanels.jsx's
+// PARTY_ROLES exactly, read-only reference here -- this file does not
+// modify TC Board behavior). 'photographer' is intentionally absent: it
+// is not a tracked party role in the current schema.
+const CONNECTED_PARTY_ROLES = [
+  { key:'buyer',            label:'Buyer' },
+  { key:'seller',           label:'Seller' },
+  { key:'buyer_attorney',   label:"Buyer's Attorney" },
+  { key:'seller_attorney',  label:"Seller's Attorney" },
+  { key:'mortgage_broker',  label:'Mortgage Broker' },
+  { key:'inspector',        label:'Inspector' },
+  { key:'appraiser',        label:'Appraiser' },
+  { key:'other_agent',      label:'Other Side Agent' },
+  { key:'title',            label:'Title Company' },
 ]
-function detectThemes(text) {
-  if (!text) return []
-  const t = text.toLowerCase()
-  const found = []
-  for (const theme of THEME_DEFS) {
-    const hasNegative = theme.negative.some(p => t.includes(p))
-    if (!hasNegative) continue
-    const hasPositiveOverride = theme.positive.some(p => t.includes(p))
-    if (hasPositiveOverride && theme.id !== 'positive') continue
-    found.push(theme.id)
-  }
-  return found
-}
-const themeLabel = id => (THEME_DEFS.find(t => t.id === id) || {}).label || id
-// Main (highest-priority) theme for a single showing's compact-row chip.
-function mainThemeFor(showing) {
-  const text = [showing.feedback, showing.notes].filter(Boolean).join('. ')
-  const ids = detectThemes(text)
-  if (!ids.length) return null
-  // Prefer a concern/objection over a purely positive/momentum theme for the chip
-  const priority = ids.find(id => !['positive','second_showing','offer_coming'].includes(id)) || ids[0]
-  return priority
-}
 
 export default function ListingWorkspace({
   listing, agent, showings = [], openHouses = [], onBack, onSaved,
@@ -87,6 +61,8 @@ export default function ListingWorkspace({
   const [tab, setTab] = useState('tasks')
   const [adminLog, setAdminLog] = useState([]); const [logLoading, setLogLoading] = useState(false)
   const [mktTasks, setMktTasks] = useState(null)   // null=not loaded, []=none
+  const [connected, setConnected] = useState(null) // { tcDeal, productionDeal } | null while loading
+  const [parties, setParties] = useState(null)     // { role: contact } | null while loading, {} if no TC deal linked
   const [saving, setSaving] = useState('')
   const [copyLabel, setCopyLabel] = useState('Copy Seller Report')
 
@@ -113,7 +89,7 @@ export default function ListingWorkspace({
     setLogLoading(false)
   }
   useEffect(() => {
-    if (tab === 'admin' || tab === 'price') loadAdminLog()
+    if (tab === 'admin' || tab === 'price' || tab === 'timeline') loadAdminLog()
   }, [tab, listing.id])
 
   // Marketing: read the linked tc_deal's marketing tasks (read-only)
@@ -131,6 +107,52 @@ export default function ListingWorkspace({
     })()
     return () => { alive = false }
   }, [tab, listing.id])
+
+  // Connected Records (read-only): find the linked TC file and/or Production
+  // deal for this listing via the existing link columns (tc_deals.linked_
+  // listing_id, deals.listing_id) -- same columns BoardLinks.jsx already
+  // uses. Loads once per listing since the summary panel is always visible,
+  // not gated to a tab. Does not write anything, does not touch TC Board.
+  useEffect(() => {
+    let alive = true
+    setConnected(null)
+    ;(async () => {
+      try {
+        const [tc, prod] = await Promise.all([
+          supabase.from('tc_deals').select('id, tc_phase, addr').eq('linked_listing_id', listing.id).maybeSingle(),
+          supabase.from('deals').select('id, stage, addr').eq('listing_id', listing.id).maybeSingle(),
+        ])
+        if (alive) setConnected({ tcDeal: tc.data || null, productionDeal: prod.data || null })
+      } catch { if (alive) setConnected({ tcDeal:null, productionDeal:null }) }
+    })()
+    return () => { alive = false }
+  }, [listing.id])
+
+  // Contacts / Parties (read-only): if a TC file is linked, read its
+  // tc_participants (same table/roles TCBoardPanels.jsx's TCParties uses)
+  // joined to contacts for display names. Never creates or edits a
+  // participant from here -- view only, matching 'do not touch TC Board'.
+  useEffect(() => {
+    if (tab !== 'parties' || !connected) return
+    let alive = true
+    ;(async () => {
+      if (!connected.tcDeal?.id) { if (alive) setParties({}); return }
+      try {
+        const { data: rows } = await supabase.from('tc_participants')
+          .select('role, contact_id').eq('tc_deal_id', connected.tcDeal.id)
+        const ids = [...new Set((rows||[]).map(r=>r.contact_id).filter(Boolean))]
+        let contactsById = {}
+        if (ids.length) {
+          const { data: cs } = await supabase.from('contacts').select('id,first_name,last_name,email,phone').in('id', ids)
+          ;(cs||[]).forEach(c => { contactsById[c.id] = c })
+        }
+        const byRole = {}
+        ;(rows||[]).forEach(r => { if (r.contact_id && contactsById[r.contact_id]) byRole[r.role] = contactsById[r.contact_id] })
+        if (alive) setParties(byRole)
+      } catch { if (alive) setParties({}) }
+    })()
+    return () => { alive = false }
+  }, [tab, connected, listing.id])
 
   async function saveField(key, value, label) {
     setSaving(key)
@@ -172,6 +194,13 @@ export default function ListingWorkspace({
       const { error } = await supabase.from('listing_showings').update(patch).eq('id', id)
       if (error) throw error
       onSaved?.(listing, { showingId:id, patch })
+      try {
+        await supabase.from('audit_log').insert({
+          agent_id: agent?.id || listing.agent_id, table_name:'listings', record_id:listing.id,
+          action:'showing_updated', field_name:'Showing',
+          metadata:{ description:'Showing feedback/details updated' }, created_at:new Date().toISOString(),
+        })
+      } catch {}
     } catch (e) { alert('Could not update showing: ' + (e.message||e)) }
   }
 
@@ -181,38 +210,43 @@ export default function ListingWorkspace({
   const ph = Array.isArray(listing.price_history) ? listing.price_history : []
   const sellerOverdue = !listing.seller_updated_at || (Date.now() - new Date(listing.seller_updated_at).getTime() > 7*86400000)
 
-  // Derive common feedback themes from existing feedback + notes text.
-  const themeSummary = (() => {
-    const counts = {}; const examples = {}
-    showings.forEach(s => {
-      const text = [s.feedback, s.notes].filter(Boolean).join('. ')
-      detectThemes(text).forEach(id => {
-        counts[id] = (counts[id]||0) + 1
-        if (!examples[id]) examples[id] = []
-        if (examples[id].length < 5) examples[id].push({ text, buyer: s.buyer_name || 'Anonymous', date: s.showing_date })
-      })
-    })
-    return THEME_DEFS
-      .filter(t => counts[t.id] > 0)
-      .map(t => ({ id: t.id, label: t.label, count: counts[t.id], examples: examples[t.id] }))
-      .sort((a,b) => b.count - a.count)
+  // "Since last seller update" -- real data filtered by seller_updated_at,
+  // falls back to "since listing" if never updated. Feeds the Seller Report.
+  const sinceUpdateCutoff = listing.seller_updated_at ? new Date(listing.seller_updated_at).getTime() : null
+  const sinceLabel = listing.seller_updated_at ? 'since last update (' + fmtDate(listing.seller_updated_at) + ')' : 'since listing'
+  const showingsSinceUpdate = showings.filter(s => !sinceUpdateCutoff || (s.showing_date && new Date(s.showing_date).getTime() > sinceUpdateCutoff))
+  const openHousesSinceUpdate = openHouses.filter(oh => !sinceUpdateCutoff || (oh.date && new Date(oh.date).getTime() > sinceUpdateCutoff))
+  const priceChangesSinceUpdate = ph.filter(p => !sinceUpdateCutoff || (p.date && new Date(p.date).getTime() > sinceUpdateCutoff))
+
+  // Days at current price (from the most recent price_history entry, else
+  // from the list date) -- derived from existing data, no new column.
+  const daysAtCurrentPrice = (() => {
+    const lastChange = ph.length ? ph[ph.length-1] : null
+    const since = lastChange?.date || listing.listed_date || listing.list_date
+    return since ? Math.floor((Date.now() - new Date(since).getTime()) / 86400000) : null
   })()
+
+  // Derive common feedback themes + buyer breakdown from the shared engine
+  // (src/lib/feedbackThemes.js) -- same source used by the My Listings row
+  // and the Seller Report, so counts can never drift between surfaces.
+  const themeSummary = buildThemeSummary(showings)
   // Objections = themes minus the positive/momentum ones, kept as
   // [id, count] tuples so existing 'price' checks below still work.
   const objections = themeSummary.filter(t => !['positive','second_showing','offer_coming'].includes(t.id)).map(t => [t.id, t.count]).slice(0,5)
+  const buyerStats = buildBuyerStats(showings)
 
-  // Buyer feedback breakdown (interested/neutral/not-interested/no-feedback + unique buyers)
-  const buyerStats = (() => {
-    const total = showings.length
-    const uniqueBuyers = new Set(showings.map(s => (s.buyer_name||'').trim().toLowerCase()).filter(Boolean)).size
-    const withFeedback = showings.filter(s => (s.feedback && s.feedback.trim()) || (s.notes && s.notes.trim())).length
-    return {
-      total, uniqueBuyers,
-      interested: showings.filter(s => (s.interest_level||3) >= 4).length,
-      neutral: showings.filter(s => (s.interest_level||3) === 3).length,
-      notInterested: showings.filter(s => (s.interest_level||3) <= 2).length,
-      noFeedback: total - withFeedback,
-    }
+
+  // Needs-attention items -- computed once, used by both the header's Key
+  // Alerts badge and the Tasks/Next Action tab's detailed list.
+  const needsAttentionItems = (() => {
+    const items = []
+    if (sellerOverdue && (status==='Active'||status==='Coming Soon')) items.push(['⚠️','Seller update overdue','#DC2626'])
+    if (showings.length===0 && status==='Active') items.push(['👀','No showings logged yet','#B45309'])
+    if (d!=null && d>60 && status==='Active') items.push(['📅','On market 60+ days ('+d+')','#B45309'])
+    if (!listing.seller_contact_id) items.push(['🧑','Missing primary seller contact','#B45309'])
+    if (objections.some(([w])=>w==='price') && showings.length>=3) items.push(['💰','Price is a recurring objection','#2563EB'])
+    if (mktTasks && mktTasks.some(t=>t.status!=='done')) items.push(['📣','Marketing tasks still open on TC file','#B45309'])
+    return items
   })()
 
   // Recommended next action (from existing data)
@@ -236,7 +270,12 @@ export default function ListingWorkspace({
     lines.push(listing.addr + ([listing.city, listing.state].filter(Boolean).join(', ') ? ', ' + [listing.city, listing.state].filter(Boolean).join(', ') : ''))
     lines.push('Status: ' + status + '  ·  List Price: ' + fmt$(listing.list_price))
     lines.push('')
-    lines.push('SELLER-READY SUMMARY')
+    lines.push('WHAT HAPPENED ' + sinceLabel.toUpperCase())
+    lines.push('- ' + showingsSinceUpdate.length + ' new showing' + (showingsSinceUpdate.length!==1?'s':''))
+    lines.push('- ' + openHousesSinceUpdate.length + ' new open house' + (openHousesSinceUpdate.length!==1?'s':''))
+    lines.push('- ' + priceChangesSinceUpdate.length + ' price change' + (priceChangesSinceUpdate.length!==1?'s':''))
+    lines.push('')
+    lines.push('OVERALL SNAPSHOT')
     lines.push('- ' + showings.length + ' showings' + (avgInterest ? ' · average interest ' + avgInterest + '/5' : ''))
     lines.push('- ' + openHouses.length + ' open houses')
     lines.push('- Feedback captured on ' + showings.filter(s=>s.feedback).length + ' of ' + showings.length + ' showings')
@@ -347,6 +386,23 @@ export default function ListingWorkspace({
             <button onClick={()=>onLogShowing?.(listing)} style={{ padding:'8px 14px', borderRadius:9, border:'1px solid var(--brand)', background:'rgba(204,34,0,.06)', color:'var(--brand)', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff }}>👀 Add showing</button>
             <button onClick={()=>onScheduleOH?.(listing)} style={{ padding:'8px 14px', borderRadius:9, border:'1px solid #3B82F6', background:'rgba(59,130,246,.06)', color:'#3B82F6', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff }}>📅 Open house</button>
           </div>
+          <div style={{ display:'flex', gap:14, flexWrap:'wrap', marginTop:14, alignItems:'center' }}>
+            {needsAttentionItems.length>0 ? (
+              <button onClick={()=>setTab('tasks')} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:99, border:'1px solid rgba(220,38,38,.35)', background:'rgba(220,38,38,.08)', color:'#DC2626', fontSize:12, fontWeight:800, cursor:'pointer', fontFamily:ff }}>
+                ⚠️ {needsAttentionItems.length} key alert{needsAttentionItems.length!==1?'s':''}
+              </button>
+            ) : (
+              <span style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:99, border:'1px solid rgba(11,122,69,.3)', background:'rgba(11,122,69,.08)', color:'#0B7A45', fontSize:12, fontWeight:800 }}>✅ All caught up</span>
+            )}
+            {buyerStats.total>0 && (
+              <span style={{ fontSize:12.5, color:'var(--muted)' }}>
+                👍 {buyerStats.interested} interested · 🤔 {buyerStats.neutral} neutral · 👎 {buyerStats.notInterested} not interested
+              </span>
+            )}
+            {listing.original_price && listing.list_price && listing.original_price!==listing.list_price && (
+              <span style={{ fontSize:12.5, color:'var(--muted)' }}>Price moved {fmt$(listing.original_price)} → {fmt$(listing.list_price)}</span>
+            )}
+          </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:10, marginTop:14 }}>
             {statTile('Showings', showings.length, avgInterest?'avg '+avgInterest+'/5':null, '#8B5CF6', 'feedback')}
             {statTile('Open houses', openHouses.length, null, '#3B82F6', 'feedback')}
@@ -361,8 +417,46 @@ export default function ListingWorkspace({
       {/* ══ 3-COLUMN WORKSPACE ══ */}
       <div style={{ maxWidth:1440, margin:'0 auto', padding:'20px 28px 48px', display:'grid', gridTemplateColumns:'260px 1fr 260px', gap:20, alignItems:'start' }}>
 
-        {/* LEFT: People / Seller Contacts / Documents */}
+        {/* LEFT: Connected Records / Seller Contacts / Documents */}
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px' }}>
+            <div style={sectionTitle}>Connected Records</div>
+            {connected === null ? (
+              <div style={{ fontSize:12, color:'var(--muted)' }}>Checking…</div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <div>
+                  <div style={cLabel}>Internal listing ID</div>
+                  <div style={{ fontSize:11, color:'var(--muted)', fontFamily:'monospace' }} title={listing.id}>{listing.id.slice(0,8)}…</div>
+                </div>
+                {listing.mls_number && (
+                  <div><div style={cLabel}>MLS #</div><div style={{ fontSize:12.5, fontWeight:700 }}>{listing.mls_number}</div></div>
+                )}
+                <div>
+                  <div style={cLabel}>TC Board file</div>
+                  {connected.tcDeal ? (
+                    <div style={{ fontSize:12.5, fontWeight:700, color:'#0B7A45' }}>✓ Linked{connected.tcDeal.tc_phase ? ' · ' + connected.tcDeal.tc_phase : ''}</div>
+                  ) : (
+                    <div style={{ fontSize:12, color:'#B45309', fontWeight:600 }}>Not linked yet</div>
+                  )}
+                </div>
+                <div>
+                  <div style={cLabel}>Production deal</div>
+                  {connected.productionDeal ? (
+                    <div style={{ fontSize:12.5, fontWeight:700, color:'#0B7A45' }}>✓ Linked{connected.productionDeal.stage ? ' · ' + connected.productionDeal.stage : ''}</div>
+                  ) : (
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>Not linked yet</div>
+                  )}
+                </div>
+                <BoardLinks listingId={listing.id} />
+                {!connected.tcDeal && (
+                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
+                    Reverse matching (suggesting a TC file from this side) isn't built yet — today linking only works from the TC Board's "Connect listing" control. This is exactly what the proposed Phase 1 normalized-address work would add here.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px' }}>
             <SellerContacts listingId={listing.id} listingAgentId={listing.agent_id} />
           </div>
@@ -377,6 +471,7 @@ export default function ListingWorkspace({
             <div style={{ fontSize:12, color:'var(--muted)' }}>Document storage (agreement, disclosures, brochure, floor plans) is a later phase — no documents table yet.</div>
           </div>
         </div>
+
 
         {/* CENTER: tabs + working area */}
         <div style={{ minWidth:0 }}>
@@ -405,22 +500,14 @@ export default function ListingWorkspace({
 
               <div style={sectionTitle}>Needs attention</div>
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {(() => {
-                  const items = []
-                  if (sellerOverdue && (status==='Active'||status==='Coming Soon')) items.push(['⚠️','Seller update overdue','#DC2626'])
-                  if (showings.length===0 && status==='Active') items.push(['👀','No showings logged yet','#B45309'])
-                  if (d!=null && d>60 && status==='Active') items.push(['📅','On market 60+ days ('+d+')','#B45309'])
-                  if (!listing.seller_contact_id) items.push(['🧑','Missing primary seller contact','#B45309'])
-                  if (objections.some(([w])=>w==='price') && showings.length>=3) items.push(['💰','Price is a recurring objection','#2563EB'])
-                  if (mktTasks && mktTasks.some(t=>t.status!=='done')) items.push(['📣','Marketing tasks still open on TC file','#B45309'])
-                  if (items.length===0) return <div style={{ padding:16, textAlign:'center', color:'var(--muted)', fontSize:13, background:'var(--dim)', borderRadius:10 }}>✅ Nothing needs attention right now.</div>
-                  return items.map((it,i)=>(
-                    <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:'var(--panel)', border:'1px solid var(--border)', borderLeft:'3px solid '+it[2], borderRadius:10 }}>
-                      <span style={{ fontSize:16 }}>{it[0]}</span>
-                      <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{it[1]}</span>
-                    </div>
-                  ))
-                })()}
+                {needsAttentionItems.length===0 ? (
+                  <div style={{ padding:16, textAlign:'center', color:'var(--muted)', fontSize:13, background:'var(--dim)', borderRadius:10 }}>✅ Nothing needs attention right now.</div>
+                ) : needsAttentionItems.map((it,i)=>(
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:'var(--panel)', border:'1px solid var(--border)', borderLeft:'3px solid '+it[2], borderRadius:10 }}>
+                    <span style={{ fontSize:16 }}>{it[0]}</span>
+                    <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{it[1]}</span>
+                  </div>
+                ))}
               </div>
 
               {/* Open TC/listing tasks (read-only marketing-ish already loaded on marketing tab) */}
@@ -514,7 +601,18 @@ export default function ListingWorkspace({
               style={{ padding:'11px 16px', borderRadius:9, border:'1px solid var(--brand)', background:'var(--panel)', color:'var(--brand)', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:ff }}>{copyLabel}</button>
           </div>
 
-          <div style={sectionTitle}>Seller-ready summary</div>
+          <div style={sectionTitle}>What happened {sinceLabel}</div>
+          <div style={{ fontSize:13, lineHeight:1.9, marginBottom:14 }}>
+            <div>• <strong>{showingsSinceUpdate.length}</strong> new showing{showingsSinceUpdate.length!==1?'s':''}</div>
+            <div>• <strong>{openHousesSinceUpdate.length}</strong> new open house{openHousesSinceUpdate.length!==1?'s':''}</div>
+            <div>• <strong>{priceChangesSinceUpdate.length}</strong> price change{priceChangesSinceUpdate.length!==1?'s':''}</div>
+            <div>• Marketing: {mktTasks && mktTasks.length ? mktTasks.filter(t=>t.status==='done').length + ' of ' + mktTasks.length + ' items completed' : (mktStatus || 'not set')}</div>
+            {showingsSinceUpdate.length===0 && openHousesSinceUpdate.length===0 && priceChangesSinceUpdate.length===0 && (
+              <div style={{ color:'var(--muted)', fontStyle:'italic' }}>Nothing new {sinceLabel} — the report below will be quiet.</div>
+            )}
+          </div>
+
+          <div style={sectionTitle}>Overall snapshot</div>
           <div style={{ fontSize:13, lineHeight:1.9 }}>
             <div>• <strong>{showings.length}</strong> showings{avgInterest?' · average interest '+avgInterest+'/5':''}</div>
             <div>• <strong>{openHouses.length}</strong> open houses</div>
@@ -570,19 +668,54 @@ export default function ListingWorkspace({
               <div style={{ fontSize:12.5, color:'var(--muted)' }}>No linked TC file with marketing tasks. Marketing tasks are managed by the office on the TC Board.</div>
             ) : (
               <div>
-                {mktTasks.map(t => (
-                  <div key={t.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 10px', background:'var(--dim)', borderRadius:8, marginBottom:6 }}>
-                    <span style={{ fontSize:14 }}>{t.status==='done' ? '✅' : '⬜'}</span>
-                    <span style={{ flex:1, fontSize:12.5, color:'var(--text)', textDecoration: t.status==='done'?'line-through':'none' }}>{t.title}</span>
-                    {t.due_date && <span style={{ fontSize:11, color:'var(--muted)' }}>{fmtDate(t.due_date)}</span>}
-                  </div>
-                ))}
+                {(() => {
+                  const done = mktTasks.filter(t=>t.status==='done')
+                  const pending = mktTasks.filter(t=>t.status!=='done')
+                  const pct = mktTasks.length ? Math.round(done.length/mktTasks.length*100) : 0
+                  return (
+                    <>
+                      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+                        <div style={{ flex:1, height:8, borderRadius:99, background:'var(--dim)', overflow:'hidden' }}>
+                          <div style={{ width:pct+'%', height:'100%', background:'#0B7A45', borderRadius:99 }} />
+                        </div>
+                        <div style={{ fontSize:12.5, fontWeight:800, color:'var(--text)', whiteSpace:'nowrap' }}>{pct}% · {done.length}/{mktTasks.length} done</div>
+                      </div>
+                      {pending.length>0 && (
+                        <div style={{ marginBottom:10 }}>
+                          <div style={{ fontSize:10.5, fontWeight:800, color:'#B45309', textTransform:'uppercase', marginBottom:4 }}>Pending ({pending.length})</div>
+                          {pending.map(t=>(
+                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 10px', background:'var(--dim)', borderRadius:8, marginBottom:6 }}>
+                              <span style={{ fontSize:14 }}>⬜</span>
+                              <span style={{ flex:1, fontSize:12.5, color:'var(--text)' }}>{t.title}</span>
+                              {t.due_date && <span style={{ fontSize:11, color:'var(--muted)' }}>{fmtDate(t.due_date)}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {done.length>0 && (
+                        <div>
+                          <div style={{ fontSize:10.5, fontWeight:800, color:'#0B7A45', textTransform:'uppercase', marginBottom:4 }}>Completed ({done.length})</div>
+                          {done.map(t=>(
+                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 10px', background:'var(--dim)', borderRadius:8, marginBottom:6 }}>
+                              <span style={{ fontSize:14 }}>✅</span>
+                              <span style={{ flex:1, fontSize:12.5, color:'var(--text)', textDecoration:'line-through' }}>{t.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
                 <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>Read-only — managed by the office on the TC Board.</div>
               </div>
             )}
           </div>
 
-          <div style={{ marginTop:14, padding:'12px 14px', background:'rgba(59,130,246,.06)', border:'1px solid rgba(59,130,246,.25)', borderRadius:10, fontSize:12.5 }}>
+          <div style={{ marginTop:14, padding:'12px 14px', background:'rgba(120,53,15,.05)', border:'1px solid rgba(120,53,15,.2)', borderRadius:10, fontSize:12.5 }}>
+            <div style={{ fontWeight:700, marginBottom:2 }}>💵 Marketing cost — admin-only, future</div>
+            Estimated / actual cost tracking needs a dedicated marketing table (proposed, not built — see Phase 3). Not shown here because no reliable cost data exists yet; this section will not display a fake number.
+          </div>
+          <div style={{ marginTop:10, padding:'12px 14px', background:'rgba(59,130,246,.06)', border:'1px solid rgba(59,130,246,.25)', borderRadius:10, fontSize:12.5 }}>
             📣 A structured marketing checklist with files (drone, floor plans, brochure proofs, publication dates) will be added in a later phase.
           </div>
         </div>
@@ -596,6 +729,7 @@ export default function ListingWorkspace({
             <div style={{ ...card, flex:1, minWidth:120 }}><div style={cLabel}>Original</div><div style={{ fontSize:16, fontWeight:800 }}>{listing.original_price?fmt$(listing.original_price):'—'}</div></div>
             <div style={{ ...card, flex:1, minWidth:120 }}><div style={cLabel}>Current</div><div style={{ fontSize:16, fontWeight:800 }}>{listing.list_price?fmt$(listing.list_price):'—'}</div></div>
             <div style={{ ...card, flex:1, minWidth:120 }}><div style={cLabel}>Changes</div><div style={{ fontSize:16, fontWeight:800 }}>{ph.length}</div></div>
+            {daysAtCurrentPrice!=null && <div style={{ ...card, flex:1, minWidth:120 }}><div style={cLabel}>Days at current price</div><div style={{ fontSize:16, fontWeight:800 }}>{daysAtCurrentPrice}</div></div>}
           </div>
           {/* Inline price change */}
           <div style={{ ...card, maxWidth:360, marginBottom:16 }}>
@@ -632,6 +766,42 @@ export default function ListingWorkspace({
         </div>
       )}
 
+      {/* ── CONTACTS / PARTIES (read-only; seller from listing_contacts via
+           SellerContacts panel, other roles from tc_participants if a TC
+           file is linked) ── */}
+      {tab==='parties' && (
+        <div>
+          <div style={sectionTitle}>Seller</div>
+          <div style={{ fontSize:12.5, color:'var(--muted)', marginBottom:16 }}>See the Seller Contacts panel on the left.</div>
+
+          <div style={sectionTitle}>Other parties {connected?.tcDeal ? '(from TC file)' : ''}</div>
+          {!connected ? (
+            <div style={{ fontSize:12.5, color:'var(--muted)' }}>Loading…</div>
+          ) : !connected.tcDeal ? (
+            <div style={{ fontSize:12.5, color:'var(--muted)' }}>No TC file linked — buyer, attorneys, mortgage, inspector, appraiser, and title are managed on the TC Board once this listing is connected to a file.</div>
+          ) : parties===null ? (
+            <div style={{ fontSize:12.5, color:'var(--muted)' }}>Loading…</div>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:8 }}>
+              {CONNECTED_PARTY_ROLES.filter(r=>r.key!=='seller').map(r => {
+                const c = parties[r.key]
+                return (
+                  <div key={r.key} style={card}>
+                    <div style={cLabel}>{r.label}</div>
+                    {c ? (
+                      <div style={{ fontSize:12.5, fontWeight:700 }}>{contactName(c)}{c.phone?<div style={{ fontSize:11, color:'var(--muted)', fontWeight:400 }}>{c.phone}</div>:null}</div>
+                    ) : (
+                      <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Missing</div>
+                    )}
+                  </div>
+                )
+              })}
+              <div style={card}><div style={cLabel}>Photographer</div><div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Not tracked yet — no photographer role exists on the TC Board today.</div></div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── NOTES ── */}
       {tab==='notes' && (
         <div>
@@ -639,6 +809,27 @@ export default function ListingWorkspace({
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={10} placeholder="Add listing notes — anything the team should know about this property…"
             style={{ ...inp, width:'100%', resize:'vertical', boxSizing:'border-box', lineHeight:1.6 }} />
           <button onClick={()=>saveField('notes', notes||null, 'notes')} style={{ ...saveBtn('notes'), marginTop:10 }}>Save notes</button>
+        </div>
+      )}
+
+      {/* ── AGENT-FACING TIMELINE (same audit_log source as Admin Log, but
+           friendly sentences, no raw old/new diff clutter -- visible to
+           every agent on their own listing, not gated) ── */}
+      {tab==='timeline' && (
+        <div>
+          <div style={sectionTitle}>Activity timeline</div>
+          {logLoading ? <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>Loading…</div> :
+            adminLog.length===0 ? <div style={{ padding:20, textAlign:'center', color:'var(--muted)' }}>No activity recorded yet.</div> :
+            adminLog.map((a,i)=>(
+              <div key={a.id||i} style={{ display:'flex', gap:10, padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+                <div style={{ width:6, height:6, borderRadius:99, background:'#0B7A45', marginTop:6, flexShrink:0 }} />
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:12.5 }}>{a.metadata?.description || (a.field_name||'Updated') + ' changed'}</div>
+                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>{(a.agents?.name||'')}{a.agents?.name?' · ':''}{a.created_at?new Date(a.created_at).toLocaleString():''}</div>
+                </div>
+              </div>
+            ))}
+          <div style={{ marginTop:12, fontSize:11, color:'var(--muted)' }}>Shows status, price, seller-update, marketing, and note changes, plus showings added/edited. Task completions and file uploads aren't logged here yet.</div>
         </div>
       )}
 
