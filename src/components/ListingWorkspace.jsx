@@ -31,6 +31,54 @@ function dom(l) {
   return s ? Math.floor((Date.now() - new Date(s).getTime()) / 86400000) : null
 }
 const interestColor = n => n >= 4 ? '#10B981' : n >= 3 ? '#F5A623' : '#DC2626'
+const INTEREST_LABELS = { 5:'Very interested', 4:'Interested', 3:'Neutral', 2:'Lukewarm', 1:'Not interested' }
+
+// Feedback theme engine — keyword-based, with an explicit positive-override
+// check so common false positives ("great price", "loved the kitchen",
+// "beautiful bedrooms") are NOT counted as objections. Module-scope so it
+// can be shared by the workspace, the compact showing rows, and the
+// seller report text builder.
+const THEME_DEFS = [
+  { id:'price',     label:'Price too high',              negative:['too expensive','overpriced','over priced','price too high','too high','price is high','pricey','out of budget','above budget'],
+                     positive:['great price','good price','priced right','fair price','price is right','well priced','reasonably priced','good value','great value'] },
+  { id:'taxes',      label:'Taxes too high',              negative:['taxes too high','taxes are high','high taxes','tax burden'], positive:[] },
+  { id:'negotiate',  label:'Wants to negotiate',          negative:['negotiate','room to negotiate','flexible on price','open to offers below','will they take'], positive:[] },
+  { id:'size',       label:'Size too small',              negative:['too small','not enough space','feels small','felt small','smaller than expected','cramped','tight'], positive:['not too small'] },
+  { id:'bedrooms',   label:'Needs more bedrooms',         negative:['need more bedroom','needs more bedroom','not enough bedroom','too few bedroom'], positive:[] },
+  { id:'bathrooms',  label:'Needs more bathrooms',        negative:['need more bathroom','needs more bathroom','not enough bathroom','too few bathroom'], positive:[] },
+  { id:'basement',   label:'Basement concern',            negative:['basement is small','basement issue','basement concern','unfinished basement','basement flood','basement damp','basement musty'], positive:['loved the basement','great basement','finished basement'] },
+  { id:'condition',  label:'Needs updates / condition',   negative:['needs work','needs updating','needs updates','dated','outdated','needs renovation','run down','fixer'], positive:[] },
+  { id:'layout',     label:'Layout concern',              negative:['awkward layout','layout issue','weird layout',"layout doesn't work","layout didn't work",'poor flow'], positive:['great layout','loved the layout','good flow'] },
+  { id:'location',   label:'Location concern',            negative:['bad location','busy street','traffic noise','too far','location concern','far from'], positive:['great location','loved the location','perfect location'] },
+  { id:'kitchen',    label:'Kitchen concern',              negative:['kitchen is small','kitchen issue','kitchen needs','dated kitchen','outdated kitchen'], positive:['loved the kitchen','great kitchen','beautiful kitchen'] },
+  { id:'parking',    label:'Parking / driveway issue',    negative:['no parking','parking issue','driveway issue','street parking only','tight driveway','not enough parking'], positive:[] },
+  { id:'positive',   label:'Positive feedback',            negative:['loved it','love it','great price','perfect','beautiful','stunning','would offer','we love','they loved'], positive:[] },
+  { id:'second_showing', label:'Wants second showing',    negative:['second showing','come back','another showing','wants to see again','bring the family'], positive:[] },
+  { id:'offer_coming',   label:'Offer coming / serious interest', negative:['offer coming','writing an offer','putting in an offer','submitting an offer','very interested','serious interest'], positive:[] },
+]
+function detectThemes(text) {
+  if (!text) return []
+  const t = text.toLowerCase()
+  const found = []
+  for (const theme of THEME_DEFS) {
+    const hasNegative = theme.negative.some(p => t.includes(p))
+    if (!hasNegative) continue
+    const hasPositiveOverride = theme.positive.some(p => t.includes(p))
+    if (hasPositiveOverride && theme.id !== 'positive') continue
+    found.push(theme.id)
+  }
+  return found
+}
+const themeLabel = id => (THEME_DEFS.find(t => t.id === id) || {}).label || id
+// Main (highest-priority) theme for a single showing's compact-row chip.
+function mainThemeFor(showing) {
+  const text = [showing.feedback, showing.notes].filter(Boolean).join('. ')
+  const ids = detectThemes(text)
+  if (!ids.length) return null
+  // Prefer a concern/objection over a purely positive/momentum theme for the chip
+  const priority = ids.find(id => !['positive','second_showing','offer_coming'].includes(id)) || ids[0]
+  return priority
+}
 
 export default function ListingWorkspace({
   listing, agent, showings = [], openHouses = [], onBack, onSaved,
@@ -134,40 +182,6 @@ export default function ListingWorkspace({
   const sellerOverdue = !listing.seller_updated_at || (Date.now() - new Date(listing.seller_updated_at).getTime() > 7*86400000)
 
   // Derive common feedback themes from existing feedback + notes text.
-  // Keyword-based, with an explicit positive-override check so common
-  // false positives ("great price", "loved the kitchen", "beautiful
-  // bedrooms") are NOT counted as objections.
-  const THEME_DEFS = [
-    { id:'price',     label:'Price too high',              negative:['too expensive','overpriced','over priced','price too high','too high','price is high','pricey','out of budget','above budget'],
-                       positive:['great price','good price','priced right','fair price','price is right','well priced','reasonably priced','good value','great value'] },
-    { id:'taxes',      label:'Taxes too high',              negative:['taxes too high','taxes are high','high taxes','tax burden'], positive:[] },
-    { id:'negotiate',  label:'Wants to negotiate',          negative:['negotiate','room to negotiate','flexible on price','open to offers below','will they take'], positive:[] },
-    { id:'size',       label:'Size too small',              negative:['too small','not enough space','feels small','felt small','smaller than expected','cramped','tight'], positive:['not too small'] },
-    { id:'bedrooms',   label:'Needs more bedrooms',         negative:['need more bedroom','needs more bedroom','not enough bedroom','too few bedroom'], positive:[] },
-    { id:'bathrooms',  label:'Needs more bathrooms',        negative:['need more bathroom','needs more bathroom','not enough bathroom','too few bathroom'], positive:[] },
-    { id:'basement',   label:'Basement concern',            negative:['basement is small','basement issue','basement concern','unfinished basement','basement flood','basement damp','basement musty'], positive:['loved the basement','great basement','finished basement'] },
-    { id:'condition',  label:'Needs updates / condition',   negative:['needs work','needs updating','needs updates','dated','outdated','needs renovation','run down','fixer'], positive:[] },
-    { id:'layout',     label:'Layout concern',              negative:['awkward layout','layout issue','weird layout',"layout doesn't work","layout didn't work",'poor flow'], positive:['great layout','loved the layout','good flow'] },
-    { id:'location',   label:'Location concern',            negative:['bad location','busy street','traffic noise','too far','location concern','far from'], positive:['great location','loved the location','perfect location'] },
-    { id:'kitchen',    label:'Kitchen concern',              negative:['kitchen is small','kitchen issue','kitchen needs','dated kitchen','outdated kitchen'], positive:['loved the kitchen','great kitchen','beautiful kitchen'] },
-    { id:'parking',    label:'Parking / driveway issue',    negative:['no parking','parking issue','driveway issue','street parking only','tight driveway','not enough parking'], positive:[] },
-    { id:'positive',   label:'Positive feedback',            negative:['loved it','love it','great price','perfect','beautiful','stunning','would offer','we love','they loved'], positive:[] },
-    { id:'second_showing', label:'Wants second showing',    negative:['second showing','come back','another showing','wants to see again','bring the family'], positive:[] },
-    { id:'offer_coming',   label:'Offer coming / serious interest', negative:['offer coming','writing an offer','putting in an offer','submitting an offer','very interested','serious interest'], positive:[] },
-  ]
-  function detectThemes(text) {
-    if (!text) return []
-    const t = text.toLowerCase()
-    const found = []
-    for (const theme of THEME_DEFS) {
-      const hasNegative = theme.negative.some(p => t.includes(p))
-      if (!hasNegative) continue
-      const hasPositiveOverride = theme.positive.some(p => t.includes(p))
-      if (hasPositiveOverride && theme.id !== 'positive') continue
-      found.push(theme.id)
-    }
-    return found
-  }
   const themeSummary = (() => {
     const counts = {}; const examples = {}
     showings.forEach(s => {
@@ -186,7 +200,6 @@ export default function ListingWorkspace({
   // Objections = themes minus the positive/momentum ones, kept as
   // [id, count] tuples so existing 'price' checks below still work.
   const objections = themeSummary.filter(t => !['positive','second_showing','offer_coming'].includes(t.id)).map(t => [t.id, t.count]).slice(0,5)
-  const themeLabel = id => (THEME_DEFS.find(t => t.id === id) || {}).label || id
 
   // Buyer feedback breakdown (interested/neutral/not-interested/no-feedback + unique buyers)
   const buyerStats = (() => {
@@ -466,21 +479,7 @@ export default function ListingWorkspace({
                   <span>👤 {name}</span><span style={{ color:'var(--muted)' }}>{list.length} showing{list.length!==1?'s':''}</span>
                 </div>
                 {list.map(s=>(
-                  <div key={s.id} style={{ padding:'10px 12px', borderTop:'1px solid var(--border)' }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', gap:8, marginBottom:6 }}>
-                      <span style={{ fontSize:13, fontWeight:700 }}>{s.buyer_name||'Buyer'}</span>
-                      <span style={{ fontSize:11.5, color:'var(--muted)' }}>{s.showing_date?fmtDate(s.showing_date):''}</span>
-                    </div>
-                    <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-                      <label style={{ fontSize:11, color:'var(--muted)' }}>Interest
-                        <select defaultValue={s.interest_level||3} onChange={e=>updateShowing(s.id, { interest_level:parseInt(e.target.value) })} style={{ ...inp, marginLeft:6, padding:'3px 6px' }}>
-                          {[1,2,3,4,5].map(n=><option key={n} value={n}>{n}</option>)}
-                        </select>
-                      </label>
-                    </div>
-                    <input defaultValue={s.feedback||''} placeholder="Feedback…" onBlur={e=>{ if(e.target.value!==(s.feedback||'')) updateShowing(s.id,{ feedback:e.target.value }) }} style={{ ...inp, width:'100%', marginTop:6, boxSizing:'border-box' }} />
-                    <input defaultValue={s.notes||''} placeholder="Notes…" onBlur={e=>{ if(e.target.value!==(s.notes||'')) updateShowing(s.id,{ notes:e.target.value }) }} style={{ ...inp, width:'100%', marginTop:6, fontSize:12, boxSizing:'border-box' }} />
-                  </div>
+                  <ShowingRow key={s.id} showing={s} onUpdate={patch => updateShowing(s.id, patch)} />
                 ))}
               </div>
             ))}
@@ -711,6 +710,90 @@ function ThemeRow({ theme }) {
           {theme.examples.map((ex,i)=>(
             <div key={i} style={{ fontSize:11.5, color:'var(--muted)' }}>"{ex.text}" — {ex.buyer}{ex.date?', '+fmtDate(ex.date):''}</div>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Compact, expandable showing row. Collapsed: buyer, date, interest badge,
+// main feedback theme chip, note preview. Expanded: inline edit of interest,
+// showing date, showing agent, feedback, notes -- all real listing_showings
+// columns, no schema change. 'Status' is derived from interest_level since
+// there is no separate buyer-status column on listing_showings.
+function ShowingRow({ showing, onUpdate }) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [buf, setBuf] = useState({
+    interest_level: showing.interest_level || 3,
+    feedback: showing.feedback || '',
+    notes: showing.notes || '',
+    showing_date: showing.showing_date ? String(showing.showing_date).slice(0,10) : '',
+    agent_name: showing.agent_name || '',
+  })
+  const mainTheme = mainThemeFor(showing)
+  const hasFeedback = !!(showing.feedback || showing.notes)
+  const preview = [showing.feedback, showing.notes].filter(Boolean).join(' — ').slice(0, 70)
+  const interestLbl = INTEREST_LABELS[showing.interest_level || 3] || 'Neutral'
+  const rowInp = { padding:'6px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12.5, fontFamily:ff, width:'100%', boxSizing:'border-box' }
+  const miniLabel = { fontSize:10, color:'var(--muted)', marginBottom:3, fontWeight:700, textTransform:'uppercase', letterSpacing:'.03em' }
+
+  async function save() {
+    setSaving(true)
+    await onUpdate({
+      interest_level: parseInt(buf.interest_level) || 3,
+      feedback: buf.feedback || null,
+      notes: buf.notes || null,
+      showing_date: buf.showing_date || null,
+      agent_name: buf.agent_name || null,
+    })
+    setSaving(false)
+    setOpen(false)
+  }
+
+  return (
+    <div style={{ borderTop:'1px solid var(--border)' }}>
+      <div onClick={()=>setOpen(p=>!p)} style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 12px', cursor:'pointer' }}>
+        <span style={{ fontSize:12.5, fontWeight:700, color:'var(--text)', minWidth:88, flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{showing.buyer_name || 'Buyer'}</span>
+        <span style={{ fontSize:11, color:'var(--muted)', minWidth:58, flexShrink:0 }}>{showing.showing_date ? fmtDate(showing.showing_date) : '—'}</span>
+        <span style={{ fontSize:10, fontWeight:700, color:interestColor(showing.interest_level||3), background:interestColor(showing.interest_level||3)+'18', padding:'2px 7px', borderRadius:99, flexShrink:0, whiteSpace:'nowrap' }}>{interestLbl}</span>
+        {mainTheme && <span style={{ fontSize:10, fontWeight:600, color:'#B45309', background:'rgba(245,166,35,.14)', padding:'2px 7px', borderRadius:99, flexShrink:0, whiteSpace:'nowrap' }}>{themeLabel(mainTheme)}</span>}
+        <span style={{ fontSize:11.5, color:hasFeedback?'var(--muted)':'#DC2626', fontStyle:hasFeedback?'normal':'italic', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          {hasFeedback ? preview : 'No feedback yet'}
+        </span>
+        <span style={{ fontSize:11.5, color:'var(--brand)', fontWeight:700, flexShrink:0 }}>{open ? '▴ Close' : '✎ Edit'}</span>
+      </div>
+
+      {open && (
+        <div style={{ padding:'2px 12px 12px' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:8, marginBottom:8 }}>
+            <div>
+              <div style={miniLabel}>Interest</div>
+              <select value={buf.interest_level} onChange={e=>setBuf(p=>({ ...p, interest_level:e.target.value }))} style={rowInp}>
+                {[5,4,3,2,1].map(n=><option key={n} value={n}>{n} — {INTEREST_LABELS[n]}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={miniLabel}>Showing date</div>
+              <input type="date" value={buf.showing_date} onChange={e=>setBuf(p=>({ ...p, showing_date:e.target.value }))} style={rowInp} />
+            </div>
+            <div>
+              <div style={miniLabel}>Showing agent</div>
+              <input value={buf.agent_name} onChange={e=>setBuf(p=>({ ...p, agent_name:e.target.value }))} placeholder="Agent name" style={rowInp} />
+            </div>
+          </div>
+          <div style={{ marginBottom:8 }}>
+            <div style={miniLabel}>Feedback</div>
+            <input value={buf.feedback} onChange={e=>setBuf(p=>({ ...p, feedback:e.target.value }))} placeholder="What did the buyer say?" style={rowInp} />
+          </div>
+          <div style={{ marginBottom:10 }}>
+            <div style={miniLabel}>Notes</div>
+            <input value={buf.notes} onChange={e=>setBuf(p=>({ ...p, notes:e.target.value }))} placeholder="Internal notes…" style={rowInp} />
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={save} disabled={saving} style={{ padding:'6px 14px', borderRadius:7, border:'none', background:'var(--brand)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity:saving?0.6:1 }}>{saving?'Saving…':'Save'}</button>
+            <button onClick={()=>setOpen(false)} style={{ padding:'6px 14px', borderRadius:7, border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}>Cancel</button>
+          </div>
         </div>
       )}
     </div>
