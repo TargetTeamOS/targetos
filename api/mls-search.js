@@ -80,7 +80,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   if (req.method !== 'GET') return res.status(405).end(JSON.stringify({ error: 'GET only' }))
 
-  // Staged auth (same pattern as the other endpoints)
+  // Fail-closed authentication; feature authorization is evaluated below.
   const { authenticate, sendAuthError } = require('./_lib/auth')
   const identity = await authenticate(req)
   if (!identity.ok) return sendAuthError(res, identity)

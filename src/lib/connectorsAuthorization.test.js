@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import fs from 'node:fs'
 import * as connectorsModule from '../../api/connectors.js'
 const connectors = connectorsModule.default || connectorsModule
 
@@ -19,5 +20,14 @@ describe('connector authorization policy', () => {
     const body = { agent_id: 'other-agent' }
     expect(connectors.personalAgentId(identity, body)).toBe('authenticated-agent')
     expect(connectors.personalAgentId(identity, body)).not.toBe(body.agent_id)
+  })
+
+  it('preserves authenticated organization fallback use without trusting agent_id', () => {
+    for (const file of ['api/calendar-push.js', 'api/sheets-export.js']) {
+      const source = fs.readFileSync(file, 'utf8')
+      expect(source).toContain('const agentId = identity.agent.id')
+      expect(source).not.toContain('body.agent_id')
+      expect(source).not.toMatch(/if\s*\(!token\s*&&\s*(?:isAdminRole|require\([^)]*\)\.isAdminRole)/)
+    }
   })
 })
