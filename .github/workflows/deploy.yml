@@ -34,7 +34,7 @@ jobs:
           OAUTH_STATE_SECRET: test-only-oauth-state-secret-32-bytes
           CRON_SECRET: test-only-cron-secret-32-bytes-value
           UNSUB_SECRET: test-only-unsub-secret-32-bytes
-          APP_ORIGINS: https://app.example.test
+          APP_ORIGINS: https://app.targetreteam.com,https://app.example.test
           PUBLIC_BASE_URL: https://app.example.test
           TWILIO_AUTH_TOKEN: test-only-twilio-token-32-bytes
 
