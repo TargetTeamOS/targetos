@@ -14,11 +14,9 @@ const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
-  const CRON_SECRET = process.env.CRON_SECRET
-  if (CRON_SECRET && req.headers['authorization'] !== 'Bearer ' + CRON_SECRET) {
-    console.warn('[report-cron] BLOCKED unauthorized invocation')
-    return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
-  }
+  const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
+  const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
+  if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
   const RESEND_KEY = process.env.RESEND_API_KEY
   if (!RESEND_KEY) return res.status(500).end(JSON.stringify({ error: 'Email service not configured' }))
 

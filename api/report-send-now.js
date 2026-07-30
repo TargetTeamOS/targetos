@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // /api/report-send-now — admin "send test / send now" for a report
-// definition. Auth-gated (staged AUTH_ENFORCE). Body: { reportId } or
+// definition. Hard-authenticated and admin-only. Body: { reportId } or
 // an inline { def, recipients }.
 // ═══════════════════════════════════════════════════════════════
 'use strict'
@@ -14,10 +14,9 @@ async function readBody(req) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
-  const { requireUser } = require('./_lib/auth')
-  const user = await requireUser(req)
-  if (!user && String(process.env.AUTH_ENFORCE||'').toLowerCase()==='true') return res.status(401).end(JSON.stringify({ error:'unauthorized' }))
-  if (!user) console.warn('[AUTH] unauthenticated call to /api/report-send-now ALLOWED (log-only)')
+  const { authenticate, sendAuthError } = require('./_lib/auth')
+  const identity = await authenticate(req, { roles: ['admin'] })
+  if (!identity.ok) return sendAuthError(res, identity)
 
   const RESEND_KEY = process.env.RESEND_API_KEY
   if (!RESEND_KEY) return res.status(500).end(JSON.stringify({ error:'Email service not configured' }))

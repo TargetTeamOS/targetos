@@ -16,15 +16,9 @@ module.exports = async function handler(req, res) {
   // repeatedly, using your Resend credits) -- add CRON_SECRET in Vercel
   // env vars to close this. Logs a warning rather than hard-blocking
   // until it's configured, so the actual cron schedule doesn't break.
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const authHeader = req.headers['authorization'] || ''
-    if (authHeader !== 'Bearer ' + cronSecret) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
-  } else {
-    console.warn('[task-reminders] CRON_SECRET not set — endpoint is unauthenticated. Add CRON_SECRET to Vercel env vars.')
-  }
+  const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
+  const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
+  if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
 
   // Allow GET (cron) or POST (manual trigger)
   const sb = getSupabase()

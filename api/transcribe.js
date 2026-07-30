@@ -24,14 +24,9 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
   // Staged auth (same pattern as the other endpoints)
-  const { requireUser } = require('./_lib/auth')
-  const user = await requireUser(req)
-  if (!user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to /api/transcribe ALLOWED (log-only)')
-  }
+  const { authenticate, sendAuthError } = require('./_lib/auth')
+  const identity = await authenticate(req)
+  if (!identity.ok) return sendAuthError(res, identity)
 
   const openaiKey = process.env.OPENAI_API_KEY
   if (!openaiKey) {

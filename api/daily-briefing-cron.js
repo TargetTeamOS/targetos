@@ -53,11 +53,9 @@ module.exports = async function handler(req, res) {
   // HARDENED (July 2026): the secret is now ENFORCED. Previously a
   // mismatch only logged a warning and the send proceeded anyway,
   // meaning anything that hit this URL triggered a full team send.
-  const CRON_SECRET = process.env.CRON_SECRET
-  if (CRON_SECRET && req.headers['authorization'] !== 'Bearer ' + CRON_SECRET) {
-    console.warn('[daily-briefing-cron] BLOCKED unauthorized invocation')
-    return res.status(401).json({ ok: false, error: 'unauthorized' })
-  }
+  const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
+  const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
+  if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
 
   const force = /[?&]force=1/.test(req.url || '')
   const supabase = getSupabase()
@@ -196,15 +194,11 @@ module.exports = async function handler(req, res) {
               if (action.type === 'send_email') {
                 const roleAgent = cfg.to_role ? agents?.find(a => a.role === cfg.to_role) : null
                 const to = (cfg.to_email && fill(cfg.to_email)) || roleAgent?.email || 'office@targetreteam.com'
-                await fetch('https://api.resend.com/emails', {
-                  method: 'POST',
-                  headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    from: 'TargetOS <office@targetreteam.com>', to: [to],
-                    ...(cfg.cc_email ? { cc: String(cfg.cc_email).split(',').map(x => x.trim()).filter(Boolean) } : {}),
-                    subject: fill(cfg.subject || 'TargetOS alert'),
-                    html: '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">' + fill(cfg.body || '').replace(/\n/g, '<br/>') + '</div>',
-                  }),
+                await sendSystemEmail({
+                  to,
+                  subject: fill(cfg.subject || 'TargetOS alert'),
+                  html: '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">' + fill(cfg.body || '').replace(/\n/g, '<br/>') + '</div>',
+                  idempotencyKey: 'closing-alert:' + auto.id + ':' + deal.id,
                 })
               }
             } catch (e) { console.warn('[closing-cron] action failed:', e.message) }

@@ -5,7 +5,7 @@
 const SUPABASE_URL     = 'https://sgrnyvdsyahmypibjarx.supabase.co'
 const SUPABASE_ANON    = 'sb_publishable_L4MNs2GuBFnmyNKgiIGBMg_nNxeaLkE'
 const TWILIO_NUMBER    = '+18453271778'
-const BASE_URL         = 'https://app.targetreteam.com'
+const BASE_URL         = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '')
 const DEFAULT_VOICE    = 'Polly.Joanna'
 
 // ── TWIML BUILDERS ────────────────────────────────────────────────
@@ -131,16 +131,16 @@ function validateTwilioSignature(req, params) {
   try {
     const twilio = require('twilio')
     const authToken = process.env.TWILIO_AUTH_TOKEN
-    if (!authToken) {
-      console.warn('[TWILIO-SIG] TWILIO_AUTH_TOKEN not set — cannot validate, skipping check')
-      return null // unknown, not a pass or fail
+    if (!authToken || !BASE_URL) {
+      console.warn('[TWILIO-SIG] required verification configuration is missing - validation denied')
+      return false
     }
     const signature = req.headers['x-twilio-signature']
     const url = BASE_URL + req.url
     return twilio.validateRequest(authToken, signature, url, params || {})
   } catch (e) {
     console.warn('[TWILIO-SIG] validation threw an error:', e.message)
-    return null
+    return false
   }
 }
 
@@ -177,6 +177,18 @@ function logTwilioValidation(req, params, endpointName) {
 //   if (!checkTwilioSignature(req, res, body, 'twilio-inbound')) return
 function checkTwilioSignature(req, res, params, endpointName) {
   const result = validateTwilioSignature(req, params)
+  if (result !== true) {
+    const blockedFrom = req.headers['x-forwarded-for'] || 'unknown'
+    console.warn('[TWILIO-SIG] BLOCKED forged, invalid, or unverifiable request to ' + (endpointName || req.url) + ' from: ' + blockedFrom)
+    try {
+      res.statusCode = 403
+      res.setHeader('Content-Type', 'text/plain')
+      res.end('Forbidden')
+    } catch (e) { /* response may already be committed */ }
+    return false
+  }
+  return true
+
   if (result !== false) return true   // pass, or unknown → allow
 
   const from = req.headers['x-forwarded-for'] || 'unknown'

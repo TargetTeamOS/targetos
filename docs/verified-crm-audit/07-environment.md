@@ -4,7 +4,7 @@
 
 - **Verified** — Names below are read by committed source through `process.env`, `import.meta.env`, `Deno.env`, or dynamic key lookup.
 - **Unknown** — Values, scopes, and presence in live Vercel/Supabase environments were not inspected.
-- **Missing implementation** — No `.env.example` or machine-readable environment schema is committed.
+- **Verified** - Phase 1 adds `.env.example` with descriptions/placeholders and no live secret values.
 
 ## Browser build variables
 
@@ -125,4 +125,9 @@
 - **Verified** — Several modules contain fallback production URLs or sender addresses.
 - **Verified** — Edge Functions use hard-coded application URLs and, in two functions, hard-coded personal recipient mappings/lists.
 - **Missing implementation** — No startup/preflight environment validator verifies required combinations, forbids service keys in browser variables, or checks that security flags are enabled.
-- **Missing implementation** — No documented rotation process exists for OAuth token keys, cron/unsubscribe secrets, Twilio credentials, service keys, provider secrets, or webhook secrets.
+- **Missing implementation** - No documented rotation process exists for OAuth token keys, cron/unsubscribe secrets, Twilio credentials, service keys, provider secrets, or webhook secrets.
+
+## Phase 1 required values
+
+- **Missing implementation until configured** - `OAUTH_STATE_SECRET`, `CRON_SECRET`, and `UNSUB_SECRET` must be independent strong random values.
+- **Missing implementation until configured** - `APP_ORIGINS`, `PUBLIC_BASE_URL`, and `TWILIO_AUTH_TOKEN` must match the deployed application and Twilio console.

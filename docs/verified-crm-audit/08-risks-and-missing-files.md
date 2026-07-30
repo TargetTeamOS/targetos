@@ -106,4 +106,10 @@
 - **Partially verified** — The repository demonstrates a wide and substantial CRM implementation, but it is not production-auditable or safely reproducible in its current form.
 - **Partially verified** — A repository-only usability estimate would be approximately **55–65% for controlled internal use**, not a measured production uptime score. The range reflects broad UI coverage offset by security gates, missing schema, job defects, integration gaps, and blocked end-to-end verification.
 - **Unknown** — Actual user usability may be higher if production contains the missing schema and secure environment settings, or lower if it does not. A live read-only audit and role-based workflow test are required for a defensible percentage.
-- **Verified** — Continued development is feasible, but the next work should be stabilization and security rather than adding new surface area.
+- **Verified** - Continued development is feasible, but the next work should be stabilization and security rather than adding new surface area.
+
+## Phase 1 disposition
+
+- **Verified** - The first three P0 findings in the table (14 audited flag-dependent handlers after the connector-send correction, OAuth ownership, and shared passwords) are corrected on `codex/security-authentication-repair`.
+- **Verified** - The two undeclared `RESEND_KEY` runtime defects are corrected through the existing system mailer.
+- **Security risk** - Service-role Edge Functions, missing schema/migrations, live RLS, rate limits, and non-Phase-1 staged-auth handlers remain.

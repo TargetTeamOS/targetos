@@ -35,7 +35,7 @@ export function MyEmailAccounts() {
       const r = await fetch('/api/connectors', {
         method: 'POST',
         headers: Object.assign({ 'Content-Type': 'application/json' }, h),
-        body: JSON.stringify({ action: 'my_accounts', agent_id: agent.id }),
+        body: JSON.stringify({ action: 'my_accounts' }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'load failed')
@@ -52,12 +52,26 @@ export function MyEmailAccounts() {
       const r = await fetch('/api/connectors', {
         method: 'POST',
         headers: Object.assign({ 'Content-Type': 'application/json' }, h),
-        body: JSON.stringify({ action: 'disconnect_my_account', agent_id: agent.id, provider }),
+        body: JSON.stringify({ action: 'disconnect_my_account', provider }),
       })
       if (!r.ok) { const j = await r.json(); throw new Error(j.error || 'disconnect failed') }
       await load()
     } catch (e) { setErr(e.message) }
     setBusy('')
+  }
+
+  async function connect(provider) {
+    setBusy(provider.id)
+    try {
+      const h = await authHeaders()
+      const r = await fetch(provider.oauth + '?step=start', { method: 'POST', headers: h })
+      const j = await r.json()
+      if (!r.ok || !j.url) throw new Error(j.error || 'connection could not start')
+      window.location.assign(j.url)
+    } catch (e) {
+      setErr(e.message)
+      setBusy('')
+    }
   }
 
   if (!agent) return null
@@ -87,7 +101,7 @@ export function MyEmailAccounts() {
               <button onClick={() => disconnect(p.id)} disabled={busy === p.id}
                 style={Object.assign({}, btn, { background: '#F1F5F9', color: '#334155' })}>Disconnect</button>
             ) : (
-              <button onClick={() => { window.location.href = p.oauth + '?step=start&agent_id=' + agent.id }}
+              <button onClick={() => connect(p)} disabled={busy === p.id}
                 style={Object.assign({}, btn, { background: '#2563EB', color: '#fff' })}>Connect</button>
             )}
           </div>
