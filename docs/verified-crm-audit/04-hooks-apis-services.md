@@ -148,4 +148,9 @@
 - **Verified** — The repository smoke script verified that all route handlers have `module.exports`, every route element is imported, 670 relative source imports resolve, and 66 non-catch-all route paths are unique.
 - **Security risk** — Fifteen privileged handlers rely on `AUTH_ENFORCE` as their only user-authentication gate. Many service-role APIs also accept caller-supplied record or agent identifiers, so ownership cannot be safely tied to a verified caller when that flag is off.
 - **Security risk** — Several APIs return underlying `error.message`, increasing internal schema/provider disclosure.
-- **Missing implementation** — There is no centralized middleware that fails closed for authentication, role, origin, method, size, and rate limits.
+- **Missing implementation** - There is no centralized middleware that fails closed for authentication, role, origin, method, size, and rate limits.
+
+## Phase 1 correction
+
+- **Verified** - `api/_lib/auth.js` and `api/_lib/requestSecurity.js` now centralize fail-closed identity, role, required-secret, constant-time, origin, and expiring-token checks for the approved Phase 1 routes.
+- **Partially verified** - Rate limiting and request-size enforcement remain missing, and non-Phase-1 routes were not broadened into this PR.

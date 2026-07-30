@@ -3,12 +3,12 @@
 // agent's connected external calendar (Outlook first, else Google;
 // org-level office account as final fallback). Fire-and-forget from
 // the Calendar page: a failure here never blocks the in-app save.
-// Body: { agent_id?, title, start_date, start_time?, end_date?,
+// Body: { title, start_date, start_time?, end_date?,
 //         end_time?, all_day?, location?, description? }
 // Times are treated as America/New_York.
 
 const { getIntegration, freshMicrosoftToken, freshGoogleToken, logEvent,
-        getAgentAccount, freshAccountToken, agentIdFromAuthUser } = require('./_lib/connectors')
+        getAgentAccount, freshAccountToken } = require('./_lib/connectors')
 
 const TZ = 'America/New_York'
 
@@ -47,15 +47,9 @@ function buildTimes(b) {
 }
 
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
-      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
-  }
+  const { authenticate, sendAuthError } = require('./_lib/auth')
+  const identity = await authenticate(req)
+  if (!identity.ok) return sendAuthError(res, identity)
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
@@ -68,8 +62,7 @@ module.exports = async function handler(req, res) {
     if (!title) { res.status(400).json({ error: 'title required' }); return }
     const t = buildTimes(body)
 
-    let agentId = body.agent_id || null
-    if (!agentId && __user) agentId = await agentIdFromAuthUser(__user.id)
+    const agentId = identity.agent.id
 
     // pick a destination: agent outlook → agent google → office outlook → office google
     let provider = null, token = null, account = ''
@@ -81,11 +74,11 @@ module.exports = async function handler(req, res) {
         if (gg && gg.status === 'connected') { provider = 'google'; token = await freshAccountToken('google', gg); account = gg.account_email || '' }
       }
     }
-    if (!token) {
+    if (!token && require('./_lib/auth').isAdminRole(identity.agent.role)) {
       const ms = await getIntegration('outlook')
       if (ms && ms.status === 'connected') { provider = 'outlook'; token = await freshMicrosoftToken(ms); account = (ms.secrets || {}).account_email || '' }
     }
-    if (!token) {
+    if (!token && require('./_lib/auth').isAdminRole(identity.agent.role)) {
       const gg = await getIntegration('google')
       if (gg && gg.status === 'connected') { provider = 'google'; token = await freshGoogleToken(gg); account = (gg.secrets || {}).account_email || '' }
     }

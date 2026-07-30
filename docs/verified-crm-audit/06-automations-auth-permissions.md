@@ -101,4 +101,10 @@ The repository contains overlapping automation engines:
 - **Verified** — API authentication must fail closed and derive agent identity from the validated Supabase user, never from a caller-supplied `agent_id`.
 - **Verified** — Service-role handlers need explicit resource/role authorization because service-role queries bypass RLS.
 - **Verified** — Database RLS and restricted RPCs must be the final enforcement layer for browser-direct Supabase calls.
-- **Verified** — Cron and webhook endpoints require fail-closed secrets/signatures with safe rotation and no “configured only” bypass.
+- **Verified** - Cron and webhook endpoints require fail-closed secrets/signatures with safe rotation and no "configured only" bypass.
+
+## Phase 1 correction
+
+- **Verified** - The 14 audited flag-dependent handlers no longer consult `AUTH_ENFORCE`; their permission levels are recorded in `11-phase-1-security-implementation.md`.
+- **Verified** - Predictable account password fallbacks were removed in favor of invitation/recovery flows.
+- **Verified** - cron, inbound webhook, Twilio, and unsubscribe validation now fail closed when required secrets are absent or invalid.

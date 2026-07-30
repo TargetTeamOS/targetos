@@ -106,4 +106,10 @@
 | OpenAI/Anthropic | AI assistant/transcription proxy paths | **Verified** |
 | Sentry/PostHog | Browser initialization in `main.jsx` | **Verified** |
 
-- **Partially verified** — Credentials, provider configuration, quotas, contractual access, and live operation for every external integration are **Unknown**.
+- **Partially verified** - Credentials, provider configuration, quotas, contractual access, and live operation for every external integration are **Unknown**.
+
+## Phase 1 correction
+
+- **Verified** - Google/Microsoft OAuth starts are authenticated POST requests; state is signed, expiring, provider/user/agent/scope-bound, and backed by a consumed nonce digest.
+- **Verified** - Personal connector selection is derived from the authenticated agent. Organization connector configuration requires an administrator.
+- **Incorrect documentation** - Earlier claims that `connector-send` needed Phase 1 hard authentication were incorrect; it already enforced authentication and caller-owned account selection.

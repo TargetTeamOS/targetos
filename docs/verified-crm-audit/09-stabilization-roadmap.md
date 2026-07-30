@@ -184,4 +184,9 @@ Scope:
 6. Require cron/unsubscribe secrets and add regression tests for anonymous denial, cross-agent denial, OAuth state replay, and admin-only actions.
 
 - **Verified recommendation** — This is the first PR because it reduces active account, integration, paid-provider, and data-access exposure without depending on unresolved feature design.
-- **Verified recommendation** — Database RLS hardening should follow immediately as a separate PR after a read-only live schema snapshot, because changing unknown live policies in the first PR would combine two high-risk rollback domains.
+- **Verified recommendation** - Database RLS hardening should follow immediately as a separate PR after a read-only live schema snapshot, because changing unknown live policies in the first PR would combine two high-risk rollback domains.
+
+## Phase status
+
+- **Partially verified** - Phase 1 is implemented on `codex/security-authentication-repair`; completion requires Linux CI, administrator secret configuration, and staging verification.
+- **Verified** - Phase 2 and later work has not begun.

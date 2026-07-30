@@ -19,11 +19,9 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user && String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-    res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error:'unauthorized' }))
-  }
+  const { authenticate, sendAuthError, isAdminRole } = require('./_lib/auth')
+  const identity = await authenticate(req)
+  if (!identity.ok) return sendAuthError(res, identity)
   res.setHeader('Content-Type','application/json')
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error:'POST only' })) }
 
@@ -41,6 +39,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (body.action === 'save_areas') {
+      if (!isAdminRole(identity.agent.role)) { res.statusCode = 403; return res.end(JSON.stringify({ error: 'forbidden' })) }
       const areas = {
         cities: Array.isArray(body.areas?.cities) ? body.areas.cities.map(c => String(c).trim()).filter(Boolean).slice(0,20) : [],
         maxprice: body.areas?.maxprice ? Number(body.areas.maxprice) : null,

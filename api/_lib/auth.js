@@ -14,12 +14,15 @@
 'use strict'
 const { getSupabase } = require('./phone')
 
-async function requireUser(req) {
+const ADMIN_ROLES = new Set(['admin', 'administrator', 'owner'])
+const TEAM_ROLES = new Set(['admin', 'administrator', 'owner', 'manager', 'team_leader', 'secretary'])
+
+async function requireUser(req, deps = {}) {
   try {
     const hdr = req.headers['authorization'] || ''
     const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : null
     if (!token) return null
-    const supabase = getSupabase()
+    const supabase = deps.supabase || getSupabase()
     if (!supabase) return null
     const { data, error } = await supabase.auth.getUser(token)
     if (error || !data?.user) return null
@@ -30,4 +33,65 @@ async function requireUser(req) {
   }
 }
 
-module.exports = { requireUser }
+async function getAgentForUser(authUserId, deps = {}) {
+  if (!authUserId) return null
+  const supabase = deps.supabase || getSupabase()
+  if (!supabase) return null
+  const { data, error } = await supabase.from('agents')
+    .select('id, auth_user_id, name, email, role, active')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle()
+  if (error || !data || data.active === false) return null
+  return data
+}
+
+function roleAllowed(role, allowedRoles) {
+  if (!allowedRoles || !allowedRoles.length) return true
+  const normalized = String(role || '').toLowerCase()
+  return allowedRoles.some(allowed => {
+    if (allowed === 'admin') return ADMIN_ROLES.has(normalized)
+    if (allowed === 'team') return TEAM_ROLES.has(normalized)
+    return normalized === String(allowed).toLowerCase()
+  })
+}
+
+async function authenticate(req, options = {}, deps = {}) {
+  const user = await (deps.requireUser || requireUser)(req, deps)
+  if (!user) return { ok: false, status: 401, error: 'unauthorized' }
+  const agent = await (deps.getAgentForUser || getAgentForUser)(user.id, deps)
+  if (!agent) return { ok: false, status: 403, error: 'no active CRM agent is linked to this login' }
+  if (!roleAllowed(agent.role, options.roles)) {
+    return { ok: false, status: 403, error: 'forbidden' }
+  }
+  return { ok: true, user, agent }
+}
+
+function sendAuthError(res, result) {
+  const body = JSON.stringify({ error: result.error || 'unauthorized' })
+  if (typeof res.status === 'function' && typeof res.json === 'function') {
+    return res.status(result.status || 401).json(JSON.parse(body))
+  }
+  res.statusCode = result.status || 401
+  if (typeof res.setHeader === 'function') res.setHeader('Content-Type', 'application/json')
+  return res.end(body)
+}
+
+function isAdminRole(role) {
+  return ADMIN_ROLES.has(String(role || '').toLowerCase())
+}
+
+function isTeamRole(role) {
+  return TEAM_ROLES.has(String(role || '').toLowerCase())
+}
+
+module.exports = {
+  ADMIN_ROLES,
+  TEAM_ROLES,
+  requireUser,
+  getAgentForUser,
+  authenticate,
+  sendAuthError,
+  roleAllowed,
+  isAdminRole,
+  isTeamRole,
+}
