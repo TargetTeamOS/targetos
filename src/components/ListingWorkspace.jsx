@@ -15,6 +15,7 @@ import SellerContacts from './SellerContacts'
 import { BoardLinks } from './BoardLinks'
 import { contactName } from './ContactPicker'
 import ContactPicker from './ContactPicker'
+import ListingFilesPanel from './ListingFilesPanel'
 import { THEME_DEFS, themeLabel, mainThemeFor, buildThemeSummary, buildBuyerStats, buildSummarySentences } from '../lib/feedbackThemes'
 import { sendContactEmail } from '../lib/emailService'
 
@@ -816,6 +817,20 @@ export default function ListingWorkspace({
               <a href={listing.photo_url} target="_blank" rel="noreferrer" style={{ color:'#3B82F6', fontWeight:700, fontSize:12.5, textDecoration:'none' }}>Open primary photo ↗</a>
             </div>
           )}
+          <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px' }}>
+            <ListingFilesPanel
+              listingId={listing.id} relatedType="document" agent={agent} canManage={canManage}
+              title="Documents"
+              categories={[
+                { value:'listing_agreement', label:'Listing agreement' },
+                { value:'disclosure', label:'Disclosure' },
+                { value:'floor_plan', label:'Floor plan' },
+                { value:'other', label:'Other' },
+              ]}
+              emptyText="No documents uploaded yet."
+              compact
+            />
+          </div>
         </div>
 
 
@@ -980,7 +995,14 @@ export default function ListingWorkspace({
                   <button onClick={()=>postListingMessage(taskCheckbox)} disabled={sendingTask} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity:sendingTask?0.6:1 }}>{sendingTask?'Sending…':'Post message'}</button>
                 </div>
                 <div style={{ fontSize:11, color:'var(--muted)', marginTop:6 }}>
-                  Tagging someone sends them a real notification (bell icon) — same system as every other in-app notification. Attachments aren't supported yet — needs the shared <code>listing_files</code> table (see Marketing tab).
+                  Tagging someone sends them a real notification (bell icon) — same system as every other in-app notification.
+                </div>
+
+                <div style={{ marginTop:14, paddingTop:14, borderTop:'1px solid var(--border)' }}>
+                  <ListingFilesPanel
+                    listingId={listing.id} relatedType="message" agent={agent} canManage={canManage}
+                    title="Thread attachments" emptyText="No files attached to this thread yet." compact
+                  />
                 </div>
               </div>
             </div>
@@ -1087,6 +1109,14 @@ export default function ListingWorkspace({
             {adminLog.filter(a=>a.action==='email_sent').length>0 && (
               <div>• Correspondence sent: <strong>{adminLog.filter(a=>a.action==='email_sent').length}</strong> email{adminLog.filter(a=>a.action==='email_sent').length!==1?'s':''}</div>
             )}
+          </div>
+
+          <div style={{ marginTop:14 }}>
+            <ListingFilesPanel
+              listingId={listing.id} relatedType="marketing" agent={agent} canManage={canManage}
+              title="Materials (seller-facing)" emptyText="No seller-facing materials marked yet."
+              filterVisibility="seller_facing" readOnly compact
+            />
           </div>
 
           {objections.length>0 && (
@@ -1203,13 +1233,31 @@ export default function ListingWorkspace({
             )}
           </div>
 
+          <div style={{ marginTop:18 }}>
+            <ListingFilesPanel
+              listingId={listing.id} relatedType="marketing" agent={agent} canManage={canManage}
+              title="Marketing Materials"
+              categories={[
+                { value:'photo', label:'Photo' },
+                { value:'video', label:'Video' },
+                { value:'drone', label:'Drone' },
+                { value:'brochure', label:'Brochure' },
+                { value:'flyer', label:'Flyer' },
+                { value:'social_post', label:'Social post' },
+                { value:'whatsapp_status', label:'WhatsApp status' },
+                { value:'print_ad', label:'Print ad' },
+                { value:'publication_ad', label:'Publication ad' },
+                { value:'ad_proof', label:'Ad proof' },
+                { value:'other', label:'Other' },
+              ]}
+              emptyText="No marketing materials uploaded yet."
+            />
+          </div>
+
           <div style={{ marginTop:14, padding:'14px 16px', background:'var(--dim)', border:'1px solid var(--border)', borderRadius:10, fontSize:12.5 }}>
-            <div style={{ fontWeight:700, marginBottom:6 }}>Documents & Marketing Materials — setup needed</div>
+            <div style={{ fontWeight:700, marginBottom:6 }}>Still setup-needed: ad tracking & spend</div>
             <div style={{ color:'var(--muted)', lineHeight:1.7 }}>
-              No storage exists yet for photos, video, drone, brochures, flyers, print/social/WhatsApp ads, publication ads, ad proofs, listing agreements, disclosures, or floor plans.
-              Would need one shared <code>listing_files</code> table (listing_id, category: document/marketing/message, subtype, file_url, uploaded_by, uploaded_at) + one storage bucket.
-              Ad tracking (publication, ad date, cost, "ads placed by week") and marketing spend would need a separate <code>listing_marketing</code> table alongside it — cost stays admin-only once built, same as elsewhere in this app.
-              Proposal only — not built, not run.
+              File storage is live (above). Ad tracking (publication, ad date, "ads placed by week") and marketing spend would need a separate <code>listing_marketing</code> table — cost would stay admin-only once built, same as elsewhere in this app. Not built, not run.
             </div>
           </div>
         </div>
@@ -1366,7 +1414,14 @@ export default function ListingWorkspace({
               <input value={composeSubject} onChange={e=>setComposeSubject(e.target.value)} placeholder="Subject" style={{ ...inp, width:'100%', boxSizing:'border-box', marginBottom:8, marginTop:6 }} />
               <textarea value={composeBody} onChange={e=>setComposeBody(e.target.value)} placeholder="Write your message…" rows={5} style={{ ...inp, width:'100%', boxSizing:'border-box', resize:'vertical', marginBottom:8 }} />
               <button onClick={sendListingEmail} disabled={sendingEmail} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:ff, opacity:sendingEmail?0.6:1 }}>{sendingEmail?'Sending…':'Send'}</button>
-              <div style={{ fontSize:11, color:'var(--muted)', marginTop:6 }}>Attachments aren't supported yet — needs the shared <code>listing_files</code> table (see Marketing tab).</div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:8, marginBottom:4 }}>
+                Not a real MIME attachment — inserts a link (expires in 7 days) into the message body instead.
+              </div>
+              <ListingFilesPanel
+                listingId={listing.id} relatedType="email" agent={agent} canManage={canManage}
+                emptyText="No shared files yet." compact
+                onInsertLink={(name, url) => setComposeBody(b => (b ? b + '\n\n' : '') + 'Attachment: ' + name + ' — ' + url)}
+              />
             </div>
           )}
 
@@ -1386,8 +1441,8 @@ export default function ListingWorkspace({
           </div>
 
           <div style={{ marginTop:14, padding:'12px 14px', background:'var(--dim)', border:'1px solid var(--border)', borderRadius:10, fontSize:12 }}>
-            <div style={{ fontWeight:700, marginBottom:4 }}>Still setup-needed: inbound replies + attachments</div>
-            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>Needs a <code>listing_messages</code> table (listing_id, direction, from/to, subject, body, thread_id, status, created_at) plus inbound-reply webhook wiring (Resend), and the shared <code>listing_files</code> table (see Marketing tab) for attachments. Proposal only — not built, not run.</div>
+            <div style={{ fontWeight:700, marginBottom:4 }}>Still setup-needed: inbound replies</div>
+            <div style={{ color:'var(--muted)', lineHeight:1.6 }}>File links (above) are live now. Replies coming back from the seller/attorney/etc. by email still aren't captured into this thread — that needs a <code>listing_messages</code> table plus inbound-reply webhook wiring (Resend). Proposal only — not built, not run.</div>
           </div>
         </div>
       )}

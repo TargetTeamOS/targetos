@@ -722,14 +722,11 @@ export function Admin() {
             { label:'Hosting',        status:'✅ Live',            detail:'Vercel — app.targetreteam.com', color:'#10B981' },
             { label:'Google Maps',    status:'✅ Active',          detail:'Address autocomplete + route planning', color:'#10B981' },
             { label:'AI Assistant',   status:'✅ Active',          detail:'Claude Sonnet — CRM assistant (bottom right)', color:'#10B981' },
-            { label:'File Storage',   status:'⚠️ Setup Required', detail:'Create "targetos-files" bucket in Supabase Storage', color:'#F97316',
+            { label:'File Storage',   status:'✅ Active', detail:'"targetos-files" bucket — private, signed URLs (confirmed July 2026)', color:'#10B981',
               steps: [
-                'Go to your Supabase dashboard → Storage (left sidebar)',
-                'Click "New bucket"',
-                'Name it exactly: targetos-files (must match exactly)',
-                'Toggle "Public bucket" ON — file attachments use public URLs so they can be opened directly. Note: anyone with a file\'s exact URL could view it without logging in (URLs are hard to guess — a random ID + timestamp — but this isn\'t real access control).',
-                'Click "Create bucket"',
-                'That\'s it — no other configuration needed. File uploads on Contacts/Deals will start working immediately.',
+                'Bucket exists and is private (public=false) — confirmed directly, not assumed.',
+                'listing_files (Documents / Marketing Materials / thread & email attachments) uses this bucket via signed URLs — this is correct and secure for admin-only/seller-facing visibility levels.',
+                '⚠️ Known issue, not yet fixed: Contact file uploads (ContactDetail.jsx) still call getPublicUrl() on this bucket, which assumes a PUBLIC bucket. Since the bucket is actually private, those links likely do not resolve. This predates listing_files and needs its own follow-up fix (switch ContactDetail.jsx to signed URLs, matching src/lib/storage.js) — not fixed here to avoid touching a separate feature without dedicated testing.',
               ] },
             { label:'Error Tracking', status:'⚠️ Setup Required', detail:'Add VITE_SENTRY_DSN to Vercel env vars', color:'#F97316',
               steps: [
