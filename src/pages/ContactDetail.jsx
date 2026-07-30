@@ -18,6 +18,7 @@ import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { CallJourney } from '../components/CallJourney'
 import { loadContactLayout, saveContactLayout } from '../lib/contactLayout'
+import { useIsMobile } from '../lib/hooks'
 import { EmailComposeModal } from '../components/EmailComposeModal'
 import { LogInteractionModal } from '../components/LogInteractionModal'
 import { SmsComposeModal } from '../components/SmsComposeModal'
@@ -654,6 +655,7 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
 
 function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [], relTasks, agents, agent, voiceNotes = [], onRefreshTimeline, layout, editLayout, setLayout }) {
   const { can, isAdmin } = useAuth()
+  const isMobile = useIsMobile()
   const canManage = isAdmin || can('admin.automations')
   const canReassign = can('contacts.reassign')
   function onReorder(fromKey, toKey) {
@@ -1495,28 +1497,32 @@ export function ContactDetail() {
              ].filter(Boolean).join('  ·  ')}
           </div>
         </div>
-        {/* actions, right-aligned */}
-        <div style={{ marginLeft:'auto', display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
+        {/* actions -- MOBILE FIX: was flexShrink:0/no-wrap, so on a
+            phone this row (Log Interaction + Call + Email + Text +
+            Arrange) would overflow the screen width instead of
+            wrapping. Now wraps into a clean touch-friendly row/rows on
+            phone; desktop layout (single non-wrapping row) unchanged. */}
+        <div style={{ marginLeft: isMobile ? 0 : 'auto', width: isMobile ? '100%' : undefined, display:'flex', gap:6, alignItems:'center', flexShrink: isMobile ? 1 : 0, flexWrap: isMobile ? 'wrap' : 'nowrap', marginTop: isMobile ? 8 : 0 }}>
           <button onClick={()=>setLogOpen(true)} title="Log a contact made outside the CRM (WhatsApp, in person, personal phone…)"
-            style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1px solid var(--brand)', background:'rgba(204,34,0,.06)', color:'var(--brand)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+            style={{ display:'flex', alignItems:'center', gap:5, padding: isMobile ? '10px 12px' : '7px 12px', minHeight: isMobile ? 44 : undefined, borderRadius:8, border:'1px solid var(--brand)', background:'rgba(204,34,0,.06)', color:'var(--brand)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff, flex: isMobile ? '1 1 auto' : undefined }}>
             ➕ Log Interaction
           </button>
           {f.phone && <ClickToCall phone={f.phone} contactName={(f.first_name||'')+' '+(f.last_name||'')} contactId={id} showLabel />}
           {f.email && (
             <button onClick={()=>setComposeOpen(true)} title="Email (sends from the CRM, logs here)"
-              style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}
+              style={{ display:'flex', alignItems:'center', gap:5, padding: isMobile ? '10px 12px' : '7px 12px', minHeight: isMobile ? 44 : undefined, borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff, flex: isMobile ? '1 1 auto' : undefined }}
               onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'} onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
               📧 Email
             </button>
           )}
           {f.phone && (
             <button onClick={()=>setSmsOpen(true)} title="Text (sends via Twilio, logs here)"
-              style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff }}
+              style={{ display:'flex', alignItems:'center', gap:5, padding: isMobile ? '10px 12px' : '7px 12px', minHeight: isMobile ? 44 : undefined, borderRadius:8, border:'1px solid var(--border)', background:'var(--dim)', color:'var(--text)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff, flex: isMobile ? '1 1 auto' : undefined }}
               onMouseEnter={e=>e.currentTarget.style.background='var(--panel)'} onMouseLeave={e=>e.currentTarget.style.background='var(--dim)'}>
               💬 Text
             </button>
           )}
-          {isAdmin && (
+          {isAdmin && !isMobile && (
             <button onClick={()=>setEditLayout(v=>!v)} title="Rearrange the panels on this page"
               style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1px solid '+(editLayout?'var(--brand)':'var(--border)'), background: editLayout ? 'var(--brand)' : 'var(--dim)', color: editLayout ? '#fff' : 'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
               {editLayout ? '✓ Done' : '⚙ Arrange'}
@@ -1525,7 +1531,7 @@ export function ContactDetail() {
         </div>
       </div>
 
-      {editLayout && isAdmin && (
+      {editLayout && isAdmin && !isMobile && (
         <div style={{ background:'rgba(204,34,0,.06)', border:'1px solid var(--brand)', borderRadius:10, padding:'10px 14px', marginBottom:12, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
           <span style={{ fontSize:13, fontWeight:700, color:'var(--brand)' }}>⚙ Arrange mode</span>
           <span style={{ fontSize:12, color:'var(--muted)', flex:1 }}>Drag the ⠿ handle on any panel to reorder. Click ✕ on a panel to hide it. Changes save for everyone.</span>
