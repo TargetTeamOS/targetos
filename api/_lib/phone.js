@@ -112,17 +112,8 @@ function requireAdminOrSecretary(req) { return requireRole(req, ['admin', 'secre
 function requireAdmin(req)           { return requireRole(req, ['admin']) }
 function requireAnyAgent(req)        { return requireRole(req, ['admin', 'secretary', 'agent']) }
 // Confirms a webhook request actually came from Twilio, not a spoofed
-// POST from anyone who found the URL. Added July 2026.
-//
-// PHASE 1 (current): LOG-ONLY. Call logTwilioValidation(req, params)
-// after parsing the body — it warns on failure but never blocks a
-// request. This lets us confirm real Twilio traffic validates
-// correctly (check Vercel function logs for '[TWILIO-SIG]' warnings)
-// before switching to enforcement.
-//
-// PHASE 2 (future, once Phase 1 logs look clean for a while): change
-// call sites to check the return value and return a 403 on failure
-// instead of just logging. See handoff doc checklist.
+// request. Missing configuration, validation errors, and bad signatures
+// all return false so exposed call sites can fail closed.
 //
 // params: for POST requests, the parsed body (from parseBody()).
 //         for GET requests, pass {} — query params are already part
@@ -144,34 +135,21 @@ function validateTwilioSignature(req, params) {
   }
 }
 
-// Convenience wrapper for Phase 1 — call this, ignore the return value,
-// just watch the logs. Never blocks anything.
-// (Kept for back-compat; all call sites now use checkTwilioSignature below.)
+// Retained only for internal backwards compatibility. Exposed Twilio
+// handlers use checkTwilioSignature below.
 function logTwilioValidation(req, params, endpointName) {
   const result = validateTwilioSignature(req, params)
   if (result === false) {
-    console.warn('[TWILIO-SIG] FAILED validation for ' + (endpointName || req.url) + ' — would be blocked once Phase 2 is enabled. From: ' + (req.headers['x-forwarded-for'] || 'unknown'))
+    console.warn('[TWILIO-SIG] FAILED validation for internal compatibility check ' + (endpointName || req.url) + '. From: ' + (req.headers['x-forwarded-for'] || 'unknown'))
   }
 }
 
-// ── PHASE 2: ENFORCEMENT WITH KILL-SWITCH ─────────────────────────
+// ── FAIL-CLOSED TWILIO ENFORCEMENT ────────────────────────────────
 // checkTwilioSignature(req, res, params, endpointName) → boolean
 //
-// Behavior is controlled by the TWILIO_SIG_ENFORCE env var (Vercel →
-// Settings → Environment Variables):
-//   - unset / anything but 'true'  → LOG-ONLY (identical to Phase 1).
-//     Failed validations are logged but never blocked.
-//   - 'true'                       → BLOCKING. A request whose
-//     signature definitively FAILS validation gets a 403 and the
-//     handler must stop (the caller checks the return value).
-//
-// KILL-SWITCH: if enforcement ever blocks legitimate Twilio traffic,
-// set TWILIO_SIG_ENFORCE to 'false' in Vercel and redeploy env (no
-// code change needed) — behavior instantly reverts to log-only.
-//
-// SAFETY: null results (missing auth token, validation library error)
-// NEVER block — we only block on a definitive signature mismatch.
-// Fail-open on uncertainty, fail-closed only on proven forgery.
+// Every result other than a verified signature is blocked with 403.
+// TWILIO_AUTH_TOKEN and PUBLIC_BASE_URL must match the Twilio account
+// and exact public callback origin used to create the signature.
 //
 // Usage in a handler:
 //   if (!checkTwilioSignature(req, res, body, 'twilio-inbound')) return
@@ -187,24 +165,6 @@ function checkTwilioSignature(req, res, params, endpointName) {
     } catch (e) { /* response may already be committed */ }
     return false
   }
-  return true
-
-  if (result !== false) return true   // pass, or unknown → allow
-
-  const from = req.headers['x-forwarded-for'] || 'unknown'
-  const enforce = String(process.env.TWILIO_SIG_ENFORCE || '').toLowerCase() === 'true'
-
-  if (enforce) {
-    console.warn('[TWILIO-SIG] BLOCKED forged/invalid request to ' + (endpointName || req.url) + ' from: ' + from)
-    try {
-      res.statusCode = 403
-      res.setHeader('Content-Type', 'text/plain')
-      res.end('Forbidden')
-    } catch (e) { /* response may already be committed */ }
-    return false
-  }
-
-  console.warn('[TWILIO-SIG] FAILED validation for ' + (endpointName || req.url) + ' from: ' + from + ' — allowed (log-only mode; set TWILIO_SIG_ENFORCE=true in Vercel to block)')
   return true
 }
 

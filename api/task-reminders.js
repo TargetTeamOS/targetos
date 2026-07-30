@@ -9,13 +9,9 @@ const { getSupabase } = require('./_lib/phone')
 const { notifyAgent, loadAgentNotificationPrefs } = require('./_lib/notify')
 
 module.exports = async function handler(req, res) {
-  // Vercel automatically sends 'Authorization: Bearer <CRON_SECRET>' when
-  // calling this on its schedule, IF a CRON_SECRET env var is set in
-  // Vercel. Until that's set, this stays open to anyone who finds the
-  // URL (they could trigger unwanted reminder emails to your whole team
-  // repeatedly, using your Resend credits) -- add CRON_SECRET in Vercel
-  // env vars to close this. Logs a warning rather than hard-blocking
-  // until it's configured, so the actual cron schedule doesn't break.
+  // Vercel sends 'Authorization: Bearer <CRON_SECRET>' for configured
+  // schedules. Missing configuration returns 503 and a wrong credential
+  // returns 401; reminder delivery never runs without a verified secret.
   const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
   const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
   if (!cronAuth.ok) return sendSecurityError(res, cronAuth)

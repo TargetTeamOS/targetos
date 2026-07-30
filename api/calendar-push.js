@@ -74,11 +74,13 @@ module.exports = async function handler(req, res) {
         if (gg && gg.status === 'connected') { provider = 'google'; token = await freshAccountToken('google', gg); account = gg.account_email || '' }
       }
     }
-    if (!token && require('./_lib/auth').isAdminRole(identity.agent.role)) {
+    // Using the configured organization calendar is an existing authenticated
+    // workflow. Connector configuration remains admin-only in /api/connectors.
+    if (!token) {
       const ms = await getIntegration('outlook')
       if (ms && ms.status === 'connected') { provider = 'outlook'; token = await freshMicrosoftToken(ms); account = (ms.secrets || {}).account_email || '' }
     }
-    if (!token && require('./_lib/auth').isAdminRole(identity.agent.role)) {
+    if (!token) {
       const gg = await getIntegration('google')
       if (gg && gg.status === 'connected') { provider = 'google'; token = await freshGoogleToken(gg); account = (gg.secrets || {}).account_email || '' }
     }

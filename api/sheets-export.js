@@ -19,7 +19,7 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  const { authenticate, sendAuthError, isAdminRole } = require('./_lib/auth')
+  const { authenticate, sendAuthError } = require('./_lib/auth')
   const identity = await authenticate(req)
   if (!identity.ok) return sendAuthError(res, identity)
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -44,7 +44,9 @@ module.exports = async function handler(req, res) {
       const acct = await getAgentAccount(agentId, 'google')
       if (acct && acct.status === 'connected') token = await freshAccountToken('google', acct)
     }
-    if (!token && isAdminRole(identity.agent.role)) {
+    // Using the configured organization account is an existing authenticated
+    // workflow. Connector configuration remains admin-only in /api/connectors.
+    if (!token) {
       const integ = await getIntegration('google')
       if (!integ || integ.status !== 'connected') { res.status(400).json({ error: 'Google is not connected — connect in Settings → Email Accounts or Admin → Connectors' }); return }
       token = await freshGoogleToken(integ)

@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 // /api/send-campaign — sends an email blast to a resolved audience
 // through Resend, in batches, skipping anyone on the unsubscribe
-// list. Auth-gated (staged, like the other endpoints). Appends a
+// list. Hard-authenticated and admin-only. Appends a
 // compliant unsubscribe footer + physical-address line to every
 // message. Updates the email_campaigns row with progress.
 //

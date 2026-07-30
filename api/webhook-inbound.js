@@ -1,7 +1,7 @@
 'use strict'
 // api/webhook-inbound.js — receives events FROM Zapier / API Nation
 // (Brivity syncs travel through API Nation to here).
-// Security: shared secret in the X-Webhook-Secret header (or ?secret=),
+// Security: shared secret only in the X-Webhook-Secret header,
 // checked against integrations.secrets.webhook_secret. Always enforced —
 // this endpoint is NOT behind AUTH_ENFORCE because callers are machines.
 //

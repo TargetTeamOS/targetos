@@ -23,7 +23,7 @@ async function parseBody(req) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
-  // Staged auth (same pattern as the other endpoints)
+  // Fail-closed authentication before invoking the paid provider.
   const { authenticate, sendAuthError } = require('./_lib/auth')
   const identity = await authenticate(req)
   if (!identity.ok) return sendAuthError(res, identity)
