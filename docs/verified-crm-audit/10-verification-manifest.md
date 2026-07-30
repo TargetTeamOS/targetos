@@ -98,4 +98,4 @@ The audit used read-only repository searches plus documentation writes. Importan
 - **Verified** - Repair work started from that exact commit on `codex/security-authentication-repair`.
 - **Verified** - API syntax checks pass after implementation.
 - **Partially verified** - Static source validation passes; its nested unit-test launch is blocked by Windows `EPERM`.
-- **Partially verified** - Linux run `30569505625` identified Node 20's missing native WebSocket support. Run `30569934750` verified the Node 24 correction and identified a test-only `APP_ORIGINS` mismatch; the safe placeholder list was corrected and a rerun is pending.
+- **Partially verified** - Runs `30569505625` and `30569934750` corrected the Node/WebSocket and test-origin environment. Run `30570069359` passed through render output with all nine pages successful, then timed out on retained handles; the render harness now exits explicitly and a rerun is pending.
