@@ -90,4 +90,13 @@ The audit used read-only repository searches plus documentation writes. Importan
 
 - **Verified** — A static audit can prove committed code paths and concrete source defects.
 - **Unknown** — It cannot prove live deployment state, data quality, third-party consent/configuration, historical migrations, or actual workflow success.
-- **Verified** — Blocked checks are reported as blocked, not passed or failed.
+- **Verified** - Blocked checks are reported as blocked, not passed or failed.
+
+## Phase 1 verification addendum
+
+- **Verified** - Remote audit branch `codex/verified-crm-audit` resolves to `453461ed8bd3b07cf436f04a3dad290590ffd256`.
+- **Verified** - Repair work started from that exact commit on `codex/security-authentication-repair`.
+- **Verified** - API syntax checks pass after implementation.
+- **Partially verified** - Static source validation passes; its nested unit-test launch is blocked by Windows `EPERM`.
+- **Verified** - Linux GitHub Actions run `30570480980` passed installation, static validation, API syntax, unit tests, production build, smoke checks, and all nine render checks.
+- **Partially verified** - Runs `30569505625`, `30569934750`, and `30570069359` documented the resolved CI environment/harness defects; they are retained as evidence rather than counted as application failures.

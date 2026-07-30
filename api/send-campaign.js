@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 // /api/send-campaign — sends an email blast to a resolved audience
 // through Resend, in batches, skipping anyone on the unsubscribe
-// list. Auth-gated (staged, like the other endpoints). Appends a
+// list. Hard-authenticated and admin-only. Appends a
 // compliant unsubscribe footer + physical-address line to every
 // message. Updates the email_campaigns row with progress.
 //
@@ -36,15 +36,10 @@ function footer(email) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
-  // Staged auth (mirrors AUTH_ENFORCE pattern)
-  const { requireUser } = require('./_lib/auth')
-  const user = await requireUser(req)
-  if (!user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to /api/send-campaign ALLOWED (log-only)')
-  }
+  // Hard-authenticated and admin-only.
+  const { authenticate, sendAuthError } = require('./_lib/auth')
+  const identity = await authenticate(req, { roles: ['admin'] })
+  if (!identity.ok) return sendAuthError(res, identity)
 
   const RESEND_KEY = process.env.RESEND_API_KEY
   if (!RESEND_KEY) return res.status(500).end(JSON.stringify({ error: 'Email service not configured' }))

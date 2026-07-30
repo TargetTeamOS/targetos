@@ -53,7 +53,7 @@ export function Admin() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [showAdd,   setShowAdd]   = useState(false)
-  const [addForm,   setAddForm]   = useState({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
+  const [addForm,   setAddForm]   = useState({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', sendInvite:true })
   const [adding,    setAdding]    = useState(false)
   const [confirmDel, setConfirmDel] = useState(null)
   const [confirmDelType, setConfirmDelType] = useState('deactivate') // 'deactivate' | 'delete'
@@ -206,7 +206,6 @@ export function Admin() {
         phone:    addForm.phone || null,
         role:     addForm.role,
         color:    addForm.color,
-        password: addForm.password || 'TargetOS2024!',
       })
       const data = await res.json().catch(() => ({}))
 
@@ -227,7 +226,7 @@ export function Admin() {
           : '✅ ' + addForm.name + ' created')
       toast(msg)
       setShowAdd(false)
-      setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
+      setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', sendInvite:true })
     } catch(e) {
       // Fallback: create agent record without auth
       if (e.message?.toLowerCase().includes('fetch') || e.message?.toLowerCase().includes('network')) {
@@ -253,7 +252,7 @@ export function Admin() {
     await refetch()
     toast('✅ ' + addForm.name + ' added. To set up their login, add SUPABASE_SERVICE_KEY to Vercel.')
     setShowAdd(false)
-    setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
+    setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', sendInvite:true })
   }
 
   // ── Deactivate user ───────────────────────────────────────────
@@ -313,14 +312,13 @@ export function Admin() {
 
   // ── Reset password ────────────────────────────────────────────
   async function resetPassword() {
-    if (!newPwd || newPwd.length < 8) { toast('Password must be at least 8 characters','#DC2626'); return }
     if (!resetPwd?.auth_user_id) { toast('This user has no auth account yet','#DC2626'); return }
     setResetting(true)
     try {
-      const res = await callAdminUsers({ action:'reset_password', userId: resetPwd.auth_user_id, password: newPwd })
+      const res = await callAdminUsers({ action:'reset_password', userId: resetPwd.auth_user_id })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      toast('Password reset for '+resetPwd.name)
+      toast('Secure password reset email sent to '+resetPwd.name)
       setResetPwd(null)
       setNewPwd('')
     } catch(e) { toast('Failed: '+e.message,'#DC2626') }
@@ -776,7 +774,7 @@ export function Admin() {
             style={{flex:1,padding:'8px',borderRadius:8,border:'1px solid '+(addForm.sendInvite?'#CC2200':'var(--border)'),background:addForm.sendInvite?'rgba(204,34,0,.07)':'var(--dim)',color:addForm.sendInvite?'#CC2200':'var(--muted)',fontWeight:700,cursor:'pointer',fontSize:12,fontFamily:ff}}>
             📧 Send Email Invite
           </button>
-          <button onClick={() => setA('sendInvite', false)}
+          <button onClick={() => setA('sendInvite', true)} disabled
             style={{flex:1,padding:'8px',borderRadius:8,border:'1px solid '+(!addForm.sendInvite?'#CC2200':'var(--border)'),background:!addForm.sendInvite?'rgba(204,34,0,.07)':'var(--dim)',color:!addForm.sendInvite?'#CC2200':'var(--muted)',fontWeight:700,cursor:'pointer',fontSize:12,fontFamily:ff}}>
             🔑 Set Password Manually
           </button>
@@ -787,7 +785,7 @@ export function Admin() {
         </Field>
         <Field label="Phone (optional)"><Input value={addForm.phone} onChange={v=>setA('phone',v)} type="tel" placeholder="(845) 555-1234" /></Field>
         <Field label="Role"><Select value={addForm.role} onChange={v=>setA('role',v)} options={ROLES} /></Field>
-        {!addForm.sendInvite && (
+        {false && (
           <Field label="Temporary Password" hint="User should change this on first login">
             <Input value={addForm.password} onChange={v=>setA('password',v)} type="password" placeholder="Min 8 characters" />
           </Field>
@@ -895,17 +893,17 @@ export function Admin() {
           </div>
         ) : (
           <>
-            <Field label="New Password" hint="Min 8 characters">
+            {false && <Field label="New Password" hint="Min 8 characters">
               <Input value={newPwd} onChange={setNewPwd} type="password" placeholder="New password" />
-            </Field>
+            </Field>}
             <div style={{fontSize:11,color:'var(--muted)',marginBottom:8}}>
-              The user can log in with this password immediately. They should change it after logging in.
+              TargetOS will email the user a secure recovery link. Administrators cannot view or set the password.
             </div>
           </>
         )}
         <ModalActions>
           <Btn variant="secondary" onClick={() => setResetPwd(null)}>Cancel</Btn>
-          {resetPwd?.auth_user_id && <Btn onClick={resetPassword} loading={resetting}>Reset Password</Btn>}
+          {resetPwd?.auth_user_id && <Btn onClick={resetPassword} loading={resetting}>Send Reset Email</Btn>}
         </ModalActions>
       </Modal>
 

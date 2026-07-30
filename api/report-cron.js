@@ -24,11 +24,9 @@ function reportRecipientDelivered(r) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
-  const CRON_SECRET = process.env.CRON_SECRET
-  if (CRON_SECRET && req.headers['authorization'] !== 'Bearer ' + CRON_SECRET) {
-    console.warn('[report-cron] BLOCKED unauthorized invocation')
-    return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
-  }
+  const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
+  const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
+  if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
   // Scheduled reports now go through the Microsoft system mailbox (not Resend).
   if (!isConfigured()) return res.status(500).end(JSON.stringify({ error: 'System mailbox not configured' }))
 
@@ -104,17 +102,13 @@ module.exports = async function handler(req, res) {
       if (!action) return false
       const cfg = action.config || {}
       const to = (cfg.to_email && fill(cfg.to_email, ctx)) || 'yanky@targetreteam.com'
-      const resp = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: FROM, to: [to],
-          ...(cfg.cc_email ? { cc: String(cfg.cc_email).split(',').map(x => x.trim()).filter(Boolean) } : {}),
-          subject: fill(cfg.subject || 'TargetOS alert', ctx),
-          html: '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">' + fill(cfg.body || '', ctx).replace(/\n/g, '<br/>') + '</div>',
-        }),
+      const resp = await sendSystemEmail({
+        to,
+        subject: fill(cfg.subject || 'TargetOS alert', ctx),
+        html: '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">' + fill(cfg.body || '', ctx).replace(/\n/g, '<br/>') + '</div>',
+        idempotencyKey: 'report-alert:' + auto.id + ':' + todayStr + ':' + to,
       })
-      if (resp.ok) {
+      if (reportRecipientDelivered(resp)) {
         await supabase.from('automations').update({ last_fired: new Date().toISOString(), fire_count: (auto.fire_count || 0) + 1 }).eq('id', auto.id)
         return true
       }

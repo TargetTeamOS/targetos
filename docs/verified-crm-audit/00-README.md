@@ -44,4 +44,9 @@ Source ref: `origin/feature/connected-email-accounts`
 - **Security risk** — Multiple service-role Edge Functions have no in-handler authentication, and this repository has no Supabase deployment configuration proving platform JWT enforcement.
 - **Missing implementation** — 24 tables and four RPCs referenced by runtime code have no committed creation definition.
 - **Verified** — Two scheduled alert branches contain an undeclared `RESEND_KEY` and will throw when those branches try to send.
-- **Partially verified** — The static validator passed its first ten checks and the smoke script verified 670 relative imports, 66 unique route paths, and route imports. Unit tests, the Vite build, API transformation, and render smoke were blocked by host execution policy on `esbuild.exe`.
+- **Partially verified** - The static validator passed its first ten checks and the smoke script verified 670 relative imports, 66 unique route paths, and route imports. Unit tests, the Vite build, API transformation, and render smoke were blocked by host execution policy on `esbuild.exe`.
+
+## Phase 1 implementation status
+
+- **Verified** - Phase 1 security repairs are documented in `11-phase-1-security-implementation.md`.
+- **Verified** - The audit remains the baseline; corrected findings are not silently rewritten and are explicitly superseded by the implementation record.
