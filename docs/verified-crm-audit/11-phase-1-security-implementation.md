@@ -65,6 +65,7 @@ Scope: fail-closed API authentication and secure OAuth ownership
 - **Partially verified** - The repository validator passed its ten static source checks.
 - **Verified** - Linux GitHub Actions run `30570480980` passed dependency installation, static validation, all API syntax checks, unit tests, production build, smoke checks, and all nine render checks in 39 seconds.
 - **Partially verified** - Earlier runs `30569505625`, `30569934750`, and `30570069359` exposed and corrected the Node/WebSocket version, test-only origin list, and render-harness retained-handle issues. Windows continues to block child-process execution with `EPERM`; Linux CI is the authoritative full check.
+- **Verified** - Final staging-readiness commit `2e904349a50d8bda0a4def72aa16ae4f198501a4` passed both Linux Build Check runs: push run `30578751561` in 37 seconds and pull-request run `30578754442` in 41 seconds.
 
 ## Deployment prerequisites and rollback
 
@@ -101,7 +102,7 @@ Reviewed head before staging-readiness corrections: `05235f17d3986c934b0463fe08f
 - **Verified correction** - Review found that `api/calendar-push.js` and `api/sheets-export.js` unnecessarily removed the existing authenticated organization-account fallback for non-admin agents. The fallback was restored while organization connector management remains admin-only. A regression assertion was added.
 - **Verified correction** - Stale fail-open comments in `api/task-reminders.js`, `api/webhook-inbound.js`, and the active Twilio validation description were corrected. No protected behavior was relaxed.
 - **Verified correction** - The final commit must restore executable mode `100755` on `scripts/validate.js`; this is a mode-only correction with no source change.
-- **Verified** - With those narrow corrections, the final PR review passes. Staging approval remains conditional on CI for the correction commit, required environment configuration, preview access, and the blocked live tests below.
+- **Verified** - With those narrow corrections, the final PR review and both Linux Build Check runs pass. Staging approval remains conditional on required environment configuration, preview access, and the blocked live tests below.
 
 Exact review concerns:
 
@@ -223,9 +224,10 @@ Preview URL:
 
 - **Verified** - The deployment is reachable but protected by Vercel authentication. An unauthenticated browser is redirected to `vercel.com/login` before TargetOS or any `/api` handler executes.
 - **Blocked** - No authenticated Vercel preview session, staging CRM test accounts, staging provider accounts, or staging-only secrets were available to this review. The protection was not bypassed.
-- **Verified** - GitHub PR checks were 4/4 successful before the staging-review correction. Pull-request Build Check run `30570830285` passed in 35 seconds.
+- **Verified** - GitHub registered the final staging-readiness commit as the sixth commit in PR #3. Push Build Check run `30578751561` and pull-request Build Check run `30578754442` both passed.
+- **Verified** - Vercel reported the branch preview Ready after building commit `2e904349a50d8bda0a4def72aa16ae4f198501a4`.
 - **Verified** - A local `node --check` pass completed for every API JavaScript file after the correction.
-- **Blocked** - Focused local Vitest execution could not start because this Windows checkout does not contain the Vitest executable/dependency installation. Linux CI remains authoritative after the correction commit is pushed.
+- **Blocked locally** - Focused local Vitest execution could not start because this Windows checkout does not contain the Vitest executable/dependency installation. The two successful Linux Build Check runs are the authoritative automated results for the final correction.
 
 | Requested staging test | Result | Evidence/action |
 |---|---|---|
@@ -284,5 +286,5 @@ This review did not display passwords, reset users, disable users, revoke sessio
 - **Verified** - Do not merge PR #3 directly to production and do not deploy it to production from this review.
 - **Verified** - If staging fails, revert the Phase 1 commits in the staging branch and preserve logs/evidence. A rollback re-enables audited fail-open behavior, so it is an availability-only emergency measure and not an acceptable long-term state.
 - **Verified** - Keep provider application credentials available during the staging window, but do not restore old OAuth state or legacy unsubscribe signatures.
-- **Partially verified recommendation** - PR #3 is ready to merge into a **staging branch only** after the staging-review correction commit is pushed, its Linux Build Check passes, the six required Preview values and existing dependencies are configured, Vercel preview access is granted, and the blocked role/OAuth/replay/email/login tests are executed with staging-only accounts and records.
+- **Partially verified recommendation** - PR #3 is ready to merge into a **staging branch only** after the six required Preview values and existing dependencies are configured, Vercel preview access is granted, and the blocked role/OAuth/replay/email/login tests are executed with staging-only accounts and records. The correction commit is pushed, both Linux Build Check runs pass, and the preview deployment is Ready.
 - **Verified** - PR #3 is not yet approved for production merge or production deployment.
