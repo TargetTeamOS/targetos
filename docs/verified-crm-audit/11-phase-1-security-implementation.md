@@ -63,7 +63,7 @@ Scope: fail-closed API authentication and secure OAuth ownership
 - **Verified** - Existing connector-send tests remain unchanged.
 - **Verified** - All API JavaScript files pass `node --check` locally.
 - **Partially verified** - The repository validator passed its ten static source checks.
-- **Unknown** - Unit tests, Vite build, and render smoke await the clean Linux GitHub Actions run; Windows blocks child-process execution with `EPERM`.
+- **Partially verified** - The first Linux run reached unit tests but Node 20 lacked the native WebSocket required by the installed Supabase client. CI now selects Node 24; the rerun is pending. Windows continues to block child-process execution with `EPERM`.
 
 ## Deployment prerequisites and rollback
 
