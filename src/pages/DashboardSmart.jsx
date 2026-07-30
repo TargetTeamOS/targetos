@@ -9,6 +9,7 @@ import { loadDashPrefs, saveDashPrefs } from '../lib/dashboardPrefs'
 import { WidgetContent } from '../components/SmartWidget'
 import { ViewingProvider } from '../context/ViewingContext'
 import { ViewingBar } from '../components/ViewingBar'
+import { useIsMobile } from '../lib/hooks'
 
 // Smart dashboard: a grid of query-driven widgets. Every widget filters
 // any board on any field(s), displays as number/chart/list/table, and is
@@ -70,6 +71,7 @@ export function DashboardSmart() {
 }
 
 function DashboardSmartInner() {
+  const isMobile = useIsMobile()
   const { agent, isAdmin } = useAuth()
   const { toast } = useApp()
   const [widgets, setWidgets] = useState(null)
@@ -127,19 +129,49 @@ function DashboardSmartInner() {
     <div ref={wrapRef} style={{ fontFamily: ff }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:8 }}>
         <div>
-          <div style={{ fontSize:22, fontWeight:800, color:'var(--text)' }}>Dashboard</div>
+          <div style={{ fontSize: isMobile ? 'var(--m-title, 22px)' : 22, fontWeight:800, color:'var(--text)' }}>Dashboard</div>
           <div style={{ fontSize:13, color:'var(--muted)' }}>{new Date().toLocaleDateString('en-US',{ weekday:'long', month:'long', day:'numeric' })}{first?' · '+first:''}</div>
         </div>
-        <div style={{ display:'flex', gap:8 }}>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
           {edit && <button onClick={() => setBuilderFor('new')} style={btn('#2563EB','#fff')}>+ Add widget</button>}
-          <button onClick={() => setEdit(e=>!e)} style={btn(edit?'#059669':'var(--dim)', edit?'#fff':'var(--text)')}>{edit ? 'Done' : 'Edit layout'}</button>
+          <button onClick={() => setEdit(e=>!e)} style={btn(edit?'#059669':'var(--dim)', edit?'#fff':'var(--text)')}>{edit ? 'Done' : (isMobile ? 'Edit' : 'Edit layout')}</button>
         </div>
       </div>
 
-      {edit && <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>Drag to move · drag the bottom-right corner to resize · click a widget's gear to edit its data.</div>}
+      {edit && !isMobile && <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>Drag to move · drag the bottom-right corner to resize · click a widget's gear to edit its data.</div>}
+      {edit && isMobile && <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>Drag-to-reposition is desktop-only. On phone: add, edit, or remove widgets below; order/size stay as last set on desktop.</div>}
 
       <ViewingBar />
 
+      {isMobile ? (
+        // Mobile: bypass the drag/resize grid entirely -- a fixed
+        // 12-column absolute-position grid degrades to unreadably
+        // narrow slices on a phone regardless of container width, since
+        // the column COUNT doesn't change. Same widgets, same config,
+        // same WidgetContent, same permission-scoped data -- just a
+        // simple responsive stack instead of react-grid-layout.
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:11 }} className="mobile-safe-bottom">
+          {widgets.map(w => {
+            const compact = ['number','goal'].includes(w.display) // KPI-style: 2-up. Charts/lists/tables: full width.
+            return (
+              <div key={w.i} style={{ gridColumn: compact ? 'auto' : '1 / -1', background:'var(--panel)', border:'1px solid var(--border)', borderLeft:'3px solid '+(w.color||'#2563EB'), borderRadius:'var(--m-card-radius, 12px)', padding:'var(--m-card-pad, 14px)', overflow:'hidden', display:'flex', flexDirection:'column', minHeight: compact ? 90 : 180 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8, gap:6 }}>
+                  <span style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.03em', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{w.title}</span>
+                  {edit && (
+                    <span style={{ display:'flex', gap:4, flexShrink:0 }}>
+                      <button onClick={() => setBuilderFor(w)} style={miniBtn}>Edit</button>
+                      <button onClick={() => removeWidget(w.i)} style={{ ...miniBtn, color:'#DC2626', minWidth:32, minHeight:32 }}>✕</button>
+                    </span>
+                  )}
+                </div>
+                <div style={{ flex:1, minHeight:0 }}>
+                  <WidgetContent config={w} agentId={agent?.id} isAdmin={isAdmin} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
       <GridLayout className="layout" layout={layout} cols={COLS} rowHeight={ROW_H} width={width}
         isDraggable={edit} isResizable={edit} onLayoutChange={onLayoutChange} margin={[12,12]} draggableCancel=".no-drag">
         {widgets.map(w => (
@@ -159,6 +191,7 @@ function DashboardSmartInner() {
           </div>
         ))}
       </GridLayout>
+      )}
 
       {builderFor && (
         <WidgetBuilder

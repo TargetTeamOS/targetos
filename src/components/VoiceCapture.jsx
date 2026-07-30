@@ -11,10 +11,12 @@ import { supabase } from '../lib/supabase'
 import { startRecording, parseVoiceWithAI } from '../lib/voice'
 import { authFetch } from '../lib/apiAuth'
 import { db } from '../lib/db'
+import { useIsMobile } from '../lib/hooks'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 export function VoiceCapture() {
+  const isMobile = useIsMobile()
   const { agent } = useAuth()
   const { toast }  = useApp()
 
@@ -399,7 +401,11 @@ export function VoiceCapture() {
   const btnStyle = {
     position:  'fixed',
     left:   pos.x,
-    bottom: pos.y === null ? 24 : undefined,
+    // MOBILE BUG FIX: bottom:24 alone would sit the 64px-tall button
+    // squarely behind/under the ~64px bottom nav + safe-area on phones
+    // ("floating voice button stays above bottom navigation" -- it
+    // didn't). Desktop (no bottom nav) keeps the original 24px.
+    bottom: pos.y === null ? (isMobile ? 'calc(64px + env(safe-area-inset-bottom) + 14px)' : 24) : undefined,
     top:    pos.y !== null ? pos.y : undefined,
     width:     64, height: 64,
     borderRadius: '50%',
@@ -408,7 +414,9 @@ export function VoiceCapture() {
     color:       '#fff',
     fontSize:    '28px',
     cursor:      'grab',
-    zIndex:      900,
+    // Below MobileLayout's More-drawer (900) so an open drawer always
+    // sits above this button instead of an ambiguous same-layer stack.
+    zIndex:      isMobile ? 850 : 900,
     boxShadow:   '0 4px 16px rgba(204,34,0,.4)',
     display:     'flex',
     alignItems:  'center',
@@ -440,7 +448,7 @@ export function VoiceCapture() {
           ? Math.max(12, Math.min(pos.y - 360, vh - 420))
           : undefined
         return (
-        <div style={{ position: 'fixed', left: panelLeft, bottom: pos.y !== null ? undefined : 86, top: panelTop, width: PANEL_W, background: 'var(--panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 899, fontFamily: ff, overflow: 'hidden' }}>
+        <div style={{ position: 'fixed', left: panelLeft, bottom: pos.y !== null ? undefined : (isMobile ? 'calc(64px + env(safe-area-inset-bottom) + 76px)' : 86), top: panelTop, width: isMobile ? 'min(' + PANEL_W + 'px, calc(100vw - 24px))' : PANEL_W, background: 'var(--panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: isMobile ? 849 : 899, fontFamily: ff, overflow: 'hidden' }}>
 
           {/* Header */}
           <div style={{ background: '#CC2200', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

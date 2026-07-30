@@ -190,6 +190,40 @@ button { font-family: 'Inter', system-ui, sans-serif; cursor: pointer; }
   .app-sidebar { display: none; }
   .main-content { padding: 12px; }
   .hide-mobile { display: none !important; }
+
+  /* Global mobile sizing tokens -- shared design system, not
+     per-page magic numbers. Referenced by MobileLayout and pages as
+     they're converted, rather than each hard-coding its own sizes. */
+  :root {
+    --m-page-pad:        12px;
+    --m-top-bar-h:       56px;
+    --m-bottom-nav-h:    64px;
+    --m-touch-min:       44px;
+    --m-touch-preferred: 48px;
+    --m-title:           23px;
+    --m-heading:         17px;
+    --m-text:            15px;
+    --m-input-text:      16px;   /* prevents iOS auto-zoom on focus */
+    --m-label:           12px;
+    --m-card-pad:        14px;
+    --m-card-gap:        11px;
+    --m-card-radius:     12px;
+  }
+
+  /* Root overflow guards -- mobile content must never inherit a
+     desktop min-width or force the page wider than the viewport. */
+  html, body, #root {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  /* Reserve room for the fixed bottom nav so page content and floating
+     actions (e.g. the voice button) are never covered by it. */
+  .mobile-safe-bottom {
+    padding-bottom: calc(var(--m-bottom-nav-h) + env(safe-area-inset-bottom) + 12px);
+  }
 }
 
 /* ── PRINT ───────────────────────────────────────────────────── */
