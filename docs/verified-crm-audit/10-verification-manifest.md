@@ -98,4 +98,4 @@ The audit used read-only repository searches plus documentation writes. Importan
 - **Verified** - Repair work started from that exact commit on `codex/security-authentication-repair`.
 - **Verified** - API syntax checks pass after implementation.
 - **Partially verified** - Static source validation passes; its nested unit-test launch is blocked by Windows `EPERM`.
-- **Unknown** - Linux GitHub Actions results are pending publication of the repair branch.
+- **Partially verified** - Linux CI run `30569505625` installed dependencies and reached unit tests, then failed because the workflow's Node 20 lacked native WebSocket support required by the installed Supabase client. The workflow was corrected to Node 24; rerun pending.
