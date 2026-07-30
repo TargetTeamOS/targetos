@@ -63,6 +63,7 @@ for (const p of pages) {
 }
 if (failed) { console.log('\\nRENDER SMOKE FAILED \\u2014 ' + failed + ' page(s) would white-screen. Do NOT push.'); process.exit(1) }
 console.log('\\nALL PAGES RENDER \\u2014 no mount crashes.')
+process.exit(0)
 `
 
 const tmpEntry = path.join(process.cwd(), '.render-smoke-entry.jsx')

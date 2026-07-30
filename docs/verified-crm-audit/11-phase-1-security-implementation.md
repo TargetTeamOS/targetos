@@ -63,7 +63,7 @@ Scope: fail-closed API authentication and secure OAuth ownership
 - **Verified** - Existing connector-send tests remain unchanged.
 - **Verified** - All API JavaScript files pass `node --check` locally.
 - **Partially verified** - The repository validator passed its ten static source checks.
-- **Partially verified** - Linux run `30569505625` exposed Node 20's missing native WebSocket support. Run `30569934750` confirmed Node 24 fixes that issue and then exposed a test-only `APP_ORIGINS` placeholder mismatch. CI now includes the legitimate application origin plus the test origin; rerun pending. Windows continues to block child-process execution with `EPERM`.
+- **Partially verified** - Linux run `30569505625` exposed Node 20's missing native WebSocket support. Run `30569934750` confirmed Node 24 and exposed a test-only origin mismatch. Run `30570069359` passed unit/build/smoke and rendered all nine pages, but the generated render process retained open handles until its 60-second timeout. The harness now exits explicitly after success; rerun pending. Windows continues to block child-process execution with `EPERM`.
 
 ## Deployment prerequisites and rollback
 
