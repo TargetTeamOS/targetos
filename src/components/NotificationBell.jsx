@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useIsMobile } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
 import { getNotifications, markRead, markAllRead } from '../lib/notifications'
 import { fmtDateTime } from '../lib/utils'
@@ -25,6 +26,7 @@ const TYPE_ICONS = {
 export function NotificationBell() {
   const { agent } = useAuth()
   const navigate   = useNavigate()
+  const isMobile   = useIsMobile()
   const [open,      setOpen]      = useState(false)
   const [notifs,    setNotifs]    = useState([])
   const [unread,    setUnread]    = useState(0)
@@ -79,8 +81,8 @@ export function NotificationBell() {
   return (
     <div ref={ref} style={{ position: 'relative', fontFamily: ff }}>
       {/* Bell Button */}
-      <button onClick={() => setOpen(o => !o)}
-        style={{ position: 'relative', background: 'rgba(255,255,255,.08)', border: 'none', borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: 'rgba(255,255,255,.7)', fontSize: '16px' }}>
+      <button onClick={() => setOpen(o => !o)} aria-label="Notifications"
+        style={{ position: 'relative', background: 'rgba(255,255,255,.08)', border: 'none', borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: 'rgba(255,255,255,.7)', fontSize: '16px', minWidth: 44, minHeight: 44 }}>
         🔔
         {unread > 0 && (
           <span style={{ position: 'absolute', top: -4, right: -4, background: '#CC2200', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '1px 5px', borderRadius: '99px', minWidth: '16px', textAlign: 'center' }}>
@@ -89,8 +91,40 @@ export function NotificationBell() {
         )}
       </button>
 
-      {/* Dropdown */}
-      {open && (
+      {/* Dropdown (desktop) / full-screen sheet (mobile) */}
+      {open && isMobile && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000 }} onClick={() => setOpen(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'var(--panel)', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)' }}>Notifications {unread > 0 && <span style={{ color: '#CC2200' }}>({unread})</span>}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                {unread > 0 && (
+                  <button onClick={handleMarkAll} style={{ fontSize: '12px', color: 'var(--brand)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: ff, minHeight: 44 }}>Mark all read</button>
+                )}
+                <button onClick={() => setOpen(false)} aria-label="Close notifications" style={{ fontSize: 20, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', minWidth: 44, minHeight: 44 }}>✕</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {notifs.length === 0 && (
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--muted)', fontSize: '13px' }}>No notifications yet</div>
+              )}
+              {notifs.map(n => (
+                <div key={n.id} onClick={() => handleClick(n)}
+                  style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', cursor: n.link ? 'pointer' : 'default', background: n.read ? 'transparent' : 'rgba(204,34,0,.04)', display: 'flex', gap: '10px', alignItems: 'flex-start', minHeight: 44 }}>
+                  <span style={{ fontSize: '18px', flexShrink: 0 }}>{TYPE_ICONS[n.type] || 'ℹ️'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: n.read ? 500 : 700, color: 'var(--text)', marginBottom: '2px' }}>{n.title}</div>
+                    {n.body && <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{n.body}</div>}
+                    <div style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '3px' }}>{fmtDateTime(n.created_at)}</div>
+                  </div>
+                  {!n.read && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#CC2200', flexShrink: 0, marginTop: '4px' }} />}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {open && !isMobile && (
         <div style={{ position: 'absolute', bottom: '44px', left: 0, width: '300px', background: 'var(--panel)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: 1000, overflow: 'hidden' }}>
           {/* Header */}
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

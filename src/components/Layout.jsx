@@ -10,62 +10,21 @@ import { Avatar } from './UI'
 import { NotificationBell } from './NotificationBell'
 import { MobileLayout } from './MobileLayout'
 import { useIsMobile } from '../lib/hooks'
+import { NAV_ITEMS, filterNavItems } from '../lib/navConfig'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
-
-const NAV = [
-  // ── MAIN ──────────────────────────────────────────────────────────
-  { id: '',              label: 'Dashboard',      icon: '🏠', roles: ['admin','secretary','agent'] },
-  { id: 'contacts',      label: 'Contacts',       icon: '👥', roles: ['admin','secretary','agent'] },
-  { id: 'tasks',         label: 'Tasks',          icon: '✅', roles: ['admin','secretary','agent'] },
-  { id: 'calendar',      label: 'Calendar',       icon: '📅', roles: ['admin','secretary','agent'] },
-
-  // ── BOARD 1: PRODUCTION ───────────────────────────────────────────
-  { id: 'production',    label: 'Production',     icon: '📊', roles: ['admin','secretary','agent'] },
-  { id: 'analytics',     label: 'Reports & Analytics', icon: '📈', roles: ['admin','secretary'] },
-  { id: 'notepad',       label: 'Notepad',        icon: '📝', roles: ['admin','secretary','agent'] },
-
-  // ── BOARD 2: TC BOARD ────────────────────────────────────────────
-  { id: 'tc',            label: 'TC Board',       icon: '🎯', roles: ['admin','secretary'] },
-
-  // ── BOARD 3: LISTINGS ────────────────────────────────────────────
-  { id: 'my-listings',   label: 'My Listings',    icon: '🏡', roles: ['admin','secretary','agent'] },
-  { id: 'listings',      label: 'All Listings',   icon: '🔍', roles: ['admin','secretary','agent'] },
-  { id: 'openhouse',     label: 'Open House',     icon: '🚪', roles: ['admin','secretary','agent'] },
-  { id: 'offers',        label: 'Offers',         icon: '📝', roles: ['admin','secretary','agent'] },
-
-  // ── COMMUNICATION ─────────────────────────────────────────────────
-  { id: 'calls',         label: 'Calls & SMS',    icon: '📞', roles: ['admin','secretary','agent'] },
-  { id: 'email',         label: 'Email',          icon: '📧', roles: ['admin','secretary'] },
-
-  // ── TOOLS ─────────────────────────────────────────────────────────
-  { id: 'segments',      label: 'Segments',       icon: '🎯', roles: ['admin','secretary'] },
-  { id: 'gifts',         label: 'Gifts',          icon: '🎁', roles: ['admin','secretary'] },
-  { id: 'signs',         label: 'Signs',          icon: '🪧', roles: ['admin','secretary'] },
-  { id: 'marketing',     label: 'Marketing',      icon: '🎨', roles: ['admin','secretary','agent'] },
-  { id: 'mortgage',      label: 'Toolbox',        icon: '🧰', roles: ['admin','secretary','agent'] },
-  { id: 'briefing',      label: 'Daily Briefing', icon: '☀️',  roles: ['admin','secretary','agent'] },
-  { id: 'announcements', label: 'Announcements',  icon: '📣', roles: ['admin','secretary','agent'] },
-
-  // ── ADMIN ─────────────────────────────────────────────────────────
-  { id: 'automations',   label: 'Automations',    icon: '⚡', roles: ['admin'] },
-  { id: 'website',       label: 'Website',        icon: '🌐', roles: ['admin'] },
-  { id: 'activitylog',   label: 'Activity Log',   icon: '📋', roles: ['admin'] },
-  { id: 'custom-fields', label: 'Custom Fields',  icon: '🔲', roles: ['admin'] },
-  { id: 'admin',         label: 'Admin',          icon: '⚙️',  roles: ['admin'] },
-  { id: 'settings',      label: 'Settings',       icon: '🔧', roles: ['admin','secretary','agent'] },
-]
 
 export function Layout({ children }) {
   const navigate  = useNavigate()
   const location  = useLocation()
-  const { agent, isAdmin, signOut } = useAuth()
+  const { agent, isAdmin, signOut, can } = useAuth()
   const { state, setSidebarCollapsed, setTheme } = useApp()
   const isMobile = useIsMobile()
   const collapsed = state.collapsed
   const custom = state.custom || {}
 
   const role = agent?.role || 'agent'
+  const NAV = filterNavItems(NAV_ITEMS, { role, can })
 
   // Phones/narrow screens get the bottom-nav mobile shell instead of
   // the desktop sidebar. (Fixes: desktop layout showing on mobile.)
@@ -129,7 +88,8 @@ export function Layout({ children }) {
         <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0', scrollbarWidth: 'none' }}>
           {NAV.map((item, i) => {
             if (item.DIVIDER) return <div key={i} style={{ height: '1px', background: 'rgba(255,255,255,.06)', margin: '6px 0' }} />
-            if (!item.roles.includes(role)) return null
+            // NAV is already filtered by filterNavItems() above, using
+            // the real can() checker + role -- no redundant re-check here.
 
             const active = isActive(item.id)
             return (

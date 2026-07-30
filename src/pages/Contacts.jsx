@@ -10,7 +10,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { ClickToCall, HeaderCallButton } from '../components/ClickToCall'
-import { useContacts, useAgents } from '../lib/hooks'
+import { useContacts, useAgents, useIsMobile } from '../lib/hooks'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { ImportExport } from '../components/ImportExport'
@@ -351,6 +351,12 @@ export function Contacts() {
   const [popupDeals,   setPopupDeals]   = useState([])     // deals for popup
   const [popupFields,  setPopupFields]  = useState(['phone','email','source','status','agent']) // configurable
   const [viewMode,     setViewMode]     = useState('grid') // 'grid' | 'list'
+  const isMobile = useIsMobile()
+  // The 'list' view is an 8-column desktop table shape -- forcing 'grid'
+  // (card layout, already responsive via auto-fill/minmax) on phones
+  // satisfies "no tiny desktop table on phone" without needing a second
+  // mobile-specific list implementation.
+  const effectiveViewMode = isMobile ? 'grid' : viewMode
   const [groupByRole,  setGroupByRole]  = useState(() => { try { return localStorage.getItem('tos_contacts_group') !== '0' } catch { return true } })
   const [collapsed,    setCollapsed]    = useState({})   // role -> true
   useEffect(() => { try { localStorage.setItem('tos_contacts_group', groupByRole ? '1' : '0') } catch {} }, [groupByRole])
@@ -553,7 +559,7 @@ export function Contacts() {
               />
             )}
             <div style={{ display:'flex', background:'var(--dim)', borderRadius:'8px', padding:'2px', gap:'2px' }}>
-              {[['grid','⊞'],['list','☰']].map(([v,icon]) => (
+              {!isMobile && [['grid','⊞'],['list','☰']].map(([v,icon]) => (
                 <button key={v} onClick={() => setViewMode(v)}
                   title={v === 'grid' ? 'Grid view' : 'List view'}
                   style={{ padding:'5px 10px', borderRadius:'6px', border:'none', background: viewMode===v ? 'var(--panel)' : 'transparent', color: viewMode===v ? 'var(--text)' : 'var(--muted)', fontSize:'14px', cursor:'pointer', fontFamily:ff, boxShadow: viewMode===v ? '0 1px 3px rgba(0,0,0,.12)' : 'none' }}>
@@ -645,7 +651,7 @@ export function Contacts() {
       )}
 
       {/* Contact Grid / List — grouped by role when enabled */}
-      {!loading && filtered.length > 0 && viewMode === 'grid' && (
+      {!loading && filtered.length > 0 && effectiveViewMode === 'grid' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
           {displayList.map((c, idx, arr) => {
             const isSelected = selectedIds.includes(c.id)
@@ -707,7 +713,7 @@ export function Contacts() {
       )}
 
       {/* ── LIST VIEW ── */}
-      {!loading && filtered.length > 0 && viewMode === 'list' && (
+      {!loading && filtered.length > 0 && effectiveViewMode === 'list' && (
         <div style={{ background:'var(--panel)', borderRadius:'var(--radius)', border:'1px solid var(--border)', overflow:'hidden' }}>
           {/* Table header */}
           <div style={{ display:'grid', gridTemplateColumns:'32px 2fr 1.4fr 1.4fr 1fr 1fr 1fr 100px', gap:0, padding:'8px 12px', background:'var(--dim)', borderBottom:'2px solid var(--border)' }}>
