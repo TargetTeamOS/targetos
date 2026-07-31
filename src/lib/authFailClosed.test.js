@@ -16,6 +16,15 @@ describe('fail-closed API authentication', () => {
     expect(result).toMatchObject({ ok: false, status: 403 })
   })
 
+  it('returns 503 when required server Supabase configuration is missing', async () => {
+    const result = await auth.authenticate({ headers: {} }, {}, { env: {} })
+    expect(result).toMatchObject({
+      ok: false,
+      status: 503,
+      error: expect.stringMatching(/SUPABASE_URL/),
+    })
+  })
+
   it('rejects unauthorized roles', async () => {
     const result = await auth.authenticate({}, { roles: ['admin'] }, {
       requireUser: vi.fn(async () => ({ id: 'u1' })),

@@ -2,9 +2,9 @@
 // /api/admin-users — Full user management via Supabase Admin API
 // Requires SUPABASE_SERVICE_KEY in Vercel environment variables
 
-const { createClient } = require('@supabase/supabase-js')
 const { requireAdmin } = require('./_lib/phone')
 const { publicBaseUrl } = require('./_lib/requestSecurity')
+const { createServiceClient } = require('./_lib/supabaseConfig')
 
 async function parseBody(req) {
   return new Promise((resolve) => {
@@ -36,20 +36,17 @@ module.exports = async function handler(req, res) {
   const body = await parseBody(req)
   const { action, userId, email, name, role, color, phone } = body
 
-  // Validate env vars
-  const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
-  const SERVICE_KEY  = process.env.SUPABASE_SERVICE_KEY
   const APP_BASE = publicBaseUrl()
-  if (!SERVICE_KEY) {
-    return res.status(500).json({
-      error: 'SUPABASE_SERVICE_KEY not set in Vercel environment variables. Go to Vercel → Settings → Environment Variables and add it.'
-    })
-  }
   if (!APP_BASE) return res.status(503).json({ error: 'PUBLIC_BASE_URL is not configured' })
 
-  const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false }
-  })
+  let sb
+  try {
+    sb = createServiceClient({
+      clientOptions: { auth: { autoRefreshToken: false, persistSession: false } },
+    })
+  } catch (error) {
+    return res.status(error.status || 503).json({ error: error.message })
+  }
 
   try {
     // ── CREATE USER (with password) ──────────────────────────────

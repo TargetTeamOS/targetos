@@ -1,9 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
+import { requireBrowserSupabaseConfig } from './supabaseConfig'
 
-const SUPABASE_URL = 'https://sgrnyvdsyahmypibjarx.supabase.co'
-const SUPABASE_KEY = 'sb_publishable_L4MNs2GuBFnmyNKgiIGBMg_nNxeaLkE'
+const { url, key } = requireBrowserSupabaseConfig({
+  VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+  VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
+})
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+export const supabase = createClient(url, key, {
   realtime: { params: { eventsPerSecond: 10 } },
   auth: { persistSession: true, autoRefreshToken: true }
 })
