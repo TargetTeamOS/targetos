@@ -2,6 +2,7 @@
 const querystring = require('querystring')
 const { getSupabase, checkTwilioSignature, transcribeAudio } = require('./_lib/phone')
 const { notifyAgent } = require('./_lib/notify')
+const { externalEffectsEnabled } = require('./_lib/externalEffects')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
@@ -77,7 +78,7 @@ module.exports = async function handler(req, res) {
     try {
       const { data: auto } = await supabase.from('automations')
         .select('active, action_nodes').eq('id', 'a0000000-0000-4000-8000-000000000001').maybeSingle()  // '📬 Voicemail → Yanky' row
-      if (auto?.active && process.env.RESEND_API_KEY) {
+      if (externalEffectsEnabled() && auto?.active && process.env.RESEND_API_KEY) {
         const cfg = auto.action_nodes?.[0]?.config || {}
         const to  = cfg.to_email || 'yanky@targetreteam.com'
         let attachment = null

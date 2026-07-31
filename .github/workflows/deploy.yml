@@ -34,6 +34,7 @@ jobs:
       - name: Unit tests
         run: npm test
         env:
+          EXTERNAL_EFFECTS_ENABLED: 'true'
           OAUTH_STATE_SECRET: test-only-oauth-state-secret-32-bytes
           CRON_SECRET: test-only-cron-secret-32-bytes-value
           UNSUB_SECRET: test-only-unsub-secret-32-bytes

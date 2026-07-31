@@ -2,6 +2,7 @@
 const querystring = require('querystring')
 const { getSupabase, checkTwilioSignature, transcribeAudio } = require('./_lib/phone')
 const { notifyAgent } = require('./_lib/notify')
+const { externalEffectsEnabled } = require('./_lib/externalEffects')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 const OUTCOME = { completed:'Connected', busy:'No Answer', 'no-answer':'No Answer', failed:'No Answer', canceled:'No Answer' }
 
@@ -44,7 +45,7 @@ async function handleAgentAnswered(supabase, agentId, callLogId) {
 
     // Email the agent
     const RESEND_KEY = process.env.RESEND_API_KEY
-    if (RESEND_KEY) {
+    if (externalEffectsEnabled() && RESEND_KEY) {
       const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'New caller'
       await fetch('https://api.resend.com/emails', {
         method: 'POST',

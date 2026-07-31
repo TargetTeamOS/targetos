@@ -5,6 +5,7 @@
 const { requireAdmin } = require('./_lib/phone')
 const { publicBaseUrl } = require('./_lib/requestSecurity')
 const { createServiceClient } = require('./_lib/supabaseConfig')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 async function parseBody(req) {
   return new Promise((resolve) => {
@@ -61,6 +62,7 @@ module.exports = async function handler(req, res) {
       if (existing) {
         authUserId = existing.id
       } else {
+        if (!requireExternalEffects(res)) return
         const { data: invited, error: inviteErr } = await sb.auth.admin.inviteUserByEmail(email, {
           data: { name, role: role || 'agent' },
           redirectTo: APP_BASE,
@@ -108,7 +110,8 @@ module.exports = async function handler(req, res) {
         authUserId = existing.id
       } else {
         // Create user in Supabase Auth (generates invite link)
-        const { data: invited, error: invErr } = await sb.auth.admin.inviteUserByEmail(email, {
+      if (!requireExternalEffects(res)) return
+      const { data: invited, error: invErr } = await sb.auth.admin.inviteUserByEmail(email, {
           data: { name, role },
           redirectTo: APP_BASE,
         })
@@ -141,7 +144,7 @@ module.exports = async function handler(req, res) {
       // Send welcome email via Resend (reliable delivery)
       const RESEND_KEY = process.env.RESEND_API_KEY
       if (RESEND_KEY && !existing) {
-        const loginUrl = 'https://app.targetreteam.com'
+        const loginUrl = APP_BASE
         await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
@@ -177,6 +180,7 @@ module.exports = async function handler(req, res) {
     // ── RESET PASSWORD ───────────────────────────────────────────
     if (action === 'reset_password') {
       if (!userId) return res.status(400).json({ error: 'userId required' })
+      if (!requireExternalEffects(res)) return
       const { data: target, error: lookupError } = await sb.auth.admin.getUserById(userId)
       if (lookupError || !target?.user?.email) return res.status(404).json({ error: 'user not found' })
       const { error } = await sb.auth.resetPasswordForEmail(target.user.email, {

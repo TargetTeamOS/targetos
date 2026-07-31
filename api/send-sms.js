@@ -2,6 +2,8 @@
 'use strict'
 const { requireAnyAgent } = require('./_lib/phone')
 const { createServiceClient } = require('./_lib/supabaseConfig')
+const { isAdminRole } = require('./_lib/auth')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -13,20 +15,26 @@ async function parseBody(req) {
   })
 }
 
-module.exports = async function handler(req, res) {
-  // HARDENED (July 2026): caller authentication with staged rollout,
-  // same pattern as TWILIO_SIG_ENFORCE. Log-only until AUTH_ENFORCE
-  // is set to 'true' in Vercel — watch logs for '[AUTH]' lines, flip
-  // the env var when clean. Kill-switch: set it back to 'false'.
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
-      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
+async function authorizeContactAccess(supabase, contactId, identity, request = {}) {
+  if (!contactId) return { ok: true, contact: null }
+  const { data: contact, error } = await supabase
+    .from('contacts')
+    .select('id, agent_id')
+    .eq('id', contactId)
+    .maybeSingle()
+  if (error) return { ok: false, status: 500, error: 'Unable to verify contact ownership' }
+  if (!contact) return { ok: false, status: 404, error: 'Contact not found' }
+  if (contact.agent_id === identity.agentId) return { ok: true, contact }
+
+  const explicitAdminOverride = request.admin_override === true &&
+    typeof request.admin_reason === 'string' && request.admin_reason.trim().length >= 8
+  if (isAdminRole(identity.role) && explicitAdminOverride) {
+    return { ok: true, contact, adminOverride: true }
   }
+  return { ok: false, status: 403, error: 'Contact belongs to another agent' }
+}
+
+async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   if (req.method !== 'POST') return res.status(405).json({ error:'Method not allowed' })
 
@@ -35,19 +43,25 @@ module.exports = async function handler(req, res) {
   const authCheck = await requireAnyAgent(req)
   if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
 
-  const { to, body, contactId, agentId } = await parseBody(req)
+  const request = await parseBody(req)
+  const { to, body, contactId } = request
   if (!to || !body) return res.status(400).json({ error:'to and body required' })
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID
-  const authToken  = process.env.TWILIO_AUTH_TOKEN
-  const fromNumber = process.env.TWILIO_PHONE_NUMBER || '+18453271778'
-  if (!accountSid || !authToken) return res.status(500).json({ error:'Twilio not configured' })
   let messageStore
   try {
     messageStore = createServiceClient()
   } catch (error) {
     return res.status(error.status || 503).json({ error: error.message })
   }
+
+  const contactAccess = await authorizeContactAccess(messageStore, contactId, authCheck, request)
+  if (!contactAccess.ok) return res.status(contactAccess.status).json({ error: contactAccess.error })
+  if (!requireExternalEffects(res)) return
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID
+  const authToken  = process.env.TWILIO_AUTH_TOKEN
+  const fromNumber = process.env.TWILIO_PHONE_NUMBER || '+18453271778'
+  if (!accountSid || !authToken) return res.status(503).json({ error:'Twilio not configured' })
 
   try {
     const auth = 'Basic ' + Buffer.from(accountSid+':'+authToken).toString('base64')
@@ -67,7 +81,7 @@ module.exports = async function handler(req, res) {
       body,
       status:       d.status,
       contact_id:   contactId || null,
-      agent_id:     agentId   || null,
+      agent_id:     authCheck.agentId,
       created_at:   new Date().toISOString(),
     }).catch(e => console.warn('sms save:', e.message))
 
@@ -76,3 +90,6 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: e.message })
   }
 }
+
+module.exports = handler
+module.exports.authorizeContactAccess = authorizeContactAccess

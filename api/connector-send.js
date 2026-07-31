@@ -23,6 +23,7 @@ const _connectors = require('./_lib/connectors')
 const _auth = require('./_lib/auth')
 const emailCrypto = require('./_lib/emailCrypto')
 const _emailStore = require('./_lib/emailStore')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 // Dependencies resolved through a single object so unit tests can override
 // them in-process (there is no HTTP surface for this). Defaults are the real
@@ -145,6 +146,7 @@ async function handler(req, res) {
     if (body.from && String(body.from).trim().toLowerCase() !== fromAccount.toLowerCase()) {
       return json(res, 403, { error: 'From address is not authorized for your connected account' })
     }
+    if (!requireExternalEffects(res)) return
 
     let token
     try {

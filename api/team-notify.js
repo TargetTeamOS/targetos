@@ -6,6 +6,7 @@
 // Body: { text }
 
 const { notifyTeamChat, logEvent } = require('./_lib/connectors')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -26,6 +27,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') { res.status(200).end(); return }
   if (req.method !== 'POST')    { res.status(405).json({ error: 'Method not allowed' }); return }
+  if (!requireExternalEffects(res)) return
 
   try {
     const body = await parseBody(req)

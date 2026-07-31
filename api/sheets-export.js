@@ -7,6 +7,7 @@
 
 const { getIntegration, freshGoogleToken, logEvent,
         getAgentAccount, freshAccountToken } = require('./_lib/connectors')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -33,6 +34,7 @@ module.exports = async function handler(req, res) {
     const title = String(body.title || '').trim() || 'TargetOS Export'
     const rows = Array.isArray(body.rows) ? body.rows : []
     if (!rows.length) { res.status(400).json({ error: 'rows required (array of arrays)' }); return }
+    if (!requireExternalEffects(res)) return
     const values = []
     if (Array.isArray(body.headers) && body.headers.length) values.push(body.headers)
     for (const r of rows.slice(0, 5000)) values.push(Array.isArray(r) ? r : [String(r)])

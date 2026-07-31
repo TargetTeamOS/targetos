@@ -11,18 +11,24 @@
 npm install -g supabase
 ```
 
-## Step 2 — Link your project
+## Step 2 - Link your project
 ```bash
 cd /path/to/targetos
 supabase login
-supabase link --project-ref sgrnyvdsyahmypibjarx
+supabase link --project-ref "$SUPABASE_PROJECT_REF"
 ```
+
+`SUPABASE_PROJECT_REF` is environment-specific. Confirm the selected project
+before running any command. No project reference in this document is a default.
 
 ## Step 3 — Set secrets
 ```bash
-supabase secrets set RESEND_API_KEY=re_ShsDysNB_2MDVrReA864LkDRGCgbadc93
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<your service role key from Supabase Settings>
+supabase secrets set --env-file ./supabase-functions.env
 ```
+
+Create `supabase-functions.env` outside the repository with the required
+environment-specific values. Never paste secrets into this guide or commit the
+file. Any credential previously committed in documentation must be revoked.
 
 ## Step 4 — Deploy all functions
 ```bash
@@ -32,5 +38,14 @@ supabase functions deploy no-activity-check
 supabase functions deploy task-overdue-check
 ```
 
-## Step 5 — Run this SQL in Supabase SQL Editor
+## Step 5 - Run this SQL in Supabase SQL Editor
 (This sets up the cron jobs and database webhooks)
+
+Before running `edge_functions_sql.sql`, configure both database settings for
+the selected environment:
+
+- `app.edge_functions_base_url`: the exact HTTPS `/functions/v1` base URL.
+- `app.service_role_key`: the environment's service-role credential.
+
+The executable SQL intentionally fails when either setting is missing; it does
+not contain or fall back to a project-specific URL or key.

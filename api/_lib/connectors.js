@@ -1,4 +1,5 @@
 'use strict'
+const { assertExternalEffectsEnabled } = require('./externalEffects')
 // api/_lib/connectors.js — shared helpers for the connectors layer.
 // Reuses the service-key Supabase client pattern from _lib/phone.js.
 
@@ -338,6 +339,7 @@ module.exports.insertContactTimeline = insertContactTimeline
 // ── Team chat (Slack or Teams incoming webhook) ───────────────────
 // Both platforms accept POST {"text": "..."} on incoming webhooks.
 async function notifyTeamChat(text) {
+  assertExternalEffectsEnabled()
   const integ = await getIntegration('teamchat')
   const hook = ((integ && integ.secrets) || {}).webhook_url || ''
   if (!hook) return { ok: false, skipped: true }
@@ -357,6 +359,7 @@ function mailchimpBase(apiKey) {
 }
 
 async function mailchimpUpsert(apiKey, audienceId, member) {
+  assertExternalEffectsEnabled()
   const crypto = require('crypto')
   const email = String(member.email || '').trim().toLowerCase()
   if (!email) throw new Error('email required')

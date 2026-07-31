@@ -6,21 +6,9 @@ const twilio = require('twilio')
 const AccessToken = twilio.jwt.AccessToken
 const VoiceGrant  = AccessToken.VoiceGrant
 const { requireAnyAgent } = require('./_lib/phone')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 module.exports = async function handler(req, res) {
-  // HARDENED (July 2026): caller authentication with staged rollout,
-  // same pattern as TWILIO_SIG_ENFORCE. Log-only until AUTH_ENFORCE
-  // is set to 'true' in Vercel — watch logs for '[AUTH]' lines, flip
-  // the env var when clean. Kill-switch: set it back to 'false'.
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
-      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
-  }
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Content-Type', 'application/json')
   if (req.method === 'OPTIONS') return res.status(200).end()
@@ -30,6 +18,7 @@ module.exports = async function handler(req, res) {
   // hour. Had ZERO auth until July 2026.
   const authCheck = await requireAnyAgent(req)
   if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
+  if (!requireExternalEffects(res)) return
 
   const accountSid  = (process.env.TWILIO_ACCOUNT_SID || '').trim()
   const authToken   = (process.env.TWILIO_AUTH_TOKEN || '').trim()
