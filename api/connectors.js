@@ -6,6 +6,7 @@
 const { sb, getIntegration, patchIntegration, baseUrl } = require('./_lib/connectors')
 const { authenticate, isAdminRole } = require('./_lib/auth')
 const { appOrigins } = require('./_lib/requestSecurity')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -109,6 +110,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (action === 'teamchat_test') {
+      if (!requireExternalEffects(res)) return
       const { notifyTeamChat } = require('./_lib/connectors')
       const r = await notifyTeamChat('✅ TargetOS is connected — this is a test notification.')
       if (r.skipped) { res.status(400).json({ error: 'webhook URL not saved yet' }); return }

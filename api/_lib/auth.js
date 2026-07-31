@@ -12,18 +12,31 @@
 //   if (!user) { res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' })) }
 // ═══════════════════════════════════════════════════════════════
 'use strict'
-const { getSupabase } = require('./phone')
-const { getServerSupabaseConfig } = require('./supabaseConfig')
+const { createServiceClient, getServerSupabaseConfig } = require('./supabaseConfig')
 
 const ADMIN_ROLES = new Set(['admin', 'administrator', 'owner'])
-const TEAM_ROLES = new Set(['admin', 'administrator', 'owner', 'manager', 'team_leader', 'secretary'])
+const SECRETARY_ROLES = new Set(['secretary', 'transaction_coordinator', 'transaction coordinator'])
+const AGENT_ROLES = new Set(['agent', 'manager', 'team_leader', 'team leader'])
+const TEAM_ROLES = new Set([...ADMIN_ROLES, ...SECRETARY_ROLES, ...AGENT_ROLES])
+
+function normalizeRole(role) {
+  return String(role || '').trim().toLowerCase()
+}
+
+function canonicalRole(role) {
+  const normalized = normalizeRole(role)
+  if (ADMIN_ROLES.has(normalized)) return 'admin'
+  if (SECRETARY_ROLES.has(normalized)) return 'secretary'
+  if (AGENT_ROLES.has(normalized)) return 'agent'
+  return normalized
+}
 
 async function requireUser(req, deps = {}) {
   try {
     const hdr = req.headers['authorization'] || ''
     const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : null
     if (!token) return null
-    const supabase = deps.supabase || getSupabase()
+    const supabase = deps.supabase || createServiceClient({ env: deps.env || process.env })
     if (!supabase) return null
     const { data, error } = await supabase.auth.getUser(token)
     if (error || !data?.user) return null
@@ -36,7 +49,7 @@ async function requireUser(req, deps = {}) {
 
 async function getAgentForUser(authUserId, deps = {}) {
   if (!authUserId) return null
-  const supabase = deps.supabase || getSupabase()
+  const supabase = deps.supabase || createServiceClient({ env: deps.env || process.env })
   if (!supabase) return null
   const { data, error } = await supabase.from('agents')
     .select('id, auth_user_id, name, email, role, active')
@@ -48,11 +61,15 @@ async function getAgentForUser(authUserId, deps = {}) {
 
 function roleAllowed(role, allowedRoles) {
   if (!allowedRoles || !allowedRoles.length) return true
-  const normalized = String(role || '').toLowerCase()
+  const normalized = normalizeRole(role)
+  const canonical = canonicalRole(role)
   return allowedRoles.some(allowed => {
-    if (allowed === 'admin') return ADMIN_ROLES.has(normalized)
-    if (allowed === 'team') return TEAM_ROLES.has(normalized)
-    return normalized === String(allowed).toLowerCase()
+    const normalizedAllowed = normalizeRole(allowed)
+    if (normalizedAllowed === 'admin') return ADMIN_ROLES.has(normalized)
+    if (normalizedAllowed === 'secretary') return SECRETARY_ROLES.has(normalized)
+    if (normalizedAllowed === 'agent') return AGENT_ROLES.has(normalized)
+    if (normalizedAllowed === 'team') return TEAM_ROLES.has(normalized)
+    return canonical === canonicalRole(normalizedAllowed)
   })
 }
 
@@ -89,16 +106,20 @@ function sendAuthError(res, result) {
 }
 
 function isAdminRole(role) {
-  return ADMIN_ROLES.has(String(role || '').toLowerCase())
+  return ADMIN_ROLES.has(normalizeRole(role))
 }
 
 function isTeamRole(role) {
-  return TEAM_ROLES.has(String(role || '').toLowerCase())
+  return TEAM_ROLES.has(normalizeRole(role))
 }
 
 module.exports = {
   ADMIN_ROLES,
+  SECRETARY_ROLES,
+  AGENT_ROLES,
   TEAM_ROLES,
+  normalizeRole,
+  canonicalRole,
   requireUser,
   getAgentForUser,
   authenticate,

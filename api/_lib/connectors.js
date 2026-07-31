@@ -1,4 +1,5 @@
 'use strict'
+const { assertExternalEffectsEnabled } = require('./externalEffects')
 // api/_lib/connectors.js — shared helpers for the connectors layer.
 // Reuses the service-key Supabase client pattern from _lib/phone.js.
 
@@ -252,6 +253,45 @@ async function agentIdFromAuthUser(authUserId) {
   return data ? data.id : null
 }
 
+async function getAgentForUser(authUserId) {
+  if (!authUserId) return null
+  const { data, error } = await sb().from('agents')
+    .select('id, role, active')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle()
+  if (error || !data || data.active === false) return null
+  return { id: data.id, role: data.role }
+}
+
+// Service-role clients bypass RLS, so connector routes must enforce the
+// same private-contact ownership rule before sending or writing timelines.
+async function contactAccess(contactId, agent) {
+  if (!contactId) return { exists: false, allowed: false }
+  const { data, error } = await sb().from('contacts')
+    .select('id, is_private, agent_id')
+    .eq('id', contactId)
+    .maybeSingle()
+  if (error) throw new Error('contact lookup failed')
+  if (!data) return { exists: false, allowed: false }
+  const role = String((agent && agent.role) || '').trim().toLowerCase()
+  const admin = ['admin', 'administrator', 'owner'].includes(role)
+  return {
+    exists: true,
+    allowed: data.is_private === false || data.agent_id === (agent && agent.id) || admin,
+  }
+}
+
+async function insertContactTimeline({ contactId, provider, subject, to, fromAccount }) {
+  const { error } = await sb().from('tasks').insert([{
+    contact_id: contactId,
+    title: 'Email sent via ' + (provider === 'gmail' ? 'Gmail' : 'Outlook') + ': ' + subject,
+    notes: 'To: ' + to + ' — from ' + fromAccount,
+    priority: 'note',
+    status: 'done',
+  }])
+  if (error) throw new Error('timeline insert failed')
+}
+
 module.exports.getAgentAccount = getAgentAccount
 module.exports.upsertAgentAccount = upsertAgentAccount
 module.exports.findAccountByState = findAccountByState
@@ -259,10 +299,14 @@ module.exports.saveOAuthPending = saveOAuthPending
 module.exports.consumeOAuthPending = consumeOAuthPending
 module.exports.freshAccountToken = freshAccountToken
 module.exports.agentIdFromAuthUser = agentIdFromAuthUser
+module.exports.getAgentForUser = getAgentForUser
+module.exports.contactAccess = contactAccess
+module.exports.insertContactTimeline = insertContactTimeline
 
 // ── Team chat (Slack or Teams incoming webhook) ───────────────────
 // Both platforms accept POST {"text": "..."} on incoming webhooks.
 async function notifyTeamChat(text) {
+  assertExternalEffectsEnabled()
   const integ = await getIntegration('teamchat')
   const hook = ((integ && integ.secrets) || {}).webhook_url || ''
   if (!hook) return { ok: false, skipped: true }
@@ -282,6 +326,7 @@ function mailchimpBase(apiKey) {
 }
 
 async function mailchimpUpsert(apiKey, audienceId, member) {
+  assertExternalEffectsEnabled()
   const crypto = require('crypto')
   const email = String(member.email || '').trim().toLowerCase()
   if (!email) throw new Error('email required')

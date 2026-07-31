@@ -17,6 +17,7 @@
 const { getSupabase } = require('./_lib/phone')
 const { getTodaysQuote, buildEmailHTML, isDueToday, isOverdue, getDaysUntil, DEFAULT_PREFS, DEFAULT_STYLE } = require('./_lib/briefing')
 const { notifyAgent } = require('./_lib/notify')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 async function gatherAgentData(supabase, agentId) {
   const today   = new Date().toISOString().slice(0, 10)
@@ -56,6 +57,7 @@ module.exports = async function handler(req, res) {
   const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
   const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
   if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
+  if (!requireExternalEffects(res)) return
 
   const force = /[?&]force=1/.test(req.url || '')
   const supabase = getSupabase()
@@ -194,11 +196,15 @@ module.exports = async function handler(req, res) {
               if (action.type === 'send_email') {
                 const roleAgent = cfg.to_role ? agents?.find(a => a.role === cfg.to_role) : null
                 const to = (cfg.to_email && fill(cfg.to_email)) || roleAgent?.email || 'office@targetreteam.com'
-                await sendSystemEmail({
-                  to,
-                  subject: fill(cfg.subject || 'TargetOS alert'),
-                  html: '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">' + fill(cfg.body || '').replace(/\n/g, '<br/>') + '</div>',
-                  idempotencyKey: 'closing-alert:' + auto.id + ':' + deal.id,
+                await fetch('https://api.resend.com/emails', {
+                  method: 'POST',
+                  headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    from: 'TargetOS <office@targetreteam.com>', to: [to],
+                    ...(cfg.cc_email ? { cc: String(cfg.cc_email).split(',').map(x => x.trim()).filter(Boolean) } : {}),
+                    subject: fill(cfg.subject || 'TargetOS alert'),
+                    html: '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">' + fill(cfg.body || '').replace(/\n/g, '<br/>') + '</div>',
+                  }),
                 })
               }
             } catch (e) { console.warn('[closing-cron] action failed:', e.message) }

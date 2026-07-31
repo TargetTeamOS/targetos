@@ -9,6 +9,7 @@
 
 const { getIntegration, freshMicrosoftToken, freshGoogleToken, logEvent,
         getAgentAccount, freshAccountToken } = require('./_lib/connectors')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 const TZ = 'America/New_York'
 
@@ -61,6 +62,7 @@ module.exports = async function handler(req, res) {
     const title = String(body.title || '').trim()
     if (!title) { res.status(400).json({ error: 'title required' }); return }
     const t = buildTimes(body)
+    if (!requireExternalEffects(res)) return
 
     const agentId = identity.agent.id
 

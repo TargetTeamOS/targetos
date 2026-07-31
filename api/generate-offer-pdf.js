@@ -314,19 +314,6 @@ async function buildOfferPdf(data) {
 }
 
 module.exports = async function handler(req, res) {
-  // HARDENED (July 2026): caller authentication with staged rollout,
-  // same pattern as TWILIO_SIG_ENFORCE. Log-only until AUTH_ENFORCE
-  // is set to 'true' in Vercel — watch logs for '[AUTH]' lines, flip
-  // the env var when clean. Kill-switch: set it back to 'false'.
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
-      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
-  }
   if (req.method !== 'POST') return res.status(405).json({ error:'POST only' })
 
   const authCheck = await requireAnyAgent(req)

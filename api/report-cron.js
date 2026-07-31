@@ -8,6 +8,7 @@
 'use strict'
 const { getSupabase } = require('./_lib/phone')
 const { computeReport, renderReportHtml } = require('./_lib/reportEngine')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
 
@@ -17,6 +18,7 @@ module.exports = async function handler(req, res) {
   const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
   const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
   if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
+  if (!requireExternalEffects(res)) return
   const RESEND_KEY = process.env.RESEND_API_KEY
   if (!RESEND_KEY) return res.status(500).end(JSON.stringify({ error: 'Email service not configured' }))
 

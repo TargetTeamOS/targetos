@@ -7,6 +7,7 @@
 
 const { getSupabase } = require('./_lib/phone')
 const { notifyAgent, loadAgentNotificationPrefs } = require('./_lib/notify')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 module.exports = async function handler(req, res) {
   // Vercel sends 'Authorization: Bearer <CRON_SECRET>' for configured
@@ -15,6 +16,7 @@ module.exports = async function handler(req, res) {
   const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
   const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
   if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
+  if (!requireExternalEffects(res)) return
 
   // Allow GET (cron) or POST (manual trigger)
   const sb = getSupabase()

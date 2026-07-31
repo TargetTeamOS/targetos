@@ -38,6 +38,7 @@ Source ref: `origin/feature/connected-email-accounts`
 11. [11-phase-1-security-implementation.md](11-phase-1-security-implementation.md)
 12. [13-prelaunch-lockdown.md](13-prelaunch-lockdown.md)
 13. [14-supabase-configuration-isolation.md](14-supabase-configuration-isolation.md)
+14. [15-phase-1-stack-repair.md](15-phase-1-stack-repair.md)
 
 ## Executive assessment
 
@@ -54,4 +55,5 @@ Source ref: `origin/feature/connected-email-accounts`
 - **Verified** - Phase 1 security repairs are documented in `11-phase-1-security-implementation.md`.
 - **Verified** - Pre-launch external-effect quarantine is documented in `13-prelaunch-lockdown.md`.
 - **Verified** - Fail-closed Supabase configuration and its clean Linux checks are documented in `14-supabase-configuration-isolation.md`.
+- **Verified** - Stack repair, authenticated SMS/phone ownership, and the universal external-effects control are documented in `15-phase-1-stack-repair.md`.
 - **Verified** - The audit remains the baseline; corrected findings are not silently rewritten and are explicitly superseded by the implementation record.

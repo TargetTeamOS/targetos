@@ -395,15 +395,20 @@ async function executeAction(action, context, triggerData, agents) {
         break
       }
       try {
-        await fetch(hookUrl, {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const authToken = sessionData && sessionData.session ? sessionData.session.access_token : ''
+        await fetch('/api/automation-webhook', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: Object.assign({ 'Content-Type': 'application/json' }, authToken ? { Authorization: 'Bearer ' + authToken } : {}),
           body: JSON.stringify({
-            source: 'TargetOS',
-            event: context.trigger_type || 'automation',
-            message: interpolate(cfg.payload || '', context),
-            data: triggerData,
-            sent_at: new Date().toISOString(),
+            url: hookUrl,
+            payload: {
+              source: 'TargetOS',
+              event: context.trigger_type || 'automation',
+              message: interpolate(cfg.payload || '', context),
+              data: triggerData,
+              sent_at: new Date().toISOString(),
+            },
           }),
         })
         console.log('[AutomationEngine] webhook sent → ' + hookUrl.split('/').slice(0, 3).join('/'))
