@@ -35,6 +35,9 @@ Source ref: `origin/feature/connected-email-accounts`
 8. [08-risks-and-missing-files.md](08-risks-and-missing-files.md)
 9. [09-stabilization-roadmap.md](09-stabilization-roadmap.md)
 10. [10-verification-manifest.md](10-verification-manifest.md)
+11. [11-phase-1-security-implementation.md](11-phase-1-security-implementation.md)
+12. [13-prelaunch-lockdown.md](13-prelaunch-lockdown.md)
+13. [14-supabase-configuration-isolation.md](14-supabase-configuration-isolation.md)
 
 ## Executive assessment
 
@@ -49,4 +52,6 @@ Source ref: `origin/feature/connected-email-accounts`
 ## Phase 1 implementation status
 
 - **Verified** - Phase 1 security repairs are documented in `11-phase-1-security-implementation.md`.
+- **Verified** - Pre-launch external-effect quarantine is documented in `13-prelaunch-lockdown.md`.
+- **Verified** - Fail-closed Supabase configuration and its clean Linux checks are documented in `14-supabase-configuration-isolation.md`.
 - **Verified** - The audit remains the baseline; corrected findings are not silently rewritten and are explicitly superseded by the implementation record.
