@@ -72,7 +72,7 @@ fs.writeFileSync(tmpEntry, entry)
 try {
   execSync(
     `npx esbuild ${tmpEntry} --bundle --platform=node --loader:.js=jsx --loader:.jsx=jsx --loader:.css=empty --jsx=automatic ` +
-    `--banner:js="${SHIMS.replace(/\n/g, ' ').replace(/"/g, '\\"')}" --outfile=${tmpOut} --log-level=error`,
+    `--define:import.meta.env=process.env --banner:js="${SHIMS.replace(/\n/g, ' ').replace(/"/g, '\\"')}" --outfile=${tmpOut} --log-level=error`,
     { stdio: ['ignore', 'inherit', 'inherit'] }
   )
   execSync(`node ${tmpOut}`, { stdio: 'inherit', timeout: 60000 })

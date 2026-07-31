@@ -13,7 +13,7 @@ SELECT cron.schedule(
   '0 12 * * *',
   $$
   SELECT net.http_post(
-    url := 'https://sgrnyvdsyahmypibjarx.supabase.co/functions/v1/daily-briefing',
+    url := current_setting('app.edge_functions_base_url') || '/daily-briefing',
     headers := '{"Authorization": "Bearer ' || current_setting('app.service_role_key', true) || '", "Content-Type": "application/json"}'::jsonb,
     body := '{}'::jsonb
   );
@@ -26,7 +26,7 @@ SELECT cron.schedule(
   '0 13 * * *',
   $$
   SELECT net.http_post(
-    url := 'https://sgrnyvdsyahmypibjarx.supabase.co/functions/v1/no-activity-check',
+    url := current_setting('app.edge_functions_base_url') || '/no-activity-check',
     headers := '{"Authorization": "Bearer ' || current_setting('app.service_role_key', true) || '", "Content-Type": "application/json"}'::jsonb,
     body := '{}'::jsonb
   );
@@ -39,7 +39,7 @@ SELECT cron.schedule(
   '30 13 * * *',
   $$
   SELECT net.http_post(
-    url := 'https://sgrnyvdsyahmypibjarx.supabase.co/functions/v1/task-overdue-check',
+    url := current_setting('app.edge_functions_base_url') || '/task-overdue-check',
     headers := '{"Authorization": "Bearer ' || current_setting('app.service_role_key', true) || '", "Content-Type": "application/json"}'::jsonb,
     body := '{}'::jsonb
   );
@@ -54,8 +54,8 @@ CREATE OR REPLACE FUNCTION notify_automation_contacts()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM net.http_post(
-    url := 'https://sgrnyvdsyahmypibjarx.supabase.co/functions/v1/automation-engine',
-    headers := '{"Content-Type": "application/json", "Authorization": "Bearer YOUR_SERVICE_ROLE_KEY"}'::jsonb,
+    url := current_setting('app.edge_functions_base_url') || '/automation-engine',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer ' || current_setting('app.service_role_key')),
     body := json_build_object(
       'type', TG_OP,
       'table', 'contacts',
@@ -77,8 +77,8 @@ CREATE OR REPLACE FUNCTION notify_automation_deals()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM net.http_post(
-    url := 'https://sgrnyvdsyahmypibjarx.supabase.co/functions/v1/automation-engine',
-    headers := '{"Content-Type": "application/json", "Authorization": "Bearer YOUR_SERVICE_ROLE_KEY"}'::jsonb,
+    url := current_setting('app.edge_functions_base_url') || '/automation-engine',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer ' || current_setting('app.service_role_key')),
     body := json_build_object(
       'type', TG_OP,
       'table', 'deals',
@@ -100,8 +100,8 @@ CREATE OR REPLACE FUNCTION notify_automation_listings()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM net.http_post(
-    url := 'https://sgrnyvdsyahmypibjarx.supabase.co/functions/v1/automation-engine',
-    headers := '{"Content-Type": "application/json", "Authorization": "Bearer YOUR_SERVICE_ROLE_KEY"}'::jsonb,
+    url := current_setting('app.edge_functions_base_url') || '/automation-engine',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer ' || current_setting('app.service_role_key')),
     body := json_build_object(
       'type', TG_OP,
       'table', 'listings',
@@ -177,4 +177,3 @@ CREATE TABLE IF NOT EXISTS announcements (
 ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all announcements" ON announcements;
 CREATE POLICY "Allow all announcements" ON announcements FOR ALL USING (true);
-

@@ -1,12 +1,11 @@
 'use strict'
+const { assertExternalEffectsEnabled } = require('./externalEffects')
 // api/_lib/connectors.js — shared helpers for the connectors layer.
 // Reuses the service-key Supabase client pattern from _lib/phone.js.
 
-const { createClient } = require('@supabase/supabase-js')
 const emailCrypto = require('./emailCrypto')
 const { constantTimeEqual } = require('./requestSecurity')
-
-const SUPABASE_URL  = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
+const { createServiceClient } = require('./supabaseConfig')
 
 // Encrypt only the per-user OAuth token fields at rest. Other secret
 // fields (client_secret, api_key, webhook_secret) are app-level config,
@@ -41,10 +40,7 @@ function openSecrets(secrets, id) {
 }
 
 function sb() {
-  const key = process.env.SUPABASE_SERVICE_KEY ||
-              process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!key) throw new Error('SUPABASE_SERVICE_KEY missing — connectors require the service key')
-  return createClient(SUPABASE_URL, key, { auth: { persistSession: false } })
+  return createServiceClient()
 }
 
 async function getIntegration(id) {
@@ -343,6 +339,7 @@ module.exports.insertContactTimeline = insertContactTimeline
 // ── Team chat (Slack or Teams incoming webhook) ───────────────────
 // Both platforms accept POST {"text": "..."} on incoming webhooks.
 async function notifyTeamChat(text) {
+  assertExternalEffectsEnabled()
   const integ = await getIntegration('teamchat')
   const hook = ((integ && integ.secrets) || {}).webhook_url || ''
   if (!hook) return { ok: false, skipped: true }
@@ -362,6 +359,7 @@ function mailchimpBase(apiKey) {
 }
 
 async function mailchimpUpsert(apiKey, audienceId, member) {
+  assertExternalEffectsEnabled()
   const crypto = require('crypto')
   const email = String(member.email || '').trim().toLowerCase()
   if (!email) throw new Error('email required')

@@ -48,7 +48,11 @@ function graphOnly(fn) {
 }
 function graphSends(fetchImpl) { return fetchImpl.mock.calls.filter(c => String(c[0]).includes('/sendMail')).length }
 
-beforeEach(() => { db = new Map(); finalizeFailTimes = 0; rpcOverride = undefined; sm.resetTokenCache(); sm.__setIO({ sb: fakeSb }) })
+beforeEach(() => {
+  process.env.EXTERNAL_EFFECTS_ENABLED = 'true'
+  db = new Map(); finalizeFailTimes = 0; rpcOverride = undefined
+  sm.resetTokenCache(); sm.__setIO({ sb: fakeSb })
+})
 
 describe('systemMailer atomic idempotency', () => {
   it('fails closed when configuration is incomplete', async () => {

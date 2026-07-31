@@ -6,6 +6,7 @@
 'use strict'
 const { getSupabase } = require('./_lib/phone')
 const { computeReport, renderReportHtml } = require('./_lib/reportEngine')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
 
 async function readBody(req) {
@@ -17,9 +18,10 @@ module.exports = async function handler(req, res) {
   const { authenticate, sendAuthError } = require('./_lib/auth')
   const identity = await authenticate(req, { roles: ['admin'] })
   if (!identity.ok) return sendAuthError(res, identity)
+  if (!requireExternalEffects(res)) return
 
   const RESEND_KEY = process.env.RESEND_API_KEY
-  if (!RESEND_KEY) return res.status(500).end(JSON.stringify({ error:'Email service not configured' }))
+  if (!RESEND_KEY) return res.status(503).end(JSON.stringify({ error:'Email service not configured' }))
 
   const body = await readBody(req)
   const supabase = getSupabase()

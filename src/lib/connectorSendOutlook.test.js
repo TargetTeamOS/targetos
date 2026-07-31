@@ -13,6 +13,7 @@ async function call(body) { const res = makeRes(); await handler({ method: 'POST
 const okBody = (o = {}) => ({ provider: 'outlook', to: 'client@example.com', subject: 'Hi', text: 'hello', ...o })
 
 beforeEach(() => {
+  vi.stubEnv('EXTERNAL_EFFECTS_ENABLED', 'true')
   for (const k of Object.keys(D)) if (D[k].mockReset) D[k].mockReset()
   D.logEvent.mockResolvedValue(); D.freshAccountToken.mockResolvedValue('ms-tok'); D.insertContactTimeline.mockResolvedValue()
   D.requireUser.mockResolvedValue({ id: 'user-1' })

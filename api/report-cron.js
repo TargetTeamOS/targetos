@@ -9,6 +9,7 @@
 const { getSupabase } = require('./_lib/phone')
 const { computeReport, renderReportHtml } = require('./_lib/reportEngine')
 const { sendSystemEmail, isConfigured } = require('./_lib/systemMailer')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
 
@@ -27,6 +28,7 @@ module.exports = async function handler(req, res) {
   const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
   const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
   if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
+  if (!requireExternalEffects(res)) return
   // Scheduled reports now go through the Microsoft system mailbox (not Resend).
   if (!isConfigured()) return res.status(500).end(JSON.stringify({ error: 'System mailbox not configured' }))
 

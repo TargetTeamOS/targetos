@@ -30,6 +30,7 @@ async function call({ method = 'POST', headers = {}, body = {} } = {}) {
 const okBody = (over = {}) => ({ provider: 'gmail', to: 'client@example.com', subject: 'Hi', text: 'hello', ...over })
 
 beforeEach(() => {
+  vi.stubEnv('EXTERNAL_EFFECTS_ENABLED', 'true')
   for (const k of Object.keys(D)) D[k].mockReset()
   D.logEvent.mockResolvedValue(); D.freshAccountToken.mockResolvedValue('access-tok'); D.insertContactTimeline.mockResolvedValue()
   D.requireUser.mockResolvedValue({ id: 'user-1' })

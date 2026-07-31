@@ -8,12 +8,9 @@
 // Live counts are computed server-side on each list call, so pins stay
 // current without any stored snapshot.
 
-const { createClient } = require('@supabase/supabase-js')
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
+const { createServiceClient } = require('./_lib/supabaseConfig')
 function sb() {
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!key) throw new Error('service key missing')
-  return createClient(SUPABASE_URL, key, { auth: { persistSession: false } })
+  return createServiceClient()
 }
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body

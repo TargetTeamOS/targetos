@@ -2,9 +2,10 @@
 // /api/admin-users — Full user management via Supabase Admin API
 // Requires SUPABASE_SERVICE_KEY in Vercel environment variables
 
-const { createClient } = require('@supabase/supabase-js')
 const { requireAdmin } = require('./_lib/phone')
 const { publicBaseUrl } = require('./_lib/requestSecurity')
+const { createServiceClient } = require('./_lib/supabaseConfig')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 async function parseBody(req) {
   return new Promise((resolve) => {
@@ -36,20 +37,17 @@ module.exports = async function handler(req, res) {
   const body = await parseBody(req)
   const { action, userId, email, name, role, color, phone } = body
 
-  // Validate env vars
-  const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
-  const SERVICE_KEY  = process.env.SUPABASE_SERVICE_KEY
   const APP_BASE = publicBaseUrl()
-  if (!SERVICE_KEY) {
-    return res.status(500).json({
-      error: 'SUPABASE_SERVICE_KEY not set in Vercel environment variables. Go to Vercel → Settings → Environment Variables and add it.'
-    })
-  }
   if (!APP_BASE) return res.status(503).json({ error: 'PUBLIC_BASE_URL is not configured' })
 
-  const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false }
-  })
+  let sb
+  try {
+    sb = createServiceClient({
+      clientOptions: { auth: { autoRefreshToken: false, persistSession: false } },
+    })
+  } catch (error) {
+    return res.status(error.status || 503).json({ error: error.message })
+  }
 
   try {
     // ── CREATE USER (with password) ──────────────────────────────
@@ -64,6 +62,7 @@ module.exports = async function handler(req, res) {
       if (existing) {
         authUserId = existing.id
       } else {
+        if (!requireExternalEffects(res)) return
         const { data: invited, error: inviteErr } = await sb.auth.admin.inviteUserByEmail(email, {
           data: { name, role: role || 'agent' },
           redirectTo: APP_BASE,
@@ -111,7 +110,8 @@ module.exports = async function handler(req, res) {
         authUserId = existing.id
       } else {
         // Create user in Supabase Auth (generates invite link)
-        const { data: invited, error: invErr } = await sb.auth.admin.inviteUserByEmail(email, {
+      if (!requireExternalEffects(res)) return
+      const { data: invited, error: invErr } = await sb.auth.admin.inviteUserByEmail(email, {
           data: { name, role },
           redirectTo: APP_BASE,
         })
@@ -144,7 +144,7 @@ module.exports = async function handler(req, res) {
       // Send welcome email via Resend (reliable delivery)
       const RESEND_KEY = process.env.RESEND_API_KEY
       if (RESEND_KEY && !existing) {
-        const loginUrl = 'https://app.targetreteam.com'
+        const loginUrl = APP_BASE
         await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
@@ -180,6 +180,7 @@ module.exports = async function handler(req, res) {
     // ── RESET PASSWORD ───────────────────────────────────────────
     if (action === 'reset_password') {
       if (!userId) return res.status(400).json({ error: 'userId required' })
+      if (!requireExternalEffects(res)) return
       const { data: target, error: lookupError } = await sb.auth.admin.getUserById(userId)
       if (lookupError || !target?.user?.email) return res.status(404).json({ error: 'user not found' })
       const { error } = await sb.auth.resetPasswordForEmail(target.user.email, {

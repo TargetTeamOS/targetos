@@ -2,13 +2,16 @@ name: Build Check
 
 on:
   push:
-    branches: [main, codex/security-authentication-repair]
+    branches: [main, codex/security-authentication-repair, codex/supabase-config-isolation]
   pull_request:
-    branches: [main, codex/verified-crm-audit]
+    branches: [main, codex/verified-crm-audit, codex/security-authentication-repair, codex/prelaunch-safety-lockdown]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: https://example.supabase.co
+      VITE_SUPABASE_ANON_KEY: test-only-anon-key
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,6 +34,7 @@ jobs:
       - name: Unit tests
         run: npm test
         env:
+          EXTERNAL_EFFECTS_ENABLED: 'true'
           OAUTH_STATE_SECRET: test-only-oauth-state-secret-32-bytes
           CRON_SECRET: test-only-cron-secret-32-bytes-value
           UNSUB_SECRET: test-only-unsub-secret-32-bytes
@@ -41,7 +45,6 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_SUPABASE_URL: https://sgrnyvdsyahmypibjarx.supabase.co
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
 

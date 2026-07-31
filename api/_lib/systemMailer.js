@@ -8,6 +8,7 @@
 
 const connectors = require('./connectors')
 const crypto = require('crypto')
+const { assertExternalEffectsEnabled } = require('./externalEffects')
 
 const TIMEOUT_MS = 10000
 const CLAIM_TTL_SECONDS = 300 // lease must comfortably exceed the Graph timeout
@@ -111,6 +112,7 @@ async function finalizeWithRetry(key, token, patch, doSleep, attempts = 3) {
 //   { ok:false, error, code, attempts }    failed before Graph accepted it
 // Throws only for fail-closed misconfiguration.
 async function sendSystemEmail(input = {}, opts = {}) {
+  assertExternalEffectsEnabled(opts.env || process.env)
   const { to, subject, html, text, idempotencyKey } = input
   const c = opts.config || config()
   if (!isConfigured(c)) throw new Error('system mailbox not configured')

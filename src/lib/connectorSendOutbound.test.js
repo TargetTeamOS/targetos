@@ -19,6 +19,7 @@ async function call(body) {
 }
 
 beforeEach(() => {
+  vi.stubEnv('EXTERNAL_EFFECTS_ENABLED', 'true')
   for (const k of Object.keys(D)) if (D[k].mockReset) D[k].mockReset()
   D.logEvent.mockResolvedValue(); D.freshAccountToken.mockResolvedValue('tok')
   D.insertContactTimeline.mockResolvedValue(); D.persistOutboundGmail.mockResolvedValue({ ok: true })
