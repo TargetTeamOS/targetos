@@ -2,8 +2,6 @@
 'use strict'
 
 // ── CONSTANTS ─────────────────────────────────────────────────────
-const SUPABASE_URL     = 'https://sgrnyvdsyahmypibjarx.supabase.co'
-const SUPABASE_ANON    = 'sb_publishable_L4MNs2GuBFnmyNKgiIGBMg_nNxeaLkE'
 const TWILIO_NUMBER    = '+18453271778'
 const BASE_URL         = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '')
 const DEFAULT_VOICE    = 'Polly.Joanna'
@@ -46,14 +44,7 @@ function esc(s) {
 
 // ── SUPABASE ──────────────────────────────────────────────────────
 function getSupabase() {
-  // Try service key first (has more permissions, bypasses RLS)
-  const url = process.env.SUPABASE_URL || SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_KEY ||
-              process.env.SUPABASE_SERVICE_ROLE_KEY ||
-              process.env.VITE_SUPABASE_ANON_KEY   ||
-              SUPABASE_ANON
-  const { createClient } = require('@supabase/supabase-js')
-  return createClient(url, key, { auth: { persistSession: false } })
+  return require('./supabaseConfig').createServiceClient()
 }
 
 // ── BODY PARSING ──────────────────────────────────────────────────

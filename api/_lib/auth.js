@@ -13,6 +13,7 @@
 // ═══════════════════════════════════════════════════════════════
 'use strict'
 const { getSupabase } = require('./phone')
+const { getServerSupabaseConfig } = require('./supabaseConfig')
 
 const ADMIN_ROLES = new Set(['admin', 'administrator', 'owner'])
 const TEAM_ROLES = new Set(['admin', 'administrator', 'owner', 'manager', 'team_leader', 'secretary'])
@@ -56,6 +57,17 @@ function roleAllowed(role, allowedRoles) {
 }
 
 async function authenticate(req, options = {}, deps = {}) {
+  if (!deps.supabase && !deps.requireUser) {
+    try {
+      getServerSupabaseConfig(deps.env || process.env)
+    } catch (error) {
+      return {
+        ok: false,
+        status: error.status || 503,
+        error: error.message,
+      }
+    }
+  }
   const user = await (deps.requireUser || requireUser)(req, deps)
   if (!user) return { ok: false, status: 401, error: 'unauthorized' }
   const agent = await (deps.getAgentForUser || getAgentForUser)(user.id, deps)

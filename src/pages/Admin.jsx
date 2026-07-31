@@ -716,7 +716,7 @@ export function Admin() {
       {tab==='system' && (
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {[
-            { label:'Database',       status:'✅ Connected',       detail:'Supabase Postgres — sgrnyvdsyahmypibjarx', color:'#10B981' },
+            { label:'Database',       status:'✅ Connected',       detail:'Supabase Postgres — environment configured', color:'#10B981' },
             { label:'Authentication', status:'✅ Active',          detail:'Supabase Auth — per-agent login with RLS', color:'#10B981' },
             { label:'Phone System',   status:'✅ Twilio Active',   detail:'+1 (845) 327-1778 — inbound/outbound calls', color:'#10B981' },
             { label:'Hosting',        status:'✅ Live',            detail:'Vercel — app.targetreteam.com', color:'#10B981' },
