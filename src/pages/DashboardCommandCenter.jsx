@@ -13,13 +13,14 @@ import { DashboardDataProvider, useDashboardData } from '../lib/useDashboardData
 import { DATE_PRESETS } from '../lib/dashboardData'
 import { DashboardShell, MasonryGrid } from '../components/dashboard/DashboardShell'
 import { DrillDown } from '../components/dashboard/DrillDown'
+import { MarketRatesWidget } from '../components/dashboard/MarketRatesWidget'
+import { NewsWidget } from '../components/dashboard/NewsWidget'
 
 const FF = 'Inter, system-ui, -apple-system, sans-serif'
 
 // Slots for the widgets that arrive in later commits. Marked clearly as
 // placeholders so nobody mistakes the shell for finished work.
 const SLOTS = [
-  { key: 'market',  title: 'Market snapshot',   note: 'Mortgage rates + local news',        accent: '#0073EA', commit: 2 },
   { key: 'monthly', title: 'Monthly team goal',  note: 'Accepted offers vs target',          accent: '#00C875', commit: 3 },
   { key: 'myday',   title: 'My day',             note: 'Tasks, appointments, follow-ups',     accent: '#A25DDC', commit: 4 },
   { key: 'yearly',  title: 'Yearly team goal',   note: 'Pace and projection',                 accent: '#FDAB3D', commit: 3 },
@@ -97,6 +98,8 @@ function CommandCenterInner() {
 
       <DashboardShell status="ready">
         <MasonryGrid>
+          <MarketRatesWidget />
+          <NewsWidget />
           {SLOTS.map((slot) => (
             <PlaceholderCard key={slot.key} slot={slot} onPreview={openPreview} />
           ))}
