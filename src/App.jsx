@@ -18,6 +18,7 @@ import { ActiveCallBar } from './components/ClickToCall'
 import { Dashboard as DashboardOld } from './pages/Dashboard'
 import { Dashboard } from './pages/DashboardV2'
 import { DashboardSmart } from './pages/DashboardSmart'
+import { DashboardCommandCenter } from './pages/DashboardCommandCenter'
 import { Contacts }      from './pages/Contacts'
 import { ContactDetail } from './pages/ContactDetail'
 import { Production }    from './pages/Production'
@@ -140,6 +141,7 @@ function AppShell() {
           <Route path="/" element={<DashboardSmart />} />
           <Route path="/dashboard-classic" element={<DashboardOld />} />
           <Route path="/dashboard-new" element={<Dashboard />} />
+          <Route path="/dashboard/command-center" element={<DashboardCommandCenter />} />
           <Route path="/contacts"            element={<Contacts />} />
           <Route path="/contacts/:id"        element={<Contacts />} />
           <Route path="/contacts/:id/detail" element={<ContactDetail />} />
