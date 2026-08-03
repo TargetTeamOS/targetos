@@ -32,6 +32,7 @@ import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { OFFER_STATUSES, CONTACT_TYPE_COLORS } from '../lib/constants'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { computeOfferFinancials } from '../lib/offerCalc'
+import AdminOfferReports from '../components/AdminOfferReports'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Confirm
@@ -901,7 +902,7 @@ export function Offers() {
         <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
           <LastVisited page="offers" />
           <div style={{ display:'flex', background:'var(--dim)', borderRadius:8, padding:2, gap:2 }}>
-            {[['agents','👥 By Agent'],['table','📋 Table']].map(([v,l])=>(
+            {[['agents','👥 By Agent'],['table','📋 Table'],...((isAdmin||canManage)?[['reports','📊 Reports']]:[])].map(([v,l])=>(
               <button key={v} onClick={()=>setView(v)}
                 style={{ padding:'6px 12px', borderRadius:6, border:'none', background:view===v?'var(--panel)':'transparent', color:view===v?'var(--text)':'var(--muted)', fontSize:12, fontWeight:view===v?700:400, cursor:'pointer', fontFamily:ff }}>
                 {l}
@@ -933,6 +934,15 @@ export function Offers() {
 
       {!loading && (
         <>
+          {view === 'reports' && (isAdmin||canManage) && (
+            <div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginBottom:10 }}>
+                Reports reflect the {offers.length} most recently loaded offers (db.offers.list's current 200-row default) — for a brokerage with more historical offers than that, some older records are not yet reflected here. Raising that limit for reporting specifically is a reasonable follow-up, not done in this pass to avoid changing the board's own default pagination behavior.
+              </div>
+              <AdminOfferReports offers={offers} agents={agents} />
+            </div>
+          )}
+
           {/* Agent stats */}
           {view === 'agents' && (isAdmin||canManage) && (
             <div>
