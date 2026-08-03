@@ -16,13 +16,13 @@ import { DrillDown } from '../components/dashboard/DrillDown'
 import { MarketRatesWidget } from '../components/dashboard/MarketRatesWidget'
 import { NewsWidget } from '../components/dashboard/NewsWidget'
 import { GoalsSection } from '../components/dashboard/GoalsSection'
+import { MyDayWidget } from '../components/dashboard/MyDayWidget'
 
 const FF = 'Inter, system-ui, -apple-system, sans-serif'
 
 // Slots for the widgets that arrive in later commits. Marked clearly as
 // placeholders so nobody mistakes the shell for finished work.
 const SLOTS = [
-  { key: 'myday',   title: 'My day',             note: 'Tasks, appointments, follow-ups',     accent: '#A25DDC', commit: 4 },
   { key: 'agents',  title: 'Agent performance',  note: 'Leaderboard across the team',         accent: '#037f4c', commit: 5 },
   { key: 'custom',  title: 'Custom widgets',     note: 'Admin-built production metrics',       accent: '#579BFC', commit: 6 },
 ]
@@ -100,6 +100,7 @@ function CommandCenterInner() {
           <MarketRatesWidget />
           <NewsWidget />
           <GoalsSection />
+          <MyDayWidget />
           {SLOTS.map((slot) => (
             <PlaceholderCard key={slot.key} slot={slot} onPreview={openPreview} />
           ))}
