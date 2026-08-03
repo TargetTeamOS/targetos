@@ -31,6 +31,7 @@ import { useOffers, useAgents } from '../lib/hooks'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { OFFER_STATUSES, CONTACT_TYPE_COLORS } from '../lib/constants'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
+import { computeOfferFinancials } from '../lib/offerCalc'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Confirm
@@ -65,7 +66,7 @@ const BLANK = {
   seller_attorney_name:'', seller_attorney_address:'',
   seller_attorney_tel:'', seller_attorney_email:'', seller_attorney_contact_id:'',
   // Meta
-  additional_terms:'', notes:'', status:'Sent',
+  additional_terms:'', notes:'', status:'Draft',
   offer_date: new Date().toISOString().slice(0,10),
   offer_url:'', pof_url:'',
   // Legacy
@@ -271,13 +272,36 @@ export function Offers() {
   }, [])
 
   // Search SimplyRETS MLS by address or MLS#
+  // ── MLS / LISTING LOOKUP (SimplyRETS) ───────────────────────────
+  // NOT currently wired to any input — verified: searchMLS() has no
+  // caller anywhere in this file, and its result state (mlsResults/
+  // showMlsDrop) is never rendered. Left in place as a documented,
+  // clearly-inert starting point for a real OneKey MLS/SimplyRETS
+  // integration, NOT deleted, since removing it would erase groundwork
+  // that may be intentional. Fixed here: the previous version silently
+  // fell back to SimplyRETS's public demo/sandbox credentials
+  // ('simplyrets'/'simplyrets') when the real env vars were unset —
+  // meaning if this ever got wired up without real credentials
+  // configured, an agent could be shown fabricated demo listings under
+  // a live-looking UI. Now it fails safely: no configured credentials
+  // means no external call, full stop. Real per-office search order
+  // (TargetOS listings -> MLS -> Google fallback) is live today via
+  // handleAddressSelect() on the Property Address field below, which
+  // checks the already-loaded `listings` table before anything else.
   const searchMLS = useCallback(async (q) => {
     if (!q || q.length < 3) { setMlsResults([]); return }
+    const MLS_USER = import.meta.env.VITE_SIMPLYRETS_USER
+    const MLS_PASS = import.meta.env.VITE_SIMPLYRETS_PASS
+    if (!MLS_USER || !MLS_PASS) {
+      // Fail safely: no real credentials configured, so do not call out
+      // to SimplyRETS's public demo account and present its sandbox
+      // data as if it were live OneKey MLS results.
+      setMlsResults([])
+      return
+    }
     setMlsLoading(true)
     try {
-      const MLS_USER = import.meta.env.VITE_SIMPLYRETS_USER || 'simplyrets'
-      const MLS_PASS = import.meta.env.VITE_SIMPLYRETS_PASS || 'simplyrets'
-      const auth     = btoa(MLS_USER + ':' + MLS_PASS)
+      const auth = btoa(MLS_USER + ':' + MLS_PASS)
 
       // Try by MLS# first, then by address keyword
       const isMLSNum = /^\d{5,}$/.test(q.trim())
@@ -355,29 +379,25 @@ export function Offers() {
   function set(k, v) { setForm(f => ({ ...f, [k]:v })) }
 
   // ── AUTO-CALCULATE financials ──────────────────────────────────
+  // Decimal-safe (integer-cents) shared engine — see src/lib/offerCalc.js.
+  // Same function is mirrored server-side in api/_lib/offerCalc.js and
+  // must be re-run there before PDF generation/send, not trusted from
+  // whatever the browser last computed.
+  const [calcWarnings, setCalcWarnings] = useState([])
+  const [calcBlocking, setCalcBlocking] = useState([])
+
   function recalc(updates) {
     setForm(prev => {
       const next = { ...prev, ...updates }
-      const price   = parseFloat(String(next.purchase_price ||'').replace(/[$,]/g,'')) || 0
-      const deposit = parseFloat(String(next.deposit        ||'').replace(/[$,]/g,'')) || 0
-      const concession = parseFloat(String(next.sellers_concession||'').replace(/[$,]/g,'')) || 0
-      const mortgage   = parseFloat(String(next.mortgage_amount   ||'').replace(/[$,]/g,'')) || 0
-      const mortgagePct= parseFloat(String(next.mortgage_pct      ||'').replace(/%/g,''))  || 0
-
-      // Auto-calc mortgage amount from % if % is entered
-      const mortgageCalc = mortgagePct > 0 && price > 0 ? price * mortgagePct / 100 : mortgage
-
-      // Net to seller = price - concession
-      const netToSeller = price > 0 ? price - concession : 0
-
-      // Balance at closing = price - deposit - mortgage
-      const balance = price > 0 ? price - deposit - (mortgageCalc || mortgage) : 0
-
+      const { values, warnings, blocking } = computeOfferFinancials(next)
+      setCalcWarnings(warnings)
+      setCalcBlocking(blocking)
       return {
         ...next,
-        mortgage_amount:  mortgagePct > 0 ? Math.round(mortgageCalc).toString() : next.mortgage_amount,
-        net_to_seller:    price > 0 ? Math.round(netToSeller).toString() : next.net_to_seller,
-        balance_at_closing: price > 0 ? Math.round(balance).toString() : next.balance_at_closing,
+        mortgage_amount:    values.mortgage_amount,
+        mortgage_pct:       values.mortgage_pct,
+        net_to_seller:      values.net_to_seller,
+        balance_at_closing: values.balance_at_closing,
         production: next.purchase_price,
       }
     })
@@ -443,6 +463,44 @@ export function Offers() {
     }
   }
 
+  // ── OUTSIDE SELLER'S AGENT SELECT (create-or-link, mirrors selectBuyer) ──
+  async function selectSellersAgent(contact) {
+    if (!contact) {
+      if (!form.sellers_agent_name?.trim()) return
+      try {
+        const [first, ...rest] = form.sellers_agent_name.trim().split(' ')
+        const data = await db.contacts.create({
+          first_name: first, last_name: rest.join(' '),
+          company: form.seller_agent_company || null,
+          status: 'Active', source: 'Offer Form', type: 'Agent',
+          agent_id: agent?.id || null,
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        })
+        if (data) {
+          set('sellers_agent_contact_id', data.id)
+          toast('✅ Outside agent saved to Contacts')
+        }
+      } catch(e) {
+        if (e.existingContact) {
+          // Existing contact may already carry another valid role (e.g. was
+          // previously entered as a Buyer) — link to it without overwriting
+          // that classification, per spec.
+          toast('Already exists as ' + (e.existingContact.first_name||'') + ' ' + (e.existingContact.last_name||'') + ' — linking to that contact', '#F5A623')
+          set('sellers_agent_contact_id', e.existingContact.id)
+        } else {
+          toast('Failed to save outside agent contact: ' + e.message, '#DC2626')
+        }
+      }
+    } else {
+      setForm(f => ({
+        ...f,
+        sellers_agent_name:       [contact.first_name, contact.last_name].filter(Boolean).join(' '),
+        sellers_agent_contact_id: contact.id,
+        seller_agent_company:     contact.company || f.seller_agent_company,
+      }))
+    }
+  }
+
   // ── PURCHASER ATTORNEY SELECT ──────────────────────────────────
   function selectPurchaserAttorney(contact) {
     if (!contact) return
@@ -477,9 +535,13 @@ export function Offers() {
       const buyersAgent = agents.find(a => a.id === (form.buyers_agent_id || form.agent_id))
       const payload = {
         ...form,
-        buyers_agent_name:       buyersAgent?.name || agent?.name || '',
+        // Outside buyer's agent (representing_side === 'Seller' case) takes
+        // priority over an in-house agent lookup that would otherwise be
+        // empty/wrong when the buyer's agent isn't one of ours.
+        buyers_agent_name:       form.buyers_agent_outside_name || buyersAgent?.name || agent?.name || '',
         offer_date:              form.offer_date || new Date().toISOString().slice(0, 10),
         deposit_type:            form.deposit_type || 'dollar',
+        mortgage_type:           form.mortgage_type || 'dollar',
         sellers_agent_commission:form.sellers_agent_commission || '',
         seller_agent_company:    form.seller_agent_company || '',
       }
@@ -577,10 +639,23 @@ export function Offers() {
         is_inhouse:          !!form.is_inhouse,
         inhouse_listing_id:  form.inhouse_listing_id  || null,
         notes:               form.notes               || null,
-        status:              form.status              || 'Sent',
-        agent_id:            form.buyers_agent_id || form.agent_id || agent?.id,
+        status:              form.status              || 'Draft',
+        // Assigned TargetOS agent follows representing_side: seller-side
+        // offers default to the seller's-side agent slot, buyer-side (and
+        // legacy default) to the buyer's-side slot. `side` (legacy,
+        // Production-conversion still reads inhouse_listing_id, not this)
+        // is left as a fixed 'Buyer' string for backward compatibility;
+        // representing_side is the real field going forward.
+        agent_id:            form.representing_side === 'Seller'
+                                ? (form.agent_id || agent?.id)
+                                : (form.buyers_agent_id || form.agent_id || agent?.id),
         production:          form.purchase_price      || null,
         side:                'Buyer',
+        representing_side:       form.representing_side       || 'Buyer',
+        sellers_agent_contact_id: form.sellers_agent_contact_id || null,
+        buyers_agent_contact_id:  form.buyers_agent_contact_id  || null,
+        mortgage_type:            form.mortgage_type            || 'dollar',
+        is_cash_deal:             !!form.is_cash_deal,
         submitted_at:        form.offer_date          || null,
       }
 
@@ -832,8 +907,8 @@ export function Offers() {
         {tab === 'offer' && (
           <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
 
-            {/* Header: Date + Status */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:8 }}>
+            {/* Header: Date + Status + Representing */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:8 }}>
               <div>
                 <span style={SL}>Date</span>
                 <input type="date" value={form.offer_date} onChange={e=>set('offer_date',e.target.value)} style={S} />
@@ -847,6 +922,30 @@ export function Offers() {
               <div>
                 <span style={SL}>Commission %</span>
                 <input value={form.commission_pct} onChange={e=>set('commission_pct',e.target.value)} placeholder="e.g. 2.5" style={S} />
+              </div>
+              <div>
+                <span style={SL}>Representing</span>
+                <select value={form.representing_side || 'Buyer'} onChange={e=>{
+                  const nextSide = e.target.value
+                  // Defaulting rule: switching representation side re-defaults
+                  // the matching agent slot to the signed-in agent, but never
+                  // overwrites an already-chosen agent on the OTHER side, and
+                  // never touches anything if the signed-in user is not the
+                  // one driving this offer (admin/secretary picking for
+                  // someone else via the dropdown below stays untouched).
+                  setForm(f => {
+                    const next = { ...f, representing_side: nextSide }
+                    if (!canManage && !isAdmin) {
+                      if (nextSide === 'Buyer' || nextSide === 'Both') next.buyers_agent_id = f.buyers_agent_id || agent?.id
+                      if (nextSide === 'Seller' || nextSide === 'Both') next.agent_id = f.agent_id || agent?.id
+                    }
+                    return next
+                  })
+                }} style={S}>
+                  <option value="Buyer">Buyer</option>
+                  <option value="Seller">Seller</option>
+                  <option value="Both">Both (dual, if permitted)</option>
+                </select>
               </div>
             </div>
 
@@ -871,7 +970,7 @@ export function Offers() {
                     <AddressAutocomplete
                       value={form.listing_addr || ''}
                       onChange={v => set('listing_addr', v)}
-                      onSelect={s => set('listing_addr', s.full || s.street || '')}
+                      onSelect={s => handleAddressSelect(s.full || s.street || '')}
                       placeholder={form.off_market ? 'Enter address manually...' : 'Start typing an address...'}
                       style={S}
                     />
@@ -937,8 +1036,8 @@ export function Offers() {
                   { label:'Deposit upon contract', key:'deposit', isDeposit:true },
                   { label:"Seller's Concession", key:'sellers_concession', prefix:'$' },
                   { label:'Net to Seller', key:'net_to_seller', calc:true, prefix:'$' },
-                  { label:'Mortgage Amount', key:'mortgage_amount', prefix:'$' },
-                  { label:'Mortgage Amount', key:'mortgage_pct', prefix:'%' },
+                  { label:'Mortgage Amount', key:'mortgage_amount', prefix:'$', isMortgageDollar:true },
+                  { label:'Mortgage Amount', key:'mortgage_pct', prefix:'%', isMortgagePct:true },
                   { label:'Balance at Closing', key:'balance_at_closing', isBalance:true },
                 ].map(row => (
                   <div key={row.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
@@ -950,7 +1049,7 @@ export function Offers() {
                           {/* $ / % toggle for deposit */}
                           <div style={{ display:'flex', borderRadius:6, border:'1px solid var(--border)', overflow:'hidden' }}>
                             {['dollar','percent'].map(t=>(
-                              <button key={t} onClick={()=>set('deposit_type',t)}
+                              <button key={t} onClick={()=>recalc({deposit_type:t})}
                                 style={{ padding:'2px 7px', fontSize:10, fontWeight:700, border:'none', cursor:'pointer', fontFamily:ff, background:form.deposit_type===t?'var(--brand)':'transparent', color:form.deposit_type===t?'#fff':'var(--muted)' }}>
                                 {t==='dollar'?'$':'%'}
                               </button>
@@ -977,9 +1076,19 @@ export function Offers() {
                       ) : (
                         <>
                           <span style={{ fontSize:11, color:'var(--muted)', minWidth:10 }}>{row.prefix}</span>
-                          <input value={form[row.key]||''} onChange={e=>recalc({[row.key]:e.target.value})}
+                          <input value={form[row.key]||''} disabled={form.is_cash_deal && (row.isMortgageDollar||row.isMortgagePct)}
+                            onChange={e=>{
+                              // Editing either mortgage line marks it as the source of
+                              // truth for this edit, so the OTHER line derives from it —
+                              // same bidirectional pattern as deposit's $/% toggle, just
+                              // without a separate toggle control since the PDF prints
+                              // both lines regardless of which one was typed.
+                              if (row.isMortgageDollar) recalc({ mortgage_type:'dollar', mortgage_amount:e.target.value })
+                              else if (row.isMortgagePct) recalc({ mortgage_type:'percent', mortgage_pct:e.target.value })
+                              else recalc({[row.key]:e.target.value})
+                            }}
                             placeholder={row.prefix==='%'?'0':'0'}
-                            style={{ ...S, width:100, textAlign:'right', fontWeight:row.bold?800:400, fontSize:row.bold?13:11, borderColor:row.bold?'#F5A623':'var(--border)' }} />
+                            style={{ ...S, width:100, textAlign:'right', fontWeight:row.bold?800:400, fontSize:row.bold?13:11, borderColor:row.bold?'#F5A623':'var(--border)', opacity:(form.is_cash_deal && (row.isMortgageDollar||row.isMortgagePct))?0.5:1 }} />
                         </>
                       )}
                     </div>
@@ -1007,17 +1116,38 @@ export function Offers() {
                     { key:'subject_structural',         label:'Structural issues only' },
                   ].map(cb => (
                     <label key={cb.key} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', marginBottom:5, fontSize:12, fontWeight:cb.bold?700:400, color:'var(--text)' }}>
-                      <input type="checkbox" checked={!!form[cb.key]} onChange={e=>set(cb.key,e.target.checked)} style={{ accentColor:'var(--brand)', width:14, height:14 }} />
+                      <input type="checkbox" checked={!!form[cb.key]}
+                        onChange={e=>{
+                          // Cash Deal drives is_cash_deal, which the shared calc
+                          // engine treats as authoritative (zeroes mortgage even
+                          // if a mortgage % was previously entered).
+                          if (cb.key === 'subject_cash') recalc({ subject_cash:e.target.checked, is_cash_deal:e.target.checked })
+                          else set(cb.key, e.target.checked)
+                        }}
+                        style={{ accentColor:'var(--brand)', width:14, height:14 }} />
                       {cb.label}
                     </label>
                   ))}
+                  {calcBlocking.length > 0 && (
+                    <div style={{ marginTop:8, padding:'6px 8px', borderRadius:6, background:'rgba(220,38,38,.08)', color:'#DC2626', fontSize:10, fontWeight:600 }}>
+                      {calcBlocking.map((m,i)=><div key={i}>⛔ {m}</div>)}
+                    </div>
+                  )}
+                  {calcWarnings.length > 0 && (
+                    <div style={{ marginTop:6, padding:'6px 8px', borderRadius:6, background:'rgba(245,166,35,.1)', color:'#B45309', fontSize:10, fontWeight:600 }}>
+                      {calcWarnings.map((m,i)=><div key={i}>⚠ {m}</div>)}
+                    </div>
+                  )}
                 </div>
 
                 {/* Agents */}
                 <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
                   <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Agents</div>
                   <span style={SL}>Sellers Agent</span>
-                  <input value={form.sellers_agent_name||''} onChange={e=>set('sellers_agent_name',e.target.value)} placeholder="Seller's agent name" style={S} />
+                  <ContactSearch value={form.sellers_agent_name||''} onChange={v=>set('sellers_agent_name',v)}
+                    filter="Agent" onSelect={selectSellersAgent}
+                    placeholder="Search outside agents or enter name..." />
+                  {form.sellers_agent_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2, marginBottom:6 }}>✓ Linked to contact</div>}
                   <span style={SL}>Buyers Agent Commission %</span>
                   <input value={form.buyers_agent_commission||''} onChange={e=>set('buyers_agent_commission',e.target.value)} placeholder="e.g. 1.5" style={S} />
                   <span style={SL}>Buyers Agent</span>
@@ -1033,6 +1163,16 @@ export function Offers() {
                   ) : (
                     // Agent: auto-filled with their name (read-only)
                     <input value={agent?.name||''} readOnly style={{ ...S, background:'var(--dim)', color:'var(--muted)' }} />
+                  )}
+                  {form.representing_side === 'Seller' && (
+                    <>
+                      <span style={SL}>Buyer's Outside Agent (if not one of ours)</span>
+                      <ContactSearch value={form.buyers_agent_outside_name||''} onChange={v=>set('buyers_agent_outside_name',v)}
+                        filter="Agent"
+                        onSelect={c=>{ if (c) setForm(f=>({ ...f, buyers_agent_contact_id:c.id, buyers_agent_outside_name:[c.first_name,c.last_name].filter(Boolean).join(' ') })) }}
+                        placeholder="Search outside agents or enter name..." />
+                      {form.buyers_agent_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2 }}>✓ Linked to contact</div>}
+                    </>
                   )}
                 </div>
               </div>
@@ -1126,7 +1266,7 @@ export function Offers() {
                 <AddressAutocomplete
                   value={form.listing_addr || ''}
                   onChange={v => set('listing_addr', v)}
-                  onSelect={s => set('listing_addr', s.full || s.street || '')}
+                  onSelect={s => handleAddressSelect(s.full || s.street || '')}
                   placeholder="Start typing an address..."
                   style={S}
                 />

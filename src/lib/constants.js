@@ -137,6 +137,7 @@ export const OFFER_SIDES = [
 
 // ── OFFER STATUSES ───────────────────────────────────────────────
 export const OFFER_STATUSES = [
+  { value: 'Draft',        label: 'Draft',        hex: '#94A3B8' },
   { value: 'Sent',         label: 'Sent',         hex: '#fdab3d' },
   { value: 'AO',           label: 'AO',           hex: '#00c875' },
   { value: 'Stuck',        label: 'Stuck',        hex: '#df2f4a' },
