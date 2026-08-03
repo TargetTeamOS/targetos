@@ -1,11 +1,11 @@
 # Offers V2 — Controlled Live-Release Package
 
 **Base SHA:** `11e53a1` (verified `main`, unchanged throughout this project)
-**Final HEAD (working copy):** `6a44968`
-**Final HEAD (after `git am` in a fresh clone):** `e3fa203` — different hash, identical content; `git am` always mints new commit objects, this is expected.
+**Final HEAD (working copy):** `4a9a3c6`
+**Final HEAD (after `git am` in a fresh clone):** `7248967` — different hash, identical content; `git am` always mints new commit objects, this is expected.
 **Patch file:** `offers-workflow-v2-complete.patch`
-**Patch SHA-256:** `43d47bfab10dcd1aa9e68d04cfb0acf08556d43c913b540f6d1ef2b9cb45a6ef`
-**Commit count:** 9
+**Patch SHA-256:** `4ed2ee45849ff0ad001c1b70aa0f43bb6601574c8c06fe384a2eec3f2f51e61c`
+**Commit count:** 10 (includes this runbook as its own commit)
 
 ## Commit list
 
