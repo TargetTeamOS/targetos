@@ -652,7 +652,7 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
   )
 }
 
-function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [], relTasks, agents, agent, voiceNotes = [], onRefreshTimeline, layout, editLayout, setLayout }) {
+function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [], relOffers = [], relTasks, agents, agent, voiceNotes = [], onRefreshTimeline, layout, editLayout, setLayout }) {
   const { can, isAdmin } = useAuth()
   const canManage = isAdmin || can('admin.automations')
   const canReassign = can('contacts.reassign')
@@ -941,6 +941,23 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
         </RightSection>
       )}
 
+      {/* ── RELATED OFFERS — this contact as buyer/seller/attorney/agent ── */}
+      {relOffers.length > 0 && (
+        <RightSection hideKey="offers" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title={"Offers (" + relOffers.length + ")"} icon="📝" color="#CC2200">
+          {relOffers.map(o => (
+            <div key={o.id} onClick={() => navigate('/offers/' + o.id)}
+              style={{ padding:'7px 0', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
+              <div style={{ fontSize:'12px', fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{o.listing_addr || '(no address)'}</div>
+              <div style={{ display:'flex', justifyContent:'space-between', marginTop:'3px' }}>
+                <span style={{ fontSize:'11px', fontWeight:700, color:'#CC2200' }}>{o.purchase_price ? fmt$(o.purchase_price) : '—'}</span>
+                <Pill label={o.status || 'Draft'} color="#9aadbd" />
+              </div>
+              <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>{o.offer_date || ''} {o.agents?.name ? '· ' + o.agents.name : ''}</div>
+            </div>
+          ))}
+        </RightSection>
+      )}
+
       {/* ── CALLS LOG ── */}
       <RightSection hideKey="calls" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title={"Calls (" + (calls.length) + ")"} icon="📞" color="#3B82F6">
         {calls.length === 0 && <EmptyState text="No calls logged" action={{ label: '+ Log Call', onClick: () => navigate('/calls/new') }} />}
@@ -1104,6 +1121,7 @@ export function ContactDetail() {
   const [tlLoading, setTlLoading] = useState(true)
   const [relDeals,  setRelDeals]  = useState([])
   const [relListings, setRelListings] = useState([])
+  const [relOffers, setRelOffers] = useState([])
   const [voiceNotes, setVoiceNotes] = useState([])
   const [contactLayout, setContactLayout] = useState(null)
   const [editLayout, setEditLayout] = useState(false)
@@ -1318,6 +1336,18 @@ export function ContactDetail() {
         const { data: lcs } = await supabase.from('listing_contacts').select('role,primary_contact,listings(id,addr,status,list_price,agent_id,agents(id,name,color))').eq('contact_id', id)
         setRelListings((lcs || []).map(x => ({ ...x.listings, _role: x.role, _primary: x.primary_contact })).filter(l => l && l.id))
       } catch { setRelListings([]) }
+      // Related offers — this contact may appear as buyer, co-buyer,
+      // seller, co-seller, either attorney, or the outside seller's/
+      // buyer's agent. RLS (once applied) governs actual visibility;
+      // this is the same query shape regardless of the viewer's role.
+      try {
+        const roleColumns = ['buyer_contact_id','co_buyer_contact_id','seller_contact_id','co_seller_contact_id','purchaser_attorney_contact_id','seller_attorney_contact_id','sellers_agent_contact_id','buyers_agent_contact_id']
+        const { data: offerRows } = await supabase.from('offers')
+          .select('id,listing_addr,purchase_price,status,current_revision_id,offer_date,agent_id,agents(id,name,color),' + roleColumns.join(','))
+          .or(roleColumns.map(c => c + '.eq.' + id).join(','))
+          .order('offer_date', { ascending: false })
+        setRelOffers(offerRows || [])
+      } catch (e) { console.warn('loadRelated offers:', e.message); setRelOffers([]) }
     } catch (e) { console.warn('loadRelated:', e.message) }
   }
 
@@ -1853,7 +1883,7 @@ export function ContactDetail() {
             RIGHT — ACTIONS + DEALS + TASKS + FILES
         ══════════════════════════════════════════════════════ */}
         <div className="contact-col">
-          <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relListings={relListings} relTasks={relTasks} agents={agents} agent={agent} voiceNotes={voiceNotes} onRefreshTimeline={loadTimeline} layout={contactLayout} editLayout={editLayout} setLayout={setContactLayout} toast={toast} />
+          <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relListings={relListings} relOffers={relOffers} relTasks={relTasks} agents={agents} agent={agent} voiceNotes={voiceNotes} onRefreshTimeline={loadTimeline} layout={contactLayout} editLayout={editLayout} setLayout={setContactLayout} toast={toast} />
         </div>
       </div>
 

@@ -48,8 +48,8 @@ const BLANK = {
   buyer_name:'', co_buyer_name:'', buyer_contact_id:'',
   buyer_phone:'', buyer_email:'', buyer_address:'',
   // Seller
-  seller_name:'', co_seller_name:'', seller_contact_id:'',
-  seller_agent_name:'', seller_agent_company:'',
+  seller_name:'', co_seller_name:'', seller_contact_id:'', seller_email:'',
+  seller_agent_name:'', seller_agent_company:'', sellers_agent_email:'',
   // Financials
   purchase_price:'', deposit:'', sellers_concession:'',
   net_to_seller:'', mortgage_amount:'', mortgage_pct:'',
@@ -497,6 +497,7 @@ export function Offers() {
         sellers_agent_name:       [contact.first_name, contact.last_name].filter(Boolean).join(' '),
         sellers_agent_contact_id: contact.id,
         seller_agent_company:     contact.company || f.seller_agent_company,
+        sellers_agent_email:      contact.email || f.sellers_agent_email,
       }))
     }
   }
@@ -576,6 +577,73 @@ export function Offers() {
     } catch(e) {
       toast('❌ PDF failed: ' + e.message, '#DC2626')
     } finally { setDownloading(false) }
+  }
+
+  // ── SEND OFFER ───────────────────────────────────────────────────
+  // Sends through the authenticated agent's own connected mailbox
+  // (api/send-offer.js -> api/_lib/connectors.js), never the shared
+  // system mailbox. Requires the offer to already be saved (need an
+  // offer_id) and to have a generated PDF revision to attach.
+  const [showSend, setShowSend]   = useState(false)
+  const [sendTo,   setSendTo]     = useState({ buyer:false, seller:false, purchaser_attorney:false, seller_attorney:false, sellers_agent:false })
+  const [sendExtra,setSendExtra]  = useState('')
+  const [sendMsg,  setSendMsg]    = useState('Please see the attached offer for your review.')
+  const [sending,  setSending]    = useState(false)
+
+  function buildRecipients() {
+    const list = []
+    if (sendTo.buyer && form.buyer_email) list.push({ role:'buyer', name:form.buyer_name, email:form.buyer_email, contact_id:form.buyer_contact_id })
+    if (sendTo.seller && form.seller_email) list.push({ role:'seller', name:form.seller_name, email:form.seller_email, contact_id:form.seller_contact_id })
+    if (sendTo.purchaser_attorney && form.purchaser_attorney_email) list.push({ role:'purchaser_attorney', name:form.purchaser_attorney_name, email:form.purchaser_attorney_email, contact_id:form.purchaser_attorney_contact_id })
+    if (sendTo.seller_attorney && form.seller_attorney_email) list.push({ role:'seller_attorney', name:form.seller_attorney_name, email:form.seller_attorney_email, contact_id:form.seller_attorney_contact_id })
+    if (sendTo.sellers_agent && form.sellers_agent_email) list.push({ role:'sellers_agent', name:form.sellers_agent_name, email:form.sellers_agent_email, contact_id:form.sellers_agent_contact_id })
+    for (const email of sendExtra.split(',').map(s=>s.trim()).filter(Boolean)) list.push({ role:'manual', email })
+    return list
+  }
+
+  async function sendOffer() {
+    if (!selected?.id) { toast('Save the offer before sending', '#F5A623'); return }
+    if (!selected?.current_revision_id) { toast('Generate the PDF at least once before sending', '#F5A623'); return }
+    const recipients = buildRecipients()
+    if (recipients.length === 0) { toast('Choose at least one recipient with a known email', '#DC2626'); return }
+
+    setSending(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await authFetch('/api/send-offer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
+        body: JSON.stringify({
+          offer_id: selected.id,
+          revision_id: selected.current_revision_id,
+          provider: 'outlook',
+          recipients,
+          subject: 'Offer for the Sale of Real Estate — ' + (form.listing_addr || ''),
+          message: sendMsg,
+          // Stable per attempt, not per click — a second click before
+          // this resolves reuses the same key rather than minting a
+          // fresh one, so a double-click can't become a double-send.
+          idempotency_key: (window.__offerSendKey ||= (form.id + ':' + Date.now())),
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error || 'Send failed')
+      if (body.preview) {
+        toast('✅ Send validated end-to-end (preview mode — external effects disabled, no real email sent)', '#10B981')
+      } else if (body.alreadySent) {
+        toast('Already sent — no duplicate email created')
+      } else {
+        toast('✅ Offer sent from ' + (body.from || 'your mailbox'))
+      }
+      window.__offerSendKey = null
+      setShowSend(false)
+      refetch?.()
+    } catch(e) {
+      toast('❌ Send failed: ' + e.message, '#DC2626')
+    } finally { setSending(false) }
   }
 
   // ── SAVE OFFER ─────────────────────────────────────────────────
@@ -694,39 +762,81 @@ export function Offers() {
         closePanel()
       }
 
-      // ── ACCEPTED OFFER → PRODUCTION DEAL (July 2026) ─────────────
+      // ── ACCEPTED OFFER → PRODUCTION DEAL ─────────────────────────
       // The moment an offer reaches AO/Accepted, a linked deal appears
-      // on the Production board automatically — no re-typing. Runs on
-      // both create and update; guarded against duplicates via
-      // offers.deal_id (and a same-address open-deal check as backup).
+      // on the Production board automatically — no re-typing.
+      //
+      // IDEMPOTENCY (hardened): a real DB transaction/RPC isn't
+      // available here (none exists yet for this — see
+      // docs/offers-v2-audit.md), so atomicity comes from a claim
+      // pattern instead: atomically UPDATE offers.conversion_idempotency_key
+      // WHERE it IS NULL, using a deterministic key ('offer_accept:'+id).
+      // Postgres guarantees only one concurrent request can win that
+      // single-row UPDATE — a genuine atomicity guarantee, just backed
+      // by a conditional update + unique index (sql/offers_v2/A_foundation.sql)
+      // rather than a multi-statement transaction. Losing the claim
+      // (0 rows updated) means either a concurrent request or an
+      // earlier successful run already handled conversion — never
+      // create a second deal in that case. The existing address-based
+      // dupe check is kept as defense in depth, not the primary guard.
       const nowAccepted = ['AO', 'Accepted'].includes(form.status)
       const wasAccepted = selected && ['AO', 'Accepted', 'Closed'].includes(selected.status)
       if (nowAccepted && !wasAccepted && !selected?.deal_id) {
         try {
-          const { data: dupe } = await supabase.from('deals').select('id')
-            .eq('addr', form.listing_addr).not('stage', 'in', '("Closed","Deal Fell Through")').limit(1)
-          if (!dupe?.length) {
-            const { data: newDeal, error: dealErr } = await supabase.from('deals').insert({
-              addr:        form.listing_addr,
-              side:        form.inhouse_listing_id ? 'Listing' : 'Buyer',
-              stage:       'Offer Accapted',   // house spelling — matches DEAL_STAGES
-              production:  form.purchase_price || null,
-              client_name: form.inhouse_listing_id ? (form.seller_name || form.buyer_name) : form.buyer_name,
-              agent_id:    form.buyers_agent_id || agent?.id || null,
-              ao_date:     form.offer_date || new Date().toISOString().slice(0, 10),
-              listing_id:  form.inhouse_listing_id || null,
-              created_at:  new Date().toISOString(),
-            }).select().single()
-            if (dealErr) throw dealErr
-            // Link back (column may not exist pre-migration — non-fatal)
-            const offerId = selected?.id
-            if (offerId && newDeal) await supabase.from('offers').update({ deal_id: newDeal.id }).eq('id', offerId).then(() => {}).catch(() => {})
-            // In-house listing flips to Accepted Offer everywhere
-            if (form.inhouse_listing_id) {
-              await supabase.from('listings').update({ status: 'Accepted offer', updated_at: new Date().toISOString() }).eq('id', form.inhouse_listing_id)
+          const claimKey = 'offer_accept:' + selected.id
+          const { data: claimed, error: claimErr } = await supabase.from('offers')
+            .update({
+              conversion_idempotency_key: claimKey,
+              accepted_at: new Date().toISOString(),
+              accepted_by: agent?.id || null,
+            })
+            .eq('id', selected.id)
+            .is('conversion_idempotency_key', null)
+            .select('id')
+          if (claimErr) throw claimErr
+
+          if (claimed && claimed.length > 0) {
+            // We won the claim — safe to create the deal exactly once.
+            const { data: dupe } = await supabase.from('deals').select('id')
+              .eq('addr', form.listing_addr).not('stage', 'in', '("Closed","Deal Fell Through")').limit(1)
+            if (!dupe?.length) {
+              const { data: newDeal, error: dealErr } = await supabase.from('deals').insert({
+                addr:        form.listing_addr,
+                side:        form.inhouse_listing_id ? 'Listing' : 'Buyer',
+                stage:       'Offer Accapted',   // house spelling — matches DEAL_STAGES
+                production:  form.purchase_price || null,
+                client_name: form.inhouse_listing_id ? (form.seller_name || form.buyer_name) : form.buyer_name,
+                agent_id:    form.buyers_agent_id || agent?.id || null,
+                ao_date:     form.offer_date || new Date().toISOString().slice(0, 10),
+                listing_id:  form.inhouse_listing_id || null,
+                created_at:  new Date().toISOString(),
+              }).select().single()
+              if (dealErr) throw dealErr
+              const offerId = selected?.id
+              if (offerId && newDeal) await supabase.from('offers').update({ deal_id: newDeal.id }).eq('id', offerId).then(() => {}).catch(() => {})
+              if (form.inhouse_listing_id) {
+                await supabase.from('listings').update({ status: 'Accepted offer', updated_at: new Date().toISOString() }).eq('id', form.inhouse_listing_id)
+              }
+              // Audit: links the accepted offer, its current revision,
+              // and the resulting Production record together, since
+              // deals has no offer_id/revision_id columns of its own
+              // (not adding any — that's the Production board's schema,
+              // out of scope for this project) and offers.deal_id only
+              // captures half the link.
+              try {
+                await supabase.from('audit_log').insert({
+                  agent_id: agent?.id || null, table_name: 'offers', record_id: String(offerId),
+                  action: 'production_record_created',
+                  metadata: { deal_id: newDeal.id, revision_id: form.current_revision_id || null, claim_key: claimKey },
+                  created_at: new Date().toISOString(),
+                })
+              } catch {}
+              toast('🎉 Accepted! Deal created on the Production board' + (form.inhouse_listing_id ? ' · listing marked Accepted Offer' : ''), '#10B981')
             }
-            toast('🎉 Accepted! Deal created on the Production board' + (form.inhouse_listing_id ? ' · listing marked Accepted Offer' : ''), '#10B981')
           }
+          // claimed.length === 0: conversion already handled by a prior
+          // request — nothing to do, and importantly nothing to report
+          // as an error; this is the expected idempotent-replay path.
         } catch(e) { toast('Offer saved, but auto-creating the Production deal failed: ' + e.message, '#F5A623') }
       }
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
@@ -1011,8 +1121,10 @@ export function Offers() {
                 <div style={{ fontSize:11, fontWeight:800, color:'#10B981', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>SELLER</div>
                 <span style={SL}>Seller Name</span>
                 <ContactSearch value={form.seller_name||''} onChange={v=>set('seller_name',v)}
-                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),seller_contact_id:c.id})) }}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),seller_contact_id:c.id,seller_email:c.email||f.seller_email})) }}
                   placeholder="Search contacts or enter name..." />
+                <span style={SL}>Seller Email (for sending)</span>
+                <input value={form.seller_email||''} onChange={e=>set('seller_email',e.target.value)} placeholder="seller@email.com" style={S} />
                 <span style={SL}>Co-Seller (optional)</span>
                 <ContactSearch value={form.co_seller_name||''} onChange={v=>set('co_seller_name',v)}
                   onSelect={c=>{ if(c) setForm(f=>({...f,co_seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),co_seller_contact_id:c.id})) }}
@@ -1278,7 +1390,7 @@ export function Offers() {
               <div>
                 <span style={SL}>Seller Name</span>
                 <ContactSearch value={form.seller_name||''} onChange={v=>set('seller_name',v)}
-                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),seller_contact_id:c.id})) }}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),seller_contact_id:c.id,seller_email:c.email||f.seller_email})) }}
                   placeholder="Search or enter seller..." />
               </div>
               <div>
@@ -1314,6 +1426,35 @@ export function Offers() {
           </div>
         )}
 
+        {showSend && (
+          <div style={{ background:'var(--dim)', border:'1px solid var(--border)', borderRadius:10, padding:12, marginBottom:10 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
+              Send Offer — from your connected Outlook mailbox
+            </div>
+            {[
+              { key:'buyer', label:'Buyer', email:form.buyer_email },
+              { key:'seller', label:'Seller', email:form.seller_email },
+              { key:'purchaser_attorney', label:"Purchaser's Attorney", email:form.purchaser_attorney_email },
+              { key:'seller_attorney', label:"Seller's Attorney", email:form.seller_attorney_email },
+              { key:'sellers_agent', label:"Seller's Agent", email:form.sellers_agent_email },
+            ].map(r => (
+              <label key={r.key} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, fontSize:12, opacity:r.email?1:0.4 }}>
+                <input type="checkbox" disabled={!r.email} checked={!!sendTo[r.key]}
+                  onChange={e=>setSendTo(t=>({ ...t, [r.key]:e.target.checked }))} />
+                {r.label} {r.email ? '(' + r.email + ')' : '(no email on file)'}
+              </label>
+            ))}
+            <span style={SL}>Additional recipients (comma-separated emails)</span>
+            <input value={sendExtra} onChange={e=>setSendExtra(e.target.value)} placeholder="someone@email.com, other@email.com" style={S} />
+            <span style={SL}>Message</span>
+            <textarea value={sendMsg} onChange={e=>setSendMsg(e.target.value)} rows={2} style={{ ...S, resize:'vertical' }} />
+            <div style={{ display:'flex', gap:8, marginTop:8, justifyContent:'flex-end' }}>
+              <Btn variant="secondary" onClick={()=>setShowSend(false)}>Cancel</Btn>
+              <Btn onClick={sendOffer} loading={sending}>{sending ? 'Sending...' : '📧 Confirm & Send'}</Btn>
+            </div>
+          </div>
+        )}
+
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight:'auto', color:'#DC2626' }} onClick={()=>setConfirmDel(true)}>Delete</Btn>}
           <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
@@ -1321,6 +1462,9 @@ export function Offers() {
             <Btn variant="secondary" onClick={downloadPDF} loading={downloading}>
               📄 {downloading ? 'Generating...' : 'Download PDF'}
             </Btn>
+          )}
+          {selected && tab !== 'pdf_only' && !showSend && (
+            <Btn variant="secondary" onClick={()=>setShowSend(true)}>📧 Send Offer</Btn>
           )}
           <Btn onClick={saveOffer} loading={saving}>
             {selected ? 'Save Changes' : tab === 'pdf_only' ? 'Save to CRM' : 'Save + Download PDF'}
