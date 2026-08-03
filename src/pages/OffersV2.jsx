@@ -982,7 +982,7 @@ export function OffersV2() {
               </div>
 
               {/* Leaderboards */}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:24 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:16, marginBottom:24 }}>
                 {[
                   { title: '⚖️ Most Active Attorneys', data: topAttorneys },
                   { title: '🏠 Most Frequent Seller\'s Agents', data: topSellerAgents },
@@ -1408,7 +1408,7 @@ export function OffersV2() {
             <div style={{ padding:'10px 12px', background:'rgba(59,130,246,.06)', borderRadius:8, fontSize:11, color:'var(--muted)' }}>
               Enter key deal information to track in CRM. No PDF generated.
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:10 }}>
               <div style={{ gridColumn:'span 2' }}>
                 <span style={SL}>Property Address *</span>
                 <AddressAutocomplete

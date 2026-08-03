@@ -85,6 +85,15 @@ describe('verifyOfferOwnership — access control logic (mocked client)', () => 
     expect(result.ok).toBe(true)
   })
 
+  it('allows secretary regardless of ownership — matches the pre-existing client-side canManage convention', async () => {
+    const sb = mockSupabase({
+      agentRow: { id: 'secretary-1', role: 'secretary', active: true },
+      offerRow: { id: 'o1', agent_id: 'someone-else', buyers_agent_id: 'someone-else-2' },
+    })
+    const result = await verifyOfferOwnership(sb, 'o1', 'auth-secretary')
+    expect(result.ok).toBe(true)
+  })
+
   it('returns 404 when the offer itself does not exist', async () => {
     const sb = mockSupabase({ agentRow: { id: 'a1', role: 'agent', active: true }, offerRow: null })
     const result = await verifyOfferOwnership(sb, 'nonexistent', 'auth-user-1')

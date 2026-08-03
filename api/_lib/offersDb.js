@@ -52,9 +52,22 @@ async function verifyOfferOwnership(sb, offerId, authUserId) {
     return { ok: false, status: 404, message: 'Offer not found' }
   }
 
+  // Matches the pre-existing client-side convention already used
+  // throughout Offers.jsx/OffersV2.jsx before this project
+  // (`canManage = isAdmin || isSecretary`, from AuthContext) — the
+  // office secretary role has always had board-wide visibility on
+  // Offers here, not something this project introduced. The server
+  // check needs to match that existing behavior, not invent a
+  // stricter rule that would silently break something secretaries
+  // could already do (e.g. generating/sending a PDF for an offer they
+  // don't personally own, which the board's UI has always let them
+  // open). This is NOT the same as "give secretaries full admin
+  // access" generally — it is scoped to this one board, matching one
+  // specific, already-shipped permission pattern.
   const isAdmin = agentRow.role === 'admin'
+  const isSecretary = agentRow.role === 'secretary'
   const isOwner = offer.agent_id === agentRow.id || offer.buyers_agent_id === agentRow.id
-  if (!isAdmin && !isOwner) {
+  if (!isAdmin && !isSecretary && !isOwner) {
     return { ok: false, status: 403, message: 'Not authorized for this offer' }
   }
 
