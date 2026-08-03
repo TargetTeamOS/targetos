@@ -90,6 +90,7 @@ export default function ListingWorkspace({
   const [addingRole, setAddingRole] = useState(null)
   const [saving, setSaving] = useState('')
   const [copyLabel, setCopyLabel] = useState('Copy Seller Report')
+  const [listingOffers, setListingOffers] = useState([])
 
   // editable field buffers
   const [status, setStatus] = useState(listing.status || 'Active')
@@ -104,6 +105,23 @@ export default function ListingWorkspace({
     setMktStatus(listing.marketing_status || ''); setNotes(listing.notes || ''); setTab('tasks')
     setAddrBuf({ addr:listing.addr||'', city:listing.city||'', state:listing.state||'', zip:listing.zip||'' })
     setEditingAddr(false)
+  }, [listing.id])
+
+  // Offers received against this in-house listing. Read-only — per the
+  // handoff, My Listings/ListingWorkspace must not write into another
+  // board's workflow; this only displays linked data the Offers board
+  // already owns.
+  useEffect(() => {
+    async function loadListingOffers() {
+      try {
+        const { data } = await supabase.from('offers')
+          .select('id,buyer_name,purchase_price,status,offer_date,agent_id,agents(id,name,color)')
+          .eq('inhouse_listing_id', listing.id)
+          .order('offer_date', { ascending: false })
+        setListingOffers(data || [])
+      } catch { setListingOffers([]) }
+    }
+    if (listing.id) loadListingOffers()
   }, [listing.id])
 
   async function loadAdminLog() {
@@ -1289,6 +1307,17 @@ export default function ListingWorkspace({
                 <span style={{ color:'var(--muted)' }}>{p.date?fmtDate(p.date):(p.changed_at?fmtDate(p.changed_at):'')}</span>
               </div>
             ))}
+          {/* Offers received against this in-house listing (read-only —
+              authoritative record stays on the Offers board) */}
+          <div style={{ ...sectionTitle, marginTop:20 }}>Offers on this listing ({listingOffers.length})</div>
+          {listingOffers.length === 0 ? (
+            <div style={{ padding:14, color:'var(--muted)', fontSize:12.5 }}>No offers recorded yet.</div>
+          ) : listingOffers.map(o => (
+            <a key={o.id} href={'/offers/' + o.id} style={{ display:'flex', justifyContent:'space-between', padding:'8px 10px', borderBottom:'1px solid var(--border)', fontSize:12.5, textDecoration:'none', color:'inherit' }}>
+              <span>{o.buyer_name || '(buyer not named)'} — {o.purchase_price ? fmt$(o.purchase_price) : '—'}{o.agents?.name ? ' · ' + o.agents.name : ''}</span>
+              <span style={{ color:'var(--muted)' }}>{o.status || 'Draft'}{o.offer_date ? ' · ' + fmtDate(o.offer_date) : ''}</span>
+            </a>
+          ))}
           {/* Historical price changes from audit_log (merged, so nothing is lost) */}
           {(() => {
             const auditPrices = adminLog.filter(a => (a.field_name||'').toLowerCase().includes('price'))
