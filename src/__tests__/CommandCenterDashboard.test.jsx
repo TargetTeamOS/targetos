@@ -36,10 +36,12 @@ describe('DashboardShell states', () => {
 })
 
 describe('DashboardCommandCenter page', () => {
-  it('renders the authenticated shell with all widgets', () => {
+  it('renders the authenticated shell with all widgets in the grid', () => {
     renderPage()
     expect(screen.getByText('Command Center')).toBeTruthy()
-    expect(screen.getByTestId('masonry')).toBeTruthy()
+    expect(screen.getByTestId('cc-grid')).toBeTruthy()
+    expect(screen.getByText('Monthly team goal')).toBeTruthy()
+    expect(screen.getByText('Front Runner of the Month')).toBeTruthy()
     expect(screen.getByText('My day')).toBeTruthy()
     expect(screen.getByText('Agent performance')).toBeTruthy()
     expect(screen.getByText('Custom widgets')).toBeTruthy()

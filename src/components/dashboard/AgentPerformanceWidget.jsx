@@ -143,8 +143,10 @@ function Table({ columns, ranked, sortKey, setSortKey, onCell }) {
             <tr key={r.agent_id} style={{ borderTop: '1px solid #f1f5f9' }}>
               <td style={{ ...tdL, color: '#94a3b8', fontWeight: 700 }}>{i + 1}</td>
               <td style={tdL}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: r.color || '#cbd5e1' }} />
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span aria-hidden style={{ width: 22, height: 22, borderRadius: '50%', background: r.color || '#cbd5e1', color: '#fff', fontSize: 10, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {(r.name || '?').split(' ').map((s) => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+                  </span>
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{r.name}</span>
                 </span>
               </td>
