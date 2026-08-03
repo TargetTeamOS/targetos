@@ -7,6 +7,10 @@ const fs   = require('fs')
 const path = require('path')
 const { requireAnyAgent } = require('./_lib/phone')
 const { computeOfferFinancials } = require('./_lib/offerCalc')
+const {
+  getOffersServiceClient, verifyOfferOwnership,
+  createOfferRevision, storeGeneratedPdf, logOfferEvent,
+} = require('./_lib/offersDb')
 
 const TEMPLATE = path.join(__dirname, 'Offer_For_Sale_Form.pdf')
 
@@ -268,6 +272,47 @@ module.exports = async function handler(req, res) {
   try {
     const result = await buildOfferPdf(data)
     if (!result.ok) return res.status(result.status).json({ error: result.error })
+
+    // ── REVISION + STORAGE + AUDIT (best-effort, never blocks the PDF) ──
+    // Only runs when this PDF belongs to an already-saved offer (data.id
+    // present). A brand-new, never-saved offer has nothing to attach a
+    // revision to, and generating a preview PDF must not silently create
+    // an offer record as a side effect — that would be a second source
+    // of truth the handoff explicitly forbids. If persistence fails for
+    // any reason (missing credentials, RLS denial, storage error), the
+    // agent still gets their PDF; the failure is logged, not swallowed.
+    if (data.id && __user) {
+      try {
+        const sb = getOffersServiceClient()
+        if (!sb) {
+          console.warn('[offers-v2] SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not configured — PDF generated but not persisted as a revision')
+        } else {
+          const ownership = await verifyOfferOwnership(sb, data.id, __user.id)
+          if (!ownership.ok) {
+            console.warn('[offers-v2] revision persistence skipped: ' + ownership.message)
+          } else {
+            const revision = await createOfferRevision(sb, {
+              offerId: data.id,
+              createdBy: ownership.agent.id,
+              snapshot: data,
+            })
+            const storedPath = await storeGeneratedPdf(sb, {
+              offerId: data.id,
+              revisionNumber: revision.revision_number,
+              bytes: result.bytes,
+              filename: result.filename,
+            })
+            await sb.from('offer_revisions').update({ pdf_path: storedPath }).eq('id', revision.id)
+            await logOfferEvent(sb, {
+              agentId: ownership.agent.id, offerId: data.id, action: 'pdf_generated',
+              metadata: { revision_number: revision.revision_number, filename: result.filename },
+            })
+          }
+        }
+      } catch (persistErr) {
+        console.warn('[offers-v2] revision persistence failed (PDF still returned):', persistErr.message)
+      }
+    }
 
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', 'attachment; filename="' + result.filename + '"')
