@@ -21,11 +21,42 @@ const VALUE = { fontSize:20, fontWeight:900, color:'var(--text)' }
  * movement, time-to-accept) will read as "insufficient data" for older
  * offers that predate this system, not a misleading zero.
  */
-export default function AdminOfferReports({ offers, agents, revisionsOverride }) {
-  // revisionsOverride exists purely for direct testing (see
-  // AdminOfferReports.test.jsx) — passing it skips the network fetch so
-  // aggregation logic can be verified against known synthetic data
-  // without mocking the Supabase client.
+export default function AdminOfferReports({ offers: offersProp, agents, revisionsOverride }) {
+  // Full-history fetch: the board's own `offers` prop is capped at
+  // db.offers.list()'s 200-row default (server-authorized: RLS still
+  // scopes this to what the signed-in user may see; admin sees all).
+  // Reports must reflect true history, not just the most recently
+  // loaded page, so this paginates through everything itself rather
+  // than trusting the capped prop — while still preferring an
+  // explicit override for tests. offersProp is used only as an
+  // instant first paint while the full fetch completes, never as the
+  // final source of truth for a report number.
+  const [fullOffers, setFullOffers] = useState(null) // null = loading
+  useEffect(() => {
+    if (revisionsOverride !== undefined) { setFullOffers(offersProp); return } // test mode
+    let cancelled = false
+    async function fetchAll() {
+      const pageSize = 500
+      let from = 0
+      let all = []
+      while (true) {
+        const { data, error } = await supabase.from('offers')
+          .select('id,listing_addr,buyer_name,buyer_contact_id,seller_name,seller_contact_id,purchase_price,status,offer_date,agent_id,buyers_agent_id,off_market,representing_side,sellers_agent_name,sellers_agent_contact_id,seller_agent_company,purchaser_attorney_name,purchaser_attorney_contact_id,seller_attorney_name,seller_attorney_contact_id,accepted_at')
+          .order('offer_date', { ascending: false })
+          .range(from, from + pageSize - 1)
+        if (error || !data || data.length === 0) break
+        all = all.concat(data)
+        if (data.length < pageSize) break
+        from += pageSize
+        if (from > 20000) break // sane hard ceiling against a runaway loop
+      }
+      if (!cancelled) setFullOffers(all)
+    }
+    fetchAll().catch(() => { if (!cancelled) setFullOffers(offersProp || []) })
+    return () => { cancelled = true }
+  }, [revisionsOverride])
+
+  const offers = fullOffers ?? offersProp ?? []
   const [revisions, setRevisions] = useState(revisionsOverride ?? null) // null = loading
   const [drill, setDrill] = useState(null) // { title, rows: offer[] } | null
 
@@ -177,7 +208,7 @@ export default function AdminOfferReports({ offers, agents, revisionsOverride })
     )
   }
 
-  if (revisions === null) return <Loading />
+  if (revisions === null || fullOffers === null) return <Loading />
   if (offers.length === 0) return <Empty icon="📊" title="No offers yet" sub="Reports will populate once offers exist." />
 
   const totalVolumeOffered  = offers.reduce((s, o) => s + (Number(o.purchase_price) || 0), 0)

@@ -353,11 +353,37 @@ export function OffersV2() {
   }
 
   useEffect(() => {
-    if (urlId && offers.length > 0 && urlId !== 'new') {
-      const o = offers.find(x => x.id === urlId)
-      if (o) openOffer(o)
-    }
-  }, [urlId, offers.length])
+    if (!urlId || urlId === 'new') return
+    if (loading) return // wait for the board's own authorized list first
+    const o = offers.find(x => x.id === urlId)
+    if (o) { openOffer(o); return }
+
+    // Direct-route protection: the id wasn't in this agent's own
+    // authorized list. Rather than silently doing nothing (ambiguous —
+    // is it missing, or not mine?), attempt one direct, RLS-scoped
+    // fetch by id. If THAT also comes back empty (RLS denies it or it
+    // truly doesn't exist), show an explicit not-authorized state and
+    // return to the board, instead of leaving a dead URL with no
+    // feedback. Server/database RLS is still the real enforcement —
+    // this is the client-side experience layered on top of it, not a
+    // substitute for it.
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data, error } = await supabase.from('offers').select('*, agents(id,name,color)').eq('id', urlId).maybeSingle()
+        if (cancelled) return
+        if (error || !data) {
+          toast('This offer does not exist, or you are not authorized to view it.', '#DC2626')
+          navigate('/offers', { replace: true })
+          return
+        }
+        openOffer(data)
+      } catch {
+        if (!cancelled) { toast('This offer does not exist, or you are not authorized to view it.', '#DC2626'); navigate('/offers', { replace: true }) }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [urlId, offers.length, loading])
 
   function openOffer(o) {
     navigate('/offers/' + o.id, { replace:true })
@@ -937,7 +963,7 @@ export function OffersV2() {
           {view === 'reports' && (isAdmin||canManage) && (
             <div>
               <div style={{ fontSize:11, color:'var(--muted)', marginBottom:10 }}>
-                Reports reflect the {offers.length} most recently loaded offers (db.offers.list's current 200-row default) — for a brokerage with more historical offers than that, some older records are not yet reflected here. Raising that limit for reporting specifically is a reasonable follow-up, not done in this pass to avoid changing the board's own default pagination behavior.
+                Reports fetch full offer history directly (paginated, server-authorized by the same RLS rules as the board) — not limited to this board's own 200-row default page.
               </div>
               <AdminOfferReports offers={offers} agents={agents} />
             </div>
@@ -1101,8 +1127,8 @@ export function OffersV2() {
               </div>
             </div>
 
-            {/* BUYER | SELLER */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:10 }}>
+            {/* BUYER | SELLER — collapses to one column below ~560px combined width */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:12, marginBottom:10 }}>
               {/* BUYER */}
               <div style={{ background:'rgba(59,130,246,.05)', borderRadius:10, border:'1px solid rgba(59,130,246,.2)', padding:12 }}>
                 <div style={{ fontSize:11, fontWeight:800, color:'#3B82F6', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>BUYER</div>
@@ -1148,8 +1174,8 @@ export function OffersV2() {
               </div>
             </div>
 
-            {/* FINANCIALS + SUBJECT TO */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:10 }}>
+            {/* FINANCIALS + SUBJECT TO — collapses to one column on narrow screens */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:12, marginBottom:10 }}>
               {/* Purchase Price & Breakdown */}
               <div style={{ background:'rgba(245,166,35,.05)', borderRadius:10, border:'1px solid rgba(245,166,35,.2)', padding:12 }}>
                 <div style={{ fontSize:11, fontWeight:800, color:'#B45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>💰 Purchase Price & Breakdown</div>
@@ -1308,8 +1334,8 @@ export function OffersV2() {
                 style={{ ...S, resize:'vertical' }} />
             </div>
 
-            {/* ATTORNEYS */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:10 }}>
+            {/* ATTORNEYS — collapses to one column on narrow screens */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:12, marginBottom:10 }}>
               {/* Purchaser's Attorney */}
               <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
                 <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>PURCHASER'S ATTORNEY</div>
