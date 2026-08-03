@@ -141,7 +141,7 @@ export function DrillDown({
           )}
           {!loading && error && (
             <div data-testid="drill-error" style={{ padding: 24, fontSize: 14 }}>
-              <p style={{ margin: 0, color: '#b42318' }}>Couldn’t load these records.</p>
+              <p style={{ margin: 0, color: '#b42318' }}>{typeof error === 'string' ? error : 'Couldn’t load these records.'}</p>
               {onRetry && <button onClick={onRetry} style={{ marginTop: 10, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', fontFamily: FF }}>Try again</button>}
             </div>
           )}

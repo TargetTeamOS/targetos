@@ -40,7 +40,7 @@ describe('DashboardCommandCenter page', () => {
     renderPage()
     expect(screen.getByText('Command Center')).toBeTruthy()
     expect(screen.getByTestId('masonry')).toBeTruthy()
-    expect(screen.getByText('Monthly team goal')).toBeTruthy()
+    expect(screen.getByText('My day')).toBeTruthy()
     expect(screen.getByText('Agent performance')).toBeTruthy()
   })
 
