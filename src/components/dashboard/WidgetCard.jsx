@@ -43,7 +43,8 @@ export function WidgetCard({
           </div>
         ) : error ? (
           <div data-testid="widget-error" role="status" style={{ fontSize: 13, color: '#475569' }}>
-            <p style={{ margin: 0 }}>Couldn’t load this right now. The rest of your dashboard is fine.</p>
+            <p style={{ margin: 0, color: '#b42318' }}>{typeof error === 'string' ? error : (error && error.message) || 'Couldn’t load this right now.'}</p>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#94a3b8' }}>The rest of your dashboard is unaffected.</p>
             {onRetry && (
               <button onClick={onRetry} style={btn}>Try again</button>
             )}

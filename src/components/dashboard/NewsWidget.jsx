@@ -46,7 +46,7 @@ export function NewsWidget() {
   const [manage, setManage] = useState(false)
 
   const news = data?.news || []
-  const shown = showAll ? news : news.slice(0, 5)
+  const shown = news.slice(0, 3)
 
   return (
     <>
@@ -64,12 +64,27 @@ export function NewsWidget() {
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {shown.map((a, i) => <Article key={a.link || i} a={a} />)}
         </ul>
-        {news.length > 5 && (
-          <button onClick={() => setShowAll((v) => !v)} style={{ marginTop: 10, fontSize: 13, color: '#0073EA', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: FF, padding: 0 }}>
-            {showAll ? 'Show fewer' : `Show all ${news.length}`}
+        {news.length > 3 && (
+          <button onClick={() => setShowAll(true)} style={{ marginTop: 8, fontSize: 13, color: '#0073EA', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: FF, padding: 0 }}>
+            Expand · view all {news.length}
           </button>
         )}
       </WidgetCard>
+
+      {showAll && (
+        <div role="dialog" aria-modal="true" aria-label="All news" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAll(false) }}
+          style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(15,23,42,0.45)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '6vh 16px' }}>
+          <div style={{ width: 'min(680px, 100%)', maxHeight: '84vh', overflowY: 'auto', background: '#fff', borderRadius: 12, fontFamily: FF, boxShadow: '0 20px 60px rgba(15,23,42,0.3)' }}>
+            <div style={{ position: 'sticky', top: 0, background: '#fff', borderBottom: '1px solid #eef2f7', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <strong style={{ fontSize: 15 }}>Local &amp; market news</strong>
+              <button onClick={() => setShowAll(false)} aria-label="Collapse" style={{ border: 'none', background: '#f1f5f9', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', fontSize: 16, color: '#334155' }}>×</button>
+            </div>
+            <ul style={{ listStyle: 'none', margin: 0, padding: '4px 16px 16px' }}>
+              {news.map((a, i) => <Article key={a.link || i} a={a} />)}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {isAdmin && (
         <NewsSourcesAdmin open={manage} onClose={() => setManage(false)} onChanged={refresh} />
