@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-const { verifyOfferOwnership, createOfferRevision } = require('../../api/_lib/offersDb')
+const { verifyOfferOwnership, createOfferRevision, isSendTestEnabled } = require('../../api/_lib/offersDb')
 
 // Minimal mock of the Supabase query-builder chain used by offersDb.js.
 // This is a logic test, not a live-database test — genuinely blocked
@@ -100,5 +100,37 @@ describe('createOfferRevision — numbering logic (mocked client)', () => {
       offerId: 'o1', createdBy: 'a1', snapshot: { purchase_price: '900000' },
     })
     expect(revision.revision_number).toBe(1)
+  })
+})
+
+describe('isSendTestEnabled — second, independent send gate (mocked client)', () => {
+  function mockFlagsClient(flagRow) {
+    return {
+      from: () => ({
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: flagRow, error: null }) }),
+        }),
+      }),
+    }
+  }
+
+  it('is false when the flag row does not exist', async () => {
+    expect(await isSendTestEnabled(mockFlagsClient(null), 'a1')).toBe(false)
+  })
+
+  it('is false when disabled', async () => {
+    expect(await isSendTestEnabled(mockFlagsClient({ enabled: false, allowed_agent_ids: [] }), 'a1')).toBe(false)
+  })
+
+  it('is false for an agent not on the allowlist, even if enabled', async () => {
+    expect(await isSendTestEnabled(mockFlagsClient({ enabled: true, allowed_agent_ids: ['other-agent'] }), 'a1')).toBe(false)
+  })
+
+  it('is true for an agent on the allowlist', async () => {
+    expect(await isSendTestEnabled(mockFlagsClient({ enabled: true, allowed_agent_ids: ['a1'] }), 'a1')).toBe(true)
+  })
+
+  it('is true for everyone when enabled with an empty allowlist', async () => {
+    expect(await isSendTestEnabled(mockFlagsClient({ enabled: true, allowed_agent_ids: [] }), 'any-agent')).toBe(true)
   })
 })

@@ -143,10 +143,32 @@ async function logOfferEvent(sb, { agentId, offerId, action, metadata }) {
   }
 }
 
+/**
+ * Second, independent layer of control for real sends, beyond the
+ * global EXTERNAL_EFFECTS_ENABLED env var: an Admin-managed
+ * feature_flags row (same table/UI as offers_v2_beta, not a new
+ * mechanism) that must ALSO explicitly allow the SENDING agent,
+ * specifically. This lets the rest of Offers V2 (PDF, revisions,
+ * documents, reports, conversion) stay fully testable in Preview/
+ * Production while real sending stays off until the owner turns it on
+ * for specific testers — matching "permit testing only after the
+ * owner explicitly enables the send test." Fails closed like
+ * offers_v2_beta, not the general fail-open flag semantics.
+ */
+async function isSendTestEnabled(sb, agentId) {
+  const { data: row } = await sb.from('feature_flags').select('enabled,allowed_agent_ids').eq('key', 'offers_v2_send_test').maybeSingle()
+  if (!row || row.enabled !== true) return false
+  if (Array.isArray(row.allowed_agent_ids) && row.allowed_agent_ids.length > 0) {
+    return !!agentId && row.allowed_agent_ids.includes(agentId)
+  }
+  return true
+}
+
 module.exports = {
   getOffersServiceClient,
   verifyOfferOwnership,
   createOfferRevision,
   storeGeneratedPdf,
   logOfferEvent,
+  isSendTestEnabled,
 }

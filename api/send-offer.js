@@ -20,7 +20,7 @@ const {
   getAgentAccount, freshAccountToken, agentIdFromAuthUser, sb: connectorsSb,
 } = require('./_lib/connectors')
 const {
-  getOffersServiceClient, verifyOfferOwnership, logOfferEvent,
+  getOffersServiceClient, verifyOfferOwnership, logOfferEvent, isSendTestEnabled,
 } = require('./_lib/offersDb')
 
 async function parseBody(req) {
@@ -131,20 +131,29 @@ module.exports = async function handler(req, res) {
       throw insertErr
     }
 
-    // ── EXTERNAL EFFECTS GATE ────────────────────────────────────────
-    // Real sends are disabled unless explicitly enabled. In the
-    // disabled state, everything above (idempotency claim, ownership
-    // check, PDF retrieval) still runs for real — only the actual
-    // provider call is skipped — so this exercises the full path in
-    // Preview/dev without emailing anyone.
+    // ── EXTERNAL EFFECTS GATE (two independent layers) ──────────────
+    // Real sends require BOTH: (1) the global EXTERNAL_EFFECTS_ENABLED
+    // env var, and (2) the offers_v2_send_test feature flag explicitly
+    // allowing THIS agent specifically (Admin-managed, same
+    // feature_flags table as offers_v2_beta — not a new mechanism).
+    // Requirement: "the rest of Offers V2 must remain testable while
+    // send effects are disabled" — everything above this point
+    // (idempotency claim, ownership check, PDF retrieval) still runs
+    // for real regardless; only the actual provider call is skipped.
     const externalEffectsEnabled = isExternalEffectsEnabled()
-    if (!externalEffectsEnabled) {
+    const sendTestEnabled = externalEffectsEnabled && await isSendTestEnabled(sb, ownership.agent.id)
+    if (!sendTestEnabled) {
       await sb.from('offer_sends').update({
-        status: 'Failed', error_message: 'EXTERNAL_EFFECTS_ENABLED is not true — real send blocked in this environment',
+        status: 'Failed',
+        error_message: !externalEffectsEnabled
+          ? 'EXTERNAL_EFFECTS_ENABLED is not true — real send blocked in this environment'
+          : 'offers_v2_send_test flag does not allow this agent yet — ask an admin to enable it for you in Admin -> Features',
       }).eq('id', sendRow.id)
       return res.status(200).json({
         ok: true, preview: true, sent: false,
-        message: 'External effects are disabled — this send was validated end-to-end but not actually delivered. Set EXTERNAL_EFFECTS_ENABLED=true to send for real.',
+        message: !externalEffectsEnabled
+          ? 'External effects are disabled — this send was validated end-to-end but not actually delivered. Set EXTERNAL_EFFECTS_ENABLED=true to send for real.'
+          : 'This send was validated end-to-end but not actually delivered — the offers_v2_send_test flag does not yet allow your account. An admin can enable it for specific testers in Admin -> Features.',
         sendId: sendRow.id,
       })
     }
