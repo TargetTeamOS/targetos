@@ -12,9 +12,15 @@ with
 expected_fn(section, name) as (values
   ('Foundation','app_current_agent_id'),
   ('Foundation','app_is_admin'),
+  ('Foundation','_goal_actual'),
+  ('Foundation','app_goals_list'),
   ('Foundation','app_goals_dashboard'),
   ('Foundation','app_goal_upsert'),
+  ('Foundation','app_goal_delete'),
+  ('Foundation','app_news_sources_list'),
   ('Foundation','app_news_sources_active'),
+  ('Foundation','app_news_source_upsert'),
+  ('Foundation','app_news_source_delete'),
   ('S1 Widgets','_pw_validate'),
   ('S1 Widgets','_pw_window'),
   ('S1 Widgets','_pw_compute'),
@@ -24,6 +30,7 @@ expected_fn(section, name) as (values
   ('S1 Widgets','app_reset_production_widgets'),
   ('S1 Widgets','app_preview_production_widgets'),
   ('S1 Widgets','app_production_widgets_audit'),
+  ('S1 Widgets','_pw_audit'),
   ('S2 Goals','app_goal_records'),
   ('S3 My Day','_owns_task'),
   ('S3 My Day','app_my_day'),
@@ -54,7 +61,7 @@ expected_tbl(section, name, kind) as (values
   ('Foundation','_app_migrations','table'),
   ('Foundation','v_deals_canonical','view')
 ),
-expected_rls(name) as (values ('production_widgets'), ('dashboard_settings'))
+expected_rls(name) as (values ('production_widgets'), ('dashboard_settings'), ('news_sources'))
 -- 1) FUNCTIONS: existence + SECURITY DEFINER search_path + authenticated EXECUTE
 select
   'FUNCTION'::text as check,
@@ -62,6 +69,10 @@ select
   case
     when oid is null then 'MISSING'
     when prosecdef and sp is null then 'REVIEW REQUIRED — SECURITY DEFINER without explicit search_path'
+    when name in ('app_current_agent_id','app_is_admin') then
+      case when has_function_privilege('public', oid, 'EXECUTE') or has_function_privilege('anon', oid, 'EXECUTE')
+           then 'REVIEW REQUIRED — internal helper exposed to public/anon'
+           else 'PASS (internal helper — no authenticated EXECUTE expected)' end
     when name like 'app\_%' and not has_function_privilege('authenticated', oid, 'EXECUTE') then 'REVIEW REQUIRED — authenticated lacks EXECUTE'
     when name like 'app\_%' and (has_function_privilege('public', oid, 'EXECUTE') or has_function_privilege('anon', oid, 'EXECUTE')) then 'REVIEW REQUIRED — executable by public/anon'
     else 'PASS'
@@ -88,6 +99,23 @@ select 'RLS', ('policy on ' || r.name),
 from expected_rls r
 
 union all
+-- 3b) production_widgets_audit: RLS on AND not directly readable by authenticated
+select 'RLS', 'production_widgets_audit (admin-reader only)',
+  case
+    when to_regclass('public.production_widgets_audit') is null then 'MISSING'
+    when not (select relrowsecurity from pg_class where oid = 'public.production_widgets_audit'::regclass) then 'REVIEW REQUIRED — RLS disabled'
+    when has_table_privilege('authenticated','public.production_widgets_audit','SELECT') then 'REVIEW REQUIRED — authenticated can read audit directly'
+    else 'PASS'
+  end, 'expect RLS on, no direct authenticated SELECT (read via app_production_widgets_audit)'
+
+union all
+-- 3c) production-widget audit trigger present
+select 'TRIGGER', 'pw_audit_trg on production_widgets',
+  case when exists (select 1 from pg_trigger t join pg_class c on c.oid=t.tgrelid
+                    where c.relname='production_widgets' and t.tgname='pw_audit_trg' and not t.tgisinternal)
+       then 'PASS' else 'MISSING — widget changes will not be audited' end, ''
+
+union all
 -- 4) Widget config table must NOT be directly writable by authenticated (writes go through RPCs)
 select 'GRANT', 'production_widgets direct INSERT/UPDATE/DELETE by authenticated',
   case
@@ -103,7 +131,7 @@ union all
 -- 5) Migration bookkeeping rows marked complete
 select 'MIGRATION', ('_app_migrations · ' || m.name),
   case when exists(select 1 from public._app_migrations x where x.name=m.name and x.status='complete') then 'PASS' else 'MISSING — not recorded complete' end, ''
-from (values ('production_widgets'),('A5_goal_records'),('A6_my_day'),('A7_agent_performance'),('A8_dashboard_settings')) m(name)
+from (values ('production_widgets'),('A5_goal_records'),('A6_my_day'),('A7_agent_performance'),('A8_dashboard_settings'),('COMMAND_CENTER_REPAIR_FOUNDATION')) m(name)
 
 union all
 -- 6) Baseline CRM counts (read-only; capture BEFORE persona testing)
