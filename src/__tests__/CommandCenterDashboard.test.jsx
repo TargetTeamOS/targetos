@@ -5,7 +5,7 @@
 // trip it. Keeping it here satisfies the check unchanged while Vitest's
 // src/**/*.test.jsx glob still collects it.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 // Identity always comes from the authenticated session; mock it here.
@@ -36,18 +36,17 @@ describe('DashboardShell states', () => {
 })
 
 describe('DashboardCommandCenter page', () => {
-  it('renders the authenticated shell with placeholder slots', () => {
+  it('renders the authenticated shell with all widgets', () => {
     renderPage()
     expect(screen.getByText('Command Center')).toBeTruthy()
     expect(screen.getByTestId('masonry')).toBeTruthy()
     expect(screen.getByText('My day')).toBeTruthy()
     expect(screen.getByText('Agent performance')).toBeTruthy()
+    expect(screen.getByText('Custom widgets')).toBeTruthy()
   })
 
-  it('opens the shared drill-down from a placeholder and shows its empty state', () => {
+  it('greets the signed-in user by first name', () => {
     renderPage()
-    fireEvent.click(screen.getAllByText('Preview drill-down')[0])
-    expect(screen.getByRole('dialog')).toBeTruthy()
-    expect(screen.getByTestId('drill-empty')).toBeTruthy()
+    expect(screen.getByText(/Welcome back, Moshe/)).toBeTruthy()
   })
 })
