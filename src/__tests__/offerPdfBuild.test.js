@@ -112,3 +112,65 @@ describe('buildOfferPdf — end-to-end synthetic-data generation', () => {
     expect(doc.getPageCount()).toBe(1)
   })
 })
+
+describe('closing terms — "on or about"/"on or before" resolve to a printable day-count, never a raw date', () => {
+  const { resolveClosingDaysPrintValue } = pdfHandler
+
+  it('days mode passes the plain number through unchanged (existing behavior)', () => {
+    const r = resolveClosingDaysPrintValue({ closing_mode: 'days', closing_days: '45' })
+    expect(r).toEqual({ ok: true, text: '45' })
+  })
+
+  it('on_or_about computes the day-count from offer_date to the target date, not the date itself', () => {
+    const r = resolveClosingDaysPrintValue({
+      closing_mode: 'on_or_about', offer_date: '2026-08-01', closing_target_date: '2026-09-15',
+    })
+    expect(r.ok).toBe(true)
+    expect(r.text).toBe('45') // Aug 1 -> Sep 15 = 45 days
+    expect(r.text).not.toMatch(/[a-zA-Z]/) // never leaks "on or about" or a date string onto the printed field
+  })
+
+  it('on_or_before computes the same way', () => {
+    const r = resolveClosingDaysPrintValue({
+      closing_mode: 'on_or_before', offer_date: '2026-08-01', closing_target_date: '2026-08-31',
+    })
+    expect(r.ok).toBe(true)
+    expect(r.text).toBe('30')
+  })
+
+  it('rejects a target date before the offer date instead of printing a negative number', () => {
+    const r = resolveClosingDaysPrintValue({
+      closing_mode: 'on_or_about', offer_date: '2026-08-15', closing_target_date: '2026-08-01',
+    })
+    expect(r.ok).toBe(false)
+  })
+
+  it('requires a target date for on_or_about/on_or_before', () => {
+    const r = resolveClosingDaysPrintValue({ closing_mode: 'on_or_about', offer_date: '2026-08-01' })
+    expect(r.ok).toBe(false)
+  })
+
+  it('custom mode passes short text through for the caller to width-check', () => {
+    const r = resolveClosingDaysPrintValue({ closing_mode: 'custom', closing_custom_text: 'TBD' })
+    expect(r).toEqual({ ok: true, text: 'TBD' })
+  })
+
+  it('end-to-end: buildOfferPdf refuses custom closing wording that cannot fit the 67.68pt field', async () => {
+    const result = await buildOfferPdf({
+      ...BASE_OFFER, closing_mode: 'custom',
+      closing_custom_text: 'Concurrent with completion of new construction at the buyer\'s replacement property',
+    })
+    expect(result.ok).toBe(false)
+    expect(result.status).toBe(422)
+    expect(result.error).toMatch(/too long/i)
+  })
+
+  it('end-to-end: buildOfferPdf accepts on_or_about and produces one page with the computed day-count', async () => {
+    const result = await buildOfferPdf({
+      ...BASE_OFFER, closing_mode: 'on_or_about', closing_target_date: '2026-09-29', // offer_date is 2026-08-15 in BASE_OFFER
+    })
+    expect(result.ok).toBe(true)
+    const doc = await PDFDocument.load(result.bytes)
+    expect(doc.getPageCount()).toBe(1)
+  })
+})
