@@ -1,41 +1,58 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { offersV2Allowed } from './offersV2Flag'
 
-function flagMap(row) {
-  return new Map(row ? [['offers_v2_beta', row]] : [])
-}
+describe('Offers V2 beta authorization', () => {
+  const agent = { id: 'agent-1', role: 'admin' }
 
-describe('offersV2Allowed — fails closed, unlike the general flag system', () => {
-  it('is OFF when the flag row does not exist at all', () => {
-    expect(offersV2Allowed({ id: 'a1', role: 'admin' }, flagMap(null))).toBe(false)
+  it('fails closed when the flag is missing', () => {
+    expect(offersV2Allowed(agent, null)).toBe(false)
   })
 
-  it('is OFF when explicitly disabled, even for admins', () => {
-    expect(offersV2Allowed({ id: 'a1', role: 'admin' }, flagMap({ enabled: false }))).toBe(false)
+  it('fails closed when disabled', () => {
+    expect(
+      offersV2Allowed(agent, {
+        enabled: false,
+        allowed_agent_ids: ['agent-1'],
+      })
+    ).toBe(false)
   })
 
-  it('an admin NOT on the allowlist does not get automatic access — no bypass', () => {
-    const row = { enabled: true, allowed_agent_ids: ['some-other-agent'] }
-    expect(offersV2Allowed({ id: 'admin-1', role: 'admin' }, flagMap(row))).toBe(false)
+  it('allows an explicitly approved agent', () => {
+    expect(
+      offersV2Allowed(agent, {
+        enabled: true,
+        allowed_agent_ids: ['agent-1'],
+      })
+    ).toBe(true)
   })
 
-  it('a regular agent ON the allowlist gets access', () => {
-    const row = { enabled: true, allowed_agent_ids: ['agent-1'] }
-    expect(offersV2Allowed({ id: 'agent-1', role: 'agent' }, flagMap(row))).toBe(true)
+  it('rejects an agent not on the allowlist', () => {
+    expect(
+      offersV2Allowed(agent, {
+        enabled: true,
+        allowed_agent_ids: ['another-agent'],
+      })
+    ).toBe(false)
   })
 
-  it('an admin on the allowlist gets access (the "owner testing alone" case)', () => {
-    const row = { enabled: true, allowed_agent_ids: ['owner-admin-id'] }
-    expect(offersV2Allowed({ id: 'owner-admin-id', role: 'admin' }, flagMap(row))).toBe(true)
+  it('allows full rollout when enabled with an empty allowlist', () => {
+    expect(
+      offersV2Allowed(agent, {
+        enabled: true,
+        allowed_agent_ids: [],
+      })
+    ).toBe(true)
   })
 
-  it('enabled with an empty allowlist means full rollout to everyone', () => {
-    const row = { enabled: true, allowed_agent_ids: [] }
-    expect(offersV2Allowed({ id: 'any-agent', role: 'agent' }, flagMap(row))).toBe(true)
-  })
-
-  it('is OFF for a signed-out / missing agent even if the flag is enabled', () => {
-    const row = { enabled: true, allowed_agent_ids: ['agent-1'] }
-    expect(offersV2Allowed(null, flagMap(row))).toBe(false)
+  it('does not automatically bypass the allowlist for admins', () => {
+    expect(
+      offersV2Allowed(
+        { id: 'admin-2', role: 'admin' },
+        {
+          enabled: true,
+          allowed_agent_ids: ['agent-1'],
+        }
+      )
+    ).toBe(false)
   })
 })
