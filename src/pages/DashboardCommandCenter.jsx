@@ -1,11 +1,12 @@
-// DashboardCommandCenter — full-width, 12-column Command Center.
+// DashboardCommandCenter — full-width, 12-column combined landing dashboard for
+// all authenticated agents.
 //   Header:  title + date · range/refresh/last-updated/Settings (admin)
 //   Row 1:   Mortgage(3) · Monthly Goal(3) · Yearly Goal(3) · Front Runner(3)
-//   Row 2:   My Day(7) · Local & Market News(5)
-//   Row 3:   Accepted Offers by Agent(6) · Production by Agent(6)
-//   Row 4:   Agent Performance leaderboard(12)
-//   Row 5:   Custom Widgets(12)
-// The existing Smart Dashboard at "/" is untouched; this lives at its own route.
+//   Row 2:   My Day(7, per-agent) · Local & Market News(5)
+//   Row 3:   Shared widgets(12) — admin-editable; everyone views
+//   Row 4:   My Widgets(12) — each agent's own widgets, scoped to their own data
+// Agent Performance leaderboard and the cross-agent Accepted-Offers/Production
+// charts were removed so no agent sees another agent's performance here.
 
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
@@ -19,9 +20,8 @@ import { NewsWidget } from '../components/dashboard/NewsWidget'
 import { MonthlyGoalCard, YearlyGoalCard } from '../components/dashboard/GoalSlots'
 import { FrontRunnerWidget } from '../components/dashboard/FrontRunnerWidget'
 import { MyDayWidget } from '../components/dashboard/MyDayWidget'
-import { AcceptedOffersChart, ProductionChart } from '../components/dashboard/AnalyticsCharts'
-import { AgentPerformanceWidget } from '../components/dashboard/AgentPerformanceWidget'
 import { CustomWidgetsSection } from '../components/dashboard/CustomWidgetsSection'
+import { MyWidgetsSection } from '../components/dashboard/MyWidgetsSection'
 import { CommandCenterSettings } from '../components/dashboard/CommandCenterSettings'
 
 function DateRangePicker() {
@@ -75,11 +75,8 @@ function CommandCenterInner() {
           <Cell span={{ desktop: 7, tablet: 12 }}><MyDayWidget /></Cell>
           <Cell span={{ desktop: 5, tablet: 12 }}><NewsWidget /></Cell>
 
-          <Cell span={{ desktop: 6, tablet: 12 }}><AcceptedOffersChart /></Cell>
-          <Cell span={{ desktop: 6, tablet: 12 }}><ProductionChart /></Cell>
-
-          <Cell span={{ desktop: 12, tablet: 12 }}><AgentPerformanceWidget /></Cell>
           <Cell span={{ desktop: 12, tablet: 12 }}><CustomWidgetsSection /></Cell>
+          <Cell span={{ desktop: 12, tablet: 12 }}><MyWidgetsSection /></Cell>
         </Grid12>
       </div>
 

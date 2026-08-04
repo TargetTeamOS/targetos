@@ -36,15 +36,19 @@ describe('DashboardShell states', () => {
 })
 
 describe('DashboardCommandCenter page', () => {
-  it('renders the authenticated shell with all widgets in the grid', () => {
+  it('renders the authenticated shell with the combined widgets in the grid', () => {
     renderPage()
     expect(screen.getByText('Command Center')).toBeTruthy()
     expect(screen.getByTestId('cc-grid')).toBeTruthy()
     expect(screen.getByText('Monthly team goal')).toBeTruthy()
     expect(screen.getByText('Front Runner of the Month')).toBeTruthy()
-    expect(screen.getByText('Accepted Offers by Agent')).toBeTruthy()
-    expect(screen.getByText('Agent Performance')).toBeTruthy()
     expect(screen.getByText('Custom widgets')).toBeTruthy()
+    // per-agent personal widgets section is present for everyone
+    expect(screen.getByText('My widgets')).toBeTruthy()
+    // cross-agent performance widgets were removed so no agent sees another's numbers
+    expect(screen.queryByText('Agent Performance')).toBeNull()
+    expect(screen.queryByText('Accepted Offers by Agent')).toBeNull()
+    expect(screen.queryByText('Production by Agent')).toBeNull()
   })
 
   it('greets the signed-in user by first name', () => {

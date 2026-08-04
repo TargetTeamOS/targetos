@@ -16,7 +16,6 @@ const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const NAV = [
   // ── MAIN ──────────────────────────────────────────────────────────
   { id: '',              label: 'Dashboard',      icon: '🏠', roles: ['admin','secretary','agent'] },
-  { id: 'dashboard/command-center', label: 'Command Center', icon: '🧭', roles: ['admin'] },
   { id: 'contacts',      label: 'Contacts',       icon: '👥', roles: ['admin','secretary','agent'] },
   { id: 'tasks',         label: 'Tasks',          icon: '✅', roles: ['admin','secretary','agent'] },
   { id: 'calendar',      label: 'Calendar',       icon: '📅', roles: ['admin','secretary','agent'] },
