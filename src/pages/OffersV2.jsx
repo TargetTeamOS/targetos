@@ -1355,7 +1355,15 @@ export function OffersV2() {
                           // engine treats as authoritative (zeroes mortgage even
                           // if a mortgage % was previously entered).
                           if (cb.key === 'subject_cash') recalc({ subject_cash:e.target.checked, is_cash_deal:e.target.checked })
-                          else set(cb.key, e.target.checked)
+                          // Every Subject To checkbox recalculates now,
+                          // not just Cash Deal — confirmed real bug:
+                          // the "Mortgage amount is set but 'Mortgage'
+                          // is not checked" warning never refreshed
+                          // when the Mortgage box itself was toggled,
+                          // because only subject_cash called recalc()
+                          // before. This is the fix for "notice/warning
+                          // not updating."
+                          else recalc({ [cb.key]: e.target.checked })
                         }}
                         style={{ accentColor:'var(--brand)', width:14, height:14 }} />
                       {cb.label}
