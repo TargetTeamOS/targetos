@@ -4,7 +4,7 @@ import {
   initials, fullName, pct, fmtPct, fmtPhone, phoneHref,
   truncate, titleCase, slugify, sortBy, matchSearch, groupBy,
   totalGCI, totalProduction, dealsInStage, closedDeals, activeDeals,
-  isOverdue, isDueSoon, toISODate,
+  isOverdue, isDueSoon, toISODate, dedupeCanonicalAgents,
 } from './utils.js'
 
 describe('fmt$ (abbreviated currency)', () => {
@@ -218,5 +218,80 @@ describe('date helpers', () => {
   it('isDueSoon returns false for a date far in the future', () => {
     const farFuture = new Date(Date.now() + 86400000 * 30).toISOString().slice(0, 10)
     expect(isDueSoon(farFuture)).toBe(false)
+  })
+})
+
+describe('dedupeCanonicalAgents', () => {
+  it('collapses a short-name duplicate into the full-name profile when the full-name one is Auth-linked', () => {
+    const agents = [
+      { id: 'a1', name: 'Yanky', auth_user_id: null },
+      { id: 'a2', name: 'Yanky Lichtenstein', auth_user_id: 'auth-123' },
+    ]
+    const result = dedupeCanonicalAgents(agents)
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('a2')
+    expect(result[0].mergedIds.sort()).toEqual(['a1', 'a2'])
+  })
+
+  it('prefers the Auth-linked profile even if it has the SHORTER name', () => {
+    const agents = [
+      { id: 'a1', name: 'Yanky', auth_user_id: 'auth-123' },
+      { id: 'a2', name: 'Yanky Lichtenstein', auth_user_id: null },
+    ]
+    const result = dedupeCanonicalAgents(agents)
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('a1')
+    expect(result[0].mergedIds.sort()).toEqual(['a1', 'a2'])
+  })
+
+  it('does NOT merge two different real people who merely share a first name', () => {
+    const agents = [
+      { id: 'a1', name: 'Yanky Lichtenstein', auth_user_id: 'auth-1' },
+      { id: 'a2', name: 'Yanky Weinberger', auth_user_id: 'auth-2' },
+    ]
+    const result = dedupeCanonicalAgents(agents)
+    expect(result).toHaveLength(2)
+  })
+
+  it('leaves genuinely distinct agents alone', () => {
+    const agents = [
+      { id: 'a1', name: 'Lazer Farkas', auth_user_id: 'auth-1' },
+      { id: 'a2', name: 'Mendy', auth_user_id: 'auth-2' },
+      { id: 'a3', name: 'Eli Hoffman', auth_user_id: 'auth-3' },
+    ]
+    expect(dedupeCanonicalAgents(agents)).toHaveLength(3)
+  })
+
+  it('handles an exact duplicate name (identical strings) by keeping one', () => {
+    const agents = [
+      { id: 'a1', name: 'Shmuel Weinberger', auth_user_id: null },
+      { id: 'a2', name: 'Shmuel Weinberger', auth_user_id: 'auth-1' },
+    ]
+    const result = dedupeCanonicalAgents(agents)
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('a2')
+  })
+
+  it('handles an empty list', () => {
+    expect(dedupeCanonicalAgents([])).toEqual([])
+  })
+
+  it('handles agents with no name gracefully rather than crashing', () => {
+    const agents = [{ id: 'a1', name: '', auth_user_id: 'x' }, { id: 'a2', name: null, auth_user_id: 'y' }]
+    expect(dedupeCanonicalAgents(agents)).toHaveLength(2)
+  })
+
+  it('preserves historical ownership: mergedIds includes both the canonical id and every duplicate folded into it', () => {
+    // This is what lets a bucket still count offers that were assigned
+    // to the OLD "Yanky" agent_id before the profiles were consolidated
+    // — those offers were never reassigned, and shouldn't silently
+    // disappear from the canonical bucket's totals.
+    const agents = [
+      { id: 'old-yanky', name: 'Yanky', auth_user_id: null },
+      { id: 'real-yanky', name: 'Yanky Lichtenstein', auth_user_id: 'auth-1' },
+    ]
+    const [canonical] = dedupeCanonicalAgents(agents)
+    expect(canonical.mergedIds).toContain('old-yanky')
+    expect(canonical.mergedIds).toContain('real-yanky')
   })
 })

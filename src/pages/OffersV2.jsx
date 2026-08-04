@@ -29,7 +29,8 @@ import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
 import { useOffers, useAgents } from '../lib/hooks'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
-import { OFFER_STATUSES, CONTACT_TYPE_COLORS } from '../lib/constants'
+import { OFFER_STATUSES, OFFER_ACCEPTED_VALUES, OFFER_PENDING_VALUES, CONTACT_TYPE_COLORS } from '../lib/constants'
+import { dedupeCanonicalAgents } from '../lib/utils'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { computeOfferFinancials } from '../lib/offerCalc'
 import AdminOfferReports from '../components/AdminOfferReports'
@@ -191,11 +192,16 @@ function FileUploader({ label, fileUrl, onUploaded, folder }) {
 // ── AGENT STATS CARD ──────────────────────────────────────────────
 function AgentStatsCard({ ag, agentOffers, onFilter, isActive }) {
   const total    = agentOffers.length
-  const accepted = agentOffers.filter(o => ['AO','Accepted','Closed'].includes(o.status)).length
-  const pending  = agentOffers.filter(o => o.status === 'Sent').length
+  const accepted = agentOffers.filter(o => OFFER_ACCEPTED_VALUES.includes(o.status)).length
+  const pending  = agentOffers.filter(o => OFFER_PENDING_VALUES.includes(o.status)).length
   const convRate = total > 0 ? Math.round(accepted / total * 100) : 0
   // Unique buyers per agent
-  const uniqueBuyers = new Set(agentOffers.map(o => o.buyer_contact_id || o.buyer_name).filter(Boolean)).size
+  // uniqueBuyers intentionally removed from the header display per
+  // owner feedback ("remove the secondary buyers count ... unless it
+  // represents a clearly required offer metric" — it doesn't; total/
+  // accepted/pending/conversion are the required set). Left the
+  // computation itself out entirely rather than computing an unused
+  // value.
 
   return (
     <div onClick={() => onFilter(ag.id)}
@@ -208,7 +214,7 @@ function AgentStatsCard({ ag, agentOffers, onFilter, isActive }) {
         </div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{ag.name}</div>
-          <div style={{ fontSize:11, color:'var(--muted)' }}>{total} offers · {uniqueBuyers} buyers</div>
+          <div style={{ fontSize:11, color:'var(--muted)' }}>{total} offers</div>
         </div>
         {isActive && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background:'rgba(204,34,0,.1)', color:'#CC2200', fontWeight:700 }}>Filtered</span>}
       </div>
@@ -244,6 +250,13 @@ export function OffersV2() {
   const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
   const { offers, loading, add, update, remove, refetch } = useOffers(filters)
   const { agents } = useAgents()
+  // Bucket/selector display uses the deduplicated canonical list (e.g.
+  // collapses a stale "Yanky" row into the real, Auth-linked "Yanky
+  // Lichtenstein" row) — nothing is deleted or deactivated in the
+  // database; `agents` itself stays the full list for resolving
+  // historical agent_id references correctly even if a record is a
+  // known duplicate.
+  const canonicalAgents = useMemo(() => dedupeCanonicalAgents(agents), [agents])
 
   const [search,     setSearch]     = useState('')
   const [statusF,    setStatusF]    = useState('')
@@ -616,6 +629,8 @@ export function OffersV2() {
   const [showSend, setShowSend]   = useState(false)
   const [sendTo,   setSendTo]     = useState({ buyer:false, seller:false, purchaser_attorney:false, seller_attorney:false, sellers_agent:false })
   const [sendExtra,setSendExtra]  = useState('')
+  const [sendCc,   setSendCc]     = useState('')
+  const [sendingMailbox, setSendingMailbox] = useState(null) // null=loading, ''=not connected, else email
   const [sendAttachDocs, setSendAttachDocs] = useState({ offer:false, pof:false })
   const [sendMsg,  setSendMsg]    = useState('Please see the attached offer for your review.')
   const [sending,  setSending]    = useState(false)
@@ -651,6 +666,7 @@ export function OffersV2() {
           revision_id: selected.current_revision_id,
           provider: 'outlook',
           recipients,
+          cc: sendCc.split(',').map(s=>s.trim()).filter(Boolean),
           subject: 'Offer for the Sale of Real Estate — ' + (form.listing_addr || ''),
           message: sendMsg,
           // Additional documents already on file for this offer
@@ -833,8 +849,8 @@ export function OffersV2() {
       // earlier successful run already handled conversion — never
       // create a second deal in that case. The existing address-based
       // dupe check is kept as defense in depth, not the primary guard.
-      const nowAccepted = ['AO', 'Accepted'].includes(form.status)
-      const wasAccepted = selected && ['AO', 'Accepted', 'Closed'].includes(selected.status)
+      const nowAccepted = OFFER_ACCEPTED_VALUES.includes(form.status)
+      const wasAccepted = selected && OFFER_ACCEPTED_VALUES.includes(selected.status)
       if (nowAccepted && !wasAccepted && !selected?.deal_id) {
         try {
           const claimKey = 'offer_accept:' + selected.id
@@ -932,14 +948,21 @@ export function OffersV2() {
   const filtered = offers.filter(o => {
     if (statusF && o.status !== statusF) return false
     if (agentF === 'none' && o.agent_id) return false
-    if (agentF && agentF !== 'none' && o.agent_id !== agentF) return false
+    if (agentF && agentF !== 'none') {
+      // Clicking a canonical (deduplicated) bucket must still match
+      // offers historically assigned to a merged duplicate agent_id,
+      // not just the exact canonical id.
+      const bucket = canonicalAgents.find(a => a.id === agentF)
+      const matchIds = bucket?.mergedIds || [agentF]
+      if (!matchIds.includes(o.agent_id)) return false
+    }
     if (search && !matchSearch(o, search, ['listing_addr','buyer_name','mls_number','seller_name'])) return false
     return true
   })
 
   const statusColor = s => OFFER_STATUSES.find(x=>x.value===s)?.hex || '#c4c4c4'
   const totalOffers = offers.length
-  const totalAO     = offers.filter(o=>['AO','Accepted','Closed'].includes(o.status)).length
+  const totalAO     = offers.filter(o=>OFFER_ACCEPTED_VALUES.includes(o.status)).length
   const totalVol    = offers.reduce((s,o)=>s+(parseFloat(o.purchase_price||o.production)||0),0)
 
   // ── RENDER ────────────────────────────────────────────────────
@@ -978,7 +1001,7 @@ export function OffersV2() {
           <select value={agentF} onChange={e=>setAgentF(e.target.value)}
             style={{ padding:'9px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
             <option value="">All Agents</option>
-            {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+            {canonicalAgents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         )}
       </div>
@@ -1000,9 +1023,9 @@ export function OffersV2() {
           {view === 'agents' && (isAdmin||canManage) && (
             <div>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:12, marginBottom:24 }}>
-                {agents.map(ag=>(
+                {canonicalAgents.map(ag=>(
                   <AgentStatsCard key={ag.id} ag={ag}
-                    agentOffers={offers.filter(o=>o.agent_id===ag.id)}
+                    agentOffers={offers.filter(o=>(ag.mergedIds||[ag.id]).includes(o.agent_id))}
                     onFilter={id=>setAgentF(agentF===id?'':id)}
                     isActive={agentF===ag.id} />
                 ))}
@@ -1050,25 +1073,9 @@ export function OffersV2() {
       <Modal open={!!(selected || urlId==='new')} onClose={closePanel}
         title={selected ? 'Offer — ' + selected.listing_addr : 'New Offer for Sale of Real Estate'} width={680}>
 
-        {/* Mode selector — two ways to create an offer */}
-        {!selected && (
-          <div style={{ display:'flex', gap:10, padding:'12px 0', marginBottom:12 }}>
-            <div style={{ flex:1, padding:'12px 14px', borderRadius:10, border:'2px solid '+(tab==='offer'?'#CC2200':'var(--border)'), cursor:'pointer', background:tab==='offer'?'rgba(204,34,0,.04)':'var(--dim)' }}
-              onClick={()=>setTab('offer')}>
-              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>📋 Fill Out Form</div>
-              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>Fill out fields → saves to CRM + option to download PDF</div>
-            </div>
-            <div style={{ flex:1, padding:'12px 14px', borderRadius:10, border:'2px solid '+(tab==='pdf_only'?'#3B82F6':'var(--border)'), cursor:'pointer', background:tab==='pdf_only'?'rgba(59,130,246,.04)':'var(--dim)' }}
-              onClick={()=>setTab('pdf_only')}>
-              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>💾 Quick Save to CRM</div>
-              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>Enter key info only → saves deal to CRM without PDF</div>
-            </div>
-          </div>
-        )}
-
         {/* Tabs */}
         <div style={{ display:'flex', borderBottom:'1px solid var(--border)', marginBottom:16, gap:0 }}>
-          {(selected ? [['offer','📋 Offer Form'],['docs','📎 Documents'],['activity','📋 Activity']] : [['offer','📋 Offer Form'],['docs','📎 Documents']]).map(([id,label])=>(
+          {(selected ? [['offer','📋 Offer Form'],['activity','📋 Activity']] : [['offer','📋 Offer Form']]).map(([id,label])=>(
             <button key={id} onClick={()=>setTab(id)}
               style={{ padding:'7px 14px', border:'none', background:'none', cursor:'pointer', borderBottom:tab===id?'2px solid #CC2200':'2px solid transparent', marginBottom:'-1px', fontSize:12, fontWeight:tab===id?700:400, color:tab===id?'#CC2200':'var(--muted)', fontFamily:ff }}>
               {label}
@@ -1192,15 +1199,6 @@ export function OffersV2() {
                 <ContactSearch value={form.co_seller_name||''} onChange={v=>set('co_seller_name',v)}
                   onSelect={c=>{ if(c) setForm(f=>({...f,co_seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),co_seller_contact_id:c.id})) }}
                   placeholder="Co-seller name" />
-                <span style={SL}>Seller Agent Commission %</span>
-                <input value={form.sellers_agent_commission||''} onChange={e=>set('sellers_agent_commission',e.target.value)} placeholder="e.g. 2.5" style={S} />
-                <span style={SL}>Seller Agent's Broker Company</span>
-                <input value={form.seller_agent_company||''} onChange={e=>set('seller_agent_company',e.target.value)} placeholder="Auto-filled from MLS or enter" style={S} />
-                {form.sellers_agent_name && (
-                  <div style={{ fontSize:10, color:'var(--muted)', marginTop:4 }}>
-                    Seller's Agent: <b>{form.sellers_agent_name}</b> — search/link this in the Agents section below
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1381,40 +1379,74 @@ export function OffersV2() {
                   )}
                 </div>
 
-                {/* Agents */}
+                {/* Agents — single authoritative section. Which fields
+                    are internal-agent selectors vs. outside-Contact
+                    pickers depends on representing_side, per the
+                    required representation behavior: whichever side
+                    Target Team represents gets an internal selector
+                    defaulting to the signed-in agent; the other side is
+                    always an outside Contact picker. "Both" means both
+                    sides are internal (an in-house deal on both ends),
+                    so neither needs an outside picker. */}
                 <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
                   <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Agents</div>
-                  <span style={SL}>Sellers Agent</span>
-                  <ContactSearch value={form.sellers_agent_name||''} onChange={v=>set('sellers_agent_name',v)}
-                    filter="Agent" onSelect={selectSellersAgent}
-                    placeholder="Search outside agents or enter name..." />
-                  {form.sellers_agent_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2, marginBottom:6 }}>✓ Linked to contact</div>}
-                  <span style={SL}>Buyers Agent Commission %</span>
-                  <input value={form.buyers_agent_commission||''} onChange={e=>set('buyers_agent_commission',e.target.value)} placeholder="e.g. 1.5" style={S} />
-                  <span style={SL}>Buyers Agent</span>
-                  {canManage || isAdmin ? (
-                    // Secretary/Admin: dropdown of our agents
-                    <select value={form.buyers_agent_id||''} onChange={e=>{
-                      const ag = agents.find(a=>a.id===e.target.value)
-                      setForm(f=>({ ...f, buyers_agent_id:e.target.value, agent_id:e.target.value }))
-                    }} style={S}>
-                      <option value="">— Select our agent —</option>
-                      {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-                    </select>
-                  ) : (
-                    // Agent: auto-filled with their name (read-only)
-                    <input value={agent?.name||''} readOnly style={{ ...S, background:'var(--dim)', color:'var(--muted)' }} />
-                  )}
-                  {form.representing_side === 'Seller' && (
+
+                  {/* SELLER'S AGENT */}
+                  {form.representing_side === 'Seller' || form.representing_side === 'Both' ? (
                     <>
-                      <span style={SL}>Buyer's Outside Agent (if not one of ours)</span>
-                      <ContactSearch value={form.buyers_agent_outside_name||''} onChange={v=>set('buyers_agent_outside_name',v)}
-                        filter="Agent"
-                        onSelect={c=>{ if (c) setForm(f=>({ ...f, buyers_agent_contact_id:c.id, buyers_agent_outside_name:[c.first_name,c.last_name].filter(Boolean).join(' ') })) }}
+                      <span style={SL}>Seller's Agent (Target Team)</span>
+                      {canManage || isAdmin ? (
+                        <select value={form.agent_id||''} onChange={e=>setForm(f=>({ ...f, agent_id:e.target.value }))} style={S}>
+                          <option value="">— Select our agent —</option>
+                          {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      ) : (
+                        <input value={agent?.name||''} readOnly style={{ ...S, background:'var(--dim)', color:'var(--muted)' }} />
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span style={SL}>Seller's Agent</span>
+                      <ContactSearch value={form.sellers_agent_name||''} onChange={v=>set('sellers_agent_name',v)}
+                        filter="Agent" onSelect={selectSellersAgent}
                         placeholder="Search outside agents or enter name..." />
-                      {form.buyers_agent_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2 }}>✓ Linked to contact</div>}
+                      {form.sellers_agent_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2, marginBottom:6 }}>✓ Linked to contact</div>}
+                      <span style={SL}>Seller Agent Commission %</span>
+                      <input value={form.sellers_agent_commission||''} onChange={e=>set('sellers_agent_commission',e.target.value)} placeholder="e.g. 2.5" style={S} />
+                      <span style={SL}>Seller Agent's Broker Company</span>
+                      <input value={form.seller_agent_company||''} onChange={e=>set('seller_agent_company',e.target.value)} placeholder="Auto-filled from MLS or enter" style={S} />
                     </>
                   )}
+
+                  {/* BUYER'S AGENT */}
+                  <div style={{ marginTop:10 }}>
+                    {form.representing_side === 'Buyer' || form.representing_side === 'Both' || !form.representing_side ? (
+                      <>
+                        <span style={SL}>Buyer's Agent (Target Team)</span>
+                        <span style={SL}>Buyers Agent Commission %</span>
+                        <input value={form.buyers_agent_commission||''} onChange={e=>set('buyers_agent_commission',e.target.value)} placeholder="e.g. 1.5" style={S} />
+                        {canManage || isAdmin ? (
+                          <select value={form.buyers_agent_id||''} onChange={e=>{
+                            setForm(f=>({ ...f, buyers_agent_id:e.target.value, agent_id: f.representing_side==='Buyer' || !f.representing_side ? e.target.value : f.agent_id }))
+                          }} style={S}>
+                            <option value="">— Select our agent —</option>
+                            {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                        ) : (
+                          <input value={agent?.name||''} readOnly style={{ ...S, background:'var(--dim)', color:'var(--muted)' }} />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span style={SL}>Buyer's Agent</span>
+                        <ContactSearch value={form.buyers_agent_outside_name||''} onChange={v=>set('buyers_agent_outside_name',v)}
+                          filter="Agent"
+                          onSelect={c=>{ if (c) setForm(f=>({ ...f, buyers_agent_contact_id:c.id, buyers_agent_outside_name:[c.first_name,c.last_name].filter(Boolean).join(' ') })) }}
+                          placeholder="Search outside agents or enter name..." />
+                        {form.buyers_agent_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2 }}>✓ Linked to contact</div>}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1480,17 +1512,23 @@ export function OffersV2() {
               <textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)} rows={2}
                 placeholder="Internal notes only — not visible on the printed offer..." style={{ ...S, resize:'vertical' }} />
             </div>
-          </div>
-        )}
 
-        {/* DOCUMENTS TAB */}
-        {tab === 'docs' && (
-          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-            <div style={{ padding:'12px 14px', background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', fontSize:12, color:'var(--muted)' }}>
-              Upload the signed offer and proof of funds. Create a bucket named <code style={{ color:'#CC2200' }}>offer-docs</code> in Supabase Storage (set to Public).
+            {/* Documents — inline in the main form, not a separate tab.
+                Uses the same offer-docs storage model as before (no
+                new/duplicate document source); the generated legal PDF
+                stays a distinct, separately-tracked object per revision
+                (see api/_lib/offersDb.js storeGeneratedPdf) and is never
+                shown or manageable here. */}
+            <div style={{ borderTop:'1px solid var(--border)', paddingTop:14 }}>
+              <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Documents</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:12 }}>
+                <FileUploader label="📄 Signed Offer Document (PDF)" fileUrl={form.offer_url} onUploaded={url=>set('offer_url',url)} folder="offers" />
+                <FileUploader label="💰 Proof of Funds (PDF / Image)" fileUrl={form.pof_url}  onUploaded={url=>set('pof_url',url)}  folder="pof" />
+              </div>
+              <div style={{ fontSize:10.5, color:'var(--muted)', marginTop:6 }}>
+                The generated legal Offer PDF is separate from these supporting documents and is created via Save + Download PDF below — it is never overwritten by a later revision.
+              </div>
             </div>
-            <FileUploader label="📄 Signed Offer Document (PDF)" fileUrl={form.offer_url} onUploaded={url=>set('offer_url',url)} folder="offers" />
-            <FileUploader label="💰 Proof of Funds (PDF / Image)" fileUrl={form.pof_url}  onUploaded={url=>set('pof_url',url)}  folder="pof" />
           </div>
         )}
 
@@ -1500,76 +1538,23 @@ export function OffersV2() {
         )}
 
         {/* QUICK SAVE TAB — minimal fields, no PDF */}
-        {tab === 'pdf_only' && !selected && (
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            <div style={{ padding:'10px 12px', background:'rgba(59,130,246,.06)', borderRadius:8, fontSize:11, color:'var(--muted)' }}>
-              Enter key deal information to track in CRM. No PDF generated.
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:10 }}>
-              <div style={{ gridColumn:'span 2' }}>
-                <span style={SL}>Property Address *</span>
-                <AddressAutocomplete
-                  value={form.listing_addr || ''}
-                  onChange={v => set('listing_addr', v)}
-                  onSelect={s => handleAddressSelect(s.full || s.street || '')}
-                  placeholder="Start typing an address..."
-                  style={S}
-                />
-              </div>
-              <div>
-                <span style={SL}>Buyer Name *</span>
-                <ContactSearch value={form.buyer_name||''} onChange={v=>set('buyer_name',v)} onSelect={selectBuyer} placeholder="Search or enter buyer..." />
-              </div>
-              <div>
-                <span style={SL}>Seller Name</span>
-                <ContactSearch value={form.seller_name||''} onChange={v=>set('seller_name',v)}
-                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),seller_contact_id:c.id,seller_email:c.email||f.seller_email})) }}
-                  placeholder="Search or enter seller..." />
-              </div>
-              <div>
-                <span style={SL}>Purchase Price</span>
-                <input value={form.purchase_price||''} onChange={e=>recalc({purchase_price:e.target.value})} placeholder="$0" style={S} />
-              </div>
-              <div>
-                <span style={SL}>Status</span>
-                <select value={form.status} onChange={e=>set('status',e.target.value)} style={S}>
-                  {OFFER_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <span style={SL}>Date</span>
-                <input type="date" value={form.offer_date} onChange={e=>set('offer_date',e.target.value)} style={S} />
-              </div>
-              <div>
-                <span style={SL}>Buyers Agent</span>
-                {canManage||isAdmin ? (
-                  <select value={form.buyers_agent_id||''} onChange={e=>setForm(f=>({...f,buyers_agent_id:e.target.value,agent_id:e.target.value}))} style={S}>
-                    <option value="">— Select agent —</option>
-                    {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                ) : (
-                  <input value={agent?.name||''} readOnly style={{...S,background:'var(--dim)',color:'var(--muted)'}} />
-                )}
-              </div>
-              <div style={{ gridColumn:'span 2' }}>
-                <span style={SL}>Notes</span>
-                <textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)} rows={2} style={{...S,resize:'vertical'}} />
-              </div>
-            </div>
-          </div>
-        )}
-
         {showSend && (
           <div style={{ background:'var(--dim)', border:'1px solid var(--border)', borderRadius:10, padding:12, marginBottom:10 }}>
             <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
-              Send Offer — from your connected Outlook mailbox
+              Send Offer
             </div>
+            <div style={{ fontSize:11, marginBottom:10, padding:'6px 8px', borderRadius:6, background: sendingMailbox ? 'rgba(16,185,129,.08)' : 'rgba(220,38,38,.08)', color: sendingMailbox ? '#10B981' : '#DC2626' }}>
+              {sendingMailbox === null ? 'Checking your connected mailbox...'
+                : sendingMailbox ? 'Sending from your connected mailbox: ' + sendingMailbox
+                : '⚠ No connected Outlook mailbox found — connect one in Settings before sending.'}
+            </div>
+            <span style={SL}>To</span>
             {[
+              { key:'sellers_agent', label:"Seller's Agent", email:form.sellers_agent_email },
               { key:'buyer', label:'Buyer', email:form.buyer_email },
               { key:'seller', label:'Seller', email:form.seller_email },
               { key:'purchaser_attorney', label:"Purchaser's Attorney", email:form.purchaser_attorney_email },
               { key:'seller_attorney', label:"Seller's Attorney", email:form.seller_attorney_email },
-              { key:'sellers_agent', label:"Seller's Agent", email:form.sellers_agent_email },
             ].map(r => (
               <label key={r.key} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, fontSize:12, opacity:r.email?1:0.4 }}>
                 <input type="checkbox" disabled={!r.email} checked={!!sendTo[r.key]}
@@ -1577,6 +1562,8 @@ export function OffersV2() {
                 {r.label} {r.email ? '(' + r.email + ')' : '(no email on file)'}
               </label>
             ))}
+            <span style={SL}>CC (comma-separated emails)</span>
+            <input value={sendCc} onChange={e=>setSendCc(e.target.value)} placeholder="cc@email.com" style={S} />
             <span style={SL}>Additional recipients (comma-separated emails)</span>
             <input value={sendExtra} onChange={e=>setSendExtra(e.target.value)} placeholder="someone@email.com, other@email.com" style={S} />
             {(form.offer_url || form.pof_url) && (
@@ -1590,6 +1577,7 @@ export function OffersV2() {
                 )}
                 {form.pof_url && (
                   <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, fontSize:12 }}>
+
                     <input type="checkbox" checked={!!sendAttachDocs.pof} onChange={e=>setSendAttachDocs(d=>({...d,pof:e.target.checked}))} />
                     💰 Proof of Funds
                   </label>
@@ -1608,7 +1596,28 @@ export function OffersV2() {
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight:'auto', color:'#DC2626' }} onClick={()=>setConfirmDel(true)}>Delete</Btn>}
           {selected && !showSend && (
-            <Btn variant="secondary" onClick={()=>setShowSend(true)}>📧 Send Offer</Btn>
+            <Btn variant="secondary" onClick={()=>{
+              // Default recipient per spec: the linked Seller's Agent,
+              // pre-checked whenever they have a usable email on file.
+              setSendTo(t => ({ ...t, sellers_agent: !!form.sellers_agent_email }))
+              setShowSend(true)
+              // Show which mailbox will actually send, before the agent
+              // commits to sending — reuses the existing connectors
+              // endpoint rather than a new one.
+              ;(async () => {
+                try {
+                  const { data: { session } } = await supabase.auth.getSession()
+                  const r = await fetch('/api/connectors', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}) },
+                    body: JSON.stringify({ action: 'my_accounts', agent_id: agent?.id }),
+                  })
+                  const j = await r.json().catch(() => ({}))
+                  const outlook = (j.accounts || []).find(a => a.provider === 'outlook' && a.status === 'connected')
+                  setSendingMailbox(outlook?.account_email || '')
+                } catch { setSendingMailbox('') }
+              })()
+            }}>📧 Send Offer</Btn>
           )}
           <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
           <Btn variant="secondary" onClick={()=>saveOffer(false)} loading={saving && !downloading}>

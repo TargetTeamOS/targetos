@@ -238,6 +238,52 @@ export function lsSet(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)) } catch {}
 }
 
+// ── AGENT BUCKET DEDUPLICATION ────────────────────────────────────
+/**
+ * Collapses duplicate agent profiles that are really the same person
+ * (e.g. an old "Yanky" row and the real "Yanky Lichtenstein" row) into
+ * one canonical entry per person, WITHOUT deleting or deactivating
+ * anything in the database — this only affects which rows get shown
+ * as buckets in this one view.
+ *
+ * Deliberately conservative: only treats two agents as duplicates when
+ * one's full name is a case-insensitive prefix of the other's
+ * (e.g. "Yanky" -> "Yanky Lichtenstein"). It never merges two agents
+ * who merely share a first name with different surnames — that IS two
+ * different real people, and merging them would be a real data-
+ * integrity mistake, not a fix.
+ *
+ * Within a detected duplicate group, the profile with a real
+ * auth_user_id (an actual linked login) wins as canonical, regardless
+ * of which one has the longer/shorter name — a linked login is a much
+ * stronger signal of "this is the real, currently-used profile" than
+ * name completeness alone.
+ */
+export function dedupeCanonicalAgents(rawAgents) {
+  const sorted = [...(rawAgents || [])].sort((a, b) => (b.name || '').length - (a.name || '').length)
+  const kept = []
+  for (const a of sorted) {
+    const an = (a.name || '').trim().toLowerCase()
+    if (!an) { kept.push({ ...a, mergedIds: [a.id] }); continue }
+    const dupIndex = kept.findIndex(k => {
+      const kn = (k.name || '').trim().toLowerCase()
+      return kn === an || kn.startsWith(an + ' ')
+    })
+    if (dupIndex === -1) { kept.push({ ...a, mergedIds: [a.id] }); continue }
+    const existing = kept[dupIndex]
+    if (!existing.auth_user_id && a.auth_user_id) {
+      // The shorter-named profile is actually the real, linked one —
+      // swap which record is canonical, but keep BOTH ids in
+      // mergedIds so historical offers assigned to either one still
+      // count toward this one bucket.
+      kept[dupIndex] = { ...a, mergedIds: [...existing.mergedIds, a.id] }
+    } else {
+      existing.mergedIds.push(a.id) // `a` is a duplicate — folded into `existing`'s history, not shown separately
+    }
+  }
+  return kept
+}
+
 // ── UUID ─────────────────────────────────────────────────────────
 export function newId() {
   return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)
