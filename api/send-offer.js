@@ -68,6 +68,9 @@ module.exports = async function handler(req, res) {
   const body = await parseBody(req)
   const offerId     = body.offer_id
   const revisionId  = body.revision_id
+  const additionalAttachments = Array.isArray(body.additional_attachments)
+    ? body.additional_attachments.filter(a => a && a.url && a.name).slice(0, 5) // sane ceiling
+    : []
   const provider    = body.provider === 'gmail' ? 'gmail' : 'outlook'
   const recipients  = Array.isArray(body.recipients) ? body.recipients.filter(r => r && r.email) : []
   const subject     = String(body.subject || '').trim() || 'Offer for the Sale of Real Estate'
@@ -109,6 +112,23 @@ module.exports = async function handler(req, res) {
     if (dlErr || !pdfFile) return res.status(500).json({ error: 'Could not retrieve the generated PDF for this revision' })
     const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
     const pdfFilename = revision.pdf_path.split('/').pop()
+
+    // ── ADDITIONAL DOCUMENTS (Documents tab, e.g. signed offer / proof of
+    // funds) — fetched here, not trusted from the client as raw bytes,
+    // and capped in count above. Failure to fetch one skips it rather
+    // than failing the whole send (the primary PDF still goes out).
+    const extraAttachments = []
+    for (const att of additionalAttachments) {
+      try {
+        const r = await fetch(att.url)
+        if (!r.ok) continue
+        const buf = Buffer.from(await r.arrayBuffer())
+        if (buf.length > 15 * 1024 * 1024) continue // sane per-file ceiling
+        extraAttachments.push({ name: att.name, buffer: buf, contentType: r.headers.get('content-type') || 'application/octet-stream' })
+      } catch (e) {
+        console.warn('[send-offer] additional attachment fetch failed for ' + att.name + ':', e.message)
+      }
+    }
 
     // ── CREATE THE 'QUEUED' SEND RECORD BEFORE ATTEMPTING DELIVERY ──
     // So a crash mid-send is recoverable/inspectable rather than lost,
@@ -182,12 +202,20 @@ module.exports = async function handler(req, res) {
             subject,
             body: { contentType: 'Text', content: message },
             toRecipients: recipients.map(r => ({ emailAddress: { address: r.email, name: r.name || undefined } })),
-            attachments: [{
-              '@odata.type': '#microsoft.graph.fileAttachment',
-              name: pdfFilename,
-              contentType: 'application/pdf',
-              contentBytes: pdfBuffer.toString('base64'),
-            }],
+            attachments: [
+              {
+                '@odata.type': '#microsoft.graph.fileAttachment',
+                name: pdfFilename,
+                contentType: 'application/pdf',
+                contentBytes: pdfBuffer.toString('base64'),
+              },
+              ...extraAttachments.map(a => ({
+                '@odata.type': '#microsoft.graph.fileAttachment',
+                name: a.name,
+                contentType: a.contentType,
+                contentBytes: a.buffer.toString('base64'),
+              })),
+            ],
           },
           saveToSentItems: true,
         }),
@@ -215,6 +243,14 @@ module.exports = async function handler(req, res) {
         'Content-Transfer-Encoding: base64',
         '',
         pdfBuffer.toString('base64'),
+        ...extraAttachments.flatMap(a => [
+          '--offer_boundary',
+          'Content-Type: ' + a.contentType + '; name="' + a.name + '"',
+          'Content-Disposition: attachment; filename="' + a.name + '"',
+          'Content-Transfer-Encoding: base64',
+          '',
+          a.buffer.toString('base64'),
+        ]),
         '--offer_boundary--',
       ]
       const raw = Buffer.from(mimeParts.join('\r\n')).toString('base64')

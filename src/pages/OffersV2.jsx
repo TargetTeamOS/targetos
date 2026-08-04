@@ -33,6 +33,7 @@ import { OFFER_STATUSES, CONTACT_TYPE_COLORS } from '../lib/constants'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { computeOfferFinancials } from '../lib/offerCalc'
 import AdminOfferReports from '../components/AdminOfferReports'
+import { PolishWordingButton } from '../components/PolishWordingButton'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Confirm
@@ -615,6 +616,7 @@ export function OffersV2() {
   const [showSend, setShowSend]   = useState(false)
   const [sendTo,   setSendTo]     = useState({ buyer:false, seller:false, purchaser_attorney:false, seller_attorney:false, sellers_agent:false })
   const [sendExtra,setSendExtra]  = useState('')
+  const [sendAttachDocs, setSendAttachDocs] = useState({ offer:false, pof:false })
   const [sendMsg,  setSendMsg]    = useState('Please see the attached offer for your review.')
   const [sending,  setSending]    = useState(false)
 
@@ -651,6 +653,14 @@ export function OffersV2() {
           recipients,
           subject: 'Offer for the Sale of Real Estate — ' + (form.listing_addr || ''),
           message: sendMsg,
+          // Additional documents already on file for this offer
+          // (Documents tab) — attached alongside the generated PDF,
+          // not instead of it. Sent as URLs; the server fetches and
+          // encodes them, same private-storage rule as the PDF.
+          additional_attachments: [
+            sendAttachDocs.offer && form.offer_url ? { name: 'Signed Offer Document.pdf', url: form.offer_url } : null,
+            sendAttachDocs.pof   && form.pof_url   ? { name: 'Proof of Funds.pdf',         url: form.pof_url   } : null,
+          ].filter(Boolean),
           // Stable per attempt, not per click — a second click before
           // this resolves reuses the same key rather than minting a
           // fresh one, so a double-click can't become a double-send.
@@ -675,7 +685,7 @@ export function OffersV2() {
   }
 
   // ── SAVE OFFER ─────────────────────────────────────────────────
-  async function saveOffer() {
+  async function saveOffer(andDownloadPdf = false) {
     if (!form.listing_addr?.trim()) { toast('Listing address is required', '#DC2626'); return }
     if (!form.buyer_name?.trim())   { toast('Buyer name is required', '#DC2626'); return }
     if (!form.purchase_price)       { toast('Purchase price is required', '#DC2626'); return }
@@ -761,9 +771,13 @@ export function OffersV2() {
       if (selected) {
         const updated = await update(selected.id, payload, agent?.id)
         setSelected(updated)
+        setForm(f => ({ ...f, id: updated.id, current_revision_id: updated.current_revision_id }))
         toast('✅ Offer saved')
+        if (andDownloadPdf) { await downloadPDF(); toast('✅ Saved and PDF downloaded') }
       } else {
         const newOffer = await add(payload)
+        setSelected(newOffer)
+        setForm(f => ({ ...f, id: newOffer.id, current_revision_id: newOffer.current_revision_id }))
 
         // Save buyer to contacts if not already saved
         if (!form.buyer_contact_id && form.buyer_name?.trim()) {
@@ -790,7 +804,16 @@ export function OffersV2() {
         } else {
           toast('✅ Offer saved')
         }
-        closePanel()
+        if (andDownloadPdf) {
+          await downloadPDF()
+          toast('✅ Saved and PDF downloaded')
+          // Deliberately does not close the panel here — same as the
+          // standalone Download PDF action always did, so the agent
+          // can see the download happened and keep working (e.g. send
+          // it) rather than being bounced back to the board.
+        } else {
+          closePanel()
+        }
       }
 
       // ── ACCEPTED OFFER → PRODUCTION DEAL ─────────────────────────
@@ -1169,12 +1192,15 @@ export function OffersV2() {
                 <ContactSearch value={form.co_seller_name||''} onChange={v=>set('co_seller_name',v)}
                   onSelect={c=>{ if(c) setForm(f=>({...f,co_seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),co_seller_contact_id:c.id})) }}
                   placeholder="Co-seller name" />
-                <span style={SL}>Seller's Agent Name</span>
-                <input value={form.sellers_agent_name||''} onChange={e=>set('sellers_agent_name',e.target.value)} placeholder="Auto-filled from MLS or enter" style={S} />
                 <span style={SL}>Seller Agent Commission %</span>
                 <input value={form.sellers_agent_commission||''} onChange={e=>set('sellers_agent_commission',e.target.value)} placeholder="e.g. 2.5" style={S} />
                 <span style={SL}>Seller Agent's Broker Company</span>
                 <input value={form.seller_agent_company||''} onChange={e=>set('seller_agent_company',e.target.value)} placeholder="Auto-filled from MLS or enter" style={S} />
+                {form.sellers_agent_name && (
+                  <div style={{ fontSize:10, color:'var(--muted)', marginTop:4 }}>
+                    Seller's Agent: <b>{form.sellers_agent_name}</b> — search/link this in the Agents section below
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1388,6 +1414,8 @@ export function OffersV2() {
             {/* Additional Terms */}
             <div style={{ marginBottom:10 }}>
               <span style={SL}>Additional Terms</span>
+              <PolishWordingButton text={form.additional_terms} fieldLabel="Additional Terms"
+                onAccept={improved => set('additional_terms', improved)} />
               <textarea value={form.additional_terms||''} onChange={e=>set('additional_terms',e.target.value)}
                 placeholder="Additional terms and conditions..." rows={2}
                 style={{ ...S, resize:'vertical' }} />
@@ -1439,6 +1467,8 @@ export function OffersV2() {
             {/* Notes */}
             <div>
               <span style={SL}>Internal Notes (not on the form)</span>
+              <PolishWordingButton text={form.notes} fieldLabel="Internal Notes" isNotes
+                onAccept={improved => set('notes', improved)} />
               <textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)} rows={2}
                 placeholder="Internal notes only — not visible on the printed offer..." style={{ ...S, resize:'vertical' }} />
             </div>
@@ -1541,6 +1571,23 @@ export function OffersV2() {
             ))}
             <span style={SL}>Additional recipients (comma-separated emails)</span>
             <input value={sendExtra} onChange={e=>setSendExtra(e.target.value)} placeholder="someone@email.com, other@email.com" style={S} />
+            {(form.offer_url || form.pof_url) && (
+              <>
+                <span style={SL}>Also attach from Documents</span>
+                {form.offer_url && (
+                  <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, fontSize:12 }}>
+                    <input type="checkbox" checked={!!sendAttachDocs.offer} onChange={e=>setSendAttachDocs(d=>({...d,offer:e.target.checked}))} />
+                    📄 Signed Offer Document
+                  </label>
+                )}
+                {form.pof_url && (
+                  <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, fontSize:12 }}>
+                    <input type="checkbox" checked={!!sendAttachDocs.pof} onChange={e=>setSendAttachDocs(d=>({...d,pof:e.target.checked}))} />
+                    💰 Proof of Funds
+                  </label>
+                )}
+              </>
+            )}
             <span style={SL}>Message</span>
             <textarea value={sendMsg} onChange={e=>setSendMsg(e.target.value)} rows={2} style={{ ...S, resize:'vertical' }} />
             <div style={{ display:'flex', gap:8, marginTop:8, justifyContent:'flex-end' }}>
@@ -1552,17 +1599,15 @@ export function OffersV2() {
 
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight:'auto', color:'#DC2626' }} onClick={()=>setConfirmDel(true)}>Delete</Btn>}
-          <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
-          {tab !== 'pdf_only' && (
-            <Btn variant="secondary" onClick={downloadPDF} loading={downloading}>
-              📄 {downloading ? 'Generating...' : 'Download PDF'}
-            </Btn>
-          )}
-          {selected && tab !== 'pdf_only' && !showSend && (
+          {selected && !showSend && (
             <Btn variant="secondary" onClick={()=>setShowSend(true)}>📧 Send Offer</Btn>
           )}
-          <Btn onClick={saveOffer} loading={saving}>
-            {selected ? 'Save Changes' : tab === 'pdf_only' ? 'Save to CRM' : 'Save + Download PDF'}
+          <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
+          <Btn variant="secondary" onClick={()=>saveOffer(false)} loading={saving && !downloading}>
+            {saving && !downloading ? 'Saving...' : 'Save'}
+          </Btn>
+          <Btn onClick={()=>saveOffer(true)} loading={saving && downloading}>
+            {downloading ? 'Generating PDF...' : saving ? 'Saving...' : '📄 Save + Download PDF'}
           </Btn>
         </ModalActions>
       </Modal>
