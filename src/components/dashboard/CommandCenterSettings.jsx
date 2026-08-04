@@ -55,9 +55,9 @@ export function CommandCenterSettings({ open, onClose, ds }) {
 
         <div style={{ padding: '8px 16px 28px', display: 'grid', gap: 18 }}>
           <GoalForm title="Monthly team goal" basis="accepted_offers" period="monthly"
-            start={monthStartISO()} end={monthEndISO()} onMsg={setMsg} unit="accepted offers" />
+            start={monthStartISO()} end={monthEndISO()} onMsg={setMsg} />
           <GoalForm title="Yearly team goal" basis="production_volume" period="yearly"
-            start={yearStartISO()} end={yearEndISO()} onMsg={setMsg} unit="production volume ($)" />
+            start={yearStartISO()} end={yearEndISO()} onMsg={setMsg} />
 
           <IndividualGoalForm onMsg={setMsg} />
 
@@ -148,18 +148,32 @@ function IndividualGoalForm({ onMsg }) {
   )
 }
 
-function GoalForm({ title, basis, period, start, end, unit, onMsg }) {
-  const [f, setF] = useState({ target: '', start_date: start, end_date: end, message: '' })
+const GOAL_BASES = [
+  { v: 'accepted_offers', label: 'Accepted offers', unit: 'accepted offers' },
+  { v: 'closed_units', label: 'Closed units', unit: 'closed units' },
+  { v: 'production_volume', label: 'Production volume ($)', unit: 'production $' },
+  { v: 'gci', label: 'GCI ($)', unit: 'GCI $' },
+]
+
+function GoalForm({ title, basis, period, start, end, onMsg }) {
+  const [f, setF] = useState({ basis: basis || 'accepted_offers', target: '', start_date: start, end_date: end, message: '' })
   const [saving, setSaving] = useState(false)
+  const unit = (GOAL_BASES.find((b) => b.v === f.basis) || GOAL_BASES[0]).unit
   const submit = async () => {
     if (!(Number(f.target) > 0)) { onMsg?.({ ok: false, text: title + ': enter a positive target.' }); return }
+    if (!f.start_date || !f.end_date) { onMsg?.({ ok: false, text: title + ': pick a start and end date.' }); return }
     setSaving(true)
-    const r = await saveGoal({ title, goal_basis: basis, period, scope: 'team', target: Number(f.target), start_date: f.start_date, end_date: f.end_date, message: f.message || null, visible: true, active: true })
+    const r = await saveGoal({ title, goal_basis: f.basis, period, scope: 'team', target: Number(f.target), start_date: f.start_date, end_date: f.end_date, message: f.message || null, visible: true, active: true })
     setSaving(false)
     onMsg?.(r.ok ? { ok: true, text: title + ' saved. It appears on the dashboard on next load.' } : { ok: false, text: title + ': ' + (r.error || 'save failed') })
   }
   return (
     <Section title={title}>
+      <label style={{ fontSize: 12, color: '#475569' }}>Metric
+        <select value={f.basis} onChange={(e) => setF({ ...f, basis: e.target.value })} aria-label={title + ' metric'} style={inp}>
+          {GOAL_BASES.map((b) => <option key={b.v} value={b.v}>{b.label}</option>)}
+        </select>
+      </label>
       <label style={{ fontSize: 12, color: '#475569' }}>Target ({unit})
         <input type="number" value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} style={inp} />
       </label>
@@ -169,7 +183,7 @@ function GoalForm({ title, basis, period, start, end, unit, onMsg }) {
       </div>
       <input placeholder="Optional message" value={f.message} onChange={(e) => setF({ ...f, message: e.target.value })} style={inp} />
       <button onClick={submit} disabled={saving} style={btn}>{saving ? 'Saving…' : 'Save ' + title.toLowerCase()}</button>
-      <Note>Actual is calculated automatically from records — you only set the target.</Note>
+      <Note>Actual is calculated automatically from records — you only set the metric and target.</Note>
     </Section>
   )
 }
