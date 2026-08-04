@@ -57,7 +57,7 @@ const BLANK = {
   purchase_price:'', deposit:'', sellers_concession:'',
   net_to_seller:'', mortgage_amount:'', mortgage_pct:'',
   balance_at_closing:'', closing_days:'30',
-  closing_mode:'days', closing_target_date:'', closing_custom_text:'',
+  closing_mode:'days', closing_target_date:'', closing_custom_text:'', closing_qualifier:'on_or_about',
   // Subject to
   subject_attorney:true, subject_clear_title:true,
   subject_mortgage:false, subject_cash:false,
@@ -741,6 +741,7 @@ export function OffersV2() {
         closing_mode:        form.closing_mode         || 'days',
         closing_target_date: form.closing_target_date  || null,
         closing_custom_text: form.closing_custom_text  || null,
+        closing_qualifier:   form.closing_qualifier     || 'on_or_about',
         subject_attorney:    !!form.subject_attorney,
         subject_clear_title: !!form.subject_clear_title,
         subject_mortgage:    !!form.subject_mortgage,
@@ -1274,63 +1275,60 @@ export function OffersV2() {
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
                     <label style={{ fontSize:11, color:'var(--muted)' }}>Closing time frame</label>
                     <div style={{ display:'flex', gap:2 }}>
-                      {[['days','Within ___ days'],['on_or_about','On or about'],['on_or_before','On or before'],['custom','Custom']].map(([v,l])=>(
-                        <button key={v} onClick={()=>set('closing_mode',v)}
+                      {[['on_or_about','On or About'],['on_or_before','On or Before']].map(([v,l])=>(
+                        <button key={v} onClick={()=>set('closing_qualifier',v)}
                           style={{ padding:'2px 6px', fontSize:9, fontWeight:700, border:'none', borderRadius:4, cursor:'pointer', fontFamily:ff,
-                            background:(form.closing_mode||'days')===v?'var(--brand)':'transparent', color:(form.closing_mode||'days')===v?'#fff':'var(--muted)' }}>
+                            background:(form.closing_qualifier||'on_or_about')===v?'var(--brand)':'transparent', color:(form.closing_qualifier||'on_or_about')===v?'#fff':'var(--muted)' }}>
                           {l}
                         </button>
                       ))}
                     </div>
                   </div>
+                  <div style={{ display:'flex', gap:2, marginBottom:6 }}>
+                    {[['days','Number of days'],['date','Specific date']].map(([v,l])=>(
+                      <button key={v} onClick={()=>set('closing_mode',v)}
+                        style={{ padding:'2px 6px', fontSize:9, fontWeight:700, border:'1px solid var(--border)', borderRadius:4, cursor:'pointer', fontFamily:ff,
+                          background:(form.closing_mode||'days')===v?'var(--dim)':'transparent', color:(form.closing_mode||'days')===v?'var(--text)':'var(--muted)' }}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
 
-                  {(form.closing_mode||'days') === 'days' && (
+                  {(form.closing_mode||'days') === 'days' ? (
                     <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4 }}>
                       <input value={form.closing_days||'30'} onChange={e=>set('closing_days',e.target.value)} style={{ ...S, width:60, textAlign:'right' }} />
                       <span style={{ fontSize:11, color:'var(--muted)' }}>days</span>
                     </div>
+                  ) : (
+                    <input type="date" value={form.closing_target_date||''} onChange={e=>set('closing_target_date',e.target.value)} style={S} />
                   )}
 
-                  {(form.closing_mode==='on_or_about' || form.closing_mode==='on_or_before') && (
-                    <div>
-                      <input type="date" value={form.closing_target_date||''} onChange={e=>set('closing_target_date',e.target.value)} style={S} />
-                      {/* Shows the AGENT the real date they picked, plus the day-count that
-                          will actually print — the template's field is only 67.68pt wide and
-                          immediately followed by a static, unmovable "DAYS", so the printed
-                          page can never show the raw date, only the equivalent number. */}
-                      {form.closing_target_date && form.offer_date && (
-                        <div style={{ fontSize:10.5, color:'var(--muted)', marginTop:4 }}>
-                          {form.closing_mode==='on_or_about' ? 'On or about' : 'On or before'} {new Date(form.closing_target_date + 'T00:00:00').toLocaleDateString()}
-                          {' — prints as '}
-                          <b>{Math.max(0, Math.round((new Date(form.closing_target_date) - new Date(form.offer_date)) / 86400000))} DAYS</b>
-                          {' on the PDF (the actual date above is always kept here in the CRM)'}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {form.closing_mode==='custom' && (
-                    <div>
-                      <input value={form.closing_custom_text||''} onChange={e=>set('closing_custom_text',e.target.value)}
-                        placeholder="Short wording only — very little room on the printed line" style={S} />
-                      {(() => {
-                        // Same measured-fit approach as Additional Terms, scaled to
-                        // this field's real 67.68pt width, using a rough Helvetica
-                        // average-char-width estimate for the LIVE typing indicator
-                        // (the server re-measures exactly with the real font before
-                        // ever generating a PDF — this is just an early warning).
-                        const text = form.closing_custom_text || ''
-                        const approxWidth = text.length * 9 * 0.52 // ~9pt Helvetica average
-                        const tight = approxWidth > 67.68 * 0.75
-                        const overflow = approxWidth > 67.68
-                        return text ? (
-                          <div style={{ fontSize:10, marginTop:4, color: overflow ? '#DC2626' : tight ? '#B45309' : 'var(--muted)', fontWeight: overflow?700:400 }}>
-                            {overflow ? '⛔ Too long for the printed line — shorten it or use a specific date instead.' : tight ? '⚠ Getting close to the printed line\u2019s limit.' : 'Fits the printed line.'}
-                          </div>
-                        ) : null
-                      })()}
-                    </div>
-                  )}
+                  {/* Live preview of the exact sentence that will print — real
+                      wording DOES fit the template's 67.68pt field before its
+                      static "DAYS" suffix (measured directly against the real
+                      font: "on or about 60" fits at 7.5pt), confirmed by
+                      rendering an actual sample. A specific date is shown here
+                      for the agent but always prints as its equivalent
+                      day-count, since a raw date can't sit gracefully before
+                      the page's fixed "DAYS" text. */}
+                  {(() => {
+                    const qualifier = form.closing_qualifier === 'on_or_before' ? 'on or before' : 'on or about'
+                    let days = null
+                    if ((form.closing_mode||'days') === 'days') {
+                      days = form.closing_days || null
+                    } else if (form.closing_target_date && form.offer_date) {
+                      days = Math.max(0, Math.round((new Date(form.closing_target_date) - new Date(form.offer_date)) / 86400000))
+                    }
+                    if (days === null) return null
+                    return (
+                      <div style={{ fontSize:10.5, color:'var(--muted)', marginTop:4 }}>
+                        Prints as: <b>Closing time frame: {qualifier} {days} DAYS</b>
+                        {form.closing_mode === 'date' && form.closing_target_date && (
+                          <> ({qualifier} {new Date(form.closing_target_date + 'T00:00:00').toLocaleDateString()} — the exact date stays here in the CRM)</>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
 

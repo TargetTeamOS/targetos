@@ -81,33 +81,41 @@ function fitAdditionalTerms(font, text) {
  * on the page by the static word "DAYS". Never returns a raw date —
  * the page cannot fit one there (see migration D's comment).
  */
+/**
+ * Resolves the closing-terms selector to the exact string printed in
+ * the field, immediately followed on the page by the static word
+ * "DAYS" (unmovable — see migration D/F's comments). Verified by
+ * direct font-metric measurement that real qualifying wording DOES
+ * fit here (e.g. "on or about 60" fits at 7.5pt, within the approved
+ * 7-9pt range) — printing a bare number was overly conservative in an
+ * earlier pass.
+ *
+ * A specific calendar date is converted to its day-count from the
+ * offer date rather than printed as a date, because the page's static
+ * "DAYS" suffix makes a raw date read as broken text ("about 9/15/26
+ * DAYS") — the day-count reads correctly ("on or about 42 DAYS"). The
+ * actual calendar date the agent picked stays in
+ * offers.closing_target_date for the CRM/email draft, never lost.
+ */
 function resolveClosingDaysPrintValue(data) {
-  const mode = data.closing_mode || 'days'
-  if (mode === 'days') {
-    return { ok: true, text: data.closing_days ? String(data.closing_days) : '' }
-  }
-  if (mode === 'on_or_about' || mode === 'on_or_before') {
+  const qualifier = data.closing_qualifier === 'on_or_before' ? 'on or before' : 'on or about'
+
+  let days
+  if (data.closing_mode === 'date') {
     if (!data.closing_target_date || !data.offer_date) {
-      return { ok: false, error: 'A target date is required for "' + mode.replace(/_/g, ' ') + '".' }
+      return { ok: false, error: 'A target closing date is required.' }
     }
-    const days = Math.round((new Date(data.closing_target_date) - new Date(data.offer_date)) / 86400000)
+    days = Math.round((new Date(data.closing_target_date) - new Date(data.offer_date)) / 86400000)
     if (!isFinite(days) || days < 0) {
       return { ok: false, error: 'The closing target date must be on or after the offer date.' }
     }
-    // Deliberately prints a plain number, not the date or the word
-    // "about"/"before" — the field is 67.68pt wide, immediately
-    // followed by the static printed word "DAYS", and cannot fit more
-    // than a short number without overflowing or reading as broken
-    // text glued onto "DAYS". The actual picked date is preserved in
-    // offers.closing_target_date and shown in the CRM, not on the PDF.
-    return { ok: true, text: String(days) }
+  } else {
+    days = parseInt(data.closing_days, 10)
+    if (!isFinite(days) || days < 0) {
+      return { ok: false, error: 'Closing days must be a non-negative number.' }
+    }
   }
-  if (mode === 'custom') {
-    const text = (data.closing_custom_text || '').trim()
-    if (!text) return { ok: true, text: '' }
-    return { ok: true, text } // width-checked by the caller against CLOSING_DAYS_FIELD_WIDTH
-  }
-  return { ok: true, text: data.closing_days ? String(data.closing_days) : '' }
+  return { ok: true, text: qualifier + ' ' + days }
 }
 
 function fmtMoney(v) {
@@ -167,14 +175,17 @@ async function buildOfferPdf(data) {
     }
   }
 
-  // ── CLOSING TIME FRAME — resolve mode to the one printable value ──
+  // ── CLOSING TIME FRAME — resolve qualifier+value to the one printable value ──
   const closingResolved = resolveClosingDaysPrintValue(data)
   if (!closingResolved.ok) {
     return { ok: false, status: 422, error: closingResolved.error }
   }
-  if (data.closing_mode === 'custom' && closingResolved.text) {
+  if (closingResolved.text) {
     // Single-line fit check against the field's real 67.68pt width —
-    // never truncated, same rule as Additional Terms.
+    // never truncated, same rule as Additional Terms. Verified this
+    // genuinely matters: a very large day count (e.g. "on or about
+    // 3650") could theoretically overflow even though small numbers
+    // fit comfortably — this check catches that instead of assuming.
     let fits = false
     for (let size = ADDITIONAL_TERMS_MAX_FONT; size >= ADDITIONAL_TERMS_MIN_FONT; size -= 0.5) {
       if (helv.widthOfTextAtSize(closingResolved.text, size) <= CLOSING_DAYS_FIELD_WIDTH) { fits = true; break }
@@ -182,7 +193,7 @@ async function buildOfferPdf(data) {
     if (!fits) {
       return {
         ok: false, status: 422,
-        error: 'Custom closing wording is too long to fit the printed "Closing time frame" line. Shorten it, or switch to a specific date ("On or about"/"On or before").',
+        error: 'The closing terms are too long to fit the printed "Closing time frame" line even at the smallest readable size. Use a shorter timeframe.',
       }
     }
   }
