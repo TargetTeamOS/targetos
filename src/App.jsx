@@ -138,7 +138,8 @@ function AppShell() {
         <ErrorBoundary>
         <Routes>
           {/* Core pages with :id routing */}
-          <Route path="/" element={<DashboardSmart />} />
+          <Route path="/" element={<DashboardCommandCenter />} />
+          <Route path="/dashboard-smart" element={<DashboardSmart />} />
           <Route path="/dashboard-classic" element={<DashboardOld />} />
           <Route path="/dashboard-new" element={<Dashboard />} />
           <Route path="/dashboard/command-center" element={<DashboardCommandCenter />} />
