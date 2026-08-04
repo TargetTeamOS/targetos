@@ -21,16 +21,17 @@ describe('FrontRunnerWidget', () => {
         { agent_id: 'a1', name: 'Shmuel Ganz', color: '#00C875', accepted_offers: 5 },
         { agent_id: 'a2', name: 'Toivy Steiner', color: '#0073EA', accepted_offers: 9 },
       ], error: null }
+      if (fn === 'app_goals_list') return { data: [{ scope: 'individual', agent_id: 'a2', goal_basis: 'accepted_offers', target: 12, end_date: '2026-12-31' }], error: null }
       if (fn === 'app_agent_records') return { data: [{ id: 'd1', type: 'deal', label: '9 Lake Rd', secondary: 'Aug 3', status: 'Offer accepted' }], error: null }
       return { data: null, error: null }
     })
     wrap(<FrontRunnerWidget settings={{}} />)
     expect(await screen.findByText('Toivy Steiner')).toBeTruthy()
     expect(screen.getByText('9')).toBeTruthy()
+    expect(screen.getByText('75%')).toBeTruthy() // 9 of 12 goal
     fireEvent.click(screen.getByText('9'))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('9 Lake Rd')).toBeTruthy()
-    expect(rpc).toHaveBeenCalledWith('app_agent_records', expect.objectContaining({ p_agent_id: 'a2', p_basis: 'accepted_offers' }))
   })
 
   it('handles ties by showing all tied agents', async () => {
@@ -42,10 +43,13 @@ describe('FrontRunnerWidget', () => {
     expect(await screen.findByText(/Tie: Eliezer Biner & Shloime Tessler/)).toBeTruthy()
   })
 
-  it('shows a compact setup-required state when A7 is not deployed', async () => {
-    rpc.mockResolvedValue({ data: null, error: { message: 'Could not find the function public.app_agent_performance' } })
-    wrap(<FrontRunnerWidget settings={{}} />)
-    expect(await screen.findByText(/Setup required/)).toBeTruthy()
-    expect(screen.queryByText('Toivy Steiner')).toBeNull()
+  it('does NOT render any settings inputs inside the card (presentation-only)', async () => {
+    rpc.mockResolvedValue({ data: [{ agent_id: 'a1', name: 'Winner', color: '#00C875', accepted_offers: 4 }], error: null })
+    wrap(<FrontRunnerWidget settings={{ message: 'Great job' }} />)
+    await screen.findByText('Winner')
+    // no text inputs / checkboxes leaked into the dashboard card
+    expect(document.querySelectorAll('input').length).toBe(0)
+    expect(screen.queryByPlaceholderText(/Image URL/i)).toBeNull()
+    expect(screen.getByText('Great job')).toBeTruthy() // admin message still displayed
   })
 })

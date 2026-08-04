@@ -1,9 +1,10 @@
-// AgentPerformanceWidget — a compact, ranked team leaderboard built only from
-// authoritative RPC aggregates (app_agent_performance). GCI appears only if the
-// server returns it (admins). Each metric cell drills to the exact deals behind
-// it (app_agent_records), respecting the viewer's access. When the RPC isn't
-// deployed the full table layout renders with "Data source awaiting secure
-// setup" — never invented figures.
+// AgentPerformanceWidget — goal-based leaderboard (redesign §9). Agents are ranked
+// by PERCENTAGE OF THEIR INDIVIDUAL GOAL for the selected metric, so different
+// targets compare fairly. Actuals come from app_agent_performance; each agent's
+// individual goal comes from app_goals_list (admin, all agents) or
+// app_goals_dashboard (non-admin: team + own only). An agent with no matching
+// goal shows "No goal set" and is never ranked as if the goal were zero. Every
+// row / actual / progress bar drills to the exact deals via app_agent_records.
 
 import { useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -12,165 +13,144 @@ import { useMetric } from '../../lib/useDashboardData'
 import { useAuth } from '../../context/AuthContext'
 import { WidgetCard } from './WidgetCard'
 import { DrillDown } from './DrillDown'
-import { PERF_METRICS, DEFAULT_VISIBLE, metricDef, fmtMetric, rankBy, recordBasis, PERF_RANGES, rangeDates } from '../../lib/perfModel'
+import { PERF_METRICS, DEFAULT_VISIBLE, metricDef, fmtMetric, recordBasis, PERF_RANGES, rangeDates } from '../../lib/perfModel'
+import { buildLeaderboard, statusMeta } from '../../lib/perfRanking'
+import { FONT, INK, colorForKey } from '../../lib/dashboardTheme'
 
-const FF = 'Inter, system-ui, -apple-system, sans-serif'
 const NOT_DEPLOYED = /function|does not exist|schema cache|42883|not find/i
+const RANKABLE = ['accepted_offers', 'closed_units', 'production_volume', 'gci']
+
+function initials(name) { return (name || '?').split(' ').map((s) => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() }
+
+function goalsFromList(list, metric) {
+  const out = {}
+  for (const g of list || []) {
+    if (g && g.scope === 'individual' && g.agent_id && g.goal_basis === metric && Number(g.target) > 0) {
+      // prefer the goal with the latest end_date
+      if (!out[g.agent_id] || (g.end_date || '') > (out[g.agent_id]._end || '')) out[g.agent_id] = { target: Number(g.target), _end: g.end_date || '' }
+    }
+  }
+  return out
+}
 
 export function AgentPerformanceWidget() {
   const navigate = useNavigate()
   const { agent } = useAuth()
   const isAdmin = agent?.role === 'admin'
   const [rangeKey, setRangeKey] = useState('mtd')
-  const [sortKey, setSortKey] = useState('closed_units')
-  const [visible, setVisible] = useState(DEFAULT_VISIBLE)
-  const [showCols, setShowCols] = useState(false)
+  const [metric, setMetric] = useState('accepted_offers')
   const [drill, setDrill] = useState({ open: false, loading: false, error: null, rows: null, title: '' })
-
-  const fetcher = useCallback(async () => {
-    const { from, to } = rangeDates(rangeKey)
-    const { data, error } = await supabase.rpc('app_agent_performance', { p_from: from, p_to: to })
-    if (error) { if (NOT_DEPLOYED.test(error.message || '')) return { deployed: false }; throw error }
-    if (data && data.error) return { deployed: true, forbidden: data.error === 'forbidden', rows: [] }
-    return { deployed: true, rows: Array.isArray(data) ? data : [] }
-  }, [rangeKey])
-
-  const { data, loading, error, refresh } = useMetric('agents.performance', fetcher, { params: { range: rangeKey }, ttlMs: 3 * 60 * 1000 })
-  const deployed = !!data?.deployed && !data?.forbidden
-  const rows = data?.rows || []
-  const hasGci = rows.some((r) => r.gci != null)
-
-  // which columns to show: default set, plus gci only if the server returned it
-  const columns = useMemo(() => {
-    const keys = visible.filter((k) => k !== 'gci' || hasGci)
-    if (hasGci && !keys.includes('gci') && visible.includes('gci')) keys.push('gci')
-    return keys.map(metricDef).filter(Boolean)
-  }, [visible, hasGci])
-
-  const ranked = useMemo(() => rankBy(rows, sortKey), [rows, sortKey])
   const { from, to, label: rangeLabel } = rangeDates(rangeKey)
 
-  const openDrill = useCallback(async (row, m) => {
-    const title = row.name + ' — ' + m.label
+  const fetcher = useCallback(async () => {
+    const r = rangeDates(rangeKey)
+    const { data, error } = await supabase.rpc('app_agent_performance', { p_from: r.from, p_to: r.to })
+    if (error) { if (NOT_DEPLOYED.test(error.message || '')) return { deployed: false }; throw error }
+    if (data && data.error) return { deployed: true, forbidden: data.error === 'forbidden', rows: [], goals: {} }
+    let goals = {}
+    try {
+      if (isAdmin) {
+        const gl = await supabase.rpc('app_goals_list')
+        if (!gl.error && Array.isArray(gl.data)) goals = goalsFromList(gl.data, metric)
+      } else {
+        const gd = await supabase.rpc('app_goals_dashboard')
+        if (!gd.error && Array.isArray(gd.data)) goals = goalsFromList(gd.data, metric)
+      }
+    } catch { /* goals optional — leaderboard still renders with "No goal set" */ }
+    return { deployed: true, rows: Array.isArray(data) ? data : [], goals }
+  }, [rangeKey, metric, isAdmin])
+
+  const { data, loading, error, refresh } = useMetric('agents.performance', fetcher, { params: { range: rangeKey, metric }, ttlMs: 3 * 60 * 1000 })
+  const deployed = !!data?.deployed && !data?.forbidden
+  const board = useMemo(() => buildLeaderboard(data?.rows || [], data?.goals || {}, metric), [data, metric])
+  const mDef = metricDef(metric) || {}
+  const hasGci = (data?.rows || []).some((r) => r.gci != null)
+
+  const openDrill = useCallback(async (row) => {
+    const title = row.name + ' — ' + (mDef.label || metric)
     setDrill({ open: true, loading: true, error: null, rows: null, title })
     try {
-      const { data: res, error: e } = await supabase.rpc('app_agent_records', { p_agent_id: row.agent_id, p_basis: recordBasis(m.key), p_from: from, p_to: to })
-      if (e) {
-        const nd = NOT_DEPLOYED.test(e.message || '')
-        setDrill({ open: true, loading: false, rows: null, title, error: nd ? 'The performance records view isn’t deployed yet (A7). Once applied, every metric opens its exact deals.' : 'Couldn’t load these records.' })
-        return
-      }
-      if (res && res.error) { setDrill({ open: true, loading: false, rows: null, title, error: res.error === 'forbidden' ? 'You don’t have access to these records.' : 'No records found.' }); return }
+      const { data: res, error: e } = await supabase.rpc('app_agent_records', { p_agent_id: row.agent_id, p_basis: recordBasis(metric), p_from: from, p_to: to })
+      if (e || (res && res.error)) { setDrill({ open: true, loading: false, rows: null, title, error: 'Couldn’t load these records.' }); return }
       setDrill({ open: true, loading: false, error: null, title, rows: Array.isArray(res) ? res : [] })
     } catch { setDrill({ open: true, loading: false, rows: null, title, error: 'Couldn’t load these records.' }) }
-  }, [from, to])
+  }, [from, to, metric, mDef.label])
 
-  const rangeControl = (
-    <select value={rangeKey} onChange={(e) => setRangeKey(e.target.value)} aria-label="Date range"
-      style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #e2e8f0', borderRadius: 6, fontFamily: FF }}>
-      {PERF_RANGES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
-    </select>
+  const controls = (
+    <div style={{ display: 'flex', gap: 6 }}>
+      <select value={metric} onChange={(e) => setMetric(e.target.value)} aria-label="Metric" style={sel}>
+        {PERF_METRICS.filter((m) => RANKABLE.includes(m.key) && (!m.financial || hasGci)).map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+      </select>
+      <select value={rangeKey} onChange={(e) => setRangeKey(e.target.value)} aria-label="Date range" style={sel}>
+        {PERF_RANGES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+      </select>
+    </div>
   )
 
   return (
     <>
-      <WidgetCard title="Agent performance" accent="#037f4c" sourceLabel="TargetOS deals" dateRangeLabel={rangeLabel}
-        loading={loading} error={error} onRetry={refresh} headerRight={rangeControl}>
+      <WidgetCard title="Agent Performance" accent="#037f4c" sourceLabel={'Goal-based · ' + (mDef.label || metric)} dateRangeLabel={rangeLabel}
+        isAdmin={isAdmin} loading={loading} error={error} onRetry={refresh} onRefresh={refresh} headerRight={controls}
+        empty={deployed && !loading && !error && board.length === 0} emptyText="No active agents to rank yet.">
         {!deployed ? (
-          <div>
-            {data?.forbidden ? (
-              <p role="status" style={{ fontSize: 13, color: '#64748b' }}>You don’t have access to team performance.</p>
-            ) : (
-              <div role="status" style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', borderRadius: 8, padding: '8px 10px', fontSize: 12.5 }}>
-                Data source awaiting secure setup — apply <strong>A7_agent_performance</strong> to load the leaderboard. Columns below show the layout; no figures are shown until then.
-              </div>
-            )}
-            <Table columns={columns.length ? columns : DEFAULT_VISIBLE.map(metricDef)} ranked={[]} sortKey={sortKey} setSortKey={setSortKey} onCell={() => {}} />
-          </div>
-        ) : rows.length === 0 ? (
-          <p role="status" style={{ fontSize: 13, color: '#64748b' }}>No production recorded for this period yet.</p>
+          <p role="status" style={{ fontSize: 13, color: INK.muted }}>{data?.forbidden ? 'You don’t have access to team performance.' : 'Performance data is warming up.'}</p>
         ) : (
-          <>
-            {isAdmin && (
-              <div style={{ marginBottom: 8 }}>
-                <button onClick={() => setShowCols((v) => !v)} style={{ fontSize: 12, color: '#0073EA', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: FF, padding: 0 }}>
-                  {showCols ? 'Hide metrics' : 'Choose metrics'}
-                </button>
-                {showCols && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 6 }}>
-                    {PERF_METRICS.map((m) => (
-                      <label key={m.key} style={{ fontSize: 12, color: '#475569', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
-                        <input type="checkbox" checked={visible.includes(m.key)}
-                          onChange={(e) => setVisible((v) => e.target.checked ? [...v, m.key] : v.filter((k) => k !== m.key))} />
-                        {m.label}{m.financial ? ' (admin)' : ''}
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            <Table columns={columns} ranked={ranked} sortKey={sortKey} setSortKey={setSortKey} onCell={openDrill} />
-          </>
+          <div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {board.map((r, i) => <Row key={r.agent_id} r={r} i={i} mDef={mDef} onOpen={openDrill} />)}
+            </div>
+            <p style={{ margin: '10px 0 0', fontSize: 11.5, color: INK.faint }}>Ranked by % of each agent’s individual {(mDef.label || metric).toLowerCase()} goal. Agents without a goal are listed after ranked agents.</p>
+          </div>
         )}
       </WidgetCard>
 
-      <DrillDown open={drill.open} onClose={() => setDrill((d) => ({ ...d, open: false }))}
-        title={drill.title || 'Records'} explanation="Deals behind this metric, within the selected range."
-        sourceLabel="TargetOS deals" dateRangeLabel={rangeLabel}
-        recordCount={drill.rows ? drill.rows.length : undefined}
-        loading={drill.loading} error={drill.error} rows={drill.rows} onNavigate={navigate} />
+      <DrillDown open={drill.open} onClose={() => setDrill((d) => ({ ...d, open: false }))} title={drill.title || 'Records'}
+        explanation="Deals behind this agent’s figure, within the selected period." sourceLabel="TargetOS deals" dateRangeLabel={rangeLabel}
+        recordCount={drill.rows ? drill.rows.length : undefined} loading={drill.loading} error={drill.error} rows={drill.rows} onNavigate={navigate} />
     </>
   )
 }
 
-function Table({ columns, ranked, sortKey, setSortKey, onCell }) {
+function Row({ r, i, mDef, onOpen }) {
+  const st = r.status ? statusMeta(r.status) : null
+  const pct = r.hasGoal ? Math.max(0, Math.min(100, r.pct)) : 0
+  const barColor = st ? st.color : '#cbd5e1'
+  const valActual = fmtMetric(r.actual, mDef)
+  const valGoal = r.hasGoal ? fmtMetric(r.target, mDef) : null
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FF }}>
-        <thead>
-          <tr>
-            <th style={thL}>#</th>
-            <th style={thL}>Agent</th>
-            {columns.map((m) => (
-              <th key={m.key} style={{ ...thR, cursor: 'pointer' }} onClick={() => setSortKey(m.key)} title="Sort by this metric">
-                {m.short}{sortKey === m.key ? ' ▾' : ''}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {ranked.map((r, i) => (
-            <tr key={r.agent_id} style={{ borderTop: '1px solid #f1f5f9' }}>
-              <td style={{ ...tdL, color: '#94a3b8', fontWeight: 700 }}>{i + 1}</td>
-              <td style={tdL}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <span aria-hidden style={{ width: 22, height: 22, borderRadius: '50%', background: r.color || '#cbd5e1', color: '#fff', fontSize: 10, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {(r.name || '?').split(' ').map((s) => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
-                  </span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{r.name}</span>
-                </span>
-              </td>
-              {columns.map((m) => (
-                <td key={m.key} style={tdR}>
-                  <button onClick={() => onCell(r, m)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: FF, fontSize: 13, color: '#0f172a', padding: 0 }}>
-                    {fmtMetric(r[m.key], m)}
-                  </button>
-                </td>
-              ))}
-            </tr>
-          ))}
-          {ranked.length === 0 && (
-            <tr><td colSpan={columns.length + 2} style={{ ...tdL, color: '#cbd5e1', fontSize: 12.5, padding: '10px 6px' }}>—</td></tr>
+    <div onClick={() => onOpen(r)} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter') onOpen(r) }}
+      style={{ display: 'grid', gridTemplateColumns: '28px 1fr', gap: 10, alignItems: 'center', padding: '10px 10px', borderRadius: 10, cursor: 'pointer', background: i % 2 ? '#fbfcfe' : '#fff', border: '1px solid #eef2f7' }}>
+      <div style={{ fontWeight: 800, color: r.rank ? INK.title : INK.faint, textAlign: 'center', fontSize: 15 }}>{r.rank || '—'}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span aria-hidden style={{ width: 26, height: 26, borderRadius: '50%', background: r.color || colorForKey(r.name), color: '#fff', fontWeight: 800, fontSize: 11, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{initials(r.name)}</span>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: INK.title, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+          {r.hasGoal ? (
+            <span style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, color: st.color, whiteSpace: 'nowrap' }}>{st.glyph} {st.word}</span>
+          ) : (
+            <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 700, color: INK.faint, background: '#f1f5f9', borderRadius: 999, padding: '2px 8px' }}>No goal set</span>
           )}
-        </tbody>
-      </table>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ height: 8, borderRadius: 999, background: '#eef2f7', overflow: 'hidden' }}>
+              <div style={{ width: pct + '%', height: '100%', background: barColor, borderRadius: 999 }} />
+            </div>
+          </div>
+          <div style={{ fontSize: 12.5, color: INK.body, whiteSpace: 'nowrap' }}>
+            <b style={{ color: INK.title }}>{valActual}</b>{valGoal ? <span style={{ color: INK.faint }}> / {valGoal}</span> : null}
+          </div>
+          <div style={{ width: 46, textAlign: 'right', fontSize: 13, fontWeight: 800, color: r.hasGoal ? INK.title : INK.faint }}>{r.hasGoal ? Math.round(r.pct) + '%' : '—'}</div>
+        </div>
+        {r.hasGoal && (
+          <div style={{ fontSize: 11, color: INK.faint, marginTop: 3 }}>{r.remaining > 0 ? fmtMetric(r.remaining, mDef) + ' to goal' : 'Goal reached'}{r.projection != null ? ' · projected ' + fmtMetric(r.projection, mDef) : ''}</div>
+        )}
+      </div>
     </div>
   )
 }
 
-const thL = { textAlign: 'left', fontSize: 11, color: '#94a3b8', fontWeight: 600, padding: '4px 6px', whiteSpace: 'nowrap' }
-const thR = { textAlign: 'right', fontSize: 11, color: '#94a3b8', fontWeight: 600, padding: '4px 6px', whiteSpace: 'nowrap' }
-const tdL = { textAlign: 'left', padding: '7px 6px', whiteSpace: 'nowrap' }
-const tdR = { textAlign: 'right', padding: '7px 6px', whiteSpace: 'nowrap' }
+const sel = { fontSize: 12, padding: '4px 6px', border: '1px solid #e2e8f0', borderRadius: 7, fontFamily: FONT, background: '#fff' }
 
 export default AgentPerformanceWidget

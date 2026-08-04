@@ -66,11 +66,11 @@ describe('NewsWidget', () => {
     expect(screen.getByText('Zoning')).toBeTruthy()
     expect(screen.getByText('Rockland News')).toBeTruthy()
   })
-  it('shows Manage sources to admins', async () => {
+  it('does not expose Manage sources inside the news card (it lives in Settings now)', async () => {
     mockFetch(NEWS_OK)
     wrap(<NewsWidget />)
     await screen.findByText('Rockland rezoning approved')
-    expect(screen.getByText('Manage sources')).toBeTruthy()
+    expect(screen.queryByText('Manage sources')).toBeNull()
   })
   it('hides Manage sources from non-admins', async () => {
     authState.current = { user: { id: 'u2' }, agent: { id: 'a2', role: 'agent', name: 'Agent A' } }

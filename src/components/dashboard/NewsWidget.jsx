@@ -8,7 +8,6 @@ import { useState } from 'react'
 import { useMetric } from '../../lib/useDashboardData'
 import { useAuth } from '../../context/AuthContext'
 import { WidgetCard } from './WidgetCard'
-import { NewsSourcesAdmin } from './NewsSourcesAdmin'
 import { relativeDate, categoryLabel } from '../../lib/marketFormat'
 
 const FF = 'Inter, system-ui, -apple-system, sans-serif'
@@ -43,7 +42,6 @@ export function NewsWidget() {
   const isAdmin = agent?.role === 'admin'
   const { data, loading, error, refresh } = useMetric('market.news', newsFetcher, { ttlMs: 20 * 60 * 1000 })
   const [showAll, setShowAll] = useState(false)
-  const [manage, setManage] = useState(false)
 
   const news = data?.news || []
   const shown = news.slice(0, 3)
@@ -55,11 +53,7 @@ export function NewsWidget() {
         sourceLabel="Configured feeds" loading={loading} error={error} onRetry={refresh}
         empty={!news.length}
         emptyText={isAdmin ? 'No sources are enabled yet. Add a Rockland County feed URL to get started.' : 'No headlines right now.'}
-        headerRight={isAdmin ? (
-          <button onClick={() => setManage(true)} style={{ fontSize: 12, color: '#0073EA', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: FF }}>
-            Manage sources
-          </button>
-        ) : null}
+        isAdmin={isAdmin}
       >
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {shown.map((a, i) => <Article key={a.link || i} a={a} />)}
@@ -86,9 +80,6 @@ export function NewsWidget() {
         </div>
       )}
 
-      {isAdmin && (
-        <NewsSourcesAdmin open={manage} onClose={() => setManage(false)} onChanged={refresh} />
-      )}
     </>
   )
 }

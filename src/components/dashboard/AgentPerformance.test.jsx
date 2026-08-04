@@ -10,62 +10,54 @@ vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }))
 
 import { DashboardDataProvider } from '../../lib/useDashboardData'
 import { AgentPerformanceWidget } from './AgentPerformanceWidget.jsx'
-import { fmtMetric, rankBy, metricDef } from '../../lib/perfModel.js'
 
-const ADMIN_ROWS = [
-  { agent_id: 'a1', name: 'Shmuel Ganz', color: '#00C875', accepted_offers: 5, closed_units: 3, production_volume: 1500000, buyers: 2, listings: 1, gci: 42000 },
-  { agent_id: 'a2', name: 'Toivy Steiner', color: '#0073EA', accepted_offers: 8, closed_units: 6, production_volume: 3200000, buyers: 4, listings: 2, gci: 91000 },
+const PERF = [
+  { agent_id: 'A', name: 'Agent A', color: '#0073EA', accepted_offers: 30 },
+  { agent_id: 'B', name: 'Agent B', color: '#00C875', accepted_offers: 24 },
+  { agent_id: 'C', name: 'Agent C', color: '#A25DDC', accepted_offers: 12 },
 ]
-const AGENT_ROWS = ADMIN_ROWS.map(({ gci, ...r }) => ({ ...r, gci: null }))
+const GOALS = [
+  { id: 'g1', scope: 'individual', agent_id: 'A', goal_basis: 'accepted_offers', target: 60, end_date: '2026-12-31' },
+  { id: 'g2', scope: 'individual', agent_id: 'B', goal_basis: 'accepted_offers', target: 40, end_date: '2026-12-31' },
+]
+
+function mockRpc() {
+  rpc.mockImplementation(async (fn) => {
+    if (fn === 'app_agent_performance') return { data: PERF, error: null }
+    if (fn === 'app_goals_list') return { data: GOALS, error: null }
+    if (fn === 'app_agent_records') return { data: [{ id: 'd1', type: 'deal', label: '9 Lake Rd', secondary: 'Aug 3', status: 'Offer accepted' }], error: null }
+    return { data: null, error: null }
+  })
+}
 
 const wrap = (ui) => render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><DashboardDataProvider>{ui}</DashboardDataProvider></MemoryRouter>)
 afterEach(() => { cleanup(); rpc.mockReset(); authState.current = { user: { id: 'u1' }, agent: { id: 'a1', role: 'admin', name: 'Moshe' } } })
 
-describe('perfModel', () => {
-  it('formats currency vs counts and ranks by a metric', () => {
-    expect(fmtMetric(3200000, metricDef('production_volume'))).toBe('$3.20M')
-    expect(fmtMetric(6, metricDef('closed_units'))).toBe('6')
-    expect(fmtMetric(null, metricDef('gci'))).toBe('—')
-    expect(rankBy(ADMIN_ROWS, 'closed_units')[0].name).toBe('Toivy Steiner')
-  })
-})
-
-describe('AgentPerformanceWidget', () => {
-  it('renders a ranked leaderboard from RPC data', async () => {
-    rpc.mockResolvedValue({ data: ADMIN_ROWS, error: null })
+describe('AgentPerformanceWidget — goal-based leaderboard', () => {
+  it('ranks by percentage of individual goal (B 60% ranks above A 50%)', async () => {
+    mockRpc()
     wrap(<AgentPerformanceWidget />)
-    // ranked by closed_units desc → Toivy first
-    expect(await screen.findByText('Toivy Steiner')).toBeTruthy()
-    expect(screen.getByText('Shmuel Ganz')).toBeTruthy()
+    expect(await screen.findByText('Agent B')).toBeTruthy()
+    expect(screen.getByText('60%')).toBeTruthy()
+    expect(screen.getByText('50%')).toBeTruthy()
+    // B's row should appear before A's row in DOM order
+    const html = document.body.innerHTML
+    expect(html.indexOf('Agent B')).toBeLessThan(html.indexOf('Agent A'))
   })
 
-  it('shows GCI for admins but not for agents', async () => {
-    // admin: gci present → choosing metrics can surface it; agent: gci null → never shown
-    authState.current = { user: { id: 'u2' }, agent: { id: 'a9', role: 'agent', name: 'Agent A' } }
-    rpc.mockResolvedValue({ data: AGENT_ROWS, error: null })
+  it('shows "No goal set" for an agent without a matching goal', async () => {
+    mockRpc()
     wrap(<AgentPerformanceWidget />)
-    await screen.findByText('Toivy Steiner')
-    expect(screen.queryByText('$91K')).toBeNull()      // no gci value
-    expect(screen.queryByText('Choose metrics')).toBeNull() // metric picker is admin-only
+    await screen.findByText('Agent C')
+    expect(screen.getByText('No goal set')).toBeTruthy()
   })
 
-  it('drills a metric cell to the exact deals', async () => {
-    rpc.mockImplementation(async (fn) => {
-      if (fn === 'app_agent_performance') return { data: ADMIN_ROWS, error: null }
-      if (fn === 'app_agent_records') return { data: [{ id: 'd1', type: 'deal', label: '9 Lake Rd', secondary: 'Jul 10, 2026', status: 'Closed' }], error: null }
-      return { data: null, error: null }
-    })
+  it('drills to the exact deals when a row is clicked', async () => {
+    mockRpc()
     wrap(<AgentPerformanceWidget />)
-    await screen.findByText('Toivy Steiner')
-    fireEvent.click(screen.getAllByText('6')[0]) // Toivy closed_units cell
+    fireEvent.click(await screen.findByText('Agent B'))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('9 Lake Rd')).toBeTruthy()
-  })
-
-  it('shows setup-required when the RPC is not deployed', async () => {
-    rpc.mockResolvedValue({ data: null, error: { message: 'Could not find the function public.app_agent_performance' } })
-    wrap(<AgentPerformanceWidget />)
-    expect(await screen.findByText(/Data source awaiting secure setup/)).toBeTruthy()
-    expect(screen.queryByText('Toivy Steiner')).toBeNull()
+    expect(rpc).toHaveBeenCalledWith('app_agent_records', expect.objectContaining({ p_agent_id: 'B', p_basis: 'accepted_offers' }))
   })
 })

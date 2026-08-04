@@ -5,10 +5,12 @@
 // until A8 is applied those save to the session and the drawer says so. Calculated
 // figures are never editable here.
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { saveGoal } from '../../lib/dashboardSettings'
+import { supabase } from '../../lib/supabase'
 import { NewsSourcesAdmin } from './NewsSourcesAdmin'
 import { PERF_METRICS } from '../../lib/perfModel'
+import { rangeDates } from '../../lib/perfModel'
 
 const FF = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -57,6 +59,8 @@ export function CommandCenterSettings({ open, onClose, ds }) {
           <GoalForm title="Yearly team goal" basis="production_volume" period="yearly"
             start={yearStartISO()} end={yearEndISO()} onMsg={setMsg} unit="production volume ($)" />
 
+          <IndividualGoalForm onMsg={setMsg} />
+
           <Section title="Front Runner of the Month">
             <input placeholder="Congratulatory message" value={fr.message || ''} onChange={(e) => setFr({ message: e.target.value })} style={inp} />
             <input placeholder="Image URL (blank = agent initials)" value={fr.image_url || ''} onChange={(e) => setFr({ image_url: e.target.value })} style={inp} />
@@ -89,6 +93,58 @@ export function CommandCenterSettings({ open, onClose, ds }) {
 
       <NewsSourcesAdmin open={news} onClose={() => setNews(false)} onChanged={() => {}} />
     </div>
+  )
+}
+
+function IndividualGoalForm({ onMsg }) {
+  const [agents, setAgents] = useState([])
+  const [f, setF] = useState({ agent_id: '', basis: 'accepted_offers', period: 'monthly', target: '' })
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const { from, to } = rangeDates('ytd')
+        const { data } = await supabase.rpc('app_agent_performance', { p_from: from, p_to: to })
+        if (alive && Array.isArray(data)) setAgents(data.map((r) => ({ id: r.agent_id, name: r.name })))
+      } catch { /* agent list optional */ }
+    })()
+    return () => { alive = false }
+  }, [])
+  const submit = async () => {
+    if (!f.agent_id) { onMsg?.({ ok: false, text: 'Individual goal: choose an agent.' }); return }
+    if (!(Number(f.target) > 0)) { onMsg?.({ ok: false, text: 'Individual goal: enter a positive target.' }); return }
+    const now = new Date(), y = now.getFullYear(), m = now.getMonth()
+    const monthly = f.period === 'monthly'
+    const start = monthly ? new Date(y, m, 1) : new Date(y, 0, 1)
+    const end = monthly ? new Date(y, m + 1, 0) : new Date(y, 11, 31)
+    setSaving(true)
+    const r = await saveGoal({ title: null, goal_basis: f.basis, period: f.period, scope: 'individual', agent_id: f.agent_id,
+      target: Number(f.target), start_date: start.toISOString().slice(0, 10), end_date: end.toISOString().slice(0, 10), visible: true, active: true })
+    setSaving(false)
+    onMsg?.(r.ok ? { ok: true, text: 'Individual goal saved.' } : { ok: false, text: 'Individual goal: ' + (r.error || 'save failed') })
+  }
+  return (
+    <Section title="Individual agent goals">
+      <select value={f.agent_id} onChange={(e) => setF({ ...f, agent_id: e.target.value })} aria-label="Agent" style={inp}>
+        <option value="">Select an agent…</option>
+        {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </select>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <select value={f.basis} onChange={(e) => setF({ ...f, basis: e.target.value })} aria-label="Goal metric" style={inp}>
+          <option value="accepted_offers">Accepted offers</option>
+          <option value="closed_units">Closed units</option>
+          <option value="production_volume">Production volume</option>
+          <option value="gci">GCI</option>
+        </select>
+        <select value={f.period} onChange={(e) => setF({ ...f, period: e.target.value })} aria-label="Goal period" style={inp}>
+          <option value="monthly">Monthly</option><option value="yearly">Yearly</option>
+        </select>
+      </div>
+      <input type="number" placeholder="Target" value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} style={inp} />
+      <button onClick={submit} disabled={saving} style={btn}>{saving ? 'Saving…' : 'Save individual goal'}</button>
+      <Note>Used by the Agent Performance leaderboard to rank by % of goal. Actuals are calculated automatically.</Note>
+    </Section>
   )
 }
 

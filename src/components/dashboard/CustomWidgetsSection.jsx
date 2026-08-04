@@ -13,6 +13,7 @@ import { WidgetCard } from './WidgetCard'
 import { DrillDown } from './DrillDown'
 import { WidgetBuilder } from './WidgetBuilder'
 import { newWidgetForm, toEngineConfig, formatValue, MAX_WIDGETS, METRICS, FIELDS, DATE_MODES } from '../../lib/widgetModel'
+import { fmtCompactMoney, fmtExactMoney } from '../../lib/dashboardTheme'
 
 const FF = 'Inter, system-ui, -apple-system, sans-serif'
 const NOT_DEPLOYED = /function|does not exist|schema cache|42883|not find/i
@@ -131,22 +132,17 @@ export function CustomWidgetsSection() {
             <Grid>
               {list.map((w, i) => {
                 const hidden = w.visible === false
+                const menu = isAdmin ? [
+                  { label: 'Edit', onClick: () => setBuilder(w), disabled: saving },
+                  { label: 'Duplicate', onClick: () => duplicate(w), disabled: saving || list.length >= MAX_WIDGETS },
+                  { label: hidden ? 'Show' : 'Hide', onClick: () => toggleHide(w), disabled: saving },
+                  { label: 'Move left', onClick: () => move(i, -1), disabled: saving || i === 0 },
+                  { label: 'Move right', onClick: () => move(i, 1), disabled: saving || i === list.length - 1 },
+                  { label: 'Delete', onClick: () => remove(w), disabled: saving, danger: true },
+                ] : null
                 return (
-                  <div key={w.id || i} style={{ position: 'relative', opacity: hidden ? 0.5 : 1 }}>
-                    <StatCard title={w.title} subtitle={w.subtitle} value={valueFor(w.id)} color={w.color} format={w.format}
-                      progress={w.metric === 'progress'} onClick={() => openDrill(w)} />
-                    {isAdmin && (
-                      <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                        {mini('Edit', () => setBuilder(w), saving)}
-                        {mini('Duplicate', () => duplicate(w), saving || list.length >= MAX_WIDGETS)}
-                        {mini(hidden ? 'Show' : 'Hide', () => toggleHide(w), saving)}
-                        {mini('Delete', () => remove(w), saving)}
-                        {mini('↑', () => move(i, -1), saving || i === 0)}
-                        {mini('↓', () => move(i, 1), saving || i === list.length - 1)}
-                      </div>
-                    )}
-                    {hidden && <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, background: '#e2e8f0', color: '#475569', borderRadius: 4, padding: '1px 5px' }}>Hidden</span>}
-                  </div>
+                  <StatCard key={w.id || i} title={w.title} subtitle={w.subtitle} value={valueFor(w.id)} color={w.color} format={w.format}
+                    progress={w.metric === 'progress'} hidden={hidden} menu={menu} onClick={() => openDrill(w)} />
                 )
               })}
             </Grid>
@@ -164,32 +160,53 @@ export function CustomWidgetsSection() {
   )
 }
 
-function StatCard({ title, subtitle, value, color, format, sample, progress, onClick }) {
+function StatCard({ title, subtitle, value, color, format, sample, progress, hidden, menu, onClick }) {
+  const [open, setOpen] = useState(false)
+  const isMoney = /currency/.test(format || '')
+  const display = progress ? (value == null ? '—' : Math.round(Number(value)) + '%')
+    : isMoney ? fmtCompactMoney(value) : formatValue(value, format)
+  const exact = isMoney ? fmtExactMoney(value) : (value == null ? '' : String(value))
   return (
-    <button onClick={onClick} style={{ textAlign: 'left', width: '100%', background: '#fff', border: '1px solid #eef2f7', borderRadius: 12, padding: 14, cursor: 'pointer', fontFamily: FF, position: 'relative' }}>
+    <div style={{ position: 'relative', background: '#fff', border: '1px solid #eef2f7', borderRadius: 12, padding: 14, opacity: hidden ? 0.55 : 1, minWidth: 0 }}>
       {sample && <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, background: '#fff4e6', color: '#9a3412', borderRadius: 4, padding: '1px 5px' }}>Sample</span>}
-      {progress ? (
-        <>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{title}</div>
-          <div style={{ height: 10, borderRadius: 999, background: '#eef2f7', marginTop: 8, overflow: 'hidden' }}>
-            <div style={{ width: Math.max(0, Math.min(100, Number(value) || 0)) + '%', height: '100%', background: color }} />
-          </div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{value == null ? '—' : Math.round(Number(value)) + '% to goal'}</div>
-        </>
-      ) : (
-        <>
-          <div style={{ fontSize: 24, fontWeight: 800, color: color || '#0f172a' }}>{formatValue(value, format)}</div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{title}</div>
-          {subtitle ? <div style={{ fontSize: 12, color: '#94a3b8' }}>{subtitle}</div> : null}
-        </>
+      {hidden && <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 10, background: '#e2e8f0', color: '#475569', borderRadius: 4, padding: '1px 5px' }}>Hidden</span>}
+      {menu && menu.length > 0 && (
+        <div style={{ position: 'absolute', top: 6, right: 6 }}>
+          <button onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }} aria-label="Widget actions" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: 16, lineHeight: 1, padding: 4 }}>⋯</button>
+          {open && (
+            <>
+              <div onClick={(e) => { e.stopPropagation(); setOpen(false) }} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+              <div role="menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 41, background: '#fff', border: '1px solid #e6eaf0', borderRadius: 10, boxShadow: '0 12px 30px rgba(16,24,40,0.16)', minWidth: 140, padding: 4 }}>
+                {menu.map((m, i) => (
+                  <button key={i} role="menuitem" disabled={m.disabled} onClick={(e) => { e.stopPropagation(); setOpen(false); m.onClick && m.onClick() }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'transparent', cursor: m.disabled ? 'not-allowed' : 'pointer', fontFamily: FF, fontSize: 13, color: m.danger ? '#b42318' : (m.disabled ? '#cbd5e1' : '#334155'), borderRadius: 7 }}>{m.label}</button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       )}
-    </button>
+      <button onClick={onClick} title={exact} style={{ textAlign: 'left', width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: FF, padding: 0 }}>
+        {progress ? (
+          <>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', paddingRight: 20 }}>{title}</div>
+            <div style={{ height: 10, borderRadius: 999, background: '#eef2f7', marginTop: 8, overflow: 'hidden' }}>
+              <div style={{ width: Math.max(0, Math.min(100, Number(value) || 0)) + '%', height: '100%', background: color || '#0073EA' }} />
+            </div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{display} to goal</div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 26, fontWeight: 800, color: color || '#0f172a', paddingRight: 20, overflow: 'hidden', textOverflow: 'ellipsis' }}>{display}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{title}</div>
+            {subtitle ? <div style={{ fontSize: 12, color: '#94a3b8' }}>{subtitle}</div> : null}
+          </>
+        )}
+      </button>
+    </div>
   )
 }
 
-function Grid({ children }) { return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginTop: 4 }}>{children}</div> }
-function mini(label, onClick, disabled) {
-  return <button onClick={onClick} disabled={disabled} style={{ fontSize: 11, padding: '2px 7px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: disabled ? '#cbd5e1' : '#475569', cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: FF }}>{label}</button>
-}
+function Grid({ children }) { return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12, marginTop: 4 }}>{children}</div> }
 
 export default CustomWidgetsSection
