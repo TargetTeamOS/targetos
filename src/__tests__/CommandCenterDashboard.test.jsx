@@ -42,8 +42,8 @@ describe('DashboardCommandCenter page', () => {
     expect(screen.getByTestId('cc-grid')).toBeTruthy()
     expect(screen.getByText('Monthly team goal')).toBeTruthy()
     expect(screen.getByText('Front Runner of the Month')).toBeTruthy()
-    expect(screen.getByText('My day')).toBeTruthy()
-    expect(screen.getByText('Agent performance')).toBeTruthy()
+    expect(screen.getByText('Accepted Offers by Agent')).toBeTruthy()
+    expect(screen.getByText('Agent Performance')).toBeTruthy()
     expect(screen.getByText('Custom widgets')).toBeTruthy()
   })
 
