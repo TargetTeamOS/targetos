@@ -367,7 +367,7 @@ begin;
 do $$
 begin
   if exists (select 1 from public._app_migrations where name='A9_user_widgets' and status='complete') then
-    raise exception 'A9_user_widgets already applied.'; end if;
+    raise notice 'A9_user_widgets already present — re-applying objects idempotently (create-or-replace / if-not-exists).'; end if;
 end $$;
 
 insert into public._app_migrations (name, status, applied_at, rolled_back_at)
