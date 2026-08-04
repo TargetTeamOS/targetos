@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate } from '../lib/utils'
+import { OFFER_ACCEPTED_VALUES, OFFER_PENDING_VALUES } from '../lib/constants'
 import { Loading, Empty } from './UI'
 
 const CARD = { background:'var(--panel)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', cursor:'pointer', transition:'border-color .15s' }
@@ -79,8 +80,8 @@ export default function AdminOfferReports({ offers: offersProp, agents, revision
     return map
   }, [revisions])
 
-  const isAccepted = o => ['AO', 'Accepted', 'Closed'].includes(o.status)
-  const isPending  = o => o.status === 'Sent'
+  const isAccepted = o => OFFER_ACCEPTED_VALUES.includes(o.status)
+  const isPending  = o => OFFER_PENDING_VALUES.includes(o.status)
   const isOffMarket = o => !!o.off_market
 
   const stats = useMemo(() => {

@@ -73,6 +73,7 @@ module.exports = async function handler(req, res) {
     : []
   const provider    = body.provider === 'gmail' ? 'gmail' : 'outlook'
   const recipients  = Array.isArray(body.recipients) ? body.recipients.filter(r => r && r.email) : []
+  const cc = Array.isArray(body.cc) ? body.cc.filter(e => typeof e === 'string' && e.includes('@')).slice(0, 10) : []
   const subject     = String(body.subject || '').trim() || 'Offer for the Sale of Real Estate'
   const message     = String(body.message || '')
   const idempotencyKey = String(body.idempotency_key || '').trim()
@@ -135,7 +136,7 @@ module.exports = async function handler(req, res) {
     // and so the idempotency key is claimed before any external call.
     const { data: sendRow, error: insertErr } = await sb.from('offer_sends').insert({
       offer_id: offerId, revision_id: revisionId, sent_by: ownership.agent.id,
-      provider, recipients, subject, message_snapshot: message,
+      provider, recipients: [...recipients, ...cc.map(email => ({ role: 'cc', email }))], subject, message_snapshot: message,
       pdf_document_id: revision.pdf_document_id || null,
       status: 'Queued', idempotency_key: idempotencyKey,
     }).select().single()
@@ -202,6 +203,7 @@ module.exports = async function handler(req, res) {
             subject,
             body: { contentType: 'Text', content: message },
             toRecipients: recipients.map(r => ({ emailAddress: { address: r.email, name: r.name || undefined } })),
+            ccRecipients: cc.map(email => ({ emailAddress: { address: email } })),
             attachments: [
               {
                 '@odata.type': '#microsoft.graph.fileAttachment',
@@ -228,6 +230,7 @@ module.exports = async function handler(req, res) {
     } else {
       const mimeParts = [
         'To: ' + recipients.map(r => r.email).join(', '),
+        ...(cc.length ? ['Cc: ' + cc.join(', ')] : []),
         'Subject: ' + subject,
         'MIME-Version: 1.0',
         'Content-Type: multipart/mixed; boundary="offer_boundary"',

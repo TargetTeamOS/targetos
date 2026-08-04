@@ -136,13 +136,34 @@ export const OFFER_SIDES = [
 ]
 
 // ── OFFER STATUSES ───────────────────────────────────────────────
+// Canonical going forward: Draft, Sent, Negotiating, Accepted, Rejected,
+// Withdrawn, Expired. Legacy values (AO, Stuck, Fell through) are NOT
+// renamed in the database — that would rewrite history without an
+// explicit migration, which the spec explicitly forbids. Instead every
+// place that checks status treats the old and new vocabulary as
+// equivalent (see OFFER_ACCEPTED_VALUES / OFFER_PENDING_VALUES below):
+// AO ~= Accepted, Stuck ~= Negotiating, Fell through ~= Rejected (the
+// closest single legacy bucket — historical rows never distinguished
+// Rejected from Withdrawn from Expired, so this is a best-effort
+// display mapping, not a claim that every old "Fell through" row was
+// specifically a rejection).
 export const OFFER_STATUSES = [
-  { value: 'Draft',        label: 'Draft — not sent yet',              hex: '#94A3B8' },
-  { value: 'Sent',         label: 'Sent — awaiting response',          hex: '#fdab3d' },
-  { value: 'AO',           label: 'AO — Accepted Offer',               hex: '#00c875' },
-  { value: 'Stuck',        label: 'Stuck — countered / negotiating',   hex: '#df2f4a' },
-  { value: 'Fell through', label: 'Fell Through — rejected/withdrawn', hex: '#007eb5' },
+  { value: 'Draft',       label: 'Draft — not sent yet',             hex: '#94A3B8' },
+  { value: 'Sent',        label: 'Sent — awaiting response',         hex: '#fdab3d' },
+  { value: 'Negotiating', label: 'Negotiating — counters/revisions', hex: '#df2f4a' },
+  { value: 'Accepted',    label: 'Accepted',                         hex: '#00c875' },
+  { value: 'Rejected',    label: 'Rejected',                         hex: '#DC2626' },
+  { value: 'Withdrawn',   label: 'Withdrawn',                        hex: '#6B7280' },
+  { value: 'Expired',     label: 'Expired',                          hex: '#78716C' },
 ]
+
+// Every place in the app that needs to ask "is this offer accepted?" or
+// "is this offer still pending?" should use these, not a hand-rolled
+// array literal, so the legacy/new mapping only has to be right in ONE
+// place.
+export const OFFER_ACCEPTED_VALUES = ['AO', 'Accepted', 'Closed']
+export const OFFER_PENDING_VALUES  = ['Sent', 'Negotiating', 'Stuck']
+export const OFFER_CLOSED_LOST_VALUES = ['Fell through', 'Rejected', 'Withdrawn', 'Expired']
 
 // ── LISTING STATUSES ─────────────────────────────────────────────
 export const LISTING_STATUSES = [
