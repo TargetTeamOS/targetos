@@ -24,6 +24,14 @@ const ADDITIONAL_TERMS_LINE_WIDTHS = [444.24, 526.08, 526.08]
 const ADDITIONAL_TERMS_MAX_FONT = 9
 const ADDITIONAL_TERMS_MIN_FONT = 7 // approved readable floor — do not go smaller
 
+// Closing time frame field: single line, 67.68pt wide (measured
+// directly: rect [184.32, 408.72, 252.0, 421.44]), immediately followed
+// on the printed page by the STATIC word "DAYS" baked into the page
+// content itself — not part of this field, cannot be moved. Only
+// relevant for closing_mode='custom'; 'days'/'on_or_about'/
+// 'on_or_before' always resolve to a plain number that fits trivially.
+const CLOSING_DAYS_FIELD_WIDTH = 67.68
+
 /**
  * Greedy word-wrap into the given per-line width budgets at a given font
  * size, using the real Helvetica metrics baked into pdf-lib (not a
@@ -65,6 +73,41 @@ function fitAdditionalTerms(font, text) {
     if (lines) return { ok: true, lines, fontSize: size }
   }
   return { ok: false }
+}
+
+/**
+ * Resolves whatever the closing-terms UI collected into the single
+ * plain value that goes into the printed field, immediately followed
+ * on the page by the static word "DAYS". Never returns a raw date —
+ * the page cannot fit one there (see migration D's comment).
+ */
+function resolveClosingDaysPrintValue(data) {
+  const mode = data.closing_mode || 'days'
+  if (mode === 'days') {
+    return { ok: true, text: data.closing_days ? String(data.closing_days) : '' }
+  }
+  if (mode === 'on_or_about' || mode === 'on_or_before') {
+    if (!data.closing_target_date || !data.offer_date) {
+      return { ok: false, error: 'A target date is required for "' + mode.replace(/_/g, ' ') + '".' }
+    }
+    const days = Math.round((new Date(data.closing_target_date) - new Date(data.offer_date)) / 86400000)
+    if (!isFinite(days) || days < 0) {
+      return { ok: false, error: 'The closing target date must be on or after the offer date.' }
+    }
+    // Deliberately prints a plain number, not the date or the word
+    // "about"/"before" — the field is 67.68pt wide, immediately
+    // followed by the static printed word "DAYS", and cannot fit more
+    // than a short number without overflowing or reading as broken
+    // text glued onto "DAYS". The actual picked date is preserved in
+    // offers.closing_target_date and shown in the CRM, not on the PDF.
+    return { ok: true, text: String(days) }
+  }
+  if (mode === 'custom') {
+    const text = (data.closing_custom_text || '').trim()
+    if (!text) return { ok: true, text: '' }
+    return { ok: true, text } // width-checked by the caller against CLOSING_DAYS_FIELD_WIDTH
+  }
+  return { ok: true, text: data.closing_days ? String(data.closing_days) : '' }
 }
 
 function fmtMoney(v) {
@@ -124,6 +167,26 @@ async function buildOfferPdf(data) {
     }
   }
 
+  // ── CLOSING TIME FRAME — resolve mode to the one printable value ──
+  const closingResolved = resolveClosingDaysPrintValue(data)
+  if (!closingResolved.ok) {
+    return { ok: false, status: 422, error: closingResolved.error }
+  }
+  if (data.closing_mode === 'custom' && closingResolved.text) {
+    // Single-line fit check against the field's real 67.68pt width —
+    // never truncated, same rule as Additional Terms.
+    let fits = false
+    for (let size = ADDITIONAL_TERMS_MAX_FONT; size >= ADDITIONAL_TERMS_MIN_FONT; size -= 0.5) {
+      if (helv.widthOfTextAtSize(closingResolved.text, size) <= CLOSING_DAYS_FIELD_WIDTH) { fits = true; break }
+    }
+    if (!fits) {
+      return {
+        ok: false, status: 422,
+        error: 'Custom closing wording is too long to fit the printed "Closing time frame" line. Shorten it, or switch to a specific date ("On or about"/"On or before").',
+      }
+    }
+  }
+
   // ── DATE ─────────────────────────────────────────────────────
   set('date_month', datePart(data.offer_date, 0))
   set('date_day',   datePart(data.offer_date, 1))
@@ -147,7 +210,7 @@ async function buildOfferPdf(data) {
   set('mortgage_amt',   fmtMoney(financials.values.mortgage_amount))
   set('mortgage_pct',   financials.values.mortgage_pct ? String(financials.values.mortgage_pct) + '%' : '')
   set('balance',        fmtMoney(financials.values.balance_at_closing))
-  set('closing_days',   data.closing_days ? String(data.closing_days) : '')
+  set('closing_days',   closingResolved.text)
 
   // ── SUBJECT TO — six checkbox squares ───────────────────────────
   // IMPORTANT CORRECTION: fields literally named x/x_2/x_3/x_4/x_5/x_6
@@ -332,3 +395,5 @@ module.exports.wrapToLines = wrapToLines
 module.exports.fitAdditionalTerms = fitAdditionalTerms
 module.exports.ADDITIONAL_TERMS_LINE_WIDTHS = ADDITIONAL_TERMS_LINE_WIDTHS
 module.exports.buildOfferPdf = buildOfferPdf
+module.exports.resolveClosingDaysPrintValue = resolveClosingDaysPrintValue
+module.exports.CLOSING_DAYS_FIELD_WIDTH = CLOSING_DAYS_FIELD_WIDTH
