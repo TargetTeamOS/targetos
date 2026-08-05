@@ -5,6 +5,15 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 const APP = 'https://app.targetreteam.com'
 
+// ── EXTERNAL EFFECTS GATE ──────────────────────────────────────────────────
+// Per project handoff: real external sends (email, SMS, WhatsApp, webhooks)
+// must never fire merely because a workflow ran. This must be explicitly
+// set to 'true' in the Edge Function's environment variables (Supabase
+// Dashboard -> Edge Functions -> automation-engine -> Settings -> Secrets)
+// to allow real sends. Any other value (unset, 'false', etc.) blocks the
+// send and logs it instead, so dev/test runs never contact real people.
+const EXTERNAL_EFFECTS_ENABLED = Deno.env.get('EXTERNAL_EFFECTS_ENABLED') === 'true'
+
 const AGENT_EMAILS: Record<string,string> = {
   'Lazer Farkas':'lazer@targetreteam.com',
   'Mendy Jankovits':'mendy@targetreteam.com',
@@ -20,7 +29,21 @@ function interp(str:string, v:Record<string,any>){
   return (str||'').replace(/\{(\w+)\}/g,(_:string,k:string)=>String(v[k]||''))
 }
 
-async function sendEmail(to:string|string[], subject:string, html:string){
+// ── GATED SEND WRAPPER ─────────────────────────────────────────────────────
+// All real sends go through this. When disabled, the send is logged to
+// automation_log as "blocked_external_effect" instead of hitting Resend,
+// so behavior is auditable and safe test/dev runs never leak real email.
+async function sendEmail(to:string|string[], subject:string, html:string, supabase:any, meta:Record<string,any> = {}){
+  if(!EXTERNAL_EFFECTS_ENABLED) {
+    console.log('[BLOCKED - external effects disabled] would send email to:', to, 'subject:', subject)
+    await supabase.from('automation_log').insert([{
+      action: 'blocked_external_effect',
+      detail: JSON.stringify({ channel: 'email', to, subject, ...meta }),
+      created_at: new Date().toISOString(),
+    }]).catch((e:Error) => console.error('Failed to log blocked send:', e.message))
+    return false
+  }
+
   const res = await fetch('https://api.resend.com/emails',{
     method:'POST',
     headers:{'Authorization':`Bearer ${RESEND_KEY}`,'Content-Type':'application/json'},
@@ -31,6 +54,13 @@ async function sendEmail(to:string|string[], subject:string, html:string){
       html
     })
   })
+
+  await supabase.from('automation_log').insert([{
+    action: res.ok ? 'sent_email' : 'failed_email',
+    detail: JSON.stringify({ channel: 'email', to, subject, status: res.status, ...meta }),
+    created_at: new Date().toISOString(),
+  }]).catch((e:Error) => console.error('Failed to log sent email:', e.message))
+
   return res.ok
 }
 
@@ -74,7 +104,9 @@ async function runAction(action:any, ctx:Record<string,any>, supabase:any) {
                : AGENT_EMAILS[action.config?.to]      || action.config?.to
       if(to) await sendEmail(to,
         interp(action.config?.subject||'Message from Target Team', v),
-        emailHtml(interp(action.config?.body||'', v), interp(action.config?.subject||'Message', v))
+        emailHtml(interp(action.config?.body||'', v), interp(action.config?.subject||'Message', v)),
+        supabase,
+        { automation_action: 'action_email' }
       )
       break
     }
@@ -85,7 +117,9 @@ async function runAction(action:any, ctx:Record<string,any>, supabase:any) {
       const agentEmail = AGENT_EMAILS[agentName]
       if(agentEmail) await sendEmail(agentEmail,
         '🔔 TargetOS Alert',
-        emailHtml(interp(action.config?.message||'', v), 'TargetOS Notification')
+        emailHtml(interp(action.config?.message||'', v), 'TargetOS Notification'),
+        supabase,
+        { automation_action: 'action_notify_agent' }
       )
       break
     }
@@ -120,6 +154,10 @@ async function runAction(action:any, ctx:Record<string,any>, supabase:any) {
     }
 
     // ── ASSIGN CONTACT ───────────────────────────────────────
+    // NOTE: pre-existing bug found during audit — contacts table has
+    // agent_id, not agent_name. This update currently no-ops silently.
+    // Needs a follow-up fix: resolve action.config?.agent (a display
+    // name) to the matching agents.id before updating agent_id.
     case 'action_assign_contact': {
       if(ctx.id && ctx._table==='contacts') {
         await supabase.from('contacts').update({ agent_name: action.config?.agent }).eq('id', ctx.id)
@@ -156,7 +194,6 @@ async function runAction(action:any, ctx:Record<string,any>, supabase:any) {
       if(ctx.id && ctx._table==='deals') {
         await supabase.from('deals').update({ ctc: action.config?.ctcStage }).eq('id', ctx.id)
       }
-      // Also update transaction if one exists
       if(ctx.addr) {
         await supabase.from('transactions').update({ ctc: action.config?.ctcStage }).eq('addr', ctx.addr)
       }
@@ -173,27 +210,26 @@ async function runAction(action:any, ctx:Record<string,any>, supabase:any) {
 
     // ── SEND SIGN ────────────────────────────────────────────
     case 'action_send_sign': {
-      // Create a task for Gitty to deploy the sign
       await supabase.from('tasks').insert([{
         title:    `Deploy ${action.config?.signType||'sign'} — ${v.addr}`,
         priority: 'high',
         status:   'pending',
         due_date: new Date().toISOString().split('T')[0],
       }])
-      // Also log in signs table
       if(v.addr) {
         await supabase.from('signs').insert([{
           addr:       v.addr,
           type:       action.config?.signType==='Under Contract Sent' ? 'Under Contract' : 'Sold',
           agent_name: v.agent,
           installed:  new Date().toISOString().split('T')[0],
-        }]).catch(() => {}) // ignore if signs table doesn't exist yet
+        }]).catch(() => {})
       }
-      // Notify Gitty
       if(AGENT_EMAILS['Gitty Fogel']) {
         await sendEmail(AGENT_EMAILS['Gitty Fogel'],
           `🪧 Sign Request — ${v.addr}`,
-          emailHtml(`Please deploy the <strong>${action.config?.signType}</strong> sign at:<br/><br/><strong>${v.addr}</strong><br/><br/>Agent: ${v.agent}`, 'Sign Deployment Request')
+          emailHtml(`Please deploy the <strong>${action.config?.signType}</strong> sign at:<br/><br/><strong>${v.addr}</strong><br/><br/>Agent: ${v.agent}`, 'Sign Deployment Request'),
+          supabase,
+          { automation_action: 'action_send_sign' }
         )
       }
       break
@@ -207,7 +243,6 @@ async function runAction(action:any, ctx:Record<string,any>, supabase:any) {
           updated_at: new Date().toISOString()
         }).eq('id', ctx.id)
       }
-      // Create task for Gitty to chase commission
       if(action.config?.status === 'Working on it') {
         await supabase.from('tasks').insert([{
           title:    `Chase commission — ${v.addr} (${v.agent})`,
@@ -233,7 +268,6 @@ async function runAction(action:any, ctx:Record<string,any>, supabase:any) {
     // ── CELEBRATE ────────────────────────────────────────────
     case 'action_celebrate': {
       const msg = interp(action.config?.message||'🎉 Celebration!', v)
-      // Post to announcements
       await supabase.from('announcements').insert([{
         title:      msg,
         body:       msg,
@@ -241,7 +275,6 @@ async function runAction(action:any, ctx:Record<string,any>, supabase:any) {
         agent_name: v.agent||'TargetOS',
         pinned:     true,
       }])
-      // Email entire team
       const allEmails = Object.values(AGENT_EMAILS) as string[]
       await sendEmail(allEmails, '🎉 ' + msg,
         `<div style="font-family:Arial,sans-serif;text-align:center;padding:40px 24px;max-width:500px;margin:0 auto;">
@@ -249,14 +282,27 @@ async function runAction(action:any, ctx:Record<string,any>, supabase:any) {
           <div style="font-size:22px;font-weight:800;color:#1B2B4B;margin-bottom:12px;">${msg}</div>
           <a href="${APP}" style="background:#CC2200;color:#fff;text-decoration:none;padding:12px 28px;border-radius:9px;font-size:14px;font-weight:700;display:inline-block;margin-top:16px;">Open TargetOS →</a>
           <div style="margin-top:20px;color:#94A3B8;font-size:12px;">Target Team · KW Valley Realty</div>
-        </div>`
+        </div>`,
+        supabase,
+        { automation_action: 'action_celebrate' }
       )
       break
     }
 
     // ── WEBHOOK ──────────────────────────────────────────────
+    // Also gated -- an outbound webhook to an arbitrary URL is an
+    // external effect just as much as an email.
     case 'action_webhook': {
       if(action.config?.url) {
+        if(!EXTERNAL_EFFECTS_ENABLED) {
+          console.log('[BLOCKED - external effects disabled] would call webhook:', action.config.url)
+          await supabase.from('automation_log').insert([{
+            action: 'blocked_external_effect',
+            detail: JSON.stringify({ channel: 'webhook', url: action.config.url }),
+            created_at: new Date().toISOString(),
+          }]).catch(() => {})
+          break
+        }
         const method = action.config?.method||'POST'
         const body = action.config?.body ? interp(action.config.body, v) : JSON.stringify(v)
         await fetch(action.config.url, {
@@ -277,7 +323,7 @@ function checkTrigger(type:string, rec:any, old:any): boolean {
   switch(type) {
     case 'trigger_new_contact':     return !old
     case 'trigger_contact_status':  return old && rec.status !== old.status
-    case 'trigger_offer_accepted':  return rec.stage==='Offer Accapted'    && old?.stage!=='Offer Accapted'
+    case 'trigger_offer_accepted':  return rec.stage==='Offer Accepted'    && old?.stage!=='Offer Accepted'
     case 'trigger_under_shtar':     return rec.stage==='Under Shtar'       && old?.stage!=='Under Shtar'
     case 'trigger_under_contract':  return rec.stage==='Under Contract'    && old?.stage!=='Under Contract'
     case 'trigger_deal_closed':     return rec.stage==='Closed'            && old?.stage!=='Closed'
@@ -299,7 +345,6 @@ Deno.serve(async (req:Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-    // Load active automations
     const { data: automations } = await supabase
       .from('automations')
       .select('*')
@@ -322,7 +367,6 @@ Deno.serve(async (req:Request) => {
 
       if(!checkTrigger(trigger.type, record, old_record)) continue
 
-      // Check trigger config (e.g. specific stage required)
       if(trigger.config?.stage && record.stage !== trigger.config.stage) continue
       if(trigger.config?.status && record.status !== trigger.config.status) continue
 
@@ -339,7 +383,6 @@ Deno.serve(async (req:Request) => {
         }
       }
 
-      // Update fire count
       await supabase.from('automations').update({
         fire_count: (auto.fire_count||0) + 1,
         last_fired: new Date().toISOString(),
@@ -349,7 +392,7 @@ Deno.serve(async (req:Request) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, fired, errors }),
+      JSON.stringify({ success: true, fired, errors, external_effects_enabled: EXTERNAL_EFFECTS_ENABLED }),
       { headers: { 'Content-Type': 'application/json' } }
     )
   } catch(e:any) {
@@ -360,3 +403,4 @@ Deno.serve(async (req:Request) => {
     )
   }
 })
+
