@@ -32,4 +32,12 @@ describe('CommandCenterSettings', () => {
       p: expect.objectContaining({ goal_basis: 'accepted_offers', period: 'monthly', scope: 'team', target: 12 }),
     })))
   })
+
+  it('mounts closed then opens without a hooks-order crash (React #310 guard)', () => {
+    const d = ds()
+    const { rerender } = render(<CommandCenterSettings open={false} onClose={() => {}} ds={d} />)
+    expect(screen.queryByText('Monthly team goal')).toBeNull()
+    rerender(<CommandCenterSettings open onClose={() => {}} ds={d} />)
+    expect(screen.getByText('Monthly team goal')).toBeTruthy()
+  })
 })

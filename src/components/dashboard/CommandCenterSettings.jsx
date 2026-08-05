@@ -24,24 +24,25 @@ function yearEndISO() { return new Date(new Date().getFullYear(), 11, 31).toISOS
 export function CommandCenterSettings({ open, onClose, ds }) {
   const [news, setNews] = useState(false)
   const [msg, setMsg] = useState(null)
-  const settings = ds?.settings || {}
-  const storeDeployed = ds?.deployed !== false
-  if (!open) return null
-
-  const fr = settings.front_runner || {}
-  const metrics = settings.performance_metrics || PERF_METRICS.filter((m) => !m.financial).map((m) => m.key)
-  const defRange = settings.default_range || 'mtd'
-
-  const setFr = (patch) => ds?.save('front_runner', { ...fr, ...patch })
   const [frUploading, setFrUploading] = useState(false)
   const [frPreview, setFrPreview] = useState(null)
   const [frErr, setFrErr] = useState(null)
+  const settings = ds?.settings || {}
+  const storeDeployed = ds?.deployed !== false
+  const fr = settings.front_runner || {}
   useEffect(() => {
     let alive = true
     if (fr.image_url) { signedUrl(fr.image_url).then((u) => { if (alive) setFrPreview(u) }).catch(() => {}) }
     else setFrPreview(null)
     return () => { alive = false }
   }, [fr.image_url])
+
+  if (!open) return null
+
+  const metrics = settings.performance_metrics || PERF_METRICS.filter((m) => !m.financial).map((m) => m.key)
+  const defRange = settings.default_range || 'mtd'
+
+  const setFr = (patch) => ds?.save('front_runner', { ...fr, ...patch })
   const onFrPhoto = async (e) => {
     const file = e.target.files && e.target.files[0]
     if (!file) return
