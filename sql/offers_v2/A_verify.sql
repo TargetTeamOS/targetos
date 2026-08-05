@@ -68,3 +68,31 @@ from offers where representing_side is null;
 
 -- As unauthenticated (anon key, no session): expect 0 rows everywhere
 -- select * from offers;
+
+-- ══════════════════════════════════════════════════════════════════
+-- SHARED OUTSIDE-CONTACT ISOLATION (owner feedback section 7)
+-- "Agent A sends three offers to Outside Agent Contact X. Agent A
+-- sees those three offers under Contact X. Agent B does not
+-- automatically see Agent A's offers to Contact X." This is enforced
+-- entirely by the offers_select RLS policy (A_foundation.sql /
+-- C_secretary_access.sql) — src/pages/ContactDetail.jsx's Related
+-- Offers query has NO client-side agent filter of its own; it queries
+-- offers by contact-role columns only and relies on RLS to do the
+-- real filtering. That is intentional (frontend filtering alone is
+-- not authorization), but it means this scenario is genuinely only
+-- as safe as RLS actually being applied on the live database — verify
+-- it directly:
+
+-- Setup (once, using synthetic data): both Agent A and Agent B create
+-- an offer that names the SAME outside seller's agent Contact X as
+-- sellers_agent_contact_id.
+
+-- As Agent A: expect to see ONLY Agent A's offer(s) referencing Contact X
+-- select id, agent_id, buyers_agent_id from offers where sellers_agent_contact_id = '<contact_x_id>';
+
+-- As Agent B: expect to see ONLY Agent B's offer(s) referencing Contact X,
+-- NOT Agent A's, even though both point at the same Contact
+-- select id, agent_id, buyers_agent_id from offers where sellers_agent_contact_id = '<contact_x_id>';
+
+-- As Admin or Secretary: expect to see BOTH offers referencing Contact X
+-- select id, agent_id, buyers_agent_id from offers where sellers_agent_contact_id = '<contact_x_id>';

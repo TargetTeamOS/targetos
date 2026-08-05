@@ -545,29 +545,82 @@ export function OffersV2() {
   }
 
   // ── PURCHASER ATTORNEY SELECT ──────────────────────────────────
-  function selectPurchaserAttorney(contact) {
-    if (!contact) return
-    setForm(f => ({
-      ...f,
-      purchaser_attorney_contact_id: contact.id,
-      purchaser_attorney_name:       [contact.first_name, contact.last_name].filter(Boolean).join(' '),
-      purchaser_attorney_tel:        contact.phone || f.purchaser_attorney_tel,
-      purchaser_attorney_email:      contact.email || f.purchaser_attorney_email,
-      purchaser_attorney_address:    contact.address || f.purchaser_attorney_address,
-    }))
+  // ── PURCHASER ATTORNEY SELECT (create-or-link, same pattern as Buyer) ──
+  async function selectPurchaserAttorney(contact) {
+    if (!contact) {
+      if (!form.purchaser_attorney_name?.trim()) return
+      try {
+        const [first, ...rest] = form.purchaser_attorney_name.trim().split(' ')
+        const data = await db.contacts.create({
+          first_name: first, last_name: rest.join(' '),
+          phone: form.purchaser_attorney_tel || null,
+          email: form.purchaser_attorney_email || null,
+          address: form.purchaser_attorney_address || null,
+          status: 'Active', source: 'Offer Form', type: 'Attorney',
+          agent_id: (form.buyers_agent_id || form.agent_id || agent?.id) || null,
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        })
+        if (data) {
+          set('purchaser_attorney_contact_id', data.id)
+          toast('✅ Purchaser\u2019s Attorney saved to Contacts')
+        }
+      } catch(e) {
+        if (e.existingContact) {
+          toast('Already exists as ' + (e.existingContact.first_name||'') + ' ' + (e.existingContact.last_name||'') + ' — linking to that contact', '#F5A623')
+          set('purchaser_attorney_contact_id', e.existingContact.id)
+        } else {
+          toast('Failed to save attorney contact: ' + e.message, '#DC2626')
+        }
+      }
+    } else {
+      setForm(f => ({
+        ...f,
+        purchaser_attorney_contact_id: contact.id,
+        purchaser_attorney_name:       [contact.first_name, contact.last_name].filter(Boolean).join(' '),
+        purchaser_attorney_tel:        contact.phone || f.purchaser_attorney_tel,
+        purchaser_attorney_email:      contact.email || f.purchaser_attorney_email,
+        purchaser_attorney_address:    contact.address || f.purchaser_attorney_address,
+      }))
+    }
   }
 
-  // ── SELLER ATTORNEY SELECT ─────────────────────────────────────
-  function selectSellerAttorney(contact) {
-    if (!contact) return
-    setForm(f => ({
-      ...f,
-      seller_attorney_contact_id: contact.id,
-      seller_attorney_name:       [contact.first_name, contact.last_name].filter(Boolean).join(' '),
-      seller_attorney_tel:        contact.phone || f.seller_attorney_tel,
-      seller_attorney_email:      contact.email || f.seller_attorney_email,
-      seller_attorney_address:    contact.address || f.seller_attorney_address,
-    }))
+  // ── SELLER ATTORNEY SELECT (create-or-link, same pattern as Buyer) ──
+  async function selectSellerAttorney(contact) {
+    if (!contact) {
+      if (!form.seller_attorney_name?.trim()) return
+      try {
+        const [first, ...rest] = form.seller_attorney_name.trim().split(' ')
+        const data = await db.contacts.create({
+          first_name: first, last_name: rest.join(' '),
+          phone: form.seller_attorney_tel || null,
+          email: form.seller_attorney_email || null,
+          address: form.seller_attorney_address || null,
+          status: 'Active', source: 'Offer Form', type: 'Attorney',
+          agent_id: (form.agent_id || form.buyers_agent_id || agent?.id) || null,
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        })
+        if (data) {
+          set('seller_attorney_contact_id', data.id)
+          toast('✅ Seller\u2019s Attorney saved to Contacts')
+        }
+      } catch(e) {
+        if (e.existingContact) {
+          toast('Already exists as ' + (e.existingContact.first_name||'') + ' ' + (e.existingContact.last_name||'') + ' — linking to that contact', '#F5A623')
+          set('seller_attorney_contact_id', e.existingContact.id)
+        } else {
+          toast('Failed to save attorney contact: ' + e.message, '#DC2626')
+        }
+      }
+    } else {
+      setForm(f => ({
+        ...f,
+        seller_attorney_contact_id: contact.id,
+        seller_attorney_name:       [contact.first_name, contact.last_name].filter(Boolean).join(' '),
+        seller_attorney_tel:        contact.phone || f.seller_attorney_tel,
+        seller_attorney_email:      contact.email || f.seller_attorney_email,
+        seller_attorney_address:    contact.address || f.seller_attorney_address,
+      }))
+    }
   }
 
   // ── DOWNLOAD PDF ──────────────────────────────────────────────
@@ -701,7 +754,24 @@ export function OffersV2() {
   }
 
   // ── SAVE OFFER ─────────────────────────────────────────────────
-  async function saveOffer(andDownloadPdf = false) {
+  // ── OUTCOME ACTIONS ──────────────────────────────────────────────
+  // Direct, single-field updates rather than set()+saveOffer() — set()
+  // goes through React state, which doesn't commit synchronously, so
+  // calling saveOffer() immediately after would still read the OLD
+  // status from the current render's closure. This updates the DB and
+  // local state together, explicitly, avoiding that stale-read bug.
+  async function markOutcome(newStatus) {
+    if (!selected?.id) return
+    try {
+      const updated = await update(selected.id, { status: newStatus }, agent?.id)
+      setSelected(updated)
+      setForm(f => ({ ...f, status: newStatus }))
+      toast('✅ Marked ' + newStatus)
+      refetch?.()
+    } catch(e) { toast('Failed to update status: ' + e.message, '#DC2626') }
+  }
+
+  async function saveOffer(andDownloadPdf = false, statusOverride = null) {
     if (!form.listing_addr?.trim()) { toast('Listing address is required', '#DC2626'); return }
     if (!form.buyer_name?.trim())   { toast('Buyer name is required', '#DC2626'); return }
     if (!form.purchase_price)       { toast('Purchase price is required', '#DC2626'); return }
@@ -765,7 +835,7 @@ export function OffersV2() {
         is_inhouse:          !!form.is_inhouse,
         inhouse_listing_id:  form.inhouse_listing_id  || null,
         notes:               form.notes               || null,
-        status:              form.status              || 'Draft',
+        status:              statusOverride           || form.status || 'Draft',
         // Assigned TargetOS agent follows representing_side: seller-side
         // offers default to the seller's-side agent slot, buyer-side (and
         // legacy default) to the buyer's-side slot. `side` (legacy,
@@ -850,7 +920,7 @@ export function OffersV2() {
       // earlier successful run already handled conversion — never
       // create a second deal in that case. The existing address-based
       // dupe check is kept as defense in depth, not the primary guard.
-      const nowAccepted = OFFER_ACCEPTED_VALUES.includes(form.status)
+      const nowAccepted = OFFER_ACCEPTED_VALUES.includes(statusOverride || form.status)
       const wasAccepted = selected && OFFER_ACCEPTED_VALUES.includes(selected.status)
       if (nowAccepted && !wasAccepted && !selected?.deal_id) {
         try {
@@ -1072,7 +1142,15 @@ export function OffersV2() {
 
       {/* ── OFFER MODAL ── */}
       <Modal open={!!(selected || urlId==='new')} onClose={closePanel}
-        title={selected ? 'Offer — ' + selected.listing_addr : 'New Offer for Sale of Real Estate'} width={680}>
+        title={
+          <span>
+            {selected ? 'Offer — ' + selected.listing_addr : 'New Offer for Sale of Real Estate'}
+            {selected && (() => {
+              const s = OFFER_STATUSES.find(x=>x.value===form.status)
+              return <span style={{ marginLeft:10, fontSize:11, fontWeight:700, color: s?.hex || 'var(--muted)' }}>● {s?.label || form.status || 'Draft'}</span>
+            })()}
+          </span>
+        } width={680}>
 
         {/* Tabs */}
         <div style={{ display:'flex', borderBottom:'1px solid var(--border)', marginBottom:16, gap:0 }}>
@@ -1088,17 +1166,19 @@ export function OffersV2() {
         {tab === 'offer' && (
           <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
 
-            {/* Header: Date + Status + Representing */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:8 }}>
+            {/* Header: Date + Commission + Representing. Status is no
+                longer here at all, editable or otherwise, per owner
+                feedback ("remove the status dropdown from the top" —
+                and per the spec, the header "should no longer waste
+                space on a status dropdown"). It's now a small badge
+                next to the modal title instead, and changes only
+                through explicit lifecycle actions (Send Offer / Mark
+                Accepted / Mark Rejected / Withdraw / Mark Expired, in
+                the footer) — never hand-picked from a dropdown. */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:8 }}>
               <div>
                 <span style={SL}>Date</span>
                 <input type="date" value={form.offer_date} onChange={e=>set('offer_date',e.target.value)} style={S} />
-              </div>
-              <div>
-                <span style={SL}>Status</span>
-                <select value={form.status} onChange={e=>set('status',e.target.value)} style={S}>
-                  {OFFER_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
               </div>
               <div>
                 <span style={SL}>Commission %</span>
@@ -1592,9 +1672,21 @@ export function OffersV2() {
         )}
 
         <ModalActions>
-          {selected && <Btn variant="ghost" style={{ marginRight:'auto', color:'#DC2626' }} onClick={()=>setConfirmDel(true)}>Delete</Btn>}
-          {selected && !showSend && (
-            <Btn variant="secondary" onClick={()=>{
+          {selected && <Btn variant="ghost" style={{ marginRight:4, color:'#DC2626' }} onClick={()=>setConfirmDel(true)}>Delete</Btn>}
+          {selected && OFFER_PENDING_VALUES.includes(form.status) && (
+            <div style={{ display:'flex', gap:4, marginRight:'auto' }}>
+              <Btn variant="ghost" style={{ color:'#10B981', fontSize:11 }} onClick={()=>markOutcome('Accepted')}>✓ Mark Accepted</Btn>
+              <Btn variant="ghost" style={{ color:'#DC2626', fontSize:11 }} onClick={()=>markOutcome('Rejected')}>Mark Rejected</Btn>
+              <Btn variant="ghost" style={{ color:'#6B7280', fontSize:11 }} onClick={()=>markOutcome('Withdrawn')}>Withdraw</Btn>
+              <Btn variant="ghost" style={{ color:'#78716C', fontSize:11 }} onClick={()=>markOutcome('Expired')}>Mark Expired</Btn>
+            </div>
+          )}
+          {!showSend && (
+            <Btn variant="secondary" disabled={!form.current_revision_id}
+              title={!selected ? 'Save the offer first, then generate the PDF, to enable Send Offer'
+                : !form.current_revision_id ? 'Generate the PDF first (Save + Download PDF), then Send Offer becomes available'
+                : undefined}
+              onClick={()=>{
               // Default recipient per spec: the linked Seller's Agent,
               // pre-checked whenever they have a usable email on file.
               setSendTo(t => ({ ...t, sellers_agent: !!form.sellers_agent_email }))
@@ -1615,7 +1707,7 @@ export function OffersV2() {
                   setSendingMailbox(outlook?.account_email || '')
                 } catch { setSendingMailbox('') }
               })()
-            }}>📧 Send Offer</Btn>
+            }}>📧 Send Offer{!form.current_revision_id ? ' (generate PDF first)' : ''}</Btn>
           )}
           <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
           <Btn variant="secondary" onClick={()=>saveOffer(false)} loading={saving && !downloading}>
