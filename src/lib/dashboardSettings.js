@@ -24,8 +24,11 @@ export async function saveSetting(key, value) {
 // Applied (A3). Returns {ok} | {error}. Admin-only server-side.
 export async function saveGoal(goal) {
   const { data, error } = await supabase.rpc('app_goal_upsert', { p: goal })
-  if (error) return { ok: false, error: error.message }
-  if (data && data.error) return { ok: false, error: data.error }
+  if (error) {
+    if (NOT_DEPLOYED.test(error.message || '')) return { ok: false, error: 'Goals aren’t connected yet — apply COMMAND_CENTER_REPAIR_FOUNDATION.sql in Supabase, then try again.' }
+    return { ok: false, error: error.message }
+  }
+  if (data && data.error) return { ok: false, error: data.error === 'forbidden' ? 'Admins only — you don’t have permission to set goals.' : data.error }
   return { ok: true }
 }
 

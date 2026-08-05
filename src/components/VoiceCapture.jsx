@@ -227,7 +227,7 @@ export function VoiceCapture() {
       const file = new File([audioBlob], recordType + '-' + recordId + '.webm', { type: 'audio/webm' })
       const up = await uploadFile(file, recordType, recordId)
       return { audio_url: up.url, audio_path: up.path }
-    } catch (e) { console.warn('audio upload:', e.message); return {} }
+    } catch (e) { toast('Audio upload failed: ' + e.message, '#DC2626'); return {} }
   }
 
   // ── SAVE AS CONTACT ───────────────────────────────────────────
@@ -259,15 +259,16 @@ export function VoiceCapture() {
       try {
         const au = await uploadAudioFor('contact', contactId)
         if (au.audio_url || parsed.rawText) {
-          await supabase.from('notes').insert({
+          const { error: noteErr } = await supabase.from('notes').insert({
             agent_id: agent.id, title: '🎤 Voice capture — ' + leadName,
             body: parsed.aiParsed ? parsed.notes : parsed.rawText,
             transcript: parsed.rawText || null,
             audio_url: au.audio_url || null, audio_path: au.audio_path || null,
             linked_type: 'contact', linked_id: contactId,
           })
+          if (noteErr) toast('Lead saved, but the recording/note did not save: ' + noteErr.message, '#DC2626')
         }
-      } catch (e) { console.warn('voice note attach:', e.message) }
+      } catch (e) { toast('Recording save failed: ' + e.message, '#DC2626') }
 
       // Follow-up task LINKED to the contact (clicking it opens the contact)
       try {

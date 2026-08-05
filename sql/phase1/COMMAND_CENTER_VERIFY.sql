@@ -56,6 +56,7 @@ expected_tbl(section, name, kind) as (values
   ('S1 Widgets','production_widgets_audit','table'),
   ('S5 Settings','dashboard_settings','table'),
   ('S5 Settings','dashboard_settings_audit','table'),
+  ('Voice/Notes','notes','table'),
   ('Foundation','team_goals','table'),
   ('Foundation','news_sources','table'),
   ('Foundation','_app_migrations','table'),
@@ -132,6 +133,17 @@ union all
 select 'MIGRATION', ('_app_migrations · ' || m.name),
   case when exists(select 1 from public._app_migrations x where x.name=m.name and x.status='complete') then 'PASS' else 'MISSING — not recorded complete' end, ''
 from (values ('production_widgets'),('A5_goal_records'),('A6_my_day'),('A7_agent_performance'),('A8_dashboard_settings'),('COMMAND_CENTER_REPAIR_FOUNDATION')) m(name)
+
+union all
+-- 5b) Buyers/Sellers goal metrics allowed by the allowlist constraint
+select 'GOAL METRIC', 'buyers/sellers bases allowed',
+  case
+    when to_regclass('public.team_goals') is null then 'MISSING'
+    when exists (select 1 from pg_constraint where conname='tg_basis_wl' and conrelid='public.team_goals'::regclass
+                 and pg_get_constraintdef(oid) like '%buyers%' and pg_get_constraintdef(oid) like '%sellers%')
+      then 'PASS'
+    else 'REVIEW REQUIRED — apply COMMAND_CENTER_GOAL_BASES_BUYERS_SELLERS.sql'
+  end, ''
 
 union all
 -- 6) Baseline CRM counts (read-only; capture BEFORE persona testing)
