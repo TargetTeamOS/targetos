@@ -5,9 +5,10 @@
 // edited ONLY in the Settings drawer — never inside this card. The count drills to
 // the exact accepted offers.
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { signedUrl } from '../../lib/storage'
 import { useMetric } from '../../lib/useDashboardData'
 import { useAuth } from '../../context/AuthContext'
 import { WidgetCard } from './WidgetCard'
@@ -23,6 +24,13 @@ export function FrontRunnerWidget({ settings }) {
   const { agent } = useAuth()
   const isAdmin = agent?.role === 'admin'
   const cfg = settings || {}
+  const [imgUrl, setImgUrl] = useState(null)
+  useEffect(() => {
+    let alive = true
+    if (cfg.image_url) { signedUrl(cfg.image_url).then((u) => { if (alive) setImgUrl(u) }).catch(() => { if (alive) setImgUrl(null) }) }
+    else setImgUrl(null)
+    return () => { alive = false }
+  }, [cfg.image_url])
   const [drill, setDrill] = useState({ open: false, loading: false, error: null, rows: null, title: '' })
   const { from, to, label } = rangeDates('mtd')
 
@@ -64,8 +72,8 @@ export function FrontRunnerWidget({ settings }) {
   if (cfg.visible === false && !isAdmin) return null
 
   const avatar = (size) => (
-    cfg.image_url && winners.length === 1
-      ? <img src={cfg.image_url} alt="" style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+    imgUrl && winners.length === 1
+      ? <img src={imgUrl} alt="" style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
       : <span style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, background: w ? (w.color || colorForKey(w.name)) : '#e2e8f0', color: '#fff', fontWeight: 800, fontSize: size * 0.36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{w ? initials(w.name) : '★'}</span>
   )
 

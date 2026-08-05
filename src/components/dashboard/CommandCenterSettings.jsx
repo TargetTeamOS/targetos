@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react'
 import { saveGoal } from '../../lib/dashboardSettings'
 import { supabase } from '../../lib/supabase'
+import { uploadFile, signedUrl } from '../../lib/storage'
 import { NewsSourcesAdmin } from './NewsSourcesAdmin'
 import { PERF_METRICS } from '../../lib/perfModel'
 import { rangeDates } from '../../lib/perfModel'
@@ -32,6 +33,28 @@ export function CommandCenterSettings({ open, onClose, ds }) {
   const defRange = settings.default_range || 'mtd'
 
   const setFr = (patch) => ds?.save('front_runner', { ...fr, ...patch })
+  const [frUploading, setFrUploading] = useState(false)
+  const [frPreview, setFrPreview] = useState(null)
+  const [frErr, setFrErr] = useState(null)
+  useEffect(() => {
+    let alive = true
+    if (fr.image_url) { signedUrl(fr.image_url).then((u) => { if (alive) setFrPreview(u) }).catch(() => {}) }
+    else setFrPreview(null)
+    return () => { alive = false }
+  }, [fr.image_url])
+  const onFrPhoto = async (e) => {
+    const file = e.target.files && e.target.files[0]
+    if (!file) return
+    if (!/^image\//.test(file.type)) { setFrErr('Please choose an image file.'); return }
+    if (file.size > 5 * 1024 * 1024) { setFrErr('Image must be under 5 MB.'); return }
+    setFrErr(null); setFrUploading(true)
+    try {
+      const up = await uploadFile(file, 'dashboard', 'front-runner')
+      setFr({ image_url: up.path })
+    } catch (err) {
+      setFrErr('Upload failed: ' + (err?.message || 'try again'))
+    } finally { setFrUploading(false); e.target.value = '' }
+  }
   const toggleMetric = (k) => {
     const next = metrics.includes(k) ? metrics.filter((x) => x !== k) : [...metrics, k]
     ds?.save('performance_metrics', next)
@@ -63,7 +86,23 @@ export function CommandCenterSettings({ open, onClose, ds }) {
 
           <Section title="Front Runner of the Month">
             <input placeholder="Congratulatory message" value={fr.message || ''} onChange={(e) => setFr({ message: e.target.value })} style={inp} />
-            <input placeholder="Image URL (blank = agent initials)" value={fr.image_url || ''} onChange={(e) => setFr({ image_url: e.target.value })} style={inp} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {frPreview
+                ? <img src={frPreview} alt="Front Runner photo" style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover', border: '1px solid #e2e8f0' }} />
+                : <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 11 }}>No photo</div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ ...btn, display: 'inline-block', textAlign: 'center', cursor: frUploading ? 'default' : 'pointer', opacity: frUploading ? 0.6 : 1 }}>
+                  {frUploading ? 'Uploading…' : (fr.image_url ? 'Replace photo' : 'Upload photo')}
+                  <input type="file" accept="image/*" onChange={onFrPhoto} disabled={frUploading} style={{ display: 'none' }} />
+                </label>
+                {fr.image_url && <button type="button" onClick={() => setFr({ image_url: '' })} style={{ border: 'none', background: 'transparent', color: '#b42318', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left' }}>Remove photo (use initials)</button>}
+              </div>
+            </div>
+            {frErr && <div role="status" style={{ color: '#b42318', fontSize: 12 }}>{frErr}</div>}
+            <details style={{ fontSize: 12, color: '#64748b' }}>
+              <summary style={{ cursor: 'pointer' }}>Or paste an image link</summary>
+              <input placeholder="https://… (blank = agent initials)" value={/^https?:\/\//.test(fr.image_url || '') ? fr.image_url : ''} onChange={(e) => setFr({ image_url: e.target.value })} style={{ ...inp, marginTop: 6 }} />
+            </details>
             <label style={lbl}><input type="checkbox" checked={fr.visible !== false} onChange={(e) => setFr({ visible: e.target.checked })} /> Show the Front Runner widget</label>
             <Note>The winner and accepted-offer count are always calculated — not editable.</Note>
           </Section>
@@ -134,6 +173,8 @@ function IndividualGoalForm({ onMsg }) {
         <select value={f.basis} onChange={(e) => setF({ ...f, basis: e.target.value })} aria-label="Goal metric" style={inp}>
           <option value="accepted_offers">Accepted offers</option>
           <option value="closed_units">Closed units</option>
+          <option value="buyers">Buyers (closed)</option>
+          <option value="sellers">Sellers (closed)</option>
           <option value="production_volume">Production volume</option>
           <option value="gci">GCI</option>
         </select>
@@ -151,6 +192,8 @@ function IndividualGoalForm({ onMsg }) {
 const GOAL_BASES = [
   { v: 'accepted_offers', label: 'Accepted offers', unit: 'accepted offers' },
   { v: 'closed_units', label: 'Closed units', unit: 'closed units' },
+  { v: 'buyers', label: 'Buyers (closed)', unit: 'buyer-side deals' },
+  { v: 'sellers', label: 'Sellers (closed)', unit: 'seller-side deals' },
   { v: 'production_volume', label: 'Production volume ($)', unit: 'production $' },
   { v: 'gci', label: 'GCI ($)', unit: 'GCI $' },
 ]
