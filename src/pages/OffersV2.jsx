@@ -21,7 +21,6 @@ import { usePageView, LastVisited } from '../components/PageViewTracking'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { ContactPeek } from '../components/ContactPeek'
 import { useFeature } from '../lib/features'
 import { BulkEditBar } from '../components/BulkEditBar'
 import { useApp }  from '../context/AppContext'
@@ -29,12 +28,13 @@ import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
 import { useOffers, useAgents } from '../lib/hooks'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
-import { OFFER_STATUSES, OFFER_ACCEPTED_VALUES, OFFER_PENDING_VALUES, CONTACT_TYPE_COLORS } from '../lib/constants'
+import { OFFER_STATUSES, OFFER_ACCEPTED_VALUES, OFFER_PENDING_VALUES } from '../lib/constants'
 import { dedupeCanonicalAgents } from '../lib/utils'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { computeOfferFinancials } from '../lib/offerCalc'
 import AdminOfferReports from '../components/AdminOfferReports'
 import { PolishWordingButton } from '../components/PolishWordingButton'
+import { ContactSearch } from '../components/ContactSearch'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Confirm
@@ -78,80 +78,6 @@ const BLANK = {
 }
 
 // ── CONTACT SEARCH DROPDOWN ───────────────────────────────────────
-function ContactSearch({ value, onChange, onSelect, placeholder, filter }) {
-  const [q,       setQ]       = useState(value || '')
-  const [results, setResults] = useState([])
-  const [open,    setOpen]    = useState(false)
-  const ref = useRef(null)
-  const { agent: me, isAdmin } = useAuth()
-  const [peekId, setPeekId] = useState(null)
-
-  useEffect(() => { setQ(value || '') }, [value])
-
-  useEffect(() => {
-    if (q.length < 2) { setResults([]); return }
-    const t = setTimeout(async () => {
-      let query = supabase.from('contacts')
-        .select('id,first_name,last_name,phone,email,company,address,type,is_private,agent_id')
-        .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`)
-        .limit(12)
-      if (filter) query = query.eq('type', filter)
-      let { data, error } = await query
-      if (error && /is_private|column/i.test(error.message || '')) {
-        // sql/private_contacts.sql not run yet — search without the flag
-        let q2 = supabase.from('contacts')
-          .select('id,first_name,last_name,phone,email,company,address,type,agent_id')
-          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`)
-          .limit(12)
-        if (filter) q2 = q2.eq('type', filter)
-        data = (await q2).data
-      }
-      // PRIVACY: other agents' private contacts never appear in search
-      const visible = (data || []).filter(c => isAdmin || !c.is_private || (me?.id && c.agent_id === me.id))
-      setResults(visible.slice(0, 6))
-      setOpen(true)
-    }, 250)
-    return () => clearTimeout(t)
-  }, [q])
-
-  useEffect(() => {
-    function close(e) { if (!ref.current?.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [])
-
-  return (
-    <div ref={ref} style={{ position:'relative' }}>
-      <input value={q} onChange={e => { setQ(e.target.value); onChange(e.target.value) }}
-        placeholder={placeholder} style={S} onFocus={() => q.length >= 2 && setOpen(true)} />
-      {open && results.length > 0 && (
-        <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'var(--panel)', border:'1px solid var(--border)', borderRadius:8, zIndex:100, boxShadow:'0 4px 20px rgba(0,0,0,.15)', overflow:'hidden' }}>
-          {results.map(c => (
-            <div key={c.id}
-              onMouseDown={() => { onSelect(c); setQ([c.first_name,c.last_name].filter(Boolean).join(' ')); setOpen(false) }}
-              style={{ padding:'8px 12px', cursor:'pointer', fontSize:12, borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8 }}
-              onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
-              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontWeight:700, color:'var(--text)', display:'flex', alignItems:'center', gap:6 }}>{c.first_name} {c.last_name}{c.company?' — '+c.company:''}
-                  {c.type && <span style={{ fontSize:9.5, fontWeight:800, padding:'1px 7px', borderRadius:99, background:(CONTACT_TYPE_COLORS[c.type]||'#94A3B8')+'22', color:CONTACT_TYPE_COLORS[c.type]||'#94A3B8', textTransform:'uppercase', letterSpacing:'.03em' }}>{c.type}</span>}
-                </div>
-                <div style={{ color:'var(--muted)', fontSize:11 }}>{[c.phone,c.email].filter(Boolean).join(' · ')}</div>
-              </div>
-              <button onMouseDown={e => { e.stopPropagation(); e.preventDefault(); setPeekId(c.id) }} title="Verify — phone, email, address, past deals"
-                style={{ border:'none', background:'none', fontSize:13, cursor:'pointer', padding:4, flexShrink:0, opacity:.7 }}>👁</button>
-            </div>
-          ))}
-          <div onMouseDown={() => { onSelect(null); setOpen(false) }}
-            style={{ padding:'8px 12px', cursor:'pointer', fontSize:11, color:'var(--brand)', fontWeight:700, background:'var(--dim)' }}>
-            + Save "{q}" as new contact
-          </div>
-        </div>
-      )}
-      {peekId && <ContactPeek contactId={peekId} onClose={() => setPeekId(null)} onSelect={c => { onSelect(c); setQ([c.first_name,c.last_name].filter(Boolean).join(' ')); setOpen(false) }} />}
-    </div>
-  )
-}
 
 // ── FILE UPLOADER ─────────────────────────────────────────────────
 function FileUploader({ label, fileUrl, onUploaded, folder }) {
