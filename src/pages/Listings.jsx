@@ -703,15 +703,11 @@ export function Listings() {
           try {
             const { data: existing } = await supabase.from('tc_deals').select('id').eq('linked_listing_id', selected.id).limit(1).maybeSingle()
             if (!existing) {
-              const { error: e2 } = await supabase.from('tc_deals').insert({
-                addr: form.addr, agent_id: form.agent_id || agent?.id || null,
-                tc_phase: 'under_contract', list_price: form.list_price || null,
-                linked_listing_id: selected.id,
-                notes: 'Auto-created when listing went ' + form.status,
-                created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-              })
-              if (!e2) toast('📋 Sent to TC Board — under contract tasks will be generated there')
-            }
+              const { error: e2 } = await supabase.rpc('auto_intake_tc_deal', {
+  p_listing_id: selected.id
+})
+if (!e2) toast('📋 Sent to TC Board — under contract tasks will be generated there')
+else console.warn('TC auto-intake skipped:', e2.message)
           } catch (e) { console.warn('TC auto-intake skipped:', e.message) }
         }
       } else {
