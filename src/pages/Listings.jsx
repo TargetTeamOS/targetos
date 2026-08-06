@@ -699,16 +699,16 @@ export function Listings() {
         // the secretary's TC Board automatically (once — never
         // duplicates if a TC deal is already linked).
         const wentUC = ['Under Contract', 'Accepted offer'].includes(form.status) && selected.status !== form.status
+        const wentUC = ['Under Contract', 'Accepted offer'].includes(form.status) && selected.status !== form.status
         if (wentUC) {
           try {
-            const { data: existing } = await supabase.from('tc_deals').select('id').eq('linked_listing_id', selected.id).limit(1).maybeSingle()
-            if (!existing) {
-              const { error: e2 } = await supabase.rpc('auto_intake_tc_deal', {
-  p_listing_id: selected.id
-})
-if (!e2) toast('📋 Sent to TC Board — under contract tasks will be generated there')
-else console.warn('TC auto-intake skipped:', e2.message)
+            const { error: e2 } = await supabase.rpc('auto_intake_tc_deal', {
+              p_listing_id: selected.id
+            })
+            if (!e2) toast('📋 Sent to TC Board — under contract tasks will be generated there')
+            else console.warn('TC auto-intake skipped:', e2.message)
           } catch (e) { console.warn('TC auto-intake skipped:', e.message) }
+        }
         }
       } else {
         const { showings_count: _sc2, agents: _la2, id: _li2, ...cleanListingIns } = form
