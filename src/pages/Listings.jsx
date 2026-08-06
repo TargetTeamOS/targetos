@@ -609,7 +609,7 @@ export function Listings() {
     setLoading(true)
     try {
       let q = supabase.from('listings').select('*', { count: 'exact' }).order('list_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
-      if (!isAdmin && !canManage) q = q.eq('agent_id', agent?.id)
+      
       q = q.range(0, 499) // Load up to 500 listings — filter by status/agent for more
       const { data, count } = await q
       const rows = data || []
