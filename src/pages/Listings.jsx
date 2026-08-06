@@ -609,7 +609,7 @@ export function Listings() {
     setLoading(true)
     try {
       let q = supabase.from('listings').select('*', { count: 'exact' }).order('list_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
-      
+
       q = q.range(0, 499) // Load up to 500 listings — filter by status/agent for more
       const { data, count } = await q
       const rows = data || []
@@ -696,9 +696,8 @@ export function Listings() {
 
         // ── AUTO-INTAKE TO TC BOARD ──
         // The moment a listing flips to Under Contract, it lands on
-        // the secretary's TC Board automatically (once — never
-        // duplicates if a TC deal is already linked).
-        const wentUC = ['Under Contract', 'Accepted offer'].includes(form.status) && selected.status !== form.status
+        // the secretary's TC Board automatically via a safe RPC that
+        // checks ownership/status/idempotency server-side.
         const wentUC = ['Under Contract', 'Accepted offer'].includes(form.status) && selected.status !== form.status
         if (wentUC) {
           try {
@@ -708,7 +707,6 @@ export function Listings() {
             if (!e2) toast('📋 Sent to TC Board — under contract tasks will be generated there')
             else console.warn('TC auto-intake skipped:', e2.message)
           } catch (e) { console.warn('TC auto-intake skipped:', e.message) }
-        }
         }
       } else {
         const { showings_count: _sc2, agents: _la2, id: _li2, ...cleanListingIns } = form
