@@ -34,6 +34,24 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return }
   if (req.method !== 'POST')    { res.status(405).json({ error: 'Method not allowed' }); return }
 
+  // ── EXTERNAL EFFECTS GATE (added 2026-08-06) ──────────────────────
+  // Same gate as automation-engine and api/send-email.js. This endpoint
+  // sends a REAL email through the agent's own Outlook/Gmail account —
+  // it had no external-effects check at all. Set
+  // EXTERNAL_EFFECTS_ENABLED='true' in Vercel (Production only) to
+  // allow real sends; anything else blocks and logs instead.
+  const EXTERNAL_EFFECTS_ENABLED = String(process.env.EXTERNAL_EFFECTS_ENABLED || '').toLowerCase() === 'true'
+  if (!EXTERNAL_EFFECTS_ENABLED) {
+    console.warn('[EXTERNAL-EFFECTS] BLOCKED connector-send call (external effects disabled)')
+    res.status(200).json({
+      ok: false,
+      blocked: true,
+      reason: 'external_effects_disabled',
+      message: 'Email not sent — EXTERNAL_EFFECTS_ENABLED is not set to true in this environment.',
+    })
+    return
+  }
+
   try {
     const body = await parseBody(req)
     const provider = body.provider === 'gmail' ? 'gmail' : 'outlook'
