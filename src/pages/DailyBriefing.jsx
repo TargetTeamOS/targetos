@@ -250,7 +250,7 @@ export function DailyBriefing() {
       let conQ     = supabase.from('contacts').select('id,first_name,last_name,status,phone')
       let listQ    = supabase.from('listings').select('*').eq('status','Active')
       let ohQ      = supabase.from('open_houses').select('*').gte('date',today).lte('date',wkStr)
-      let calQ     = supabase.from('calendar_events').select('*').eq('date',today).order('start_time')
+      let calQ     = supabase.from('calendar_events').select('*').eq('start_date',today).order('start_time')
 
       if (filter) {
         tasksQ = tasksQ.eq('agent_id', filter)
@@ -402,7 +402,7 @@ export function DailyBriefing() {
             supabase.from('contacts').select('id,first_name,last_name,status').eq('agent_id',ag.id).then(r=>r.data||[]),
             supabase.from('listings').select('*').eq('agent_id',ag.id).eq('status','Active').then(r=>r.data||[]),
             supabase.from('open_houses').select('*').eq('agent_id',ag.id).gte('date',today).lte('date',wkEnd.toISOString().slice(0,10)).then(r=>r.data||[]),
-            supabase.from('calendar_events').select('*').eq('agent_id',ag.id).eq('date',today).then(r=>r.data||[]),
+            supabase.from('calendar_events').select('*').eq('agent_id',ag.id).eq('start_date',today).then(r=>r.data||[]),
           ])
           const agData = {
             todayTasks:    tasks.filter(t=>isDueToday(t.due_date)||isOverdue(t.due_date)),
@@ -927,3 +927,4 @@ function AppRow({ children }) {
 function AppEmpty({ children }) {
   return <div style={{ fontSize:12, color:'var(--muted)', padding:'8px 0', fontStyle:'italic' }}>{children}</div>
 }
+
