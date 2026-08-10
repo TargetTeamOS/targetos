@@ -937,7 +937,7 @@ export function TransactionCoordinator() {
         start_date: t.due_date,
         start_time: '10:00',
         type:       'task',
-        notes:      'Auto-created by TC Board',
+        description: 'Auto-created by TC Board',
         created_at: new Date().toISOString(),
       }) } catch(e) { console.warn('TC calendar sync failed:', e.message) }
     }
