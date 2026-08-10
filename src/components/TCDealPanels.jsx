@@ -205,7 +205,7 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
             start_date: String(data.scheduled_at).slice(0, 10),
             start_time: String(data.scheduled_at).slice(11, 16) || '10:00',
             type: 'task',
-            notes: 'Auto-created by TC Board photography tracker',
+            description: 'Auto-created by TC Board photography tracker',
             created_at: new Date().toISOString(),
           })
         } catch (e) { console.warn('photo calendar sync failed:', e.message) }
