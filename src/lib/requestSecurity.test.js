@@ -37,14 +37,16 @@ describe('fail-closed request secrets', () => {
     expect(unsubscribe.verifyUnsubToken('person@example.com', token, { env, now: now + 100 * 24 * 3600 * 1000 }).ok).toBe(false)
   })
 
-  it('does not generate shared fallback passwords or reference undeclared RESEND_KEY branches', () => {
+  it('does not generate shared fallback passwords and guards declared Resend clients', () => {
     const adminUsers = fs.readFileSync('api/admin-users.js', 'utf8')
     const adminPage = fs.readFileSync('src/pages/Admin.jsx', 'utf8')
     const reportCron = fs.readFileSync('api/report-cron.js', 'utf8')
     const briefingCron = fs.readFileSync('api/daily-briefing-cron.js', 'utf8')
     expect(adminUsers).not.toMatch(/TargetOS2024|Welcome2TargetOS/)
     expect(adminPage).not.toMatch(/TargetOS2024|Welcome2TargetOS/)
-    expect(reportCron).not.toContain('RESEND_KEY')
-    expect(briefingCron).not.toContain('RESEND_KEY')
+    expect(reportCron).toContain("const RESEND_KEY = process.env.RESEND_API_KEY")
+    expect(briefingCron).toContain("const RESEND_KEY = process.env.RESEND_API_KEY")
+    expect(reportCron).toContain('requireExternalEffects')
+    expect(briefingCron).toContain('requireExternalEffects')
   })
 })
