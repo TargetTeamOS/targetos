@@ -11,11 +11,10 @@
 // Marketing page with hard-coded feeds) so the Command Center can use the
 // admin-configured sources without regressing that page.
 
-const { createClient } = require('@supabase/supabase-js')
+const { createServiceClient } = require('./_lib/supabaseConfig')
 
 const CACHE = { data: null, ts: 0 }
 const CACHE_TTL = 30 * 60 * 1000 // 30 min
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
 
 // National fallbacks used only if the sources RPC is unavailable, so news still
 // renders. Mirrors the fallbacks seeded by A4_news_sources.sql.
@@ -144,9 +143,12 @@ async function handler(req, res) {
     return res.status(200).json({ ...CACHE.data, cached: true })
   }
 
-  let sb = null
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (key) { try { sb = createClient(SUPABASE_URL, key, { auth: { persistSession: false } }) } catch { sb = null } }
+  let sb
+  try {
+    sb = createServiceClient()
+  } catch {
+    return res.status(503).json({ error: 'Server database configuration is unavailable' })
+  }
 
   // Rates and news are independent: one failing must not break the other.
   const sources = await fetchNewsSources(sb)

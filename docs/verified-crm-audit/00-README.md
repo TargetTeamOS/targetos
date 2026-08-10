@@ -39,6 +39,7 @@ Source ref: `origin/feature/connected-email-accounts`
 12. [13-prelaunch-lockdown.md](13-prelaunch-lockdown.md)
 13. [14-supabase-configuration-isolation.md](14-supabase-configuration-isolation.md)
 14. [15-phase-1-stack-repair.md](15-phase-1-stack-repair.md)
+15. [16-main-integration-reconciliation.md](16-main-integration-reconciliation.md)
 
 ## Executive assessment
 
@@ -57,3 +58,4 @@ Source ref: `origin/feature/connected-email-accounts`
 - **Verified** - Fail-closed Supabase configuration and its clean Linux checks are documented in `14-supabase-configuration-isolation.md`.
 - **Verified** - Stack repair, authenticated SMS/phone ownership, and the universal external-effects control are documented in `15-phase-1-stack-repair.md`.
 - **Verified** - The audit remains the baseline; corrected findings are not silently rewritten and are explicitly superseded by the implementation record.
+- **Partially verified** - Reconciliation onto the active `main` lineage is documented in `16-main-integration-reconciliation.md`; Linux CI and Preview validation are still required before merge.
