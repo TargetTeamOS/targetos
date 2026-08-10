@@ -1,7 +1,7 @@
 # Phase 1 Security Implementation
 
-Implementation branch: `codex/security-authentication-repair`  
-Audited base: `453461ed8bd3b07cf436f04a3dad290590ffd256`  
+Implementation branch: `codex/security-authentication-repair`
+Audited base: `453461ed8bd3b07cf436f04a3dad290590ffd256`
 Scope: fail-closed API authentication and secure OAuth ownership
 
 ## Scope and original risks
@@ -83,9 +83,9 @@ Scope: fail-closed API authentication and secure OAuth ownership
 
 ## Final pull-request review
 
-Review date: 2026-07-30  
-Pull request: `#3`  
-Reviewed base: `codex/verified-crm-audit` at `453461ed8bd3b07cf436f04a3dad290590ffd256`  
+Review date: 2026-07-30
+Pull request: `#3`
+Reviewed base: `codex/verified-crm-audit` at `453461ed8bd3b07cf436f04a3dad290590ffd256`
 Reviewed head before staging-readiness corrections: `05235f17d3986c934b0463fe08feb0493608eb1f`
 
 - **Verified** - The five-commit chain is linear and starts from the approved audited base.

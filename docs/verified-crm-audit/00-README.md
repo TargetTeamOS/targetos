@@ -1,8 +1,8 @@
 # Codex Verified CRM Audit
 
-Audit date: 2026-07-30  
-Audit branch: `codex/verified-crm-audit`  
-Audited commit: `726fe39d9d66e3f34eaa1cbc3864bf5899396c51`  
+Audit date: 2026-07-30
+Audit branch: `codex/verified-crm-audit`
+Audited commit: `726fe39d9d66e3f34eaa1cbc3864bf5899396c51`
 Source ref: `origin/feature/connected-email-accounts`
 
 ## Scope and method

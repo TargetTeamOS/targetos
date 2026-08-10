@@ -1,7 +1,7 @@
 # Supabase Configuration Isolation
 
-Status date: 2026-07-31  
-Pull request: #5 `codex/supabase-config-isolation`  
+Status date: 2026-07-31
+Pull request: #5 `codex/supabase-config-isolation`
 Verified head: `0e2c52a8782e198a050b61ba680d120a6570bc8a`
 
 ## Implementation result

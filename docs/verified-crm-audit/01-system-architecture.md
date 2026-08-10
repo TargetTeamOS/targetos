@@ -75,4 +75,3 @@ flowchart LR
 ```
 
 - **Partially verified** — The diagram represents committed call paths. Whether every external connection, database trigger webhook, Edge Function, and schedule is deployed is **Unknown**.
-

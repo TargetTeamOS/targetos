@@ -147,4 +147,3 @@ Every route below is taken from `src/App.jsx`.
 - **Security risk** — Several synchronization writes are best-effort and catch errors without a transaction. Partial failure can leave pages inconsistent.
 - **Missing implementation** — No database transaction/RPC or durable outbox guarantees atomic synchronization across deals, listings, and TC records.
 - **Partially verified** — Row visibility on boards depends on a combination of client filtering and live RLS. The live policy state is **Unknown**.
-

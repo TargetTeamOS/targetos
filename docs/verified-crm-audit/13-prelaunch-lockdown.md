@@ -1,7 +1,7 @@
 # Pre-launch Safety Lockdown
 
-Status date: 2026-07-31  
-Program phase: Phase 0  
+Status date: 2026-07-31
+Program phase: Phase 0
 Environment: current pre-launch Supabase development project
 
 ## Backup baseline
