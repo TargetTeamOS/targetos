@@ -66,3 +66,36 @@ exceptions, and installs dual-write triggers that reject unknown or mismatched
 identity/legacy pairs. It does not remove or rewrite the legacy columns.
 
 Package 2 must not be applied until Package 1 SQL has passed its verification queries.
+
+## Package 3 — Core record compatibility layer
+
+Status: **Implemented in code; database migration still not executed**
+
+This package adds a shared record adapter for contacts, deals, listings, offers,
+tasks, and TC phases. The adapter resolves stable workflow/choice codes, decorates
+legacy rows with virtual code and presentation metadata, validates writes, supports
+registered legacy aliases in filters, and removes presentation-only fields before a
+database request. If a compatibility form changes a workflow value after the
+additive foreign-key migration, its stale environment-specific foreign key is
+cleared so the database trigger can resolve the correct canonical ID.
+
+The main CRM data service now applies that adapter to contact, deal, listing, offer,
+and task reads and writes. Contacts, Listings, Production, and Tasks use stable codes
+for the migrated filters, counts, grouping, completion, lifecycle transitions,
+automatic dates, and board behavior. Existing legacy values remain accepted and are
+not rewritten merely because an unrelated field was edited.
+
+Behavioral coverage verifies legacy-row decoration, stable-code writes, unknown-value
+rejection, legacy task-note compatibility, stale decorated-form codes, stale foreign
+keys, alias-aware filters, and code-based comparisons.
+
+### Package 3 boundary
+
+This is not the system-wide cutover. Direct Supabase queries outside the main CRM
+service, serverless reports and communication jobs, dashboard pins, campaigns,
+automations, TC-specific CRUD, user-role assignments, configurable boards, and
+external-provider mappings still contain legacy-text paths. They remain scheduled
+for later packages and must not be described as rename-safe yet.
+
+No SQL was run, no database row was written, no external effect was enabled, and no
+Production deployment was performed for Package 3.

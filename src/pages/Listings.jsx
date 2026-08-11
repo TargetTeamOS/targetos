@@ -17,6 +17,7 @@ import { LISTING_STATUSES } from '../lib/constants'
 import { BulkEditBar } from '../components/BulkEditBar'
 import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import { decorateRecordList, identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import SellerContacts from '../components/SellerContacts'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
@@ -31,6 +32,14 @@ import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { MLSSearch } from '../components/MLSSearch'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const listingStatusCode = value => identifierCodeFor('listings', 'status', value)
+const listingStatusMatches = (recordOrValue, expectedValue) => {
+  const actualCode = listingStatusCode(recordOrValue)
+  const expectedCode = listingStatusCode(expectedValue)
+  if (actualCode && expectedCode) return actualCode === expectedCode
+  const actualValue = recordOrValue && typeof recordOrValue === 'object' ? recordOrValue.status : recordOrValue
+  return actualValue === expectedValue
+}
 
 const STATUSES = [
   { id:'Active',           label:'Active',               color:'#00c875' },
@@ -515,7 +524,7 @@ function RoutePlanner({ listings, onClose }) {
     window.open(url, '_blank')
   }
 
-  const ivrListings = listings.filter(l => l.ivr_enabled && l.status === 'Active')
+  const ivrListings = listings.filter(l => l.ivr_enabled && listingStatusCode(l) === 'active')
 
   return (
     <div onClick={e=>e.target===e.currentTarget&&onClose()}
@@ -531,7 +540,7 @@ function RoutePlanner({ listings, onClose }) {
             <AddressAutocomplete value={startAddr} onChange={setStartAddr} placeholder="Your office or client's address"/>
           </div>
           <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Select listings to visit</div>
-          {listings.filter(l=>l.status==='Active').map(l => (
+          {listings.filter(l=>listingStatusCode(l)==='active').map(l => (
             <div key={l.id} onClick={() => toggle(l.id)}
               style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, border:"1px solid " + (selected.includes(l.id)?'#CC2200':'var(--border)'), background:selected.includes(l.id)?'rgba(204,34,0,.04)':'var(--dim)', cursor:'pointer', marginBottom:5 }}>
               <div style={{ width:18, height:18, borderRadius:4, border:"2px solid " + (selected.includes(l.id)?'#CC2200':'var(--border)'), background:selected.includes(l.id)?'#CC2200':'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -612,7 +621,7 @@ export function Listings() {
 
       q = q.range(0, 499) // Load up to 500 listings — filter by status/agent for more
       const { data, count } = await q
-      const rows = data || []
+      const rows = decorateRecordList('listings', data || [])
       if (count > 500) toast('Showing 500 of ' + count.toLocaleString() + ' listings — use filters to narrow', '#F5A623')
 
       // Count showings per listing — only for loaded listings
@@ -690,7 +699,8 @@ export function Listings() {
     try {
       if (selected) {
         const { showings_count: _sc, agents: _la, ...cleanListing } = form
-        const { error } = await supabase.from('listings').update({ ...cleanListing, updated_at: new Date().toISOString() }).eq('id', selected.id)
+        const write = prepareRecordIdentifierDatabaseWrite('listings', cleanListing)
+        const { error } = await supabase.from('listings').update({ ...write, updated_at: new Date().toISOString() }).eq('id', selected.id)
         if (error) throw error
         toast('✅ Listing saved')
 
@@ -698,7 +708,9 @@ export function Listings() {
         // The moment a listing flips to Under Contract, it lands on
         // the secretary's TC Board automatically via a safe RPC that
         // checks ownership/status/idempotency server-side.
-        const wentUC = ['Under Contract', 'Accepted offer'].includes(form.status) && selected.status !== form.status
+        const nextStatusCode = listingStatusCode(form.status)
+        const wentUC = ['under_contract', 'offer_accepted'].includes(nextStatusCode)
+          && listingStatusCode(selected) !== nextStatusCode
         if (wentUC) {
           try {
             const { error: e2 } = await supabase.rpc('auto_intake_tc_deal', {
@@ -710,7 +722,8 @@ export function Listings() {
         }
       } else {
         const { showings_count: _sc2, agents: _la2, id: _li2, ...cleanListingIns } = form
-        const { error } = await supabase.from('listings').insert({ ...cleanListingIns, agent_id: form.agent_id||agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        const write = prepareRecordIdentifierDatabaseWrite('listings', cleanListingIns)
+        const { error } = await supabase.from('listings').insert({ ...write, agent_id: form.agent_id||agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         if (error) throw error
         toast('✅ Listing added')
       }
@@ -738,7 +751,7 @@ export function Listings() {
   }
 
   const filtered = listings.filter(l => {
-    if (statusF   && l.status        !== statusF)   return false
+    if (statusF   && !listingStatusMatches(l, statusF)) return false
     if (agentF    && l.agent_id      !== agentF)    return false
     if (typeF     && l.property_type !== typeF)     return false
     if (bedsF     && String(l.beds)  !== bedsF)     return false
@@ -748,13 +761,13 @@ export function Listings() {
     return true
   })
 
-  const active   = listings.filter(l=>l.status==='Active').length
-  const uc       = listings.filter(l=>l.status==='Under Contract'||l.status==='Accepted offer').length
-  const ivrCount = listings.filter(l=>l.ivr_enabled&&l.status==='Active').length
-  const totalVol = listings.filter(l=>l.status==='Active').reduce((s,l)=>s+(parseFloat(l.list_price)||0),0)
+  const active   = listings.filter(l=>listingStatusCode(l)==='active').length
+  const uc       = listings.filter(l=>['under_contract','offer_accepted'].includes(listingStatusCode(l))).length
+  const ivrCount = listings.filter(l=>l.ivr_enabled&&listingStatusCode(l)==='active').length
+  const totalVol = listings.filter(l=>listingStatusCode(l)==='active').reduce((s,l)=>s+(parseFloat(l.list_price)||0),0)
 
   // Board view: group by status
-  const statusGroups = STATUSES.map(s => ({ ...s, items: filtered.filter(l => l.status === s.id) })).filter(g => g.items.length > 0)
+  const statusGroups = STATUSES.map(s => ({ ...s, items: filtered.filter(l => listingStatusMatches(l, s.id)) })).filter(g => g.items.length > 0)
 
   return (
     <div style={{ fontFamily:ff }}>

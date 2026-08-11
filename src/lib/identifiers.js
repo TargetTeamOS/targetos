@@ -9,6 +9,8 @@ export function buildIdentifierIndex(source = catalog) {
   const statesByCode = new Map()
   const statesByLegacy = new Map()
   const choices = new Map()
+  const choiceOptionsByCode = new Map()
+  const choiceOptionsByLegacy = new Map()
 
   for (const workflow of source.workflows || []) {
     workflows.set(workflow.code, workflow)
@@ -27,9 +29,20 @@ export function buildIdentifierIndex(source = catalog) {
 
   for (const choiceSet of source.choiceSets || []) {
     choices.set(choiceSet.code, choiceSet)
+    for (const option of choiceSet.options || []) {
+      choiceOptionsByCode.set(`${choiceSet.code}:${option.code}`, option)
+      for (const legacy of option.legacyValues || []) {
+        const key = `${choiceSet.code}:${normalizeLegacy(legacy)}`
+        const existing = choiceOptionsByLegacy.get(key)
+        if (existing && existing.code !== option.code) {
+          throw new Error(`Ambiguous identifier alias ${choiceSet.code}:${legacy}`)
+        }
+        choiceOptionsByLegacy.set(key, option)
+      }
+    }
   }
 
-  return { source, workflows, statesByCode, statesByLegacy, choices }
+  return { source, workflows, statesByCode, statesByLegacy, choices, choiceOptionsByCode, choiceOptionsByLegacy }
 }
 
 export const identifierCatalog = catalog
@@ -86,4 +99,29 @@ export function legacyWorkflowValue(workflowCode, stateCode, index = identifierI
 
 export function displayWorkflowState(workflowCode, value, index = identifierIndex) {
   return resolveWorkflowState(workflowCode, value, index)?.label || String(value ?? '')
+}
+
+export function getChoiceOption(choiceSetCode, optionCode, index = identifierIndex) {
+  if (!choiceSetCode || !optionCode) return null
+  return index.choiceOptionsByCode.get(`${choiceSetCode}:${optionCode}`) || null
+}
+
+export function resolveChoiceOption(choiceSetCode, value, index = identifierIndex) {
+  if (!choiceSetCode || value == null) return null
+  if (typeof value === 'object') {
+    if (value.code) return getChoiceOption(choiceSetCode, value.code, index)
+    value = value.label ?? value.value
+  }
+  return getChoiceOption(choiceSetCode, value, index)
+    || index.choiceOptionsByLegacy.get(`${choiceSetCode}:${normalizeLegacy(value)}`)
+    || null
+}
+
+export function resolveChoiceOptionCode(choiceSetCode, value, index = identifierIndex) {
+  return resolveChoiceOption(choiceSetCode, value, index)?.code || null
+}
+
+export function legacyChoiceValue(choiceSetCode, optionCode, index = identifierIndex) {
+  const option = getChoiceOption(choiceSetCode, optionCode, index)
+  return option?.storageValue || option?.legacyValues?.[0] || null
 }
