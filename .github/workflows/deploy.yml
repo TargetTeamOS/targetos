@@ -2,9 +2,9 @@ name: Build Check
 
 on:
   push:
-    branches: [main, codex/security-authentication-repair, codex/supabase-config-isolation, codex/phase1-main-integration, codex/phase2-access-integrations]
+    branches: [main, codex/security-authentication-repair, codex/supabase-config-isolation, codex/phase1-main-integration, codex/phase2-access-integrations, codex/system-stable-identifiers]
   pull_request:
-    branches: [main, codex/verified-crm-audit, codex/security-authentication-repair, codex/prelaunch-safety-lockdown, codex/phase1-main-integration]
+    branches: [main, codex/verified-crm-audit, codex/security-authentication-repair, codex/prelaunch-safety-lockdown, codex/phase1-main-integration, codex/phase2-access-integrations]
 
 jobs:
   build:
@@ -32,6 +32,9 @@ jobs:
 
       - name: API syntax checks
         run: find api -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Stable identifier catalog checks
+        run: npm run identifiers:check
 
       - name: Unit tests
         run: npm test
