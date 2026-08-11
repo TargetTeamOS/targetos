@@ -73,7 +73,7 @@ function rolePresent(deal, roleSet, role) {
   return false
 }
 // Returns { level, chips[] } where level ∈ red|amber|blue|gray
-function deriveCardSignals(deal, tasks, roleSet) {
+function deriveCardSignals(deal, tasks, roleSet, photo) {
   const now = new Date()
   const startToday = new Date(); startToday.setHours(0,0,0,0)
   const endToday   = new Date(); endToday.setHours(23,59,59,999)
@@ -93,13 +93,31 @@ function deriveCardSignals(deal, tasks, roleSet) {
     if (days >= 0 && days <= 7) { closingSoon = true; chips.push({ kind:'closing', label:'Closing soon' }) }
   }
 
+  // Photography lifecycle needing secretary action (handoff: "a
+  // communication or workflow event requires secretary action").
+  // 'Corrections Requested' means the secretary is waiting on the
+  // photographer to redo something — genuinely urgent (red). 'Media
+  // Received' means media is sitting unreviewed — needs attention but
+  // isn't as urgent (amber), since nothing is broken, just pending.
+  let photoUrgent = false, photoNeedsReview = false
+  if (photo?.status === 'Corrections Requested') { photoUrgent = true; chips.push({ kind:'missing', label:'📸 Corrections pending' }) }
+  else if (photo?.status === 'Media Received')   { photoNeedsReview = true; chips.push({ kind:'closing', label:'📸 Review media' }) }
+
+  // Newly received: created in the last 48h with no tasks completed
+  // yet — the file hasn't had ANY secretary action taken on it, which
+  // is its own priority signal per the handoff ("it is newly received").
+  const isNew = deal.created_at
+    && (now - new Date(deal.created_at)) < 48 * 3600 * 1000
+    && tasks.every(t => t.status !== 'done')
+  if (isNew) chips.push({ kind:'closing', label:'🆕 New file' })
+
   // Urgency level (border color): red > amber > blue > gray
   let level = 'gray'
-  if (overdue > 0 || missing.length > 0) level = 'red'
+  if (overdue > 0 || missing.length > 0 || photoUrgent) level = 'red'
   else if (dueToday > 0) level = 'amber'
-  else if (closingSoon) level = 'blue'
+  else if (closingSoon || photoNeedsReview || isNew) level = 'blue'
 
-  return { level, overdue, dueToday, missing, closingSoon, chips }
+  return { level, overdue, dueToday, missing, closingSoon, chips, photoUrgent, photoNeedsReview, isNew }
 }
 const URGENCY_COLOR = { red:'#DC2626', amber:'#F5A623', blue:'#3B82F6', gray:'var(--border)' }
 
@@ -243,7 +261,7 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
 }
 
 // ── DEAL CARD ─────────────────────────────────────────────────────
-function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle, isAdmin }) {
+function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle, isAdmin, photo }) {
   const [subTab, setSubTab] = useState('overview')   // overview | tasks | people | photo | email
   const phase    = PHASES.find(p => p.id === deal.tc_phase) || PHASES[0]
   const agent    = agents.find(a => a.id === deal.agent_id)
@@ -273,7 +291,7 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
   const dueToday = dueTodayTasks.length
 
   // Derived card signals (urgency border, waiting-on/missing chips)
-  const signals = deriveCardSignals(deal, tasks, roleSet)
+  const signals = deriveCardSignals(deal, tasks, roleSet, photo)
   const borderColor = URGENCY_COLOR[signals.level] || 'var(--border)'
 
   // Progress bar = current-stage completion (done current-phase / all current-phase)
@@ -623,6 +641,7 @@ export function TransactionCoordinator() {
   const [drawerTile,  setDrawerTile]  = useState(null)   // opens the work-queue drawer
   const [expanded,    setExpanded]    = useState({})
   const [partsByDeal, setPartsByDeal] = useState({})
+  const [photoByDeal, setPhotoByDeal] = useState({})
   const [saving,      setSaving]      = useState(false)
 
   // Modals
@@ -727,11 +746,12 @@ export function TransactionCoordinator() {
     setLoading(true)
     try {
       loadTcSettings().then(setTcCfg).catch(() => {})
-      const [dr, tr, ar, pr] = await Promise.all([
+      const [dr, tr, ar, pr, phr] = await Promise.all([
         supabase.from('tc_deals').select('*').order('updated_at', { ascending:false }).range(0, 499),
         supabase.from('tc_tasks').select('*').order('due_date',   { ascending:true  }).range(0, 4999),
         supabase.from('agents').select('id,name,color,email').eq('active',true).order('name'),
         supabase.from('tc_participants').select('tc_deal_id,role,contact_id').range(0, 9999),
+        supabase.from('tc_photography').select('tc_deal_id,status,corrections_note').range(0, 999),
       ])
       if (dr.error?.message?.includes('does not exist')) { setSqlError(true); return }
       setDeals(dr.data || [])
@@ -741,6 +761,12 @@ export function TransactionCoordinator() {
       const pByDeal = {}
       ;(pr.data || []).forEach(p => { if (!p.contact_id) return; (pByDeal[p.tc_deal_id] = pByDeal[p.tc_deal_id] || new Set()).add(p.role) })
       setPartsByDeal(pByDeal)
+      // photography by deal — used to surface "corrections requested" /
+      // "media received, needs review" as work-queue signals (handoff:
+      // "a communication or workflow event requires secretary action")
+      const phByDeal = {}
+      ;(phr.data || []).forEach(p => { phByDeal[p.tc_deal_id] = p })
+      setPhotoByDeal(phByDeal)
     } catch(e) {
       setSqlError(true)
     } finally { setLoading(false) }
@@ -1141,13 +1167,13 @@ export function TransactionCoordinator() {
   // Per-deal derived signals (for dashboard tiles + tile filtering)
   const signalsByDeal = useMemo(() => {
     const m = {}
-    deals.forEach(d => { m[d.id] = deriveCardSignals(d, tasksByDeal[d.id] || [], partsByDeal[d.id]) })
+    deals.forEach(d => { m[d.id] = deriveCardSignals(d, tasksByDeal[d.id] || [], partsByDeal[d.id], photoByDeal[d.id]) })
     return m
-  }, [deals, tasksByDeal, partsByDeal])
+  }, [deals, tasksByDeal, partsByDeal, photoByDeal])
 
   // Which deals fall in each dashboard bucket (memoized)
   const buckets = useMemo(() => {
-    const b = { attention:[], today:[], week:[], overdue:[], closing:[], wait_agent:[], wait_attorney:[], wait_mtg:[], missing:[], photo:[] }
+    const b = { attention:[], today:[], week:[], overdue:[], closing:[], wait_agent:[], wait_attorney:[], wait_mtg:[], missing:[], photo:[], newFile:[] }
     const t = new Date().toISOString().slice(0,10)
     const wk = (()=>{ const d=new Date(); d.setDate(d.getDate()+7); return d.toISOString().slice(0,10) })()
     deals.forEach(d => {
@@ -1159,13 +1185,15 @@ export function TransactionCoordinator() {
       if (s.overdue > 0) b.overdue.push(d.id)
       if (s.closingSoon) b.closing.push(d.id)
       if (s.missing.length) b.missing.push(d.id)
+      if (s.isNew) b.newFile.push(d.id)
+      if (s.photoUrgent || s.photoNeedsReview) b.photo.push(d.id)
       // waiting-on (APPROXIMATION from existing data — see note in drawer)
       if (dTasks.some(x => x.agent_id)) b.wait_agent.push(d.id)
       if (s.missing.includes('seller_attorney') || s.missing.includes('buyer_attorney')) b.wait_attorney.push(d.id)
       if (s.missing.includes('mortgage_broker') || s.missing.includes('title')) b.wait_mtg.push(d.id)
     })
     return b
-  }, [deals, signalsByDeal, tasksByDeal])
+  }, [deals, signalsByDeal, tasksByDeal, photoByDeal])
 
   const filteredDeals = useMemo(() => deals.filter(d => {
     if (d.fell_through) return false   // shown separately below, not in the normal phase board
@@ -1271,6 +1299,7 @@ export function TransactionCoordinator() {
           { id:'wait_mtg',  label:'Waiting mtg/title',n:buckets.wait_mtg.length,     c:'var(--muted)',  bg:'var(--dim)' },
           { id:'missing',   label:'Missing info',    n:buckets.missing.length,       c:'var(--muted)',  bg:'var(--dim)' },
           { id:'photo',     label:'Photography',     n:buckets.photo.length,         c:'var(--muted)',  bg:'var(--dim)' },
+          { id:'newFile',   label:'New files',       n:buckets.newFile.length,       c:'#8B5CF6',       bg:'rgba(139,92,246,.1)' },
         ].map(t => (
           <button key={t.id} onClick={()=> setDrawerTile(t.id)}
             style={{ display:'flex', alignItems:'baseline', gap:6, padding:'5px 11px', borderRadius:8,
@@ -1329,6 +1358,7 @@ export function TransactionCoordinator() {
             roleSet={partsByDeal[deal.id]}
             agents={agents}
             isAdmin={isAdmin}
+            photo={photoByDeal[deal.id]}
             expanded={!!expanded[deal.id]}
             onToggle={() => setExpanded(p => (p[deal.id] ? {} : { [deal.id]: true }))}
             onPhaseChange={changePhase}
@@ -1360,6 +1390,7 @@ export function TransactionCoordinator() {
                   roleSet={partsByDeal[deal.id]}
                   agents={agents}
                   isAdmin={isAdmin}
+                  photo={photoByDeal[deal.id]}
                   expanded={!!expanded[deal.id]}
                   onToggle={() => setExpanded(p => (p[deal.id] ? {} : { [deal.id]: true }))}
                   onPhaseChange={changePhase}
@@ -1385,14 +1416,15 @@ export function TransactionCoordinator() {
           overdue:'🔴 Overdue', today:'📌 Due today', week:'📆 Due this week', attention:'⚠️ Needs attention',
           closing:'🏁 Closing ≤7 days', wait_agent:'👤 Waiting on agent', wait_attorney:'⚖️ Waiting on attorney',
           wait_mtg:'🏦 Waiting on mortgage/title', missing:'❗ Missing info', photo:'📸 Photography',
-          all_deals:'📋 All TC files', pre_listing:'📋 Pre-Listing files', under_contract:'📝 Under Contract files',
+          newFile:'🆕 New files', all_deals:'📋 All TC files', pre_listing:'📋 Pre-Listing files', under_contract:'📝 Under Contract files',
           closing14:'🎉 Closing within 14 days',
         }
         const APPROX = {
           wait_agent:'approx: open tasks assigned to an agent (no real waiting-on field yet)',
           wait_attorney:'approx: derived from missing attorney party',
           wait_mtg:'approx: derived from missing mortgage/title party',
-          photo:'derived from stage — full photography tracking coming later',
+          photo:'files where a photo shoot needs corrections addressed, or media is received and waiting for your review',
+          newFile:'files created in the last 48 hours with no task completed yet',
         }
         let rows = []
         // KPI keys pull their own deal lists (not in buckets)
