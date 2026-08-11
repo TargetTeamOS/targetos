@@ -150,6 +150,29 @@ export function TCEmailLog({ deal }) {
   const [draft, setDraft] = useState({ subject: '', note: '', direction: 'sent' })
   const [saving, setSaving] = useState(false)
 
+  // ── REAL SEND (added 2026-08-09) ──────────────────────────────────
+  // Sends through the AUTHENTICATED USER'S own connected mailbox via
+  // the existing, already-gated api/connector-send.js (same endpoint
+  // used elsewhere). Respects EXTERNAL_EFFECTS_ENABLED server-side —
+  // if it's off, this logs the attempt as 'blocked' rather than
+  // pretending to send. NOT included in this pass: CC/BCC, attachments,
+  // approved templates, reply-within-thread — those need separate,
+  // larger work (thread/receive sync in particular).
+  const [mode, setMode] = useState('log')   // 'log' | 'compose'
+  const [contacts, setContacts] = useState([])   // linked parties with an email, from tc_participants
+  const [compose, setCompose] = useState({ contact_id: '', to_email: '', subject: '', body: '' })
+  const [sending, setSending] = useState(false)
+
+  async function loadContacts() {
+    try {
+      const { data: rows } = await supabase.from('tc_participants').select('contact_id').eq('tc_deal_id', deal.id)
+      const ids = [...new Set((rows || []).map(r => r.contact_id).filter(Boolean))]
+      if (!ids.length) { setContacts([]); return }
+      const { data: cs } = await supabase.from('contacts').select('id, first_name, last_name, email').in('id', ids)
+      setContacts((cs || []).filter(c => c.email))
+    } catch { setContacts([]) }
+  }
+
   async function load() {
     try {
       const { data } = await supabase.from('tc_correspondence')
@@ -157,7 +180,7 @@ export function TCEmailLog({ deal }) {
       setEntries(data || [])
     } catch { setEntries([]) }
   }
-  useEffect(() => { load() }, [deal.id])
+  useEffect(() => { load(); loadContacts() }, [deal.id])
 
   async function addEntry() {
     if (!draft.subject.trim() && !draft.note.trim()) return
@@ -165,7 +188,7 @@ export function TCEmailLog({ deal }) {
     try {
       const { error } = await supabase.from('tc_correspondence').insert({
         tc_deal_id: deal.id, subject: draft.subject, note: draft.note,
-        direction: draft.direction, created_at: new Date().toISOString(),
+        direction: draft.direction, send_status: 'logged', created_at: new Date().toISOString(),
       })
       if (error) throw error
       setDraft({ subject: '', note: '', direction: 'sent' })
@@ -174,38 +197,140 @@ export function TCEmailLog({ deal }) {
     setSaving(false)
   }
 
+  async function sendEmail() {
+    const toEmail = compose.contact_id
+      ? contacts.find(c => c.id === compose.contact_id)?.email
+      : compose.to_email.trim()
+    if (!toEmail) { alert('Pick a linked contact or enter an email address'); return }
+    if (!compose.subject.trim()) { alert('Subject required'); return }
+    setSending(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/connector-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}) },
+        // agent_id intentionally omitted — connector-send.js derives the
+        // sender from the SIGNED-IN user's own session, never a
+        // client-supplied identity, so this always sends from whoever
+        // is actually composing it (per handoff: "an agent may not
+        // send from another agent's mailbox").
+        body: JSON.stringify({
+          provider: 'outlook',
+          to: toEmail,
+          contact_id: compose.contact_id || null,
+          subject: compose.subject.trim(),
+          html: '<p>' + compose.body.trim().replace(/\n/g, '</p><p>') + '</p>',
+        }),
+      })
+      const result = await res.json()
+      const blocked = result.blocked
+      const ok = res.ok && !blocked && !result.error
+
+      await supabase.from('tc_correspondence').insert({
+        tc_deal_id: deal.id,
+        direction: 'sent',
+        subject: compose.subject.trim(),
+        note: compose.body.trim(),
+        contact_id: compose.contact_id || null,
+        to_email: toEmail,
+        provider: ok ? result.provider : null,
+        from_account: ok ? result.from : null,
+        send_status: blocked ? 'blocked' : ok ? 'sent' : 'failed',
+        created_at: new Date().toISOString(),
+      })
+
+      if (blocked) alert('Logged, but not actually sent — external sending is currently disabled (EXTERNAL_EFFECTS_ENABLED is off).')
+      else if (!ok) alert('Send failed: ' + (result.error || 'unknown error') + ' — logged as failed.')
+
+      setCompose({ contact_id: '', to_email: '', subject: '', body: '' })
+      setMode('log')
+      load()
+    } catch (e) {
+      alert('Send failed: ' + e.message)
+    } finally { setSending(false) }
+  }
+
   const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: 12.5, fontFamily: ff, boxSizing: 'border-box' }
 
   return (
     <div style={{ fontFamily: ff }}>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
-        Track every email/call/message about this deal so the whole thread lives in one place.
+        Send real email through your connected mailbox, or log a call/meeting/note — the whole thread lives here.
       </div>
-      {/* Add entry */}
-      <div style={{ background: 'var(--dim)', borderRadius: 10, padding: 12, marginBottom: 12, border: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-          <select value={draft.direction} onChange={e => setDraft(d => ({ ...d, direction: e.target.value }))}
-            style={{ ...inp, width: 120, flexShrink: 0 }}>
-            <option value="sent">📤 Sent</option>
-            <option value="received">📥 Received</option>
-            <option value="call">📞 Call</option>
-            <option value="note">📝 Note</option>
-          </select>
-          <input value={draft.subject} onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))}
-            placeholder="Subject / who / topic" style={inp} />
-        </div>
-        <textarea value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))}
-          placeholder="What was said / summary…" rows={2} style={{ ...inp, resize: 'vertical', marginBottom: 6 }} />
-        <button onClick={addEntry} disabled={saving}
-          style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--brand)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
-          {saving ? 'Saving…' : '+ Log entry'}
+
+      {/* Mode switcher */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+        <button onClick={() => setMode('compose')}
+          style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                   border: '1px solid ' + (mode === 'compose' ? 'var(--brand)' : 'var(--border)'),
+                   background: mode === 'compose' ? 'var(--brand)' : 'var(--bg)',
+                   color: mode === 'compose' ? '#fff' : 'var(--text)' }}>
+          ✉️ Compose Email
+        </button>
+        <button onClick={() => setMode('log')}
+          style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                   border: '1px solid ' + (mode === 'log' ? 'var(--brand)' : 'var(--border)'),
+                   background: mode === 'log' ? 'var(--brand)' : 'var(--bg)',
+                   color: mode === 'log' ? '#fff' : 'var(--text)' }}>
+          📝 Log Call/Note
         </button>
       </div>
+
+      {mode === 'compose' ? (
+        <div style={{ background: 'var(--dim)', borderRadius: 10, padding: 12, marginBottom: 12, border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <select style={{ ...inp, flex: 1 }} value={compose.contact_id}
+              onChange={e => setCompose(c => ({ ...c, contact_id: e.target.value, to_email: '' }))}>
+              <option value="">— Pick a linked party —</option>
+              {contacts.map(c => <option key={c.id} value={c.id}>{[c.first_name, c.last_name].filter(Boolean).join(' ')} · {c.email}</option>)}
+            </select>
+          </div>
+          {!compose.contact_id && (
+            <input style={{ ...inp, marginBottom: 6 }} placeholder="Or enter an email address directly"
+              value={compose.to_email} onChange={e => setCompose(c => ({ ...c, to_email: e.target.value }))} />
+          )}
+          <input style={{ ...inp, marginBottom: 6 }} placeholder="Subject"
+            value={compose.subject} onChange={e => setCompose(c => ({ ...c, subject: e.target.value }))} />
+          <textarea style={{ ...inp, resize: 'vertical', marginBottom: 6 }} rows={4} placeholder="Message…"
+            value={compose.body} onChange={e => setCompose(c => ({ ...c, body: e.target.value }))} />
+          <button onClick={sendEmail} disabled={sending}
+            style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--brand)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+            {sending ? 'Sending…' : '✉️ Send'}
+          </button>
+          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6 }}>
+            Sends from your own connected Outlook/Gmail account. No CC/BCC or attachments yet.
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: 'var(--dim)', borderRadius: 10, padding: 12, marginBottom: 12, border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <select value={draft.direction} onChange={e => setDraft(d => ({ ...d, direction: e.target.value }))}
+              style={{ ...inp, width: 120, flexShrink: 0 }}>
+              <option value="received">📥 Received</option>
+              <option value="call">📞 Call</option>
+              <option value="note">📝 Note</option>
+            </select>
+            <input value={draft.subject} onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))}
+              placeholder="Subject / who / topic" style={inp} />
+          </div>
+          <textarea value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))}
+            placeholder="What was said / summary…" rows={2} style={{ ...inp, resize: 'vertical', marginBottom: 6 }} />
+          <button onClick={addEntry} disabled={saving}
+            style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--brand)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+            {saving ? 'Saving…' : '+ Log entry'}
+          </button>
+        </div>
+      )}
+
       {/* Log */}
       {entries === null ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Loading…</div>
-        : entries.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 16 }}>No correspondence logged yet.</div>
+        : entries.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 16 }}>No correspondence yet.</div>
         : entries.map(e => {
           const icon = { sent: '📤', received: '📥', call: '📞', note: '📝' }[e.direction] || '•'
+          const statusBadge = e.send_status === 'sent' ? { label: '✓ Sent' + (e.from_account ? ' via ' + e.from_account : ''), color: '#10B981' }
+            : e.send_status === 'blocked' ? { label: '⏸ Blocked (external effects off)', color: '#F5A623' }
+            : e.send_status === 'failed' ? { label: '✕ Send failed', color: '#DC2626' }
+            : null
           return (
             <div key={e.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
@@ -213,7 +338,9 @@ export function TCEmailLog({ deal }) {
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', flex: 1 }}>{e.subject || '(no subject)'}</span>
                 <span style={{ fontSize: 10.5, color: 'var(--muted)', flexShrink: 0 }}>{new Date(e.created_at).toLocaleString()}</span>
               </div>
+              {e.to_email && <div style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 24 }}>To: {e.to_email}</div>}
               {e.note && <div style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 24, marginTop: 2, whiteSpace: 'pre-wrap' }}>{e.note}</div>}
+              {statusBadge && <div style={{ fontSize: 10.5, fontWeight: 700, color: statusBadge.color, marginLeft: 24, marginTop: 2 }}>{statusBadge.label}</div>}
             </div>
           )
         })}
