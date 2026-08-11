@@ -933,6 +933,7 @@ export function TransactionCoordinator() {
     for (const t of rows.filter(r => r.needs_calendar)) {
       try { await supabase.from('calendar_events').insert({
         agent_id:   deal.agent_id,
+        tc_deal_id: deal.id,
         title:      t.title + ' — ' + deal.addr,
         start_date: t.due_date,
         start_time: '10:00',
@@ -1048,6 +1049,7 @@ export function TransactionCoordinator() {
         if (taskForm.needs_calendar && taskForm.due_date) {
           const { error: e2 } = await supabase.from('calendar_events').insert({
             agent_id:   taskForm.agent_id || selDeal?.agent_id,
+            tc_deal_id: selDeal?.id,
             title:      taskForm.title + ' — ' + selDeal?.addr,
             start_date: taskForm.due_date, start_time:'10:00', type:'task',
             created_at: new Date().toISOString(),
@@ -1070,6 +1072,7 @@ export function TransactionCoordinator() {
         if (taskForm.needs_calendar && taskForm.due_date) {
           const { error: e4 } = await supabase.from('calendar_events').insert({
             agent_id:   taskForm.agent_id || selDeal.agent_id,
+            tc_deal_id: selDeal.id,
             title:      taskForm.title + ' — ' + selDeal.addr,
             start_date: taskForm.due_date, start_time:'10:00', type:'task',
             created_at: new Date().toISOString(),
