@@ -201,6 +201,7 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
         try {
           await supabase.from('calendar_events').insert({
             agent_id: deal.agent_id,
+            tc_deal_id: deal.id,
             title: '📸 Photography — ' + (deal.addr || ''),
             start_date: String(data.scheduled_at).slice(0, 10),
             start_time: String(data.scheduled_at).slice(11, 16) || '10:00',

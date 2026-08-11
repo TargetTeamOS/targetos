@@ -28,6 +28,21 @@ const BLANK = {
   color: '#CC2200'
 }
 
+// ── SOURCE RECORD NAVIGATION ────────────────────────────────────────
+// An event created BY another board (TC photography, phase tasks,
+// showings, etc.) should jump straight to that source record instead
+// of just opening the calendar's own generic edit box. Checked in
+// priority order since an event could technically have more than one
+// link set. Returns null if this event has no known source -- caller
+// falls back to the normal calendar edit drawer in that case.
+function sourceRecordPath(ev) {
+  if (ev.tc_deal_id)  return '/tc?open=' + ev.tc_deal_id
+  if (ev.deal_id)     return '/production?open=' + ev.deal_id
+  if (ev.listing_id)  return '/listings?open=' + ev.listing_id
+  if (ev.contact_id)  return '/contacts/' + ev.contact_id + '/detail'
+  return null
+}
+
 export function Calendar() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
@@ -231,7 +246,7 @@ export function Calendar() {
                     const ec = ev.color || '#CC2200'
                     return (
                     <div key={ev.id}
-                      onClick={(e) => { e.stopPropagation(); navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) }}
+                      onClick={(e) => { e.stopPropagation(); const src = sourceRecordPath(ev); if (src) { navigate(src) } else { navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) } }}
                       style={{ fontSize: SZ.ev, fontWeight: 600, color: 'var(--text)', background: ec + '1A', borderLeft: '3px solid ' + ec, borderRadius: '4px', padding: SZ.evPad, marginBottom: SZ.gap, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
                       {ev.start_time && <span style={{ fontWeight: 800, color: ec, marginRight: 5 }}>{ev.start_time.slice(0,5)}</span>}{ev.title}
                     </div>
@@ -256,7 +271,7 @@ export function Calendar() {
             <Empty icon="📅" title="No events this month" sub="Add an event to get started." action={<Btn onClick={() => navigate('/calendar/new')}>+ Add Event</Btn>} />
           )}
           {events.map(ev => (
-            <div key={ev.id} onClick={() => { navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) }}
+            <div key={ev.id} onClick={() => { const src = sourceRecordPath(ev); if (src) { navigate(src) } else { navigate('/calendar/' + ev.id); setSelected(ev); setForm({ ...BLANK, ...ev }) } }}
               style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--border)', padding: '14px 16px', marginBottom: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: "4px solid " + (ev.color || '#CC2200'), transition: 'box-shadow .12s' }}
               onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
               onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
