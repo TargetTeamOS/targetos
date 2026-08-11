@@ -7,6 +7,15 @@ describe('connector authorization policy', () => {
   it('allows personal status/disconnect for any authenticated role', () => {
     expect(connectors.connectorPermission('my_accounts', 'agent')).toBe(true)
     expect(connectors.connectorPermission('disconnect_my_account', 'agent')).toBe(true)
+    expect(connectors.connectorPermission('connection_readiness', 'agent')).toBe(true)
+  })
+
+  it('keeps shared directory visibility separate from contact actions', () => {
+    const contact = { id: 'contact-b', agent_id: 'agent-b', is_private: false }
+    expect(connectors.contactActionAllowed(contact, { id: 'agent-a', role: 'agent' })).toBe(false)
+    expect(connectors.contactActionAllowed(contact, { id: 'agent-b', role: 'agent' })).toBe(true)
+    expect(connectors.contactActionAllowed(contact, { id: 'office-a', role: 'secretary' })).toBe(true)
+    expect(connectors.contactActionAllowed(contact, { id: 'admin-a', role: 'admin' })).toBe(true)
   })
 
   it('restricts organization connector management to administrators', () => {

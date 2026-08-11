@@ -5,8 +5,8 @@
 
 const { sb, getIntegration, patchIntegration, baseUrl } = require('./_lib/connectors')
 const { authenticate, isAdminRole } = require('./_lib/auth')
-const { appOrigins } = require('./_lib/requestSecurity')
-const { requireExternalEffects } = require('./_lib/externalEffects')
+const { appOrigins, publicBaseUrl } = require('./_lib/requestSecurity')
+const { requireExternalEffects, externalEffectsEnabled } = require('./_lib/externalEffects')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -19,7 +19,7 @@ async function parseBody(req) {
 }
 
 function connectorPermission(action, role) {
-  if (action === 'my_accounts' || action === 'disconnect_my_account') return true
+  if (action === 'my_accounts' || action === 'disconnect_my_account' || action === 'connection_readiness') return true
   return isAdminRole(role)
 }
 function personalAgentId(identity) {
@@ -58,7 +58,6 @@ module.exports = async function handler(req, res) {
     const body = await parseBody(req)
     const action = body.action || ''
     const id = body.id || ''
-    const personalAction = action === 'my_accounts' || action === 'disconnect_my_account'
     if (!connectorPermission(action, identity.agent.role)) {
       res.status(403).json({ error: 'forbidden' }); return
     }
@@ -151,6 +150,24 @@ module.exports = async function handler(req, res) {
         .eq('agent_id', personalAgentId(identity))
       if (error) throw new Error(error.message)
       res.status(200).json({ accounts: data || [] })
+      return
+    }
+
+    if (action === 'connection_readiness') {
+      const [google, outlook] = await Promise.all([getIntegration('google'), getIntegration('outlook')])
+      const ready = integration => !!(
+        integration && integration.config && integration.config.client_id
+        && integration.secrets && integration.secrets.client_secret
+      )
+      res.status(200).json({
+        base_url_configured: !!publicBaseUrl(),
+        oauth_state_configured: String(process.env.OAUTH_STATE_SECRET || '').length >= 32,
+        external_effects_enabled: externalEffectsEnabled(),
+        providers: {
+          google: { configured: ready(google) },
+          outlook: { configured: ready(outlook) },
+        },
+      })
       return
     }
 

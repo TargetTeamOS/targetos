@@ -265,6 +265,13 @@ async function getAgentForUser(authUserId) {
 
 // Service-role clients bypass RLS, so connector routes must enforce the
 // same private-contact ownership rule before sending or writing timelines.
+function contactActionAllowed(contact, agent) {
+  if (!contact || !agent) return false
+  const role = String(agent.role || '').trim().toLowerCase()
+  const office = ['admin', 'administrator', 'owner', 'secretary', 'transaction_coordinator', 'transaction coordinator'].includes(role)
+  return contact.agent_id === agent.id || office
+}
+
 async function contactAccess(contactId, agent) {
   if (!contactId) return { exists: false, allowed: false }
   const { data, error } = await sb().from('contacts')
@@ -273,11 +280,11 @@ async function contactAccess(contactId, agent) {
     .maybeSingle()
   if (error) throw new Error('contact lookup failed')
   if (!data) return { exists: false, allowed: false }
-  const role = String((agent && agent.role) || '').trim().toLowerCase()
-  const admin = ['admin', 'administrator', 'owner'].includes(role)
   return {
     exists: true,
-    allowed: data.is_private === false || data.agent_id === (agent && agent.id) || admin,
+    // Shared directory visibility is not permission to communicate as the
+    // owning agent. Only the owner or an office role may send/write activity.
+    allowed: contactActionAllowed(data, agent),
   }
 }
 
@@ -301,6 +308,7 @@ module.exports.freshAccountToken = freshAccountToken
 module.exports.agentIdFromAuthUser = agentIdFromAuthUser
 module.exports.getAgentForUser = getAgentForUser
 module.exports.contactAccess = contactAccess
+module.exports.contactActionAllowed = contactActionAllowed
 module.exports.insertContactTimeline = insertContactTimeline
 
 // ── Team chat (Slack or Teams incoming webhook) ───────────────────

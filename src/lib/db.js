@@ -27,7 +27,7 @@ async function run(promise) {
 const VIRTUAL_FIELDS = new Set([
   'agents','contacts','listings','deals','tasks','calls',
   'oh_visitors','deal_contacts','open_houses',
-  '_contact_count','_task_count','showings_count','_local',
+  '_contact_count','_task_count','showings_count','_local','directory_only',
 ])
 function stripVirtual(data) {
   if (!data || typeof data !== 'object') return data

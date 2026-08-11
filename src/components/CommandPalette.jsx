@@ -23,7 +23,7 @@ const QUICK_ACTIONS = [
   { type:'action', label:'Go to Contacts',      sub:'',                      shortcut:'',  path:'/contacts',          icon:'👥' },
   { type:'action', label:'Go to Production',    sub:'',                      shortcut:'',  path:'/production',        icon:'📋' },
   { type:'action', label:'Go to Calendar',      sub:'',                      shortcut:'',  path:'/calendar',          icon:'📅' },
-  { type:'action', label:'Go to Call Flow',     sub:'',                      shortcut:'',  path:'/calls',             icon:'📞' },
+  { type:'action', label:'Go to Call Flow',     sub:'',                      shortcut:'',  path:'/calls',             icon:'📞', permission:'calls.view' },
   { type:'action', label:'Go to Settings',      sub:'',                      shortcut:'',  path:'/settings',          icon:'⚙️' },
 ]
 
@@ -40,7 +40,7 @@ function pushRecent(item) {
 }
 
 export function CommandPalette({ open, onClose }) {
-  const { agent, isAdmin, canManage } = useAuth()
+  const { agent, isAdmin, canManage, can } = useAuth()
   const navigate = useNavigate()
   const [query,   setQuery]   = useState('')
   const [results, setResults] = useState([])
@@ -72,14 +72,18 @@ export function CommandPalette({ open, onClose }) {
     const agentFilter = (isAdmin || canManage) ? {} : { agent_id: agent?.id }
 
     try {
+      const contactSearch = (isAdmin || canManage)
+        ? supabase.from('contacts').select('id,first_name,last_name,phone,email,status,agent_id')
+            .or('first_name.ilike.' + like + ',last_name.ilike.' + like + ',phone.ilike.' + like + ',email.ilike.' + like)
+            .limit(5).then(r => r.data || [])
+        : supabase.rpc('app_contact_directory', { p_search:q, p_limit:5, p_offset:0 }).then(r => r.data || [])
+
       const [contacts, deals, listings, tasks] = await Promise.all([
-        supabase.from('contacts').select('id,first_name,last_name,phone,email,status,agent_id')
-          .or('first_name.ilike.' + like + ',last_name.ilike.' + like + ',phone.ilike.' + like + ',email.ilike.' + like)
-          .limit(5).then(r => (r.data||[]).map(c => ({
+        contactSearch.then(rows => rows.map(c => ({
             type:'contact', id:'c_'+c.id, raw:c.id,
             label: [c.first_name,c.last_name].filter(Boolean).join(' ') || c.phone,
-            sub: [c.phone,c.email,c.status].filter(Boolean).join(' · '),
-            path: '/contacts/'+c.id+'/detail', icon:'👤',
+            sub: [c.phone,c.email,c.status,c.agents?.name].filter(Boolean).join(' · '),
+            path: c.directory_only ? '/contacts' : '/contacts/'+c.id+'/detail', icon:'👤',
           }))),
         supabase.from('deals').select('id,addr,stage,gci,agent_id,client_name')
           .ilike('addr', like).limit(5).then(r => (r.data||[]).map(d => ({
@@ -115,7 +119,7 @@ export function CommandPalette({ open, onClose }) {
       })
 
       // Also match actions
-      const matchedActions = QUICK_ACTIONS.filter(a => a.label.toLowerCase().includes(q.toLowerCase()))
+      const matchedActions = allowedActions.filter(a => a.label.toLowerCase().includes(q.toLowerCase()))
 
       setResults([...all, ...matchedActions])
       setCursor(0)
@@ -152,10 +156,18 @@ export function CommandPalette({ open, onClose }) {
     if (el) el.scrollIntoView({ block:'nearest' })
   }, [cursor])
 
-  const displayItems = query.trim() ? results : (recent.length > 0 ? recent : QUICK_ACTIONS)
+  const allowedActions = useMemo(
+    () => QUICK_ACTIONS.filter(action => !action.permission || can(action.permission)),
+    [can]
+  )
+  const allowedRecent = useMemo(
+    () => recent.filter(item => !item.permission || can(item.permission)),
+    [recent, can]
+  )
+  const displayItems = query.trim() ? results : (allowedRecent.length > 0 ? allowedRecent : allowedActions)
   const sectionLabel = query.trim()
     ? (loading ? 'Searching...' : results.length + ' result' + (results.length!==1?'s':''))
-    : (recent.length > 0 ? 'Recent' : 'Quick Actions')
+    : (allowedRecent.length > 0 ? 'Recent' : 'Quick Actions')
 
   // Group results by type when searching
   const grouped = useMemo(() => {

@@ -35,17 +35,17 @@ const NAV = [
   { id: 'offers',        label: 'Offers',         icon: '📝', roles: ['admin','secretary','agent'] },
 
   // ── COMMUNICATION ─────────────────────────────────────────────────
-  { id: 'calls',         label: 'Calls & SMS',    icon: '📞', roles: ['admin','secretary','agent'] },
+  { id: 'calls',         label: 'Calls & SMS',    icon: '📞', roles: ['admin','secretary','agent'], permission:'calls.view' },
   { id: 'email',         label: 'Email',          icon: '📧', roles: ['admin','secretary'] },
 
   // ── TOOLS ─────────────────────────────────────────────────────────
   { id: 'segments',      label: 'Segments',       icon: '🎯', roles: ['admin','secretary'] },
   { id: 'gifts',         label: 'Gifts',          icon: '🎁', roles: ['admin','secretary'] },
   { id: 'signs',         label: 'Signs',          icon: '🪧', roles: ['admin','secretary'] },
-  { id: 'marketing',     label: 'Marketing',      icon: '🎨', roles: ['admin','secretary','agent'] },
+  { id: 'marketing',     label: 'Marketing',      icon: '🎨', roles: ['admin','secretary','agent'], permission:'marketing.access' },
   { id: 'mortgage',      label: 'Toolbox',        icon: '🧰', roles: ['admin','secretary','agent'] },
-  { id: 'briefing',      label: 'Daily Briefing', icon: '☀️',  roles: ['admin','secretary','agent'] },
-  { id: 'announcements', label: 'Announcements',  icon: '📣', roles: ['admin','secretary','agent'] },
+  { id: 'briefing',      label: 'Daily Briefing', icon: '☀️', roles: ['admin','secretary','agent'], permission:'daily_briefing.access' },
+  { id: 'announcements', label: 'Announcements',  icon: '📣', roles: ['admin','secretary','agent'], permission:'announcements.access' },
 
   // ── ADMIN ─────────────────────────────────────────────────────────
   { id: 'automations',   label: 'Automations',    icon: '⚡', roles: ['admin'] },
@@ -59,7 +59,7 @@ const NAV = [
 export function Layout({ children }) {
   const navigate  = useNavigate()
   const location  = useLocation()
-  const { agent, isAdmin, signOut } = useAuth()
+  const { agent, isAdmin, signOut, can } = useAuth()
   const { state, setSidebarCollapsed, setTheme } = useApp()
   const isMobile = useIsMobile()
   const collapsed = state.collapsed
@@ -130,6 +130,7 @@ export function Layout({ children }) {
           {NAV.map((item, i) => {
             if (item.DIVIDER) return <div key={i} style={{ height: '1px', background: 'rgba(255,255,255,.06)', margin: '6px 0' }} />
             if (!item.roles.includes(role)) return null
+            if (item.permission && !can(item.permission)) return null
 
             const active = isActive(item.id)
             return (

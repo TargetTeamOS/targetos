@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import { sendContactEmail } from '../lib/emailService'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
+import { safeErrorMessage } from '../lib/errorMessage'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -144,9 +145,10 @@ export function EmailCompose({ contact, contactId, onSent, onCancel }) {
         body,
         agentName:  agent?.name || 'Target Team',
         agentEmail: agent?.email || 'office@targetreteam.com',
+        contactId,
       })
 
-      if (!result.success) throw new Error(result.error || 'Send failed')
+      if (!result.success) throw new Error(safeErrorMessage(result.error, 'Send failed'))
 
       // Log to timeline
       await supabase.from('audit_log').insert({
@@ -172,7 +174,7 @@ export function EmailCompose({ contact, contactId, onSent, onCancel }) {
       setBody('')
       onSent?.()
     } catch(e) {
-      toast('❌ Failed to send: ' + e.message, '#DC2626')
+      toast('❌ Failed to send: ' + safeErrorMessage(e, 'Send failed'), '#DC2626')
     } finally {
       setSending(false)
     }

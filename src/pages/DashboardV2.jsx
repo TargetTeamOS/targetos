@@ -47,7 +47,7 @@ function Tile({ icon, label, value, sub, color, onClick, big }) {
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { agent, isAdmin, canManage } = useAuth()
+  const { agent, isAdmin, canManage, can } = useAuth()
   const { toast } = useApp()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -70,7 +70,9 @@ export function Dashboard() {
         supabase.from('tasks').select('id,title,status,priority,due_date,agent_id').then(r => r.data || []),
         supabase.from('listings').select('id,addr,city,status,list_price,agent_id').then(r => r.data || []),
         supabase.from('open_houses').select('id,listing_addr,date,agent_id').then(r => r.data || []),
-        supabase.from('announcements').select('*,agents(name,color)').order('pinned',{ascending:false}).limit(5).then(r => r.data || []),
+        can('announcements.access')
+          ? supabase.from('announcements').select('*,agents(name,color)').order('pinned',{ascending:false}).limit(5).then(r => r.data || [])
+          : Promise.resolve([]),
         supabase.from('gifts').select('id,status,agent_id').then(r => r.data || []),
       ])
       const myDeals = filter(rawDeals), myContacts = filter(rawContacts), myTasks = filter(rawTasks)
@@ -97,7 +99,7 @@ export function Dashboard() {
       })
     } catch (e) { console.warn('dashboard load', e.message) }
     setLoading(false)
-  }, [agent, isAdmin, canManage])
+  }, [agent, isAdmin, canManage, can])
   useEffect(() => { loadData() }, [loadData])
 
   // ── listing tiles (MLS + team) ──
@@ -205,11 +207,11 @@ export function Dashboard() {
         <Tile icon="🏷️" label="Active Listings" value={data.activeListings.length} color="#2563EB" onClick={() => navigate('/my-listings')} />
         <Tile icon="👥" label="Total Contacts" value={data.contactCount} color="#8B5CF6" onClick={() => navigate('/contacts')} />
         <Tile icon="🚪" label="Open Houses" value={data.upcomingOH.length} sub="this week" color="#EC4899" onClick={() => navigate('/open-house')} />
-        <Tile icon="📣" label="Announcements" value={data.announcements.length} color="#64748B" onClick={() => navigate('/announcements')} />
+        {can('announcements.access') && <Tile icon="📣" label="Announcements" value={data.announcements.length} color="#64748B" onClick={() => navigate('/announcements')} />}
       </div>
 
       {/* announcements strip */}
-      {data.announcements.length > 0 && (
+      {can('announcements.access') && data.announcements.length > 0 && (
         <div style={{ background:'var(--panel)', border:'1px solid var(--border)', borderRadius:14, padding:16, marginTop:8 }}>
           <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', marginBottom:10 }}>📣 Latest Announcements</div>
           {data.announcements.slice(0,3).map(a => (

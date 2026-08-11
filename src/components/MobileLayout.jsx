@@ -18,14 +18,15 @@ const MORE_NAV = [
   { id: '/transactions',icon: '📋', label: 'Transactions'    },
   { id: '/offers',      icon: '📝', label: 'Offers'          },
   { id: '/gifts',       icon: '🎁', label: 'Gifts',        roles: ['admin','secretary'] },
-  { id: '/calls',       icon: '📞', label: 'Calls'           },
+  { id: '/calls',       icon: '📞', label: 'Calls', permission:'calls.view' },
   { id: '/openhouse',   icon: '🏠', label: 'Open House'      },
   { id: '/listingprep', icon: '📋', label: 'Listing Prep'    },
   { id: '/signs',       icon: '🪧', label: 'Signs',        roles: ['admin','secretary'] },
   { id: '/calendar',    icon: '📅', label: 'Calendar'        },
-  { id: '/announcements',icon:'📣', label: 'Announcements'   },
+  { id: '/announcements',icon:'📣', label: 'Announcements', permission:'announcements.access' },
   { id: '/email',       icon: '✉',  label: 'Email',        roles: ['admin','secretary'] },
-  { id: '/marketing',   icon: '🎨', label: 'Marketing'       },
+  { id: '/marketing',   icon: '🎨', label: 'Marketing', permission:'marketing.access' },
+  { id: '/briefing',    icon: '☀️', label: 'Daily Briefing', permission:'daily_briefing.access' },
   { id: '/notepad',     icon: '📝', label: 'Notepad'         },
   { id: '/settings',    icon: '⚙',  label: 'Settings'        },
 ]
@@ -33,12 +34,12 @@ const MORE_NAV = [
 export function MobileLayout({ children }) {
   const navigate  = useNavigate()
   const location  = useLocation()
-  const { agent, isAdmin, signOut } = useAuth()
+  const { agent, isAdmin, signOut, can } = useAuth()
   const [showMore, setShowMore] = useState(false)
 
   const activePath = location.pathname
   const role = agent?.role || 'agent'
-  const moreNav = MORE_NAV.filter(item => !item.roles || item.roles.includes(role))
+  const moreNav = MORE_NAV.filter(item => (!item.roles || item.roles.includes(role)) && (!item.permission || can(item.permission)))
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100vh', background:'var(--bg)', fontFamily:'Inter,system-ui,sans-serif' }}>

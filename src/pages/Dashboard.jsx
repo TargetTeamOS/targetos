@@ -90,7 +90,7 @@ const WIDGET_DEFS = {
   gifts_pending:   { label: 'Gifts Pending',         icon: '🎁', roles: ['admin','secretary'] },
   quick_add:       { label: 'Quick Add',             icon: '⚡', roles: ['admin','secretary','agent'] },
   overdue_alert:   { label: 'Overdue Alert',         icon: '⚠️',  roles: ['admin','secretary','agent'] },
-  announcements:    { label: 'Announcements',          icon: '📣', roles: ['admin','secretary','agent'] },
+  announcements:    { label: 'Announcements',          icon: '📣', roles: ['admin','secretary'] },
   production_stats: { label: 'Production Stats',       icon: '💰', roles: ['admin','secretary','agent'] },
   // Custom board widgets — defined by the user at runtime
   custom:           { label: 'Custom Widget',          icon: '🔲', roles: ['admin','secretary','agent'] },

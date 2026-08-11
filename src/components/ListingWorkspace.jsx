@@ -17,7 +17,7 @@ import { contactName } from './ContactPicker'
 import ContactPicker from './ContactPicker'
 import ListingFilesPanel from './ListingFilesPanel'
 import { THEME_DEFS, themeLabel, mainThemeFor, buildThemeSummary, buildBuyerStats, buildSummarySentences } from '../lib/feedbackThemes'
-import { sendContactEmail } from '../lib/emailService'
+import { sendContactEmail, getConnectedEmailAccount } from '../lib/emailService'
 
 const ff = 'Inter,system-ui,sans-serif'
 const ALL_TABS = [
@@ -71,7 +71,7 @@ export default function ListingWorkspace({
   const [parties, setParties] = useState(null)     // { role: contact } | null while loading, {} if no TC deal linked
   const [sellerContact, setSellerContact] = useState(null)
   const [emailTarget, setEmailTarget] = useState(null) // contact object to email, or null
-  const [connectedEmailAccount, setConnectedEmailAccount] = useState(undefined) // undefined=checking, null=none connected, {provider,account_email}=connected
+  const [connectedEmailAccount, setConnectedEmailAccount] = useState(undefined) // undefined=checking, null=none, {provider,from}=connected
   const [composeSubject, setComposeSubject] = useState('')
   const [composeBody, setComposeBody] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
@@ -260,16 +260,8 @@ export default function ListingWorkspace({
     if (!agent?.id) { setConnectedEmailAccount(null); return }
     ;(async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        const res = await fetch('/api/connectors', {
-          method:'POST',
-          headers: { 'Content-Type':'application/json', ...(session?.access_token ? { Authorization:'Bearer '+session.access_token } : {}) },
-          body: JSON.stringify({ action:'my_accounts', agent_id: agent.id }),
-        })
-        const j = await res.json()
-        const outlook = (j.accounts||[]).find(a => a.provider==='outlook' && a.status==='connected')
-        const gmail = (j.accounts||[]).find(a => a.provider==='google' && a.status==='connected')
-        if (alive) setConnectedEmailAccount(outlook || gmail || null)
+        const account = await getConnectedEmailAccount()
+        if (alive) setConnectedEmailAccount(account?.connected ? account : null)
       } catch { if (alive) setConnectedEmailAccount(null) }
     })()
     return () => { alive = false }
@@ -286,33 +278,24 @@ export default function ListingWorkspace({
     if (emailTarget) { setComposeSubject('Re: ' + listing.addr); setComposeBody('') }
   }, [emailTarget, listing.addr])
 
-  // Real email send. Prefers the agent's own connected Outlook/Gmail
-  // account (via api/connector-send, checked above) so the email truly
-  // comes from the logged-in user, not a generic sender. Falls back to
-  // the office Resend sender ONLY if no personal account is connected --
-  // and says so honestly in the log, not silently.
+  // Real email send uses only the authenticated agent's connected mailbox.
+  // There is no shared-sender fallback that could misrepresent ownership.
   async function sendListingEmail() {
     if (!emailTarget?.email) { toast?.('Pick a recipient with an email on file', '#DC2626'); return }
     if (!composeSubject.trim() || !composeBody.trim()) { toast?.('Subject and message are required', '#DC2626'); return }
     setSendingEmail(true)
-    const html = '<div style="font-family:sans-serif;font-size:14px;color:#1E293B;white-space:pre-wrap;">' + composeBody.replace(/</g,'&lt;') + '</div>'
     try {
-      let usedAccount = null
-      if (connectedEmailAccount) {
-        const { data: { session } } = await supabase.auth.getSession()
-        const res = await fetch('/api/connector-send', {
-          method:'POST',
-          headers: { 'Content-Type':'application/json', ...(session?.access_token ? { Authorization:'Bearer '+session.access_token } : {}) },
-          body: JSON.stringify({ provider: connectedEmailAccount.provider==='google'?'gmail':'outlook', to: emailTarget.email, subject: composeSubject.trim(), html, text: composeBody.trim(), contact_id: emailTarget.id, agent_id: agent?.id }),
-        })
-        const j = await res.json()
-        if (!res.ok || j?.error) throw new Error(j?.error || 'Send failed')
-        usedAccount = connectedEmailAccount.account_email || connectedEmailAccount.provider
-      } else {
-        const r = await sendContactEmail({ contactEmail: emailTarget.email, contactName: contactName(emailTarget), subject: composeSubject.trim(), body: composeBody.trim(), agentName: agent?.name, agentEmail: agent?.email })
-        if (r && r.success === false) throw new Error(r.error || 'Send failed')
-        usedAccount = 'office system (Resend), not your personal account'
-      }
+      const r = await sendContactEmail({
+        contactEmail: emailTarget.email,
+        contactName: contactName(emailTarget),
+        subject: composeSubject.trim(),
+        body: composeBody.trim(),
+        agentName: agent?.name,
+        agentEmail: agent?.email,
+        contactId: emailTarget.id,
+      })
+      if (!r?.success) throw new Error(r?.error || 'Send failed')
+      const usedAccount = r.from || (connectedEmailAccount?.provider === 'gmail' ? 'Google' : 'Outlook')
       try {
         await supabase.from('audit_log').insert({
           agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id,
@@ -1403,7 +1386,7 @@ export default function ListingWorkspace({
           {connectedEmailAccount === undefined ? (
             <div style={{ fontSize:12, color:'var(--muted)', marginBottom:14 }}>Checking your connected email account…</div>
           ) : connectedEmailAccount ? (
-            <div style={{ fontSize:12, color:'#0B7A45', fontWeight:600, marginBottom:14 }}>✓ Sending as you, via your connected {connectedEmailAccount.provider==='google'?'Gmail':'Outlook'} ({connectedEmailAccount.account_email || 'connected'}).</div>
+            <div style={{ fontSize:12, color:'#0B7A45', fontWeight:600, marginBottom:14 }}>✓ Sending as you, via your connected {connectedEmailAccount.provider==='gmail'?'Google':'Outlook'} mailbox ({connectedEmailAccount.from || 'connected'}).</div>
           ) : (
             <div style={{ fontSize:12, color:'#B45309', fontWeight:600, marginBottom:14 }}>⚠ Outlook/Gmail not connected — sends will go through the office system, not your personal account. Connect yours in Settings → My Email Accounts.</div>
           )}

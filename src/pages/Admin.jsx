@@ -38,7 +38,7 @@ async function callAdminUsers(payload) {
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const ROLES  = ['admin','secretary','agent']
 const COLORS = ['#CC2200','#0EA5E9','#10B981','#F5A623','#8B5CF6','#EC4899','#14B8A6','#E8650A','#6366F1','#84CC16']
-const BLANK  = { name:'', email:'', phone:'', color:'#CC2200', role:'agent', active:true }
+const BLANK  = { name:'', email:'', phone:'', color:'#CC2200', role:'agent', active:true, call_log_access:false }
 
 export function Admin() {
   const { agent: me, isAdmin } = useAuth()
@@ -100,7 +100,15 @@ export function Admin() {
 
   function set(k,v)    { setForm(f => ({...f,[k]:v})) }
   function setA(k,v)   { setAddForm(f => ({...f,[k]:v})) }
-  function openAgent(a){ setSelected(a); setForm({...BLANK,...a}) }
+  async function openAgent(a){
+    setSelected(a)
+    setForm({...BLANK,...a, call_log_access:false})
+    try {
+      const { data } = await supabase.from('agent_permission_grants')
+        .select('enabled').eq('agent_id', a.id).eq('permission_id', 'calls.view').maybeSingle()
+      setForm(f => ({ ...f, call_log_access: data?.enabled === true }))
+    } catch { /* migration absent: fail closed */ }
+  }
   function closePanel(){ setSelected(null) }
 
   // ── Upload a headshot on behalf of any agent ────────────────────
@@ -168,10 +176,28 @@ export function Admin() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Save failed (' + res.status + ')')
 
+      const grantRes = await callAdminUsers({
+        action: 'set_permission_grant',
+        agentId: selected.id,
+        permissionId: 'calls.view',
+        enabled: form.role === 'agent' && form.call_log_access === true,
+      })
+      const grantData = await grantRes.json().catch(() => ({}))
+      if (!grantRes.ok) {
+        const grantError = new Error(grantData.error || 'Call Log permission could not be saved')
+        grantError.permissionGrantFailed = true
+        throw grantError
+      }
+
       await refetch()
       toast('✅ ' + form.name + ' saved')
       closePanel()
     } catch(e) {
+      if (e.permissionGrantFailed) {
+        await refetch()
+        toast('Profile saved, but Call Log access was not changed: ' + e.message + '. Apply the Phase 2 access migration first.', '#DC2626')
+        return
+      }
       // Fallback: try direct update (works if RLS allows it)
       try {
         const { error } = await supabase.from('agents').update({
@@ -831,6 +857,11 @@ export function Admin() {
         </Field>
         <Field label="Phone"><Input value={form.phone??''} onChange={v=>set('phone',v)} placeholder="(845) 555-1234" type="tel" /></Field>
         <Field label="Role"><Select value={form.role} onChange={v=>set('role',v)} options={ROLES} /></Field>
+        {form.role === 'agent' && (
+          <Field label="Call Log Access" hint="Individually allow this agent to open the team Call Log. Administrators and secretaries always have access.">
+            <Toggle value={!!form.call_log_access} onChange={v=>set('call_log_access', v)} label={form.call_log_access ? 'Call Log enabled' : 'Call Log restricted'} />
+          </Field>
+        )}
         <Field label="Call Recordings" hint="Can this agent hear call recordings for any contact? (Per-contact access can also be granted from a contact's page.)">
           <Toggle value={!!form.can_hear_recordings} onChange={v=>set('can_hear_recordings', v)} label={form.can_hear_recordings ? 'Can hear all recordings' : 'No recording access'} />
         </Field>

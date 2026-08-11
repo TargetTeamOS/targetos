@@ -32,6 +32,7 @@ import { OFFER_STATUSES, OFFER_ACCEPTED_VALUES, OFFER_PENDING_VALUES } from '../
 import { dedupeCanonicalAgents } from '../lib/utils'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { computeOfferFinancials } from '../lib/offerCalc'
+import { getConnectedEmailAccount } from '../lib/emailService'
 import AdminOfferReports from '../components/AdminOfferReports'
 import { PolishWordingButton } from '../components/PolishWordingButton'
 import { ContactSearch } from '../components/ContactSearch'
@@ -609,7 +610,7 @@ export function OffersV2() {
   const [sendTo,   setSendTo]     = useState({ buyer:false, seller:false, purchaser_attorney:false, seller_attorney:false, sellers_agent:false })
   const [sendExtra,setSendExtra]  = useState('')
   const [sendCc,   setSendCc]     = useState('')
-  const [sendingMailbox, setSendingMailbox] = useState(null) // null=loading, ''=not connected, else email
+  const [sendingMailbox, setSendingMailbox] = useState(null) // null=loading, false=none, otherwise {provider,from}
   const [sendAttachDocs, setSendAttachDocs] = useState({ offer:false, pof:false })
   const [sendMsg,  setSendMsg]    = useState('Please see the attached offer for your review.')
   const [sending,  setSending]    = useState(false)
@@ -628,6 +629,7 @@ export function OffersV2() {
   async function sendOffer() {
     if (!selected?.id) { toast('Save the offer before sending', '#F5A623'); return }
     if (!selected?.current_revision_id) { toast('Generate the PDF at least once before sending', '#F5A623'); return }
+    if (!sendingMailbox) { toast('Connect Google or Outlook in Settings before sending', '#DC2626'); return }
     const recipients = buildRecipients()
     if (recipients.length === 0) { toast('Choose at least one recipient with a known email', '#DC2626'); return }
 
@@ -643,7 +645,7 @@ export function OffersV2() {
         body: JSON.stringify({
           offer_id: selected.id,
           revision_id: selected.current_revision_id,
-          provider: 'outlook',
+          provider: sendingMailbox?.provider || 'outlook',
           recipients,
           cc: sendCc.split(',').map(s=>s.trim()).filter(Boolean),
           subject: 'Offer for the Sale of Real Estate — ' + (form.listing_addr || ''),
@@ -1549,8 +1551,8 @@ export function OffersV2() {
             </div>
             <div style={{ fontSize:11, marginBottom:10, padding:'6px 8px', borderRadius:6, background: sendingMailbox ? 'rgba(16,185,129,.08)' : 'rgba(220,38,38,.08)', color: sendingMailbox ? '#10B981' : '#DC2626' }}>
               {sendingMailbox === null ? 'Checking your connected mailbox...'
-                : sendingMailbox ? 'Sending from your connected mailbox: ' + sendingMailbox
-                : '⚠ No connected Outlook mailbox found — connect one in Settings before sending.'}
+                : sendingMailbox ? 'Sending from your connected ' + (sendingMailbox.provider === 'gmail' ? 'Google' : 'Outlook') + ' mailbox: ' + (sendingMailbox.from || 'connected')
+                : '⚠ No connected Google or Outlook mailbox found — connect one in Settings before sending.'}
             </div>
             <span style={SL}>To</span>
             {[
@@ -1592,7 +1594,7 @@ export function OffersV2() {
             <textarea value={sendMsg} onChange={e=>setSendMsg(e.target.value)} rows={2} style={{ ...S, resize:'vertical' }} />
             <div style={{ display:'flex', gap:8, marginTop:8, justifyContent:'flex-end' }}>
               <Btn variant="secondary" onClick={()=>setShowSend(false)}>Cancel</Btn>
-              <Btn onClick={sendOffer} loading={sending}>{sending ? 'Sending...' : '📧 Confirm & Send'}</Btn>
+              <Btn onClick={sendOffer} loading={sending} disabled={!sendingMailbox}>{sending ? 'Sending...' : '📧 Confirm & Send'}</Btn>
             </div>
           </div>
         )}
@@ -1622,16 +1624,9 @@ export function OffersV2() {
               // endpoint rather than a new one.
               ;(async () => {
                 try {
-                  const { data: { session } } = await supabase.auth.getSession()
-                  const r = await fetch('/api/connectors', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}) },
-                    body: JSON.stringify({ action: 'my_accounts', agent_id: agent?.id }),
-                  })
-                  const j = await r.json().catch(() => ({}))
-                  const outlook = (j.accounts || []).find(a => a.provider === 'outlook' && a.status === 'connected')
-                  setSendingMailbox(outlook?.account_email || '')
-                } catch { setSendingMailbox('') }
+                  const account = await getConnectedEmailAccount()
+                  setSendingMailbox(account?.connected ? account : false)
+                } catch { setSendingMailbox(false) }
               })()
             }}>📧 Send Offer{!form.current_revision_id ? ' (generate PDF first)' : ''}</Btn>
           )}
