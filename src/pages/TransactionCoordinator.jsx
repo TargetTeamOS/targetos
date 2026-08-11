@@ -914,7 +914,20 @@ export function TransactionCoordinator() {
   async function generatePhaseTasks(deal, phase) {
     const templates = templatesFor(phase)
     if (!templates.length) return
-    const rows = templates.map(t => ({
+
+    // IDEMPOTENCY (fixed 2026-08-09): without this check, re-entering a
+    // phase (e.g. Active → Pre-Listing → Active again) would insert the
+    // same template tasks a second time. Check what already exists for
+    // this deal+phase FIRST, then only insert templates with no match —
+    // matched by title, since that's the stable identifier a template
+    // produces (due_date/priority can legitimately differ per instance).
+    const { data: existing } = await supabase.from('tc_tasks')
+      .select('title').eq('deal_id', deal.id).eq('phase', phase)
+    const existingTitles = new Set((existing || []).map(t => t.title))
+    const newTemplates = templates.filter(t => !existingTitles.has(t.label))
+    if (!newTemplates.length) return   // every template task already exists — nothing to do
+
+    const rows = newTemplates.map(t => ({
       deal_id:       deal.id,
       title:         t.label,
       priority:      t.priority,
@@ -944,7 +957,7 @@ export function TransactionCoordinator() {
     }
 
     // Email agent about calendar tasks (photography, inspections etc.)
-    const calTasks = templates.filter(t => t.cal && t.notify_agent)
+    const calTasks = newTemplates.filter(t => t.cal && t.notify_agent)
     if (calTasks.length > 0) {
       const ag = agents.find(a => a.id === deal.agent_id)
       if (ag?.email) {
@@ -960,21 +973,38 @@ export function TransactionCoordinator() {
 
   async function changePhase(deal, newPhase) {
     if (deal.tc_phase === newPhase) return
-    const pDef     = PHASES.find(p => p.id === newPhase)
-    const taskCount= templatesFor(newPhase).length
-    const calCount = PHASE_TASKS[newPhase]?.filter(t=>t.cal).length || 0
-    if (!window.confirm('Move "' + deal.addr + '" to ' + (pDef?.label||'') + '?\n\n• ' + taskCount + ' tasks will be auto-generated' + (calCount>0 ? '\n• ' + calCount + ' calendar events will be created' : '') + '\n• All linked boards will be updated automatically')) return
+    const pDef = PHASES.find(p => p.id === newPhase)
+
+    // Count only the tasks that would ACTUALLY be created (idempotency-
+    // aware), so the confirm dialog and agent email don't overstate what
+    // will happen if some/all of this phase's tasks already exist from
+    // a previous visit to this phase.
+    const allTemplates = templatesFor(newPhase)
+    const { data: existingForPhase } = await supabase.from('tc_tasks')
+      .select('title').eq('deal_id', deal.id).eq('phase', newPhase)
+    const existingTitles = new Set((existingForPhase || []).map(t => t.title))
+    const newTemplates = allTemplates.filter(t => !existingTitles.has(t.label))
+    const taskCount = newTemplates.length
+    const calCount  = newTemplates.filter(t => t.cal).length
+
+    const confirmMsg = 'Move "' + deal.addr + '" to ' + (pDef?.label||'') + '?\n\n'
+      + (taskCount > 0
+          ? '• ' + taskCount + ' new task' + (taskCount===1?'':'s') + ' will be auto-generated' + (calCount>0 ? '\n• ' + calCount + ' calendar event' + (calCount===1?'':'s') + ' will be created' : '')
+          : '• No new tasks — this phase\'s tasks already exist on this file')
+      + '\n• All linked boards will be updated automatically'
+    if (!window.confirm(confirmMsg)) return
+
     try {
       const { synced, failed } = await syncToAllBoards(deal, { tc_phase:newPhase })
       await generatePhaseTasks({ ...deal, tc_phase:newPhase }, newPhase)
 
-      // Email agent
+      // Email agent — only mention new tasks if any were actually created
       const ag = agents.find(a => a.id === deal.agent_id)
       if (ag?.email) {
         callSendEmail({
           to: ag.email,
           subject: (pDef?.icon||'') + ' ' + deal.addr + ' moved to ' + (pDef?.label||'') + ',',
-          html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p><strong>' + deal.addr + '</strong> has moved to <strong>' + (pDef?.label||'') + '</strong>.</p><p>' + taskCount + ' new tasks have been assigned. Please check your TC Board.</p><p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
+          html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p><strong>' + deal.addr + '</strong> has moved to <strong>' + (pDef?.label||'') + '</strong>.</p>' + (taskCount > 0 ? '<p>' + taskCount + ' new task' + (taskCount===1?'':'s') + ' assigned. Please check your TC Board.</p>' : '') + '<p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
         }).catch(() => {})
       }
 
