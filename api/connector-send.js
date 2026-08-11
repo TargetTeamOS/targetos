@@ -65,6 +65,11 @@ module.exports = async function handler(req, res) {
       .map(x => x.trim()).filter(Boolean)
     const cc = parseAddrs(body.cc)
     const bcc = parseAddrs(body.bcc)
+    // Attachments: [{ filename, contentType, base64 }] — base64 content
+    // only, no data-URL prefix. Vercel serverless functions cap request
+    // bodies around ~4.5MB, so this isn't suitable for large files —
+    // that's a real, honest limitation, not something silently handled.
+    const attachments = Array.isArray(body.attachments) ? body.attachments.filter(a => a?.base64) : []
     if (!to) { res.status(400).json({ error: 'missing "to"' }); return }
 
     let fromAccount = ''
@@ -96,6 +101,12 @@ module.exports = async function handler(req, res) {
             toRecipients: [{ emailAddress: { address: to } }],
             ...(cc.length ? { ccRecipients: cc.map(a => ({ emailAddress: { address: a } })) } : {}),
             ...(bcc.length ? { bccRecipients: bcc.map(a => ({ emailAddress: { address: a } })) } : {}),
+            ...(attachments.length ? { attachments: attachments.map(a => ({
+              '@odata.type': '#microsoft.graph.fileAttachment',
+              name: a.filename || 'attachment',
+              contentType: a.contentType || 'application/octet-stream',
+              contentBytes: a.base64,
+            })) } : {}),
           },
           saveToSentItems: true,
         }),
@@ -118,18 +129,55 @@ module.exports = async function handler(req, res) {
         token = await freshGoogleToken(integ)
         fromAccount = (integ.secrets || {}).account_email || 'Gmail'
       }
-      const mimeLines = [
-        'To: ' + to,
-        ...(cc.length ? ['Cc: ' + cc.join(', ')] : []),
-        ...(bcc.length ? ['Bcc: ' + bcc.join(', ')] : []),
-        'Subject: ' + subject,
-        'MIME-Version: 1.0',
-        html ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8',
-        '',
-        html || text,
-      ]
-      const raw = Buffer.from(mimeLines.join('\r\n')).toString('base64')
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      let raw
+      if (attachments.length) {
+        // Multipart/mixed: one text/html part + one part per attachment,
+        // each base64-encoded with a Content-Disposition so mail
+        // clients render them as real downloadable attachments, not
+        // inline garbage.
+        const boundary = 'targetos_' + Date.now().toString(36)
+        const parts = [
+          'To: ' + to,
+          ...(cc.length ? ['Cc: ' + cc.join(', ')] : []),
+          ...(bcc.length ? ['Bcc: ' + bcc.join(', ')] : []),
+          'Subject: ' + subject,
+          'MIME-Version: 1.0',
+          'Content-Type: multipart/mixed; boundary="' + boundary + '"',
+          '',
+          '--' + boundary,
+          html ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8',
+          '',
+          html || text,
+          '',
+        ]
+        for (const a of attachments) {
+          parts.push(
+            '--' + boundary,
+            'Content-Type: ' + (a.contentType || 'application/octet-stream'),
+            'Content-Transfer-Encoding: base64',
+            'Content-Disposition: attachment; filename="' + (a.filename || 'attachment') + '"',
+            '',
+            a.base64,
+            '',
+          )
+        }
+        parts.push('--' + boundary + '--')
+        raw = Buffer.from(parts.join('\r\n')).toString('base64')
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      } else {
+        const mimeLines = [
+          'To: ' + to,
+          ...(cc.length ? ['Cc: ' + cc.join(', ')] : []),
+          ...(bcc.length ? ['Bcc: ' + bcc.join(', ')] : []),
+          'Subject: ' + subject,
+          'MIME-Version: 1.0',
+          html ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8',
+          '',
+          html || text,
+        ]
+        raw = Buffer.from(mimeLines.join('\r\n')).toString('base64')
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      }
       const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -156,7 +204,7 @@ module.exports = async function handler(req, res) {
       } catch (e) { console.warn('[connector-send] timeline log failed: ' + e.message) }
     }
 
-    res.status(200).json({ ok: true, provider, from: fromAccount, cc, bcc })
+    res.status(200).json({ ok: true, provider, from: fromAccount, cc, bcc, attachments: attachments.map(a => a.filename) })
   } catch (e) {
     console.error('[connector-send] ' + e.message)
     res.status(500).json({ error: e.message })
