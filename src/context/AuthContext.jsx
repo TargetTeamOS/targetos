@@ -7,7 +7,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
-import { buildPermissionChecker, loadPermissionOverrides } from '../lib/permissions'
+import { buildPermissionChecker, loadPermissionOverrides, loadAgentPermissionGrants } from '../lib/permissions'
 
 const AuthContext = createContext(null)
 
@@ -16,14 +16,23 @@ export function AuthProvider({ children }) {
   const [agent,     setAgent]     = useState(null)
   const [loading,   setLoading]   = useState(true)
   const [overrides, setOverrides] = useState({})
+  const [agentGrants, setAgentGrants] = useState({})
 
   // Load admin-configured permission overrides once the agent is known.
   // Until they load, the checker falls back to role defaults, so there's
   // never a window where permissions are simply "off".
   useEffect(() => {
+    // Never carry an individual grant across a sign-out/account switch while
+    // the next user's grants are loading.
+    setAgentGrants({})
     if (!agent) return
     let alive = true
-    loadPermissionOverrides().then(o => { if (alive) setOverrides(o || {}) }).catch(() => {})
+    Promise.all([
+      loadPermissionOverrides().catch(() => ({})),
+      loadAgentPermissionGrants(agent.id).catch(() => ({})),
+    ]).then(([o, g]) => {
+      if (alive) { setOverrides(o || {}); setAgentGrants(g || {}) }
+    })
     return () => { alive = false }
   }, [agent?.id])
 
@@ -86,11 +95,14 @@ export function AuthProvider({ children }) {
   // No agent loaded yet → everything is denied.
   const can = React.useMemo(() => {
     if (!agent?.role) return () => false
-    return buildPermissionChecker(agent.role, overrides)
-  }, [agent?.role, overrides])
+    return buildPermissionChecker(agent.role, overrides, agentGrants)
+  }, [agent?.role, overrides, agentGrants])
 
   async function refreshPermissions() {
-    try { setOverrides(await loadPermissionOverrides() || {}) } catch {}
+    try {
+      setOverrides(await loadPermissionOverrides() || {})
+      setAgentGrants(await loadAgentPermissionGrants(agent?.id) || {})
+    } catch {}
   }
 
   return (

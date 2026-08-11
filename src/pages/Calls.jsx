@@ -1127,7 +1127,7 @@ export function Calls() {
   async function loadCalls() {
     setLoading(true)
     try {
-      const { data, error } = await supabase.rpc('get_calls_list', { p_limit: 200 })
+      const { data, error } = await supabase.rpc('app_calls_list', { p_limit: 200 })
       if (error) throw error
       // Reshape to match what the rest of this page expects (nested agents object)
       setCalls((data || []).map(c => ({ ...c, agents: c.agent_id ? { id: c.agent_id, name: c.agent_name, color: c.agent_color } : null })))

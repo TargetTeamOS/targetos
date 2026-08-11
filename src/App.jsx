@@ -155,24 +155,24 @@ function AppShell() {
           <Route path="/calendar"            element={<Calendar />} />
           <Route path="/calendar/:id"        element={<Calendar />} />
           <Route path="/offers"              element={<Offers />} />
-          <Route path="/weekly-ad"           element={<WeeklyAd />} />
-          <Route path="/marketing"           element={<Marketing />} />
+          <Route path="/weekly-ad"           element={<RequirePermission perm="marketing.access"><WeeklyAd /></RequirePermission>} />
+          <Route path="/marketing"           element={<RequirePermission perm="marketing.access"><Marketing /></RequirePermission>} />
           <Route path="/offers/:id"          element={<Offers />} />
           <Route path="/gifts"               element={<Gifts />} />
           <Route path="/gifts/:id"           element={<Gifts />} />
           <Route path="/call-flow" element={<RequirePermission perm="calls.flow_edit"><CallFlow /></RequirePermission>} />
-          <Route path="/calls"               element={<Calls />} />
-          <Route path="/calls/:id"           element={<Calls />} />
+          <Route path="/calls"               element={<RequirePermission perm="calls.view"><Calls /></RequirePermission>} />
+          <Route path="/calls/:id"           element={<RequirePermission perm="calls.view"><Calls /></RequirePermission>} />
           <Route path="/openhouse"           element={<OpenHouse />} />
           <Route path="/openhouse/:id"       element={<OpenHouse />} />
-          <Route path="/social-cards" element={<SocialCards />} />
+          <Route path="/social-cards" element={<RequirePermission perm="marketing.access"><SocialCards /></RequirePermission>} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/performance" element={<Analytics />} />
           <Route path="/agent-activity" element={<Analytics />} />
           <Route path="/signs"               element={<Signs />} />
           <Route path="/signs/:id"           element={<Signs />} />
-          <Route path="/announcements"       element={<Announcements />} />
-          <Route path="/announcements/:id"   element={<Announcements />} />
+          <Route path="/announcements"       element={<RequirePermission perm="announcements.access"><Announcements /></RequirePermission>} />
+          <Route path="/announcements/:id"   element={<RequirePermission perm="announcements.access"><Announcements /></RequirePermission>} />
           <Route path="/listingprep"         element={<ListingPrep />} />
           <Route path="/listingprep/:id"     element={<ListingPrep />} />
           <Route path="/pipeline"            element={<Pipeline />} />
@@ -182,14 +182,14 @@ function AppShell() {
           <Route path="/notes/:id"           element={<Notes />} />
           <Route path="/automations"         element={<RequirePermission perm="admin.automations"><Automations /></RequirePermission>} />
           <Route path="/automations/:id"     element={<RequirePermission perm="admin.automations"><Automations /></RequirePermission>} />
-          <Route path="/briefing"            element={<DailyBriefing />} />
+          <Route path="/briefing"            element={<RequirePermission perm="daily_briefing.access"><DailyBriefing /></RequirePermission>} />
           <Route path="/email"               element={<Email />} />
           <Route path="/designer"            element={<EmailDesigner />} />
           <Route path="/designer/:id"        element={<EmailDesigner />} />
           <Route path="/settings"            element={<Settings />} />
           <Route path="/admin"               element={<Admin />} />
           <Route path="/activitylog"         element={<ActivityLog />} />
-          <Route path="/call-diagnostics"    element={<CallDiagnostics />} />
+          <Route path="/call-diagnostics"    element={<RequirePermission perm="admin.system"><CallDiagnostics /></RequirePermission>} />
           <Route path="/mortgage"            element={<Mortgage />} />
           <Route path="/website"             element={<WebsiteBuilder />} />
           <Route path="/segments"           element={<Segments />} />

@@ -50,12 +50,17 @@ export const DEFAULT_PERMISSIONS = {
   'tasks.delete':           { admin:true,  secretary:true,  agent:false },
 
   // --- Calls ---
-  'calls.view':             { admin:true,  secretary:true,  agent:true  },
+  'calls.view':             { admin:true,  secretary:true,  agent:false },
   'calls.view_all':         { admin:true,  secretary:true,  agent:false },
   'calls.make':             { admin:true,  secretary:true,  agent:true  },
   'calls.recordings':       { admin:true,  secretary:true,  agent:false }, // hear others' recordings
   'calls.own_recordings':   { admin:true,  secretary:true,  agent:true  },
   'calls.flow_edit':        { admin:true,  secretary:false, agent:false },
+
+  // --- Restricted workspaces ---
+  'marketing.access':       { admin:true,  secretary:true,  agent:false },
+  'daily_briefing.access':  { admin:true,  secretary:true,  agent:false },
+  'announcements.access':   { admin:true,  secretary:true,  agent:false },
 
   // --- Reports ---
   'reports.view':           { admin:true,  secretary:true,  agent:false },
@@ -85,6 +90,7 @@ export const PERMISSION_GROUPS = [
   { id:'listings',    label:'Listings',          icon:'🏡', keys:['listings.view','listings.view_all','listings.create','listings.edit','listings.delete'] },
   { id:'tasks',       label:'Tasks',             icon:'✅', keys:['tasks.view','tasks.view_all','tasks.create','tasks.edit_own','tasks.edit_any','tasks.delete'] },
   { id:'calls',       label:'Phone & Calls',     icon:'📞', keys:['calls.view','calls.view_all','calls.make','calls.recordings','calls.own_recordings','calls.flow_edit'] },
+  { id:'workspaces',  label:'Restricted Workspaces', icon:'🔐', keys:['marketing.access','daily_briefing.access','announcements.access'] },
   { id:'reports',     label:'Reports & Analytics',icon:'📊',keys:['reports.view','reports.export','reports.agent_stats'] },
   { id:'admin',       label:'Administration',    icon:'⚙️', keys:['admin.users','admin.customize','admin.permissions','admin.system','admin.automations','admin.audit_log','records.activity_log','admin.data_export'] },
   { id:'settings',    label:'Settings',          icon:'🔧', keys:['settings.profile','settings.notifications','settings.branding'] },
@@ -127,6 +133,9 @@ export const PERMISSION_LABELS = {
   'calls.recordings':       'Listen to any agent\'s recordings',
   'calls.own_recordings':   'Listen to own call recordings',
   'calls.flow_edit':        'Edit the IVR call flow',
+  'marketing.access':       'Access Marketing',
+  'daily_briefing.access':  'Access Daily Briefing',
+  'announcements.access':   'Access Announcements',
   'reports.view':           'View reports and analytics',
   'reports.export':         'Export reports',
   'reports.agent_stats':    'View per-agent performance stats',
@@ -176,10 +185,27 @@ export async function savePermissionOverrides(overrides) {
   }
 }
 
+// Per-agent exceptions are keyed by immutable permission IDs. They are
+// intentionally separate from display labels and role-wide overrides so an
+// administrator can grant one agent access without opening a feature to every
+// agent. Missing tables/configuration fail closed and return no grants.
+export async function loadAgentPermissionGrants(agentId) {
+  if (!agentId) return {}
+  try {
+    const { data, error } = await supabase.from('agent_permission_grants')
+      .select('permission_id, enabled').eq('agent_id', agentId)
+    if (error) return {}
+    return Object.fromEntries((data || []).map(row => [row.permission_id, row.enabled === true]))
+  } catch {
+    return {}
+  }
+}
+
 // ── HOOK: usePermission ───────────────────────────────────────────
 // Usage: const can = usePermission()  →  can('contacts.delete')
-export function buildPermissionChecker(role, overrides = {}) {
+export function buildPermissionChecker(role, overrides = {}, agentGrants = {}) {
   return function can(key) {
+    if (role === 'agent' && typeof agentGrants[key] === 'boolean') return agentGrants[key]
     // Check overrides first (admin-configured)
     const override = overrides[key]
     if (override && typeof override[role] === 'boolean') return override[role]

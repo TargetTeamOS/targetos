@@ -3,7 +3,7 @@
 // when A8 isn't deployed, `save` keeps values in session state and reports
 // deployed:false so the UI can say so. Goals + news use already-applied RPCs.
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 
 const NOT_DEPLOYED = /function|does not exist|schema cache|42883|not find/i
@@ -36,21 +36,31 @@ export function useDashboardSettings() {
   const [settings, setSettings] = useState({})
   const [deployed, setDeployed] = useState(null)
   const [loading, setLoading] = useState(true)
+  const mounted = useRef(false)
 
   const reload = useCallback(async () => {
-    setLoading(true)
-    try { const r = await fetchSettings(); setSettings(r.settings || {}); setDeployed(r.deployed) }
-    catch { setDeployed(true) }
-    finally { setLoading(false) }
+    if (mounted.current) setLoading(true)
+    try {
+      const r = await fetchSettings()
+      if (mounted.current) { setSettings(r.settings || {}); setDeployed(r.deployed) }
+    } catch {
+      if (mounted.current) setDeployed(true)
+    } finally {
+      if (mounted.current) setLoading(false)
+    }
   }, [])
 
-  useEffect(() => { reload() }, [reload])
+  useEffect(() => {
+    mounted.current = true
+    reload()
+    return () => { mounted.current = false }
+  }, [reload])
 
   // optimistic session update; persists to the store when deployed
   const save = useCallback(async (key, value) => {
-    setSettings((s) => ({ ...s, [key]: value }))
+    if (mounted.current) setSettings((s) => ({ ...s, [key]: value }))
     const r = await saveSetting(key, value)
-    if (r.deployed === false) setDeployed(false)
+    if (mounted.current && r.deployed === false) setDeployed(false)
     return r
   }, [])
 

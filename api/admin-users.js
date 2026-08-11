@@ -50,6 +50,28 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    if (action === 'set_permission_grant') {
+      const { agentId, permissionId, enabled } = body
+      if (!agentId || !permissionId) return res.status(400).json({ error: 'agentId and permissionId required' })
+      const allowedPermissionIds = new Set(['calls.view'])
+      if (!allowedPermissionIds.has(permissionId)) return res.status(400).json({ error: 'unsupported permissionId' })
+      if (enabled === true) {
+        const { error } = await sb.from('agent_permission_grants').upsert({
+          agent_id: agentId,
+          permission_id: permissionId,
+          enabled: true,
+          granted_by: authCheck.agentId,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'agent_id,permission_id' })
+        if (error) return res.status(400).json({ error: 'permission grant could not be saved' })
+      } else {
+        const { error } = await sb.from('agent_permission_grants').delete()
+          .eq('agent_id', agentId).eq('permission_id', permissionId)
+        if (error) return res.status(400).json({ error: 'permission grant could not be removed' })
+      }
+      return res.status(200).json({ ok: true })
+    }
+
     // ── CREATE USER (with password) ──────────────────────────────
     if (action === 'create') {
       if (!email || !name) return res.status(400).json({ error: 'Email and name required' })

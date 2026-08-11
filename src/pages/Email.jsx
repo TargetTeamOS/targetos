@@ -111,6 +111,7 @@ export function Email() {
         subject, body,
         agentName:  agent?.name  || 'Target Team',
         agentEmail: agent?.email || 'office@targetreteam.com',
+        contactId: selContact.id,
       })
       if (!result.success) throw new Error(result.error || 'Send failed')
 

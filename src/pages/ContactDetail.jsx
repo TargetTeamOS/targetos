@@ -656,6 +656,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
   const { can, isAdmin } = useAuth()
   const canManage = isAdmin || can('admin.automations')
   const canReassign = can('contacts.reassign')
+  const canViewCalls = can('calls.view')
   function onReorder(fromKey, toKey) {
     const order = (layout?.order || []).slice()
     const fi = order.indexOf(fromKey), ti = order.indexOf(toKey)
@@ -701,14 +702,18 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
     if (!contactId) return
     // Load related data
     supabase.from('calendar_events').select('id,title,start_date,start_time,type').eq('contact_id', contactId).order('start_date').limit(10).then(r => setAppts(r.data || []))
-    supabase.from('calls').select('id,contact_name,direction,outcome,called_at,notes,twilio_call_sid').eq('contact_id', contactId).order('called_at', { ascending: false }).limit(10).then(r => setCalls(r.data || []))
+    if (canViewCalls) {
+      supabase.from('calls').select('id,contact_name,direction,outcome,called_at,notes,twilio_call_sid').eq('contact_id', contactId).order('called_at', { ascending: false }).limit(10).then(r => setCalls(r.data || []))
+    } else {
+      setCalls([])
+    }
     // Agreements stored as tags/notes for now
     const tags = f.tags || []
     setAgreements(tags.filter(t => ['Buyer Agreement', 'Listing Agreement', 'Referral Agreement'].includes(t)).map(t => ({
       type: t.replace(' Agreement', ''),
       signed: true,
     })))
-  }, [contactId])
+  }, [contactId, canViewCalls])
 
   async function quickCreateTask() {
     if (!newTask.title.trim()) { toast('Task title required', '#DC2626'); return }
@@ -959,7 +964,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
       )}
 
       {/* ── CALLS LOG ── */}
-      <RightSection hideKey="calls" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title={"Calls (" + (calls.length) + ")"} icon="📞" color="#3B82F6">
+      {canViewCalls && <RightSection hideKey="calls" layout={layout} editLayout={editLayout} onReorder={onReorder} onHide={onHide} title={"Calls (" + (calls.length) + ")"} icon="📞" color="#3B82F6">
         {calls.length === 0 && <EmptyState text="No calls logged" action={{ label: '+ Log Call', onClick: () => navigate('/calls/new') }} />}
         {calls.slice(0,4).map(c => (
           <div key={c.id} style={{ padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
@@ -980,7 +985,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
           </div>
         ))}
         <AddBtn onClick={() => navigate('/calls/new')} label="+ Log Call" />
-      </RightSection>
+      </RightSection>}
 
 
       {/* ── AUTO PLANS (Automations) ── */}
@@ -1018,8 +1023,9 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
                 subject: 'New listings matching your search in ' + areas,
                 body: 'Hi ' + (f.first_name || 'there') + ',\n\nHere are the latest listings in ' + areas + budget + '. Reply and I\'ll set up private showings for any that catch your eye.\n\nBrowse matches: https://app.targetreteam.com',
                 agentName: agent?.name || 'Target Team', agentEmail: agent?.email || null,
+                contactId,
               })
-              if (r && r.ok === false) throw new Error(r.error || 'send failed')
+              if (!r?.success) throw new Error(r?.error || 'send failed')
               toast('📧 Listing alert sent to ' + (f.first_name || f.email))
               onRefreshTimeline?.()
             } catch (e) { toast('Send failed: ' + e.message, '#DC2626') }
@@ -1051,8 +1057,9 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
                 subject: 'Your ' + areas + ' market update',
                 body: 'Hi ' + (f.first_name || 'there') + ',\n\nHere\'s the latest market snapshot for ' + areas + ' — recent sales, active inventory, and where prices are trending. Happy to walk you through what it means for your plans.\n\n' + (agent?.name || 'Target Team'),
                 agentName: agent?.name || 'Target Team', agentEmail: agent?.email || null,
+                contactId,
               })
-              if (r && r.ok === false) throw new Error(r.error || 'send failed')
+              if (!r?.success) throw new Error(r?.error || 'send failed')
               toast('📊 Market report sent to ' + (f.first_name || f.email))
               onRefreshTimeline?.()
             } catch (e) { toast('Send failed: ' + e.message, '#DC2626') }
