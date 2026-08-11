@@ -243,7 +243,7 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
 }
 
 // ── DEAL CARD ─────────────────────────────────────────────────────
-function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle }) {
+function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle, isAdmin }) {
   const [subTab, setSubTab] = useState('overview')   // overview | tasks | people | photo | email
   const phase    = PHASES.find(p => p.id === deal.tc_phase) || PHASES[0]
   const agent    = agents.find(a => a.id === deal.agent_id)
@@ -553,7 +553,7 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
           {/* ── PHOTOGRAPHY TAB ── */}
           {subTab === 'photo' && (
             <div style={{ padding:'12px 16px' }}>
-              <PhotographyPanel deal={deal} />
+              <PhotographyPanel deal={deal} isAdmin={isAdmin} />
             </div>
           )}
 
@@ -1314,6 +1314,7 @@ export function TransactionCoordinator() {
             tasks={tasksByDeal[deal.id] || []}
             roleSet={partsByDeal[deal.id]}
             agents={agents}
+            isAdmin={isAdmin}
             expanded={!!expanded[deal.id]}
             onToggle={() => setExpanded(p => (p[deal.id] ? {} : { [deal.id]: true }))}
             onPhaseChange={changePhase}
@@ -1580,7 +1581,7 @@ export function TransactionCoordinator() {
                             statuses={(tcCfg || DEFAULT_TC_SETTINGS).doc_statuses} toast={toast} />
             <PhotographyPanel deal={selDeal}
                               services={(tcCfg || DEFAULT_TC_SETTINGS).photo_services}
-                              checklist={(tcCfg || DEFAULT_TC_SETTINGS).readiness_checklist} toast={toast} />
+                              checklist={(tcCfg || DEFAULT_TC_SETTINGS).readiness_checklist} toast={toast} isAdmin={isAdmin} />
             <TCSignPanel deal={selDeal} toast={toast}
                          onLinked={id => setSelDeal(d => ({ ...d, linked_sign_id: id }))} />
             <TCDealChat dealId={selDeal.id} dealAddr={selDeal.addr} agents={agents} me={agent} toast={toast} />
