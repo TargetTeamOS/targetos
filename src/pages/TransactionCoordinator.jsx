@@ -1168,11 +1168,25 @@ export function TransactionCoordinator() {
   }, [deals, signalsByDeal, tasksByDeal])
 
   const filteredDeals = useMemo(() => deals.filter(d => {
+    if (d.fell_through) return false   // shown separately below, not in the normal phase board
     if (phaseFilter !== 'all' && d.tc_phase !== phaseFilter) return false
     if (agentFilter !== 'all' && d.agent_id !== agentFilter) return false
     if (search && !matchSearch(d, search, ['addr','attorney_name','mortgage_broker','notes'])) return false
     return true
   }), [deals, phaseFilter, agentFilter, search])
+
+  // Fell-through files: pulled out of the normal 5-phase workflow (see
+  // migration 009 — synced automatically from the linked production
+  // deal, regardless of which board the change came from) but kept
+  // visible per the confirmed business rule that these stay on record,
+  // not archived. Still respects the agent/search filters, just not
+  // the phase filter since fell-through isn't one of the 5 phases.
+  const fellThroughDeals = useMemo(() => deals.filter(d => {
+    if (!d.fell_through) return false
+    if (agentFilter !== 'all' && d.agent_id !== agentFilter) return false
+    if (search && !matchSearch(d, search, ['addr','attorney_name','mortgage_broker','notes'])) return false
+    return true
+  }), [deals, agentFilter, search])
 
   const stats = useMemo(() => ({
     total:   deals.length,
@@ -1325,6 +1339,39 @@ export function TransactionCoordinator() {
           />
           </div>
         ))
+      )}
+
+      {/* ── DEAL FELL THROUGH — separate quiet section, not part of the
+          5-phase workflow. Auto-synced (migration 009) from the linked
+          production deal, regardless of which board the change came
+          from. Stays visible per business rule -- never archived. ── */}
+      {fellThroughDeals.length > 0 && (
+        <details style={{ marginTop: 18, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+          <summary style={{ padding: '10px 14px', background: 'rgba(107,114,128,.08)', cursor: 'pointer',
+                             fontSize: 12, fontWeight: 800, color: 'var(--muted)', listStyle: 'none', userSelect: 'none' }}>
+            💔 Deal Fell Through ({fellThroughDeals.length}) — click to view
+          </summary>
+          <div style={{ padding: '8px 12px' }}>
+            {fellThroughDeals.map(deal => (
+              <div id={'tc-deal-' + deal.id} key={deal.id} style={{ opacity: 0.75 }}>
+                <DealCard
+                  deal={deal}
+                  tasks={tasksByDeal[deal.id] || []}
+                  roleSet={partsByDeal[deal.id]}
+                  agents={agents}
+                  isAdmin={isAdmin}
+                  expanded={!!expanded[deal.id]}
+                  onToggle={() => setExpanded(p => (p[deal.id] ? {} : { [deal.id]: true }))}
+                  onPhaseChange={changePhase}
+                  onCheckTask={checkTask}
+                  onEditTask={t => { setSelTask(t); setSelDeal(deals.find(d=>d.id===t.deal_id)); setTaskForm({ title:t.title, priority:t.priority, due_date:t.due_date||'', agent_id:t.agent_id||'', notes:t.notes||'', needs_calendar:!!t.needs_calendar, reminder_days:t.reminder_days||'', completion_action:t.completion_action||'none', completion_note:t.completion_note||'' }); setShowEditTask(true) }}
+                  onAddTask={d => { setSelDeal(d); setSelTask(null); setTaskForm({...TASK_BLANK}); setShowAddTask(true) }}
+                  onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'' }); setShowEditDeal(true) }}
+                />
+              </div>
+            ))}
+          </div>
+        </details>
       )}
 
       {/* ── WORK-QUEUE DRAWER (opened by dashboard tiles) ── */}
