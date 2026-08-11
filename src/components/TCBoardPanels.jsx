@@ -10,6 +10,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import ContactPicker, { contactName } from './ContactPicker'
 import { ClickToCall } from './ClickToCall'
+import { uploadFile, fmtFileSize, fileIcon } from '../lib/storage'
 
 const ff = 'Inter,system-ui,sans-serif'
 
@@ -161,7 +162,43 @@ export function TCEmailLog({ deal }) {
   const [mode, setMode] = useState('log')   // 'log' | 'compose'
   const [contacts, setContacts] = useState([])   // linked parties with an email, from tc_participants
   const [compose, setCompose] = useState({ contact_id: '', to_email: '', subject: '', body: '', cc: '', bcc: '' })
+  const [attachments, setAttachments] = useState([])   // [{ file, path, name, size, uploading }]
   const [sending, setSending] = useState(false)
+
+  // Upload immediately on selection so there's always a stored copy
+  // (audit trail + storage-permission compliance), then base64-encode
+  // for the actual send. Vercel's request-body cap (~4.5MB) means this
+  // isn't suitable for large files — flagged in the UI, not silently
+  // allowed to fail.
+  async function handleFiles(fileList) {
+    const files = Array.from(fileList || [])
+    for (const file of files) {
+      if (file.size > 4 * 1024 * 1024) {
+        alert(file.name + ' is over 4MB — too large to send through this form right now.')
+        continue
+      }
+      const tempId = Math.random().toString(36)
+      setAttachments(prev => [...prev, { tempId, name: file.name, size: file.size, uploading: true }])
+      try {
+        const uploaded = await uploadFile(file, 'tc_correspondence', deal.id)
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result.split(',')[1])
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        })
+        setAttachments(prev => prev.map(a => a.tempId === tempId
+          ? { name: file.name, size: file.size, type: file.type, path: uploaded.path, base64, uploading: false }
+          : a))
+      } catch (e) {
+        setAttachments(prev => prev.filter(a => a.tempId !== tempId))
+        alert('Could not upload ' + file.name + ': ' + e.message)
+      }
+    }
+  }
+  function removeAttachment(name) {
+    setAttachments(prev => prev.filter(a => a.name !== name))
+  }
 
   async function loadContacts() {
     try {
@@ -203,6 +240,7 @@ export function TCEmailLog({ deal }) {
       : compose.to_email.trim()
     if (!toEmail) { alert('Pick a linked contact or enter an email address'); return }
     if (!compose.subject.trim()) { alert('Subject required'); return }
+    if (attachments.some(a => a.uploading)) { alert('Wait for attachments to finish uploading'); return }
     setSending(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -222,6 +260,7 @@ export function TCEmailLog({ deal }) {
           contact_id: compose.contact_id || null,
           subject: compose.subject.trim(),
           html: '<p>' + compose.body.trim().replace(/\n/g, '</p><p>') + '</p>',
+          attachments: attachments.map(a => ({ filename: a.name, contentType: a.type, base64: a.base64 })),
         }),
       })
       const result = await res.json()
@@ -237,6 +276,7 @@ export function TCEmailLog({ deal }) {
         to_email: toEmail,
         cc_emails: compose.cc.trim() || null,
         bcc_emails: compose.bcc.trim() || null,
+        attachments: attachments.length ? attachments.map(a => ({ name: a.name, path: a.path, size: a.size })) : null,
         provider: ok ? result.provider : null,
         from_account: ok ? result.from : null,
         send_status: blocked ? 'blocked' : ok ? 'sent' : 'failed',
@@ -247,6 +287,7 @@ export function TCEmailLog({ deal }) {
       else if (!ok) alert('Send failed: ' + (result.error || 'unknown error') + ' — logged as failed.')
 
       setCompose({ contact_id: '', to_email: '', subject: '', body: '', cc: '', bcc: '' })
+      setAttachments([])
       setMode('log')
       load()
     } catch (e) {
@@ -303,12 +344,28 @@ export function TCEmailLog({ deal }) {
           </div>
           <textarea style={{ ...inp, resize: 'vertical', marginBottom: 6 }} rows={4} placeholder="Message…"
             value={compose.body} onChange={e => setCompose(c => ({ ...c, body: e.target.value }))} />
+
+          <input type="file" multiple onChange={e => handleFiles(e.target.files)}
+            style={{ fontSize: 11.5, marginBottom: 6 }} />
+          {attachments.length > 0 && (
+            <div style={{ display: 'grid', gap: 4, marginBottom: 6 }}>
+              {attachments.map(a => (
+                <div key={a.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5,
+                                            padding: '4px 8px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--border)' }}>
+                  <span>{a.uploading ? '⏳' : fileIcon(a.name)}</span>
+                  <span style={{ flex: 1 }}>{a.name} · {fmtFileSize(a.size)}{a.uploading ? ' — uploading…' : ''}</span>
+                  {!a.uploading && <button onClick={() => removeAttachment(a.name)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>}
+                </div>
+              ))}
+            </div>
+          )}
+
           <button onClick={sendEmail} disabled={sending}
             style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--brand)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
             {sending ? 'Sending…' : '✉️ Send'}
           </button>
           <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6 }}>
-            Sends from your own connected Outlook/Gmail account. No attachments yet.
+            Sends from your own connected Outlook/Gmail account. Attachments limited to 4MB each.
           </div>
         </div>
       ) : (
