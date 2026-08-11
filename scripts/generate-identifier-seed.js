@@ -31,10 +31,10 @@ for (const workflow of catalog.workflows || []) {
   for (const [index, state] of (workflow.states || []).entries()) {
     lines.push(
       'insert into public.workflow_states(',
-      '  workflow_id, code, label, color, sort_order, semantic_type,',
+      '  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,',
       '  is_initial, is_terminal, counts_as_active, counts_as_won',
       ')',
-      `select w.id, ${q(state.code)}, ${q(state.label)}, ${nullable(state.color)}, ${index}, ${q(state.semanticType || 'open')},`,
+      `select w.id, ${q(state.code)}, ${q(state.label)}, ${q(state.storageValue || state.legacyValues?.[0] || state.code)}, ${nullable(state.color)}, ${index}, ${q(state.semanticType || 'open')},`,
       `  ${bool(state.isInitial)}, ${bool(state.isTerminal)}, ${bool(state.countsAsActive)}, ${bool(state.countsAsWon)}`,
       'from public.workflow_definitions w',
       `where w.organization_id is null and w.code = ${q(workflow.code)}`,
@@ -64,8 +64,8 @@ for (const choiceSet of catalog.choiceSets || []) {
   )
   for (const [index, option] of (choiceSet.options || []).entries()) {
     lines.push(
-      'insert into public.choice_options(choice_set_id, code, label, color, sort_order)',
-      `select c.id, ${q(option.code)}, ${q(option.label)}, ${nullable(option.color)}, ${index}`,
+      'insert into public.choice_options(choice_set_id, code, label, legacy_storage_value, color, sort_order)',
+      `select c.id, ${q(option.code)}, ${q(option.label)}, ${q(option.storageValue || option.legacyValues?.[0] || option.code)}, ${nullable(option.color)}, ${index}`,
       'from public.choice_sets c',
       `where c.organization_id is null and c.code = ${q(choiceSet.code)}`,
       `  and not exists (select 1 from public.choice_options o where o.choice_set_id = c.id and o.code = ${q(option.code)});`,
@@ -106,4 +106,3 @@ for (const board of catalog.boards || []) {
 lines.push('commit;', '')
 fs.writeFileSync(outputPath, lines.join('\n'))
 process.stdout.write(`Generated ${path.relative(root, outputPath)}\n`)
-

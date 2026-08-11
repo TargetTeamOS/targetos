@@ -7,7 +7,7 @@
       "entityTypeCode": "deal",
       "states": [
         { "code": "negotiations", "label": "Negotiations", "color": "#037f4c", "semanticType": "open", "isInitial": true, "countsAsActive": true, "legacyValues": ["Negotiations"] },
-        { "code": "offer_accepted", "label": "Offer Accepted", "color": "#00c875", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Offer Accapted", "Offer Accepted"] },
+        { "code": "offer_accepted", "label": "Offer Accepted", "storageValue": "Offer Accepted", "color": "#00c875", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Offer Accapted", "Offer Accepted"] },
         { "code": "under_shtar", "label": "Under Shtar", "color": "#bb3354", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Under Shtar"] },
         { "code": "under_contract", "label": "Under Contract", "color": "#757575", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Under Contract"] },
         { "code": "closed", "label": "Closed", "color": "#225091", "semanticType": "won", "isTerminal": true, "countsAsWon": true, "legacyValues": ["Closed"] },

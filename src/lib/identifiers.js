@@ -80,10 +80,10 @@ export function workflowStateOptions(workflowCode, index = identifierIndex) {
 }
 
 export function legacyWorkflowValue(workflowCode, stateCode, index = identifierIndex) {
-  return getWorkflowState(workflowCode, stateCode, index)?.legacyValues?.[0] || null
+  const state = getWorkflowState(workflowCode, stateCode, index)
+  return state?.storageValue || state?.legacyValues?.[0] || null
 }
 
 export function displayWorkflowState(workflowCode, value, index = identifierIndex) {
   return resolveWorkflowState(workflowCode, value, index)?.label || String(value ?? '')
 }
-
