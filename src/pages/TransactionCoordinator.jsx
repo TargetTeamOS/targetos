@@ -180,9 +180,19 @@ create table if not exists tc_tasks (
 
 // ── PRIORITY COLORS ────────────────────────────────────────────────
 const PC = { urgent:'#DC2626', high:'#F97316', normal:'#3B82F6', low:'#94A3B8' }
+const WAIT_REASONS = [
+  { id: '',                  label: '— No blocker —' },
+  { id: 'waiting_agent',     label: '👤 Waiting on agent' },
+  { id: 'waiting_seller',    label: '🏠 Waiting on seller' },
+  { id: 'waiting_attorney',  label: '⚖️ Waiting on attorney' },
+  { id: 'waiting_mortgage',  label: '🏦 Waiting on mortgage/title' },
+  { id: 'blocked',           label: '🚫 Blocked' },
+  { id: 'not_applicable',    label: '➖ Not applicable' },
+]
+const WAIT_COLOR = { waiting_agent:'#3B82F6', waiting_seller:'#3B82F6', waiting_attorney:'#3B82F6', waiting_mortgage:'#3B82F6', blocked:'#DC2626', not_applicable:'var(--muted)' }
 
 // ── TASK ROW ──────────────────────────────────────────────────────
-function TaskRow({ task, agents, onCheck, onEdit }) {
+function TaskRow({ task, agents, onCheck, onEdit, onSetWaitReason }) {
   // Agent visibility: 👁 = the assigned listing agent sees this step
   // on their listing (Listings board → Transaction Progress).
   async function toggleAgentVisible(e) {
@@ -200,6 +210,8 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
   const overdue = !done && task.due_date && new Date(task.due_date) < new Date()
   const agent   = agents.find(a => a.id === task.agent_id)
   const pc      = PC[task.priority] || '#94A3B8'
+  const waitDef = WAIT_REASONS.find(w => w.id === task.wait_reason)
+  const waitDays = task.wait_since ? Math.floor((new Date() - new Date(task.wait_since)) / 86400000) : null
 
   return (
     <div id={"task-" + task.id} style={{
@@ -236,7 +248,25 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
           {overdue && '⚠️ Overdue · '}{task.due_date && fmtDate(task.due_date)}
           {task.notes && ' · ' + task.notes.slice(0,40)}
         </div>
+        {waitDef && task.wait_reason && (
+          <div style={{ fontSize:10, fontWeight:700, color: WAIT_COLOR[task.wait_reason] || 'var(--muted)', marginTop:2 }}>
+            {waitDef.label}{waitDays != null && waitDays > 0 ? ' · ' + waitDays + 'd' : ''}
+            {task.wait_note && ' — ' + task.wait_note}
+          </div>
+        )}
       </div>
+
+      {/* Wait-reason selector — sets/clears the blocker, timestamps
+          when it started so "waiting too long" can be measured for
+          real instead of approximated. */}
+      {!done && onSetWaitReason && (
+        <select value={task.wait_reason || ''} onClick={e => e.stopPropagation()}
+          onChange={e => onSetWaitReason(task, e.target.value)}
+          style={{ fontSize:10, padding:'2px 4px', borderRadius:6, border:'1px solid var(--border)',
+                   background:'var(--panel)', color:'var(--muted)', flexShrink:0, maxWidth:110 }}>
+          {WAIT_REASONS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
+        </select>
+      )}
 
       {/* Priority */}
       <span style={{ fontSize:9, fontWeight:700, color:pc, background:pc+'15', padding:'2px 6px', borderRadius:99, textTransform:'uppercase', flexShrink:0 }}>
@@ -261,7 +291,7 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
 }
 
 // ── DEAL CARD ─────────────────────────────────────────────────────
-function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle, isAdmin, photo }) {
+function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle, isAdmin, photo, onSetWaitReason }) {
   const [subTab, setSubTab] = useState('overview')   // overview | tasks | people | photo | email
   const phase    = PHASES.find(p => p.id === deal.tc_phase) || PHASES[0]
   const agent    = agents.find(a => a.id === deal.agent_id)
@@ -506,7 +536,7 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
                   ⚠️ Overdue / Due Today ({overdueTasks.length + dueTodayTasks.length})
                 </div>
                 {[...overdueTasks, ...dueTodayTasks].map(t => (
-                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} />
+                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} onSetWaitReason={onSetWaitReason} />
                 ))}
               </div>
             )}
@@ -519,7 +549,7 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
                   {phase.icon} {phase.label} Tasks ({otherCurrent.length})
                 </div>
                 {otherCurrent.map(t => (
-                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} />
+                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} onSetWaitReason={onSetWaitReason} />
                 ))}
               </div>
             )}
@@ -533,7 +563,7 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
                   ↩ Carryover from previous stages ({carryover.length}) — click to view
                 </summary>
                 {carryover.map(t => (
-                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} />
+                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} onSetWaitReason={onSetWaitReason} />
                 ))}
               </details>
             )}
@@ -547,7 +577,7 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
                   ✓ Completed / History ({doneTasks.length}) — click to view
                 </summary>
                 {doneTasks.map(t => (
-                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} />
+                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} onSetWaitReason={onSetWaitReason} />
                 ))}
               </details>
             )}
@@ -1048,6 +1078,23 @@ export function TransactionCoordinator() {
     } catch (e) { alert('Could not update task: ' + (e.message || e)) }
   }
 
+  // Set/clear a task's blocker reason. wait_since is stamped fresh
+  // whenever the reason CHANGES to a new non-empty value (so "waiting
+  // too long" measures from when THIS blocker started, not some
+  // earlier one), and cleared when the reason is cleared.
+  async function setTaskWaitReason(task, reason) {
+    const patch = {
+      wait_reason: reason || null,
+      wait_since: reason ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    }
+    try {
+      const { error } = await supabase.from('tc_tasks').update(patch).eq('id', task.id)
+      if (error) throw error
+      setTasks(p => p.map(t => t.id === task.id ? { ...t, ...patch } : t))
+    } catch (e) { toast('Could not update: ' + e.message, '#DC2626') }
+  }
+
   // Open a deal's TC card: expand it (single-expand) + scroll into view
   function openDealFile(dealId) {
     if (!dealId) return
@@ -1173,7 +1220,7 @@ export function TransactionCoordinator() {
 
   // Which deals fall in each dashboard bucket (memoized)
   const buckets = useMemo(() => {
-    const b = { attention:[], today:[], week:[], overdue:[], closing:[], wait_agent:[], wait_attorney:[], wait_mtg:[], missing:[], photo:[], newFile:[] }
+    const b = { attention:[], today:[], week:[], overdue:[], closing:[], wait_agent:[], wait_attorney:[], wait_mtg:[], missing:[], photo:[], newFile:[], blocked:[] }
     const t = new Date().toISOString().slice(0,10)
     const wk = (()=>{ const d=new Date(); d.setDate(d.getDate()+7); return d.toISOString().slice(0,10) })()
     deals.forEach(d => {
@@ -1187,10 +1234,15 @@ export function TransactionCoordinator() {
       if (s.missing.length) b.missing.push(d.id)
       if (s.isNew) b.newFile.push(d.id)
       if (s.photoUrgent || s.photoNeedsReview) b.photo.push(d.id)
-      // waiting-on (APPROXIMATION from existing data — see note in drawer)
-      if (dTasks.some(x => x.agent_id)) b.wait_agent.push(d.id)
-      if (s.missing.includes('seller_attorney') || s.missing.includes('buyer_attorney')) b.wait_attorney.push(d.id)
-      if (s.missing.includes('mortgage_broker') || s.missing.includes('title')) b.wait_mtg.push(d.id)
+      // REAL waiting-on tracking (fixed 2026-08-09) — was previously
+      // approximated from unrelated fields (e.g. "has an assigned
+      // agent" as a stand-in for "waiting on agent"). Now reads the
+      // actual wait_reason set on each task via the dropdown in
+      // TaskRow.
+      if (dTasks.some(x => x.wait_reason === 'waiting_agent'))    b.wait_agent.push(d.id)
+      if (dTasks.some(x => x.wait_reason === 'waiting_attorney'))  b.wait_attorney.push(d.id)
+      if (dTasks.some(x => x.wait_reason === 'waiting_mortgage'))  b.wait_mtg.push(d.id)
+      if (dTasks.some(x => x.wait_reason === 'blocked'))           b.blocked.push(d.id)
     })
     return b
   }, [deals, signalsByDeal, tasksByDeal, photoByDeal])
@@ -1300,6 +1352,7 @@ export function TransactionCoordinator() {
           { id:'missing',   label:'Missing info',    n:buckets.missing.length,       c:'var(--muted)',  bg:'var(--dim)' },
           { id:'photo',     label:'Photography',     n:buckets.photo.length,         c:'var(--muted)',  bg:'var(--dim)' },
           { id:'newFile',   label:'New files',       n:buckets.newFile.length,       c:'#8B5CF6',       bg:'rgba(139,92,246,.1)' },
+          { id:'blocked',   label:'Blocked',         n:buckets.blocked.length,       c:'#DC2626',       bg:'rgba(220,38,38,.1)' },
         ].map(t => (
           <button key={t.id} onClick={()=> setDrawerTile(t.id)}
             style={{ display:'flex', alignItems:'baseline', gap:6, padding:'5px 11px', borderRadius:8,
@@ -1359,6 +1412,7 @@ export function TransactionCoordinator() {
             agents={agents}
             isAdmin={isAdmin}
             photo={photoByDeal[deal.id]}
+            onSetWaitReason={setTaskWaitReason}
             expanded={!!expanded[deal.id]}
             onToggle={() => setExpanded(p => (p[deal.id] ? {} : { [deal.id]: true }))}
             onPhaseChange={changePhase}
@@ -1391,6 +1445,7 @@ export function TransactionCoordinator() {
                   agents={agents}
                   isAdmin={isAdmin}
                   photo={photoByDeal[deal.id]}
+                  onSetWaitReason={setTaskWaitReason}
                   expanded={!!expanded[deal.id]}
                   onToggle={() => setExpanded(p => (p[deal.id] ? {} : { [deal.id]: true }))}
                   onPhaseChange={changePhase}
@@ -1416,13 +1471,10 @@ export function TransactionCoordinator() {
           overdue:'🔴 Overdue', today:'📌 Due today', week:'📆 Due this week', attention:'⚠️ Needs attention',
           closing:'🏁 Closing ≤7 days', wait_agent:'👤 Waiting on agent', wait_attorney:'⚖️ Waiting on attorney',
           wait_mtg:'🏦 Waiting on mortgage/title', missing:'❗ Missing info', photo:'📸 Photography',
-          newFile:'🆕 New files', all_deals:'📋 All TC files', pre_listing:'📋 Pre-Listing files', under_contract:'📝 Under Contract files',
+          newFile:'🆕 New files', blocked:'🚫 Blocked', all_deals:'📋 All TC files', pre_listing:'📋 Pre-Listing files', under_contract:'📝 Under Contract files',
           closing14:'🎉 Closing within 14 days',
         }
         const APPROX = {
-          wait_agent:'approx: open tasks assigned to an agent (no real waiting-on field yet)',
-          wait_attorney:'approx: derived from missing attorney party',
-          wait_mtg:'approx: derived from missing mortgage/title party',
           photo:'files where a photo shoot needs corrections addressed, or media is received and waiting for your review',
           newFile:'files created in the last 48 hours with no task completed yet',
         }
@@ -1437,7 +1489,7 @@ export function TransactionCoordinator() {
           dealIds = deals.filter(d => d.close_date && d.close_date >= t && d.close_date <= in14).map(d => d.id)
         } else dealIds = buckets[drawerTile] || []
 
-        if (['overdue','today','week','attention','wait_agent'].includes(drawerTile)) {
+        if (['overdue','today','week','attention','wait_agent','wait_attorney','wait_mtg','blocked'].includes(drawerTile)) {
           // task-level rows (editable)
           dealIds.forEach(id => {
             const deal = dealById(id)
@@ -1446,7 +1498,10 @@ export function TransactionCoordinator() {
               if (drawerTile === 'overdue') include = task.due_date && task.due_date < t
               else if (drawerTile === 'today') include = task.due_date === t
               else if (drawerTile === 'week') include = task.due_date && task.due_date > t && task.due_date <= wk
-              else if (drawerTile === 'wait_agent') include = !!task.agent_id
+              else if (drawerTile === 'wait_agent') include = task.wait_reason === 'waiting_agent'
+              else if (drawerTile === 'wait_attorney') include = task.wait_reason === 'waiting_attorney'
+              else if (drawerTile === 'wait_mtg') include = task.wait_reason === 'waiting_mortgage'
+              else if (drawerTile === 'blocked') include = task.wait_reason === 'blocked'
               else if (drawerTile === 'attention') include = (task.due_date && task.due_date <= t)
               if (include) rows.push({ key:task.id, task, deal })
             })
