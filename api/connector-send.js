@@ -59,6 +59,12 @@ module.exports = async function handler(req, res) {
     const subject = String(body.subject || '').trim() || '(no subject)'
     const html = body.html || null
     const text = body.text || ''
+    // CC/BCC: accept either an array or a comma-separated string, and
+    // normalize both to a clean array of addresses.
+    const parseAddrs = v => (Array.isArray(v) ? v : String(v || '').split(','))
+      .map(x => x.trim()).filter(Boolean)
+    const cc = parseAddrs(body.cc)
+    const bcc = parseAddrs(body.bcc)
     if (!to) { res.status(400).json({ error: 'missing "to"' }); return }
 
     let fromAccount = ''
@@ -88,6 +94,8 @@ module.exports = async function handler(req, res) {
             subject,
             body: { contentType: html ? 'HTML' : 'Text', content: html || text },
             toRecipients: [{ emailAddress: { address: to } }],
+            ...(cc.length ? { ccRecipients: cc.map(a => ({ emailAddress: { address: a } })) } : {}),
+            ...(bcc.length ? { bccRecipients: bcc.map(a => ({ emailAddress: { address: a } })) } : {}),
           },
           saveToSentItems: true,
         }),
@@ -112,6 +120,8 @@ module.exports = async function handler(req, res) {
       }
       const mimeLines = [
         'To: ' + to,
+        ...(cc.length ? ['Cc: ' + cc.join(', ')] : []),
+        ...(bcc.length ? ['Bcc: ' + bcc.join(', ')] : []),
         'Subject: ' + subject,
         'MIME-Version: 1.0',
         html ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8',
@@ -146,7 +156,7 @@ module.exports = async function handler(req, res) {
       } catch (e) { console.warn('[connector-send] timeline log failed: ' + e.message) }
     }
 
-    res.status(200).json({ ok: true, provider, from: fromAccount })
+    res.status(200).json({ ok: true, provider, from: fromAccount, cc, bcc })
   } catch (e) {
     console.error('[connector-send] ' + e.message)
     res.status(500).json({ error: e.message })
