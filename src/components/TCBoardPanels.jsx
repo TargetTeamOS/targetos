@@ -160,7 +160,7 @@ export function TCEmailLog({ deal }) {
   // larger work (thread/receive sync in particular).
   const [mode, setMode] = useState('log')   // 'log' | 'compose'
   const [contacts, setContacts] = useState([])   // linked parties with an email, from tc_participants
-  const [compose, setCompose] = useState({ contact_id: '', to_email: '', subject: '', body: '' })
+  const [compose, setCompose] = useState({ contact_id: '', to_email: '', subject: '', body: '', cc: '', bcc: '' })
   const [sending, setSending] = useState(false)
 
   async function loadContacts() {
@@ -217,6 +217,8 @@ export function TCEmailLog({ deal }) {
         body: JSON.stringify({
           provider: 'outlook',
           to: toEmail,
+          cc: compose.cc,
+          bcc: compose.bcc,
           contact_id: compose.contact_id || null,
           subject: compose.subject.trim(),
           html: '<p>' + compose.body.trim().replace(/\n/g, '</p><p>') + '</p>',
@@ -233,6 +235,8 @@ export function TCEmailLog({ deal }) {
         note: compose.body.trim(),
         contact_id: compose.contact_id || null,
         to_email: toEmail,
+        cc_emails: compose.cc.trim() || null,
+        bcc_emails: compose.bcc.trim() || null,
         provider: ok ? result.provider : null,
         from_account: ok ? result.from : null,
         send_status: blocked ? 'blocked' : ok ? 'sent' : 'failed',
@@ -242,7 +246,7 @@ export function TCEmailLog({ deal }) {
       if (blocked) alert('Logged, but not actually sent — external sending is currently disabled (EXTERNAL_EFFECTS_ENABLED is off).')
       else if (!ok) alert('Send failed: ' + (result.error || 'unknown error') + ' — logged as failed.')
 
-      setCompose({ contact_id: '', to_email: '', subject: '', body: '' })
+      setCompose({ contact_id: '', to_email: '', subject: '', body: '', cc: '', bcc: '' })
       setMode('log')
       load()
     } catch (e) {
@@ -291,6 +295,12 @@ export function TCEmailLog({ deal }) {
           )}
           <input style={{ ...inp, marginBottom: 6 }} placeholder="Subject"
             value={compose.subject} onChange={e => setCompose(c => ({ ...c, subject: e.target.value }))} />
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <input style={{ ...inp, flex: 1 }} placeholder="CC (comma-separated, optional)"
+              value={compose.cc} onChange={e => setCompose(c => ({ ...c, cc: e.target.value }))} />
+            <input style={{ ...inp, flex: 1 }} placeholder="BCC (comma-separated, optional)"
+              value={compose.bcc} onChange={e => setCompose(c => ({ ...c, bcc: e.target.value }))} />
+          </div>
           <textarea style={{ ...inp, resize: 'vertical', marginBottom: 6 }} rows={4} placeholder="Message…"
             value={compose.body} onChange={e => setCompose(c => ({ ...c, body: e.target.value }))} />
           <button onClick={sendEmail} disabled={sending}
@@ -298,7 +308,7 @@ export function TCEmailLog({ deal }) {
             {sending ? 'Sending…' : '✉️ Send'}
           </button>
           <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6 }}>
-            Sends from your own connected Outlook/Gmail account. No CC/BCC or attachments yet.
+            Sends from your own connected Outlook/Gmail account. No attachments yet.
           </div>
         </div>
       ) : (
