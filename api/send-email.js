@@ -1,6 +1,7 @@
 'use strict'
 // Vercel Serverless Function — proxies email sending to Resend
 const { requireAnyAgent } = require('./_lib/phone')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -13,19 +14,6 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  // HARDENED (July 2026): caller authentication with staged rollout,
-  // same pattern as TWILIO_SIG_ENFORCE. Log-only until AUTH_ENFORCE
-  // is set to 'true' in Vercel — watch logs for '[AUTH]' lines, flip
-  // the env var when clean. Kill-switch: set it back to 'false'.
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
-      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
-  }
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
@@ -38,11 +26,12 @@ module.exports = async function handler(req, res) {
   // until July 2026.
   const authCheck = await requireAnyAgent(req)
   if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
+  if (!requireExternalEffects(res)) return
 
   const RESEND_KEY = process.env.RESEND_API_KEY
   if (!RESEND_KEY) {
     console.error('[send-email] RESEND_API_KEY not set in environment variables')
-    return res.status(500).json({ error: 'Email service not configured' })
+    return res.status(503).json({ error: 'Email service not configured' })
   }
 
   try {

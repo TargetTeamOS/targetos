@@ -80,15 +80,10 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   if (req.method !== 'GET') return res.status(405).end(JSON.stringify({ error: 'GET only' }))
 
-  // Staged auth (same pattern as the other endpoints)
-  const { requireUser } = require('./_lib/auth')
-  const user = await requireUser(req)
-  if (!user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to /api/mls-search ALLOWED (log-only)')
-  }
+  // Fail-closed authentication; feature authorization is evaluated below.
+  const { authenticate, sendAuthError } = require('./_lib/auth')
+  const identity = await authenticate(req)
+  if (!identity.ok) return sendAuthError(res, identity)
 
   const BASE  = (process.env.MLSGRID_BASE || '').replace(/\/$/, '')
   const TOKEN = process.env.MLSGRID_TOKEN
@@ -106,11 +101,7 @@ module.exports = async function handler(req, res) {
     if (sb) {
       const { data: flag } = await sb.from('feature_flags').select('*').eq('key', 'mls_search').maybeSingle()
       if (flag) {
-        let agentRow = null
-        if (user) {
-          const { data } = await sb.from('agents').select('id,role').eq('auth_user_id', user.id).maybeSingle()
-          agentRow = data
-        }
+        const agentRow = identity.agent
         const isAdminCaller = agentRow?.role === 'admin'
         if (!isAdminCaller) {
           if (!flag.enabled) return res.status(403).end(JSON.stringify({ error: 'MLS Search is disabled by your administrator' }))

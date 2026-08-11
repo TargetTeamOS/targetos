@@ -8,13 +8,10 @@
 //   apply  { contact_id, automation_id }   → attach + fire it now
 //   stop   { contact_id, automation_id }   → mark stopped
 
-const { createClient } = require('@supabase/supabase-js')
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
+const { createServiceClient } = require('./_lib/supabaseConfig')
 
 function sb() {
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!key) throw new Error('service key missing')
-  return createClient(SUPABASE_URL, key, { auth: { persistSession: false } })
+  return createServiceClient()
 }
 
 async function parseBody(req) {
@@ -28,11 +25,10 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user && String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-    res.statusCode = 401; res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-  }
+  const { authenticate, sendAuthError } = require('./_lib/auth')
+  const { contactAccess } = require('./_lib/connectors')
+  const identity = await authenticate(req)
+  if (!identity.ok) return sendAuthError(res, identity)
   res.setHeader('Content-Type', 'application/json')
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'POST only' })) }
 
@@ -42,6 +38,9 @@ module.exports = async function handler(req, res) {
     const contactId = body.contact_id
     if (!contactId) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'contact_id required' })) }
     const db = sb()
+    const access = await contactAccess(contactId, identity.agent)
+    if (!access.exists) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'contact not found' })) }
+    if (!access.allowed) { res.statusCode = 403; return res.end(JSON.stringify({ error: 'forbidden' })) }
 
     if (action === 'list') {
       const [{ data: active }, { data: available }] = await Promise.all([
@@ -64,7 +63,7 @@ module.exports = async function handler(req, res) {
       } else {
         await db.from('contact_automations').insert({
           contact_id: contactId, automation_id: body.automation_id, status: 'active',
-          applied_by: __user ? __user.id : null, applied_at: new Date().toISOString(),
+          applied_by: identity.user.id, applied_at: new Date().toISOString(),
         })
       }
       // log to the contact timeline

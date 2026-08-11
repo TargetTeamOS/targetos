@@ -1,16 +1,66 @@
 'use strict'
-// api/connector-send.js — send an email through the connected mailbox
-// (Outlook via Microsoft Graph, or Gmail). The message comes FROM the
-// official account and lands in its Sent folder; TargetOS logs the
-// send to integration_events + the contact's timeline (tasks, priority
-// 'note') so tracking lives in the CRM per Yanky's spec.
-// Body: { provider: 'outlook'|'gmail', to, subject, html|text, contact_id? }
 
-const { getIntegration, freshMicrosoftToken, freshGoogleToken, logEvent, sb, getAgentAccount, freshAccountToken, agentIdFromAuthUser } = require('./_lib/connectors')
+// Sends through the authenticated CRM user's own connected mailbox.
+// Caller-supplied agent_id and organization-level fallback accounts are never
+// trusted by this personal-send route.
+
+const connectors = require('./_lib/connectors')
+const auth = require('./_lib/auth')
+const { requireExternalEffects } = require('./_lib/externalEffects')
+
+const deps = {
+  authenticate: auth.authenticate,
+  logEvent: connectors.logEvent,
+  getAgentAccount: connectors.getAgentAccount,
+  freshAccountToken: connectors.freshAccountToken,
+  contactAccess: connectors.contactAccess,
+  insertContactTimeline: connectors.insertContactTimeline,
+}
+
+const ALLOWED_PROVIDERS = ['gmail', 'outlook']
+
+function allowedOrigins(env = process.env) {
+  return String(env.APP_ORIGINS || 'https://app.targetreteam.com')
+    .split(',').map(value => value.trim()).filter(Boolean)
+}
+
+function applyCors(req, res) {
+  const origin = req.headers.origin || ''
+  if (origin && allowedOrigins().includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
+  }
+  res.setHeader('Vary', 'Origin')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+}
+
+function sanitize(message) {
+  return String(message == null ? '' : message)
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
+    .replace(/(access_token|refresh_token|client_secret|id_token)"?\s*[:=]\s*"?[A-Za-z0-9._~+/=-]+/gi, '$1=[redacted]')
+    .slice(0, 300)
+}
+
+function hasHeaderInjection(value) {
+  return /[\r\n]/.test(String(value == null ? '' : value))
+}
+
+function isValidEmail(value) {
+  const email = String(value == null ? '' : value)
+  return !!email && !/\s/.test(email) && !hasHeaderInjection(email) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function json(res, status, body) {
+  if (typeof res.status === 'function' && typeof res.json === 'function') return res.status(status).json(body)
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  return res.end(JSON.stringify(body))
+}
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     let raw = ''
     req.on('data', chunk => { raw += chunk })
     req.on('end', () => { try { resolve(JSON.parse(raw || '{}')) } catch { resolve({}) } })
@@ -18,69 +68,62 @@ async function parseBody(req) {
   })
 }
 
-module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
-      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
-  }
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  if (req.method === 'OPTIONS') { res.status(200).end(); return }
-  if (req.method !== 'POST')    { res.status(405).json({ error: 'Method not allowed' }); return }
+async function handler(req, res) {
+  applyCors(req, res)
+  if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end() }
+  if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' })
 
-  // ── EXTERNAL EFFECTS GATE (added 2026-08-06) ──────────────────────
-  // Same gate as automation-engine and api/send-email.js. This endpoint
-  // sends a REAL email through the agent's own Outlook/Gmail account —
-  // it had no external-effects check at all. Set
-  // EXTERNAL_EFFECTS_ENABLED='true' in Vercel (Production only) to
-  // allow real sends; anything else blocks and logs instead.
-  const EXTERNAL_EFFECTS_ENABLED = String(process.env.EXTERNAL_EFFECTS_ENABLED || '').toLowerCase() === 'true'
-  if (!EXTERNAL_EFFECTS_ENABLED) {
-    console.warn('[EXTERNAL-EFFECTS] BLOCKED connector-send call (external effects disabled)')
-    res.status(200).json({
-      ok: false,
-      blocked: true,
-      reason: 'external_effects_disabled',
-      message: 'Email not sent — EXTERNAL_EFFECTS_ENABLED is not set to true in this environment.',
-    })
-    return
-  }
+  const identity = await deps.authenticate(req)
+  if (!identity.ok) return json(res, identity.status, { error: identity.error })
 
   try {
     const body = await parseBody(req)
-    const provider = body.provider === 'gmail' ? 'gmail' : 'outlook'
+    const provider = body.provider
+    if (!ALLOWED_PROVIDERS.includes(provider)) {
+      return json(res, 400, { error: "provider must be 'gmail' or 'outlook'" })
+    }
+    const accountProvider = provider === 'gmail' ? 'google' : 'outlook'
     const to = String(body.to || '').trim()
     const subject = String(body.subject || '').trim() || '(no subject)'
     const html = body.html || null
     const text = body.text || ''
-    if (!to) { res.status(400).json({ error: 'missing "to"' }); return }
 
-    let fromAccount = ''
+    if (hasHeaderInjection(to) || hasHeaderInjection(subject) || hasHeaderInjection(body.from)) {
+      return json(res, 400, { error: 'invalid characters in email headers' })
+    }
+    if (!isValidEmail(to)) return json(res, 400, { error: 'invalid recipient address' })
 
-    // Whose mailbox? The signed-in agent's own connected account wins;
-    // the org-level (office) account is the fallback.
-    let senderAgentId = body.agent_id || null
-    if (!senderAgentId && __user) senderAgentId = await agentIdFromAuthUser(__user.id)
+    const agent = identity.agent
+    if (body.contact_id != null && body.contact_id !== '') {
+      let access
+      try { access = await deps.contactAccess(body.contact_id, agent) }
+      catch { return json(res, 500, { error: 'contact check failed' }) }
+      if (!access.exists) return json(res, 404, { error: 'contact not found' })
+      if (!access.allowed) return json(res, 403, { error: 'not authorized for that contact' })
+    }
+
+    // Always use the authenticated agent's personal connector. body.agent_id
+    // is intentionally ignored.
+    const account = await deps.getAgentAccount(agent.id, accountProvider)
+    if (!account || account.status !== 'connected') {
+      return json(res, 400, { error: 'Connect your ' + (provider === 'gmail' ? 'Google' : 'Outlook') + ' account first' })
+    }
+    const fromAccount = String(account.account_email || '').trim()
+    if (!fromAccount) return json(res, 409, { error: 'Connected account has no email address; reconnect it' })
+    if (body.from && String(body.from).trim().toLowerCase() !== fromAccount.toLowerCase()) {
+      return json(res, 403, { error: 'From address is not authorized for your connected account' })
+    }
+    if (!requireExternalEffects(res)) return
+
+    let token
+    try { token = await deps.freshAccountToken(accountProvider, account) }
+    catch (error) {
+      await deps.logEvent(accountProvider, 'out', 'email.send', { to, subject, error: sanitize(error.message) }, false)
+      return json(res, 502, { error: 'Could not refresh mailbox authorization; reconnect the account' })
+    }
 
     if (provider === 'outlook') {
-      let token = null
-      const acct = senderAgentId ? await getAgentAccount(senderAgentId, 'outlook') : null
-      if (acct && acct.status === 'connected') {
-        token = await freshAccountToken('outlook', acct)
-        fromAccount = acct.account_email || 'Outlook'
-      } else {
-        const integ = await getIntegration('outlook')
-        if (!integ || integ.status !== 'connected') { res.status(400).json({ error: 'Outlook is not connected — connect your account in Settings, or the office account in Admin → Connectors' }); return }
-        token = await freshMicrosoftToken(integ)
-        fromAccount = (integ.secrets || {}).account_email || 'Outlook'
-      }
-      const r = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+      const response = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -92,63 +135,47 @@ module.exports = async function handler(req, res) {
           saveToSentItems: true,
         }),
       })
-      if (r.status !== 202) {
-        const errText = await r.text()
-        await logEvent('outlook', 'out', 'email.send', { to, subject, error: errText }, false)
-        res.status(502).json({ error: 'Graph sendMail failed: ' + errText.slice(0, 300) }); return
+      if (response.status !== 202) {
+        const detail = sanitize(await response.text())
+        await deps.logEvent('outlook', 'out', 'email.send', { to, subject, error: detail }, false)
+        return json(res, 502, { error: 'Graph sendMail failed: ' + detail })
       }
-      await logEvent('outlook', 'out', 'email.send', { to, subject, from: fromAccount }, true)
+      try { await deps.logEvent('outlook', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: agent.id }, true) }
+      catch (error) { console.warn('[connector-send] send-event log failed: ' + sanitize(error.message)) }
     } else {
-      let token = null
-      const acct = senderAgentId ? await getAgentAccount(senderAgentId, 'google') : null
-      if (acct && acct.status === 'connected') {
-        token = await freshAccountToken('google', acct)
-        fromAccount = acct.account_email || 'Gmail'
-      } else {
-        const integ = await getIntegration('google')
-        if (!integ || integ.status !== 'connected') { res.status(400).json({ error: 'Google is not connected — connect your account in Settings, or the office account in Admin → Connectors' }); return }
-        token = await freshGoogleToken(integ)
-        fromAccount = (integ.secrets || {}).account_email || 'Gmail'
-      }
-      const mimeLines = [
+      const mime = [
         'To: ' + to,
         'Subject: ' + subject,
         'MIME-Version: 1.0',
         html ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8',
         '',
         html || text,
-      ]
-      const raw = Buffer.from(mimeLines.join('\r\n')).toString('base64')
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-      const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      ].join('\r\n')
+      const raw = Buffer.from(mime).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ raw }),
       })
-      if (!r.ok) {
-        const errText = await r.text()
-        await logEvent('google', 'out', 'email.send', { to, subject, error: errText }, false)
-        res.status(502).json({ error: 'Gmail send failed: ' + errText.slice(0, 300) }); return
+      if (!response.ok) {
+        const detail = sanitize(await response.text())
+        await deps.logEvent('google', 'out', 'email.send', { to, subject, error: detail }, false)
+        return json(res, 502, { error: 'Gmail send failed: ' + detail })
       }
-      await logEvent('google', 'out', 'email.send', { to, subject, from: fromAccount }, true)
+      await deps.logEvent('google', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: agent.id }, true)
     }
 
-    // CRM timeline entry on the contact, if one was given
-    if (body.contact_id) {
-      try {
-        await sb().from('tasks').insert([{
-          contact_id: body.contact_id,
-          title: 'Email sent via ' + (provider === 'gmail' ? 'Gmail' : 'Outlook') + ': ' + subject,
-          notes: 'To: ' + to + ' — from ' + fromAccount,
-          priority: 'note',
-          status: 'done',
-        }])
-      } catch (e) { console.warn('[connector-send] timeline log failed: ' + e.message) }
+    if (body.contact_id != null && body.contact_id !== '') {
+      try { await deps.insertContactTimeline({ contactId: body.contact_id, provider, subject, to, fromAccount }) }
+      catch (error) { console.warn('[connector-send] timeline log failed: ' + sanitize(error.message)) }
     }
-
-    res.status(200).json({ ok: true, provider, from: fromAccount })
-  } catch (e) {
-    console.error('[connector-send] ' + e.message)
-    res.status(500).json({ error: e.message })
+    return json(res, 200, { ok: true, provider, from: fromAccount })
+  } catch (error) {
+    console.error('[connector-send] ' + sanitize(error.message))
+    return json(res, 500, { error: 'send failed' })
   }
 }
+
+module.exports = handler
+module.exports.__setDepsForTests = overrides => { Object.assign(deps, overrides) }
+module.exports.__private = { allowedOrigins, hasHeaderInjection, isValidEmail, sanitize }

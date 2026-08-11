@@ -17,6 +17,7 @@
 const { getSupabase } = require('./_lib/phone')
 const { getTodaysQuote, buildEmailHTML, isDueToday, isOverdue, getDaysUntil, DEFAULT_PREFS, DEFAULT_STYLE } = require('./_lib/briefing')
 const { notifyAgent } = require('./_lib/notify')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 async function gatherAgentData(supabase, agentId) {
   const today   = new Date().toISOString().slice(0, 10)
@@ -53,11 +54,10 @@ module.exports = async function handler(req, res) {
   // HARDENED (July 2026): the secret is now ENFORCED. Previously a
   // mismatch only logged a warning and the send proceeded anyway,
   // meaning anything that hit this URL triggered a full team send.
-  const CRON_SECRET = process.env.CRON_SECRET
-  if (CRON_SECRET && req.headers['authorization'] !== 'Bearer ' + CRON_SECRET) {
-    console.warn('[daily-briefing-cron] BLOCKED unauthorized invocation')
-    return res.status(401).json({ ok: false, error: 'unauthorized' })
-  }
+  const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
+  const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
+  if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
+  if (!requireExternalEffects(res)) return
 
   const force = /[?&]force=1/.test(req.url || '')
   const supabase = getSupabase()

@@ -1,16 +1,13 @@
 'use strict'
+const { assertExternalEffectsEnabled } = require('./externalEffects')
 // api/_lib/connectors.js — shared helpers for the connectors layer.
 // Reuses the service-key Supabase client pattern from _lib/phone.js.
 
-const { createClient } = require('@supabase/supabase-js')
-
-const SUPABASE_URL  = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
+const { constantTimeEqual } = require('./requestSecurity')
+const { createServiceClient } = require('./supabaseConfig')
 
 function sb() {
-  const key = process.env.SUPABASE_SERVICE_KEY ||
-              process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!key) throw new Error('SUPABASE_SERVICE_KEY missing — connectors require the service key')
-  return createClient(SUPABASE_URL, key, { auth: { persistSession: false } })
+  return createServiceClient()
 }
 
 async function getIntegration(id) {
@@ -103,8 +100,9 @@ async function freshGoogleToken(integ) {
 }
 
 function baseUrl(req) {
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'app.targetreteam.com'
-  return 'https://' + host
+  const configured = require('./requestSecurity').publicBaseUrl()
+  if (!configured) throw new Error('PUBLIC_BASE_URL is not configured')
+  return configured
 }
 
 module.exports = { sb, getIntegration, patchIntegration, logEvent, freshMicrosoftToken, freshGoogleToken, baseUrl }
@@ -137,6 +135,76 @@ async function findAccountByState(provider, state) {
     .select('*').eq('provider', provider).eq('secrets->>oauth_state', state).maybeSingle()
   if (error) throw new Error('integration_accounts state lookup failed: ' + error.message)
   return data
+}
+
+async function saveOAuthPending({ scope, provider, userId, agentId, nonceDigest, expiresAt }) {
+  const pending = {
+    oauth_nonce_digest: nonceDigest,
+    oauth_user_id: userId,
+    oauth_agent_id: agentId,
+    oauth_expires_at: expiresAt,
+  }
+  if (scope === 'organization') {
+    const integration = await getIntegration(provider)
+    if (!integration) throw new Error('integration is not configured')
+    await patchIntegration(provider, {
+      secrets: Object.assign({}, integration.secrets || {}, pending),
+      status: integration.status === 'connected' ? 'connected' : 'pending',
+    })
+    return
+  }
+  const account = await getAgentAccount(agentId, provider)
+  await upsertAgentAccount(agentId, provider, {
+    secrets: Object.assign({}, (account && account.secrets) || {}, pending),
+    status: account && account.status === 'connected' ? 'connected' : 'pending',
+  })
+}
+
+async function consumeOAuthPending(payload) {
+  const { data: owner, error: ownerError } = await sb().from('agents')
+    .select('id, auth_user_id, role, active')
+    .eq('id', payload.agentId)
+    .eq('auth_user_id', payload.userId)
+    .maybeSingle()
+  if (ownerError || !owner || owner.active === false) throw new Error('OAuth ownership is no longer valid')
+  if (payload.scope === 'organization' && !['admin', 'administrator', 'owner'].includes(String(owner.role || '').toLowerCase())) {
+    throw new Error('OAuth organization ownership is not authorized')
+  }
+
+  const record = payload.scope === 'organization'
+    ? await getIntegration(payload.provider)
+    : await getAgentAccount(payload.agentId, payload.provider)
+  const secrets = Object.assign({}, (record && record.secrets) || {})
+  const valid = record &&
+    constantTimeEqual(secrets.oauth_nonce_digest, require('./oauthState').nonceDigest(payload.nonce)) &&
+    constantTimeEqual(secrets.oauth_user_id, payload.userId) &&
+    constantTimeEqual(secrets.oauth_agent_id, payload.agentId) &&
+    Date.parse(secrets.oauth_expires_at || '') >= Date.now()
+  if (!valid) throw new Error('OAuth state has already been used or is invalid')
+
+  const priorSecrets = Object.assign({}, secrets)
+  delete secrets.oauth_nonce_digest
+  delete secrets.oauth_user_id
+  delete secrets.oauth_agent_id
+  delete secrets.oauth_expires_at
+  const storedSecrets = secrets
+  let consumeQuery
+  if (payload.scope === 'organization') {
+    consumeQuery = sb().from('integrations')
+      .update({ secrets: storedSecrets, updated_at: new Date().toISOString() })
+      .eq('id', payload.provider)
+      .eq('secrets->>oauth_nonce_digest', priorSecrets.oauth_nonce_digest)
+      .select('id')
+  } else {
+    consumeQuery = sb().from('integration_accounts')
+      .update({ secrets: storedSecrets, updated_at: new Date().toISOString() })
+      .eq('id', record.id)
+      .eq('secrets->>oauth_nonce_digest', priorSecrets.oauth_nonce_digest)
+      .select('id')
+  }
+  const { data: consumed, error: consumeError } = await consumeQuery
+  if (consumeError || !consumed || consumed.length !== 1) throw new Error('OAuth state has already been consumed')
+  return { owner, record: Object.assign({}, record, { secrets: priorSecrets }) }
 }
 
 // Refresh an agent account's token. App credentials (client id/secret)
@@ -185,15 +253,60 @@ async function agentIdFromAuthUser(authUserId) {
   return data ? data.id : null
 }
 
+async function getAgentForUser(authUserId) {
+  if (!authUserId) return null
+  const { data, error } = await sb().from('agents')
+    .select('id, role, active')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle()
+  if (error || !data || data.active === false) return null
+  return { id: data.id, role: data.role }
+}
+
+// Service-role clients bypass RLS, so connector routes must enforce the
+// same private-contact ownership rule before sending or writing timelines.
+async function contactAccess(contactId, agent) {
+  if (!contactId) return { exists: false, allowed: false }
+  const { data, error } = await sb().from('contacts')
+    .select('id, is_private, agent_id')
+    .eq('id', contactId)
+    .maybeSingle()
+  if (error) throw new Error('contact lookup failed')
+  if (!data) return { exists: false, allowed: false }
+  const role = String((agent && agent.role) || '').trim().toLowerCase()
+  const admin = ['admin', 'administrator', 'owner'].includes(role)
+  return {
+    exists: true,
+    allowed: data.is_private === false || data.agent_id === (agent && agent.id) || admin,
+  }
+}
+
+async function insertContactTimeline({ contactId, provider, subject, to, fromAccount }) {
+  const { error } = await sb().from('tasks').insert([{
+    contact_id: contactId,
+    title: 'Email sent via ' + (provider === 'gmail' ? 'Gmail' : 'Outlook') + ': ' + subject,
+    notes: 'To: ' + to + ' — from ' + fromAccount,
+    priority: 'note',
+    status: 'done',
+  }])
+  if (error) throw new Error('timeline insert failed')
+}
+
 module.exports.getAgentAccount = getAgentAccount
 module.exports.upsertAgentAccount = upsertAgentAccount
 module.exports.findAccountByState = findAccountByState
+module.exports.saveOAuthPending = saveOAuthPending
+module.exports.consumeOAuthPending = consumeOAuthPending
 module.exports.freshAccountToken = freshAccountToken
 module.exports.agentIdFromAuthUser = agentIdFromAuthUser
+module.exports.getAgentForUser = getAgentForUser
+module.exports.contactAccess = contactAccess
+module.exports.insertContactTimeline = insertContactTimeline
 
 // ── Team chat (Slack or Teams incoming webhook) ───────────────────
 // Both platforms accept POST {"text": "..."} on incoming webhooks.
 async function notifyTeamChat(text) {
+  assertExternalEffectsEnabled()
   const integ = await getIntegration('teamchat')
   const hook = ((integ && integ.secrets) || {}).webhook_url || ''
   if (!hook) return { ok: false, skipped: true }
@@ -213,6 +326,7 @@ function mailchimpBase(apiKey) {
 }
 
 async function mailchimpUpsert(apiKey, audienceId, member) {
+  assertExternalEffectsEnabled()
   const crypto = require('crypto')
   const email = String(member.email || '').trim().toLowerCase()
   if (!email) throw new Error('email required')

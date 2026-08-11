@@ -2,8 +2,10 @@
 // /api/admin-users — Full user management via Supabase Admin API
 // Requires SUPABASE_SERVICE_KEY in Vercel environment variables
 
-const { createClient } = require('@supabase/supabase-js')
 const { requireAdmin } = require('./_lib/phone')
+const { publicBaseUrl } = require('./_lib/requestSecurity')
+const { createServiceClient } = require('./_lib/supabaseConfig')
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 async function parseBody(req) {
   return new Promise((resolve) => {
@@ -33,20 +35,19 @@ module.exports = async function handler(req, res) {
 
   // Parse body — Vercel does NOT auto-parse req.body for API routes
   const body = await parseBody(req)
-  const { action, userId, email, password, name, role, color, phone } = body
+  const { action, userId, email, name, role, color, phone } = body
 
-  // Validate env vars
-  const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
-  const SERVICE_KEY  = process.env.SUPABASE_SERVICE_KEY
-  if (!SERVICE_KEY) {
-    return res.status(500).json({
-      error: 'SUPABASE_SERVICE_KEY not set in Vercel environment variables. Go to Vercel → Settings → Environment Variables and add it.'
+  const APP_BASE = publicBaseUrl()
+  if (!APP_BASE) return res.status(503).json({ error: 'PUBLIC_BASE_URL is not configured' })
+
+  let sb
+  try {
+    sb = createServiceClient({
+      clientOptions: { auth: { autoRefreshToken: false, persistSession: false } },
     })
+  } catch (error) {
+    return res.status(error.status || 503).json({ error: error.message })
   }
-
-  const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false }
-  })
 
   try {
     // ── CREATE USER (with password) ──────────────────────────────
@@ -59,18 +60,15 @@ module.exports = async function handler(req, res) {
 
       let authUserId
       if (existing) {
-        if (password) {
-          await sb.auth.admin.updateUserById(existing.id, { password })
-        }
         authUserId = existing.id
       } else {
-        const { data: created, error: createErr } = await sb.auth.admin.createUser({
-          email,
-          password: password || 'TargetOS2024!',
-          email_confirm: true,
+        if (!requireExternalEffects(res)) return
+        const { data: invited, error: inviteErr } = await sb.auth.admin.inviteUserByEmail(email, {
+          data: { name, role: role || 'agent' },
+          redirectTo: APP_BASE,
         })
-        if (createErr) return res.status(400).json({ error: createErr.message })
-        authUserId = created.user.id
+        if (inviteErr) return res.status(400).json({ error: 'Secure invitation could not be created' })
+        authUserId = invited.user.id
       }
 
       // Upsert agent record
@@ -112,20 +110,13 @@ module.exports = async function handler(req, res) {
         authUserId = existing.id
       } else {
         // Create user in Supabase Auth (generates invite link)
-        const { data: invited, error: invErr } = await sb.auth.admin.inviteUserByEmail(email, {
+      if (!requireExternalEffects(res)) return
+      const { data: invited, error: invErr } = await sb.auth.admin.inviteUserByEmail(email, {
           data: { name, role },
-          redirectTo: 'https://app.targetreteam.com',
+          redirectTo: APP_BASE,
         })
-        if (invErr) {
-          // If invite fails, create with temp password instead
-          const { data: created, error: createErr } = await sb.auth.admin.createUser({
-            email, password: 'Welcome2TargetOS!', email_confirm: true,
-          })
-          if (createErr) return res.status(400).json({ error: createErr.message })
-          authUserId = created.user.id
-        } else {
-          authUserId = invited.user?.id
-        }
+        if (invErr) return res.status(400).json({ error: 'Secure invitation could not be created' })
+        authUserId = invited.user?.id
       }
 
       // Check if agent record already exists
@@ -153,7 +144,7 @@ module.exports = async function handler(req, res) {
       // Send welcome email via Resend (reliable delivery)
       const RESEND_KEY = process.env.RESEND_API_KEY
       if (RESEND_KEY && !existing) {
-        const loginUrl = 'https://app.targetreteam.com'
+        const loginUrl = APP_BASE
         await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
@@ -172,7 +163,7 @@ module.exports = async function handler(req, res) {
               '<p style="color:#475569;font-size:14px">Your TargetOS account has been created. You can now log in to access the CRM.</p>',
               '<p style="color:#475569;font-size:14px"><strong>Your login email:</strong> ' + email + '</p>',
               '<p style="color:#475569;font-size:14px"><strong>Your role:</strong> ' + (role || 'agent') + '</p>',
-              '<p style="color:#94a3b8;font-size:13px">If you received an invite email from Supabase, click that link to set your password. Otherwise, use the temporary password <strong>Welcome2TargetOS!</strong> and change it after logging in.</p>',
+              '<p style="color:#94a3b8;font-size:13px">Use the secure Supabase invitation email to choose your password. TargetOS will never send or display a shared password.</p>',
               '<div style="text-align:center;margin:24px 0">',
               '<a href="' + loginUrl + '" style="display:inline-block;background:#CC2200;color:#fff;text-decoration:none;padding:12px 32px;border-radius:8px;font-size:14px;font-weight:700">',
               'Open TargetOS →</a></div>',
@@ -189,9 +180,14 @@ module.exports = async function handler(req, res) {
     // ── RESET PASSWORD ───────────────────────────────────────────
     if (action === 'reset_password') {
       if (!userId) return res.status(400).json({ error: 'userId required' })
-      const { error } = await sb.auth.admin.updateUserById(userId, { password })
-      if (error) return res.status(400).json({ error: error.message })
-      return res.status(200).json({ ok: true })
+      if (!requireExternalEffects(res)) return
+      const { data: target, error: lookupError } = await sb.auth.admin.getUserById(userId)
+      if (lookupError || !target?.user?.email) return res.status(404).json({ error: 'user not found' })
+      const { error } = await sb.auth.resetPasswordForEmail(target.user.email, {
+        redirectTo: APP_BASE + '/settings',
+      })
+      if (error) return res.status(400).json({ error: 'Password reset email could not be sent' })
+      return res.status(200).json({ ok: true, reset_sent: true })
     }
 
     // ── UPDATE AGENT RECORD (bypasses RLS via service key) ──────

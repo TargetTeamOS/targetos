@@ -8,12 +8,9 @@
 // Live counts are computed server-side on each list call, so pins stay
 // current without any stored snapshot.
 
-const { createClient } = require('@supabase/supabase-js')
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
+const { createServiceClient } = require('./_lib/supabaseConfig')
 function sb() {
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!key) throw new Error('service key missing')
-  return createClient(SUPABASE_URL, key, { auth: { persistSession: false } })
+  return createServiceClient()
 }
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -57,11 +54,9 @@ async function liveCount(db, board, filters) {
 }
 
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user && String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-    res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error:'unauthorized' }))
-  }
+  const { authenticate, sendAuthError, isAdminRole } = require('./_lib/auth')
+  const identity = await authenticate(req)
+  if (!identity.ok) return sendAuthError(res, identity)
   res.setHeader('Content-Type','application/json')
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error:'POST only' })) }
 
@@ -69,14 +64,13 @@ module.exports = async function handler(req, res) {
     const body = await parseBody(req)
     const db = sb()
     // resolve my agent id
-    let myId = null
-    if (__user) { const { data } = await db.from('agents').select('id').eq('auth_user_id', __user.id).maybeSingle(); myId = data?.id || null }
+    const myId = identity.agent.id
 
     if (body.action === 'create') {
       if (!body.title || !body.board) { res.statusCode = 400; return res.end(JSON.stringify({ error:'title + board required' })) }
       const { data, error } = await db.from('dashboard_pins').insert({
         owner_id: myId, title: String(body.title).slice(0,60), board: body.board,
-        filters: body.filters || {}, color: body.color || '#2563EB',
+        filters: Object.assign({}, body.filters || {}, isAdminRole(identity.agent.role) ? {} : { agent_id: myId }), color: body.color || '#2563EB',
         shared_with: Array.isArray(body.shared_with) ? body.shared_with : [],
         shared_all: !!body.shared_all,
       }).select('id').single()

@@ -95,6 +95,21 @@ export function ConnectorsPanel() {
     setBusy('')
   }
 
+  async function connectOrganization(id) {
+    setBusy(id)
+    try {
+      const h = await authHeaders()
+      const endpoint = '/api/oauth-' + (id === 'outlook' ? 'microsoft' : 'google') + '?step=start&scope=organization'
+      const r = await fetch(endpoint, { method: 'POST', headers: h })
+      const j = await r.json()
+      if (!r.ok || !j.url) throw new Error(j.error || 'connection could not start')
+      window.location.assign(j.url)
+    } catch (e) {
+      setErr(e.message)
+      setBusy('')
+    }
+  }
+
   async function revealSecret(id) {
     setBusy(id)
     try {
@@ -159,7 +174,7 @@ export function ConnectorsPanel() {
                   >Save credentials</button>
                   {row.status !== 'not_configured' && (
                     <button
-                      onClick={() => { window.location.href = '/api/oauth-' + (row.id === 'outlook' ? 'microsoft' : 'google') + '?step=start' }}
+                      onClick={() => connectOrganization(row.id)}
                       style={Object.assign({}, btnStyle, { background: '#2563EB', color: '#fff' })}
                     >{row.status === 'connected' ? 'Reconnect' : 'Connect account'}</button>
                   )}
