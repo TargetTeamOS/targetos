@@ -62,6 +62,33 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
     onSelect(c)
   }
 
+  const [dupeCheck, setDupeCheck] = useState(null)   // matching existing contact, if any
+  const [checkingDupe, setCheckingDupe] = useState(false)
+
+  // ── DUPLICATE DETECTION (added 2026-08-09) ────────────────────────
+  // Checks for an existing contact with the same email or phone
+  // whenever either field is filled in on the quick-add form. This is
+  // a warning, not a hard block — the person can still proceed and
+  // create a new contact if they're confident it's genuinely a
+  // different person, but they see the likely match first.
+  async function checkForDuplicate() {
+    const email = form.email.trim()
+    const phone = form.phone.trim()
+    if (!email && !phone) { setDupeCheck(null); return }
+    setCheckingDupe(true)
+    try {
+      const conditions = []
+      if (email) conditions.push('email.eq.' + email)
+      if (phone) conditions.push('phone.eq.' + phone)
+      const { data } = await supabase.from('contacts')
+        .select('id, first_name, last_name, email, phone')
+        .or(conditions.join(','))
+        .limit(1)
+      setDupeCheck(data && data.length ? data[0] : null)
+    } catch { setDupeCheck(null) }
+    setCheckingDupe(false)
+  }
+
   async function quickAdd() {
     if (!form.first_name && !form.last_name && !form.email && !form.phone) return
     setSaving(true)
@@ -75,6 +102,7 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
       })
       setAdding(false)
       setForm({ first_name: '', last_name: '', email: '', phone: '' })
+      setDupeCheck(null)
       pick(created)
     } catch (e) {
       alert('Could not add contact: ' + (e.message || 'unknown error'))
@@ -129,8 +157,25 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
             <input style={inp} placeholder="First name" value={form.first_name} onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))} />
             <input style={inp} placeholder="Last name"  value={form.last_name}  onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))} />
           </div>
-          <input style={inp} placeholder="Email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
-          <input style={inp} placeholder="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+          <input style={inp} placeholder="Email" value={form.email}
+                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                 onBlur={checkForDuplicate} />
+          <input style={inp} placeholder="Phone" value={form.phone}
+                 onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                 onBlur={checkForDuplicate} />
+          {checkingDupe && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Checking for existing contacts…</div>}
+          {dupeCheck && (
+            <div style={{ padding: 8, borderRadius: 8, background: 'rgba(245,166,35,.1)', border: '1px solid #F5A623' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#B45309' }}>⚠️ Possible duplicate</div>
+              <div style={{ fontSize: 12, color: 'var(--text)', marginTop: 2 }}>
+                {contactName(dupeCheck)} already exists with this email/phone.
+              </div>
+              <Btn variant="secondary" onClick={() => { setAdding(false); setDupeCheck(null); setForm({ first_name:'', last_name:'', email:'', phone:'' }); pick(dupeCheck) }}
+                   style={{ marginTop: 6 }}>
+                Use this existing contact instead
+              </Btn>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
             <Btn variant="secondary" onClick={() => setAdding(false)}>Cancel</Btn>
             <Btn onClick={quickAdd} disabled={saving}>{saving ? 'Adding…' : 'Add to Contacts'}</Btn>
