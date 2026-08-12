@@ -73,6 +73,8 @@ module.exports = async function handler(req, res) {
     if (!to) { res.status(400).json({ error: 'missing "to"' }); return }
 
     let fromAccount = ''
+    let providerMessageId = null
+    let providerThreadId = null
 
     // Whose mailbox? The signed-in agent's own connected account wins;
     // the org-level (office) account is the fallback.
@@ -188,7 +190,17 @@ module.exports = async function handler(req, res) {
         await logEvent('google', 'out', 'email.send', { to, subject, error: errText }, false)
         res.status(502).json({ error: 'Gmail send failed: ' + errText.slice(0, 300) }); return
       }
-      await logEvent('google', 'out', 'email.send', { to, subject, from: fromAccount }, true)
+      // Gmail's send response includes a real message id + thread id --
+      // capture it (was previously discarded). This is what a future
+      // reply-in-thread feature would need to reference the right
+      // conversation. NOTE: Outlook's sendMail endpoint returns 202
+      // with no body, so no equivalent id is available for Outlook
+      // sends without switching to a create-draft-then-send-draft flow
+      // -- not done here, stated honestly rather than faked.
+      const sentData = await r.json().catch(() => ({}))
+      providerMessageId = sentData.id || null
+      providerThreadId = sentData.threadId || null
+      await logEvent('google', 'out', 'email.send', { to, subject, from: fromAccount, message_id: providerMessageId }, true)
     }
 
     // CRM timeline entry on the contact, if one was given
@@ -204,7 +216,7 @@ module.exports = async function handler(req, res) {
       } catch (e) { console.warn('[connector-send] timeline log failed: ' + e.message) }
     }
 
-    res.status(200).json({ ok: true, provider, from: fromAccount, cc, bcc, attachments: attachments.map(a => a.filename) })
+    res.status(200).json({ ok: true, provider, from: fromAccount, cc, bcc, attachments: attachments.map(a => a.filename), providerMessageId, providerThreadId })
   } catch (e) {
     console.error('[connector-send] ' + e.message)
     res.status(500).json({ error: e.message })
