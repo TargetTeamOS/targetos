@@ -279,6 +279,8 @@ export function TCEmailLog({ deal }) {
         attachments: attachments.length ? attachments.map(a => ({ name: a.name, path: a.path, size: a.size })) : null,
         provider: ok ? result.provider : null,
         from_account: ok ? result.from : null,
+        provider_message_id: ok ? result.providerMessageId : null,
+        provider_thread_id: ok ? result.providerThreadId : null,
         send_status: blocked ? 'blocked' : ok ? 'sent' : 'failed',
         created_at: new Date().toISOString(),
       })
