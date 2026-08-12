@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase'
 import ContactPicker, { contactName } from './ContactPicker'
 import { ClickToCall } from './ClickToCall'
 import { uploadFile, fmtFileSize, fileIcon } from '../lib/storage'
+import { loadTcSettings } from '../lib/tcSettings'
 
 const ff = 'Inter,system-ui,sans-serif'
 
@@ -164,6 +165,25 @@ export function TCEmailLog({ deal }) {
   const [compose, setCompose] = useState({ contact_id: '', to_email: '', subject: '', body: '', cc: '', bcc: '' })
   const [attachments, setAttachments] = useState([])   // [{ file, path, name, size, uploading }]
   const [sending, setSending] = useState(false)
+  const [templates, setTemplates] = useState([])
+
+  async function loadTemplates() {
+    try {
+      const cfg = await loadTcSettings()
+      setTemplates(cfg.communication_templates || [])
+    } catch { setTemplates([]) }
+  }
+
+  function applyTemplate(id) {
+    const t = templates.find(x => x.id === id)
+    if (!t) return
+    const addr = deal.addr || 'this property'
+    setCompose(c => ({
+      ...c,
+      subject: t.subject.replace(/\{addr\}/g, addr),
+      body: t.body.replace(/\{addr\}/g, addr),
+    }))
+  }
 
   // Upload immediately on selection so there's always a stored copy
   // (audit trail + storage-permission compliance), then base64-encode
@@ -217,7 +237,7 @@ export function TCEmailLog({ deal }) {
       setEntries(data || [])
     } catch { setEntries([]) }
   }
-  useEffect(() => { load(); loadContacts() }, [deal.id])
+  useEffect(() => { load(); loadContacts(); loadTemplates() }, [deal.id])
 
   async function addEntry() {
     if (!draft.subject.trim() && !draft.note.trim()) return
@@ -338,6 +358,13 @@ export function TCEmailLog({ deal }) {
           )}
           <input style={{ ...inp, marginBottom: 6 }} placeholder="Subject"
             value={compose.subject} onChange={e => setCompose(c => ({ ...c, subject: e.target.value }))} />
+          {templates.length > 0 && (
+            <select style={{ ...inp, marginBottom: 6, fontSize: 11.5 }} defaultValue=""
+              onChange={e => { if (e.target.value) applyTemplate(e.target.value); e.target.value = '' }}>
+              <option value="">— Use a template —</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
           <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
             <input style={{ ...inp, flex: 1 }} placeholder="CC (comma-separated, optional)"
               value={compose.cc} onChange={e => setCompose(c => ({ ...c, cc: e.target.value }))} />
