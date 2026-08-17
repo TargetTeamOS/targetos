@@ -83,7 +83,11 @@ describe('ContactSearch — the actual bug reported live: zero matches must not 
     expect(onSelect).toHaveBeenCalledWith(contact)
   })
 
-  it('clicking "create new" calls onSelect(null), the signal the caller uses to create a Contact', async () => {
+  it('clicking "create new" opens an inline form requiring phone or email — the actual root cause fix for "could not save a new Contact"', async () => {
+    // BUG #2: previously, "create new" fired onSelect(null) IMMEDIATELY
+    // with no way to collect phone/email at all. If the live contacts
+    // table requires one of them, that insert failed outright with no
+    // clear feedback. Now it opens an inline form first.
     vi.doMock('../lib/supabase', () => mockContacts([]))
     vi.resetModules()
     const { ContactSearch: FreshContactSearch } = await import('./ContactSearch')
@@ -93,7 +97,49 @@ describe('ContactSearch — the actual bug reported live: zero matches must not 
     fireEvent.change(screen.getByPlaceholderText('Search...'), { target: { value: 'Brand New Person' } })
     await waitFor(() => expect(screen.getByText('+ Save "Brand New Person" as new contact')).toBeTruthy())
     fireEvent.mouseDown(screen.getByText('+ Save "Brand New Person" as new contact'))
-    expect(onSelect).toHaveBeenCalledWith(null)
+
+    // Clicking "create new" must NOT call onSelect yet — it opens the
+    // inline phone/email form first.
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(screen.getByPlaceholderText('Phone (or leave blank if email provided)')).toBeTruthy()
+    expect(screen.getByPlaceholderText('Email (or leave blank if phone provided)')).toBeTruthy()
+  })
+
+  it('refuses to submit the new contact with neither phone nor email — this is the actual missing validation that let bad creates through', async () => {
+    vi.doMock('../lib/supabase', () => mockContacts([]))
+    vi.resetModules()
+    const { ContactSearch: FreshContactSearch } = await import('./ContactSearch')
+    const onSelect = vi.fn()
+
+    render(<FreshContactSearch value="" onChange={()=>{}} onSelect={onSelect} placeholder="Search..." filter="Agent" />)
+    fireEvent.change(screen.getByPlaceholderText('Search...'), { target: { value: 'Brand New Person' } })
+    await waitFor(() => expect(screen.getByText('+ Save "Brand New Person" as new contact')).toBeTruthy())
+    fireEvent.mouseDown(screen.getByText('+ Save "Brand New Person" as new contact'))
+    await waitFor(() => expect(screen.getByText('Save Contact')).toBeTruthy())
+
+    fireEvent.mouseDown(screen.getByText('Save Contact'))
+    await waitFor(() => expect(screen.getByText('At least a phone number or email is required.')).toBeTruthy())
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('submits onSelect(null, {phone, email}) once phone or email is provided, and surfaces a real save error inline instead of silently failing', async () => {
+    vi.doMock('../lib/supabase', () => mockContacts([]))
+    vi.resetModules()
+    const { ContactSearch: FreshContactSearch } = await import('./ContactSearch')
+    const onSelect = vi.fn().mockRejectedValue(new Error('duplicate key value violates unique constraint'))
+
+    render(<FreshContactSearch value="" onChange={()=>{}} onSelect={onSelect} placeholder="Search..." filter="Agent" />)
+    fireEvent.change(screen.getByPlaceholderText('Search...'), { target: { value: 'Brand New Person' } })
+    await waitFor(() => expect(screen.getByText('+ Save "Brand New Person" as new contact')).toBeTruthy())
+    fireEvent.mouseDown(screen.getByText('+ Save "Brand New Person" as new contact'))
+    await waitFor(() => expect(screen.getByText('Save Contact')).toBeTruthy())
+
+    fireEvent.change(screen.getByPlaceholderText('Phone (or leave blank if email provided)'), { target: { value: '555-0100' } })
+    fireEvent.mouseDown(screen.getByText('Save Contact'))
+
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null, { phone: '555-0100', email: '' }))
+    // "Never silently fail" — the real error is shown inline, not swallowed.
+    await waitFor(() => expect(screen.getByText('duplicate key value violates unique constraint')).toBeTruthy())
   })
 
   it('does not search for fewer than 2 characters', async () => {
