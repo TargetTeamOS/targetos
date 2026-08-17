@@ -131,6 +131,7 @@ export function computeOfferFinancials(f) {
     values: {
       purchase_price:     priceCents ? centsToDollarString(priceCents) : f.purchase_price,
       deposit:            f.deposit_type === 'percent' ? f.deposit : (depositCents ? centsToDollarString(depositCents) : f.deposit),
+      deposit_dollar_amount: centsToDollarString(depositCents),
       deposit_derived_pct: basisPointsToPercentString(depositBp),
       mortgage_amount:    isCash ? '0' : (f.mortgage_type === 'percent' ? centsToDollarString(mortgageCents) : f.mortgage_amount),
       mortgage_pct:       isCash ? '0' : (f.mortgage_type === 'percent' ? f.mortgage_pct : basisPointsToPercentString(mortgageBp)),

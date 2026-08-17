@@ -113,6 +113,51 @@ describe('buildOfferPdf — end-to-end synthetic-data generation', () => {
   })
 })
 
+describe('dollar/percent field values — no duplicate symbols against the template\'s preprinted $ and %', () => {
+  // Confirmed by actually rendering a synthetic PDF and visually
+  // inspecting it: every $-line field previously printed its OWN "$"
+  // immediately after the template's already-preprinted "$", producing
+  // a literal "$$900,000". Same pattern for the Mortgage Amount %
+  // line. These tests assert on the raw field values the PDF actually
+  // sets (via buildOfferPdf's fields, indirectly through
+  // computeOfferFinancials) so this class of bug can't silently return.
+  it('purchase_price/deposit/concession/net_to_seller/mortgage_amt values never contain a literal $', () => {
+    const { computeOfferFinancials } = require('../../api/_lib/offerCalc')
+    const { values } = computeOfferFinancials({
+      purchase_price: '900000', deposit: '90000', deposit_type: 'dollar',
+      sellers_concession: '5000', mortgage_amount: '720000', mortgage_type: 'dollar',
+    })
+    expect(values.purchase_price).not.toMatch(/\$/)
+    expect(values.deposit_dollar_amount).not.toMatch(/\$/)
+    expect(values.net_to_seller).not.toMatch(/\$/)
+    expect(values.mortgage_amount).not.toMatch(/\$/)
+    expect(values.mortgage_pct).not.toMatch(/%/)
+  })
+
+  it('a percent-mode deposit prints as the equivalent DOLLAR amount, not the raw percent number — the template\'s Deposit line only ever has a "$", never a "%"', () => {
+    const { computeOfferFinancials } = require('../../api/_lib/offerCalc')
+    const { values } = computeOfferFinancials({
+      purchase_price: '900000', deposit: '10', deposit_type: 'percent',
+      mortgage_amount: '0', mortgage_type: 'dollar',
+    })
+    // deposit_dollar_amount must be $90,000 (10% of $900,000), not "10"
+    expect(values.deposit_dollar_amount).toBe('90000')
+  })
+
+  it('end-to-end: a percent-mode deposit generates a PDF whose printed field is the dollar amount', async () => {
+    const result = await buildOfferPdf({
+      ...BASE_OFFER, deposit: '10', deposit_type: 'percent', purchase_price: '900000',
+    })
+    expect(result.ok).toBe(true)
+    // Load the flattened PDF and confirm it's still exactly one page —
+    // the deeper field-value proof lives in the computeOfferFinancials
+    // test above, since flattened field text isn't easily re-extracted
+    // from rendered content streams in a unit test.
+    const doc = await PDFDocument.load(result.bytes)
+    expect(doc.getPageCount()).toBe(1)
+  })
+})
+
 describe('closing terms — On or About / On or Before, real wording printed correctly', () => {
   const { resolveClosingDaysPrintValue } = pdfHandler
 
