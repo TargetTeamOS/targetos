@@ -84,6 +84,6 @@ describe('record identifier compatibility', () => {
     expect(prepareRecordIdentifierDatabaseWrite('deals', { stage_code: 'offer_accepted' }))
       .toEqual({ stage: 'Offer Accepted' })
     expect(prepareRecordIdentifierDatabaseWrite('listings', { status_code: 'offer_accepted' }))
-      .toEqual({ status: 'Accepted Offer' })
+      .toEqual({ status: 'Accepted offer' })
   })
 })
