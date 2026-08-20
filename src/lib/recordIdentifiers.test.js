@@ -103,7 +103,7 @@ describe('record identifier compatibility', () => {
     expect(identifierCodeFor('tc_photography', 'status', 'needs_prep')).toBe('needs_prep')
     expect(prepareRecordIdentifierDatabaseWrite('calls', {
       outcome_code: 'connected', direction_code: 'outbound',
-    })).toEqual({ outcome: 'Connected', direction: 'outbound' })
+    })).toEqual({ outcome: 'Connected', direction: 'Outbound' })
   })
 
   it('normalizes secondary deal workflow fields independently of their labels', () => {
