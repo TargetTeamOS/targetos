@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase'
 import { fmtFull$ } from '../lib/utils'
 import { Btn, Loading } from '../components/UI'
 import html2canvas from 'html2canvas'
+import { recordIdentifierFilterValues } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const NAVY = '#1B2B4B'
@@ -23,7 +24,7 @@ export function MarketUpdateCard() {
 
   useEffect(() => {
     supabase.from('deals').select('addr, stage, gci, production, close_date')
-      .eq('stage', 'Closed')
+      .in('stage', recordIdentifierFilterValues('deals', 'stage', 'closed'))
       .order('close_date', { ascending: false })
       .limit(500)
       .then(({ data }) => { setDeals(data || []); setLoading(false) })

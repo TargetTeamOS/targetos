@@ -19,10 +19,11 @@ import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
+import { decorateRecordIdentifiers, decorateRecordList, identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 import { fmt$, fmtFull$, fmtDate, fmtDateShort, parseNum, matchSearch, getDaysUntil } from '../lib/utils'
 import {
   DEAL_STAGES, CTC_STAGES, DEAL_SIDES, SALE_TYPES, PROPERTY_TYPES,
-  BUYER_TYPES, SALES_SOURCES, COMMAND_STATUSES, REFERRAL_AGENTS
+  BUYER_TYPES, SALES_SOURCES, COMMAND_STATUSES, COMMISSION_COLLECTION_STATUSES, REFERRAL_AGENTS
 } from '../lib/constants'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { logRecordChange } from '../lib/recordActivity'
@@ -35,7 +36,7 @@ import ContactPicker from '../components/ContactPicker'
 import { FilterBar } from '../components/FilterBar'
 import { ProductionWidgetEditor } from '../components/ProductionWidgetEditor'
 import { loadSideColors, saveSideColors, SIDE_COLOR_DEFAULTS, ensureCommandFields,
-  normalizeOption, COMMAND_FIELD_KEYS,
+  normalizeOption, createOptionDefinition, COMMAND_FIELD_KEYS,
   STAGE_COLORS_KEY, DEAL_STATUS_COLORS_KEY, CTC_COLORS_KEY, COMMAND_COLORS_KEY,
   loadColorOverrides, saveColorOverrides, saveFieldOptions } from '../lib/customFields'
 import { ImportExport } from '../components/ImportExport'
@@ -259,6 +260,13 @@ const BOARD_GROUPS = [
   // so any year present in the data gets its own group automatically — no hardcoded year list needed.
 ]
 
+const dealStageCode = value => identifierCodeFor('deals', 'stage', value)
+const sameDealStage = (left, right) => {
+  const leftCode = dealStageCode(left)
+  const rightCode = dealStageCode(right)
+  return leftCode && rightCode ? leftCode === rightCode : left === right
+}
+
 // Builds "Sold — YYYY" and "Deal Fell Through — YYYY" groups for every year actually
 // present in the dataset, sorted newest-first. Also returns a catch-all for deals
 // with a Closed/Deal Fell Through stage but no parseable date.
@@ -269,9 +277,9 @@ function buildYearGroups(deals) {
 
   deals.forEach(d => {
     const year = d.close_date?.slice(0,4) || d.ao_date?.slice(0,4) || d.created_at?.slice(0,4) || null
-    if (d.stage === 'Closed') {
+    if (dealStageCode(d) === 'closed') {
       if (year) closedYears.add(year); else closedNoDate++
-    } else if (d.stage === 'Deal Fell Through') {
+    } else if (dealStageCode(d) === 'fell_through') {
       if (year) fellYears.add(year); else fellNoDate++
     }
   })
@@ -1342,7 +1350,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
               </div>
             ))}
             {/* Won/Lost reason — shown when stage is Closed or Deal Fell Through */}
-            {form.stage === 'Closed' && (
+            {dealStageCode(form) === 'closed' && (
               <div style={{ display:'flex', alignItems:'center', gap:4, width:'100%', marginTop:4 }}>
                 <span style={{ fontSize:10, color:'var(--muted)', fontWeight:700, flexShrink:0 }}>Won reason:</span>
                 <select value={form.won_reason||''} onChange={e=>set('won_reason',e.target.value)}
@@ -1352,7 +1360,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
                 </select>
               </div>
             )}
-            {form.stage === 'Deal Fell Through' && (
+            {dealStageCode(form) === 'fell_through' && (
               <div style={{ display:'flex', alignItems:'center', gap:4, width:'100%', marginTop:4 }}>
                 <span style={{ fontSize:10, color:'var(--muted)', fontWeight:700, flexShrink:0 }}>Lost reason:</span>
                 <select value={form.lost_reason||''} onChange={e=>set('lost_reason',e.target.value)}
@@ -1516,9 +1524,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
                       if (v === 'collected' && !form.collected_date) set('collected_date', new Date().toISOString().slice(0,10))
                     }}
                     style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-                    <option value="pending">Pending</option>
-                    <option value="partial">Partially paid</option>
-                    <option value="collected">Collected</option>
+                    {COMMISSION_COLLECTION_STATUSES.map(option => <option key={option.code} value={option.value}>{option.label}</option>)}
                   </select>
                 </Field>
                 <Field label="Collected Amount $"><Inp k="collected_gci" type="number" placeholder={form.gci || '0'} /></Field>
@@ -1925,7 +1931,7 @@ export function Production() {
       q = q.range(0, 4999)
       const { data: dealsData, count: totalDeals, error: dealsErr } = await q
       if (dealsErr) throw dealsErr
-      const deals = dealsData || []
+      const deals = decorateRecordList('deals', dealsData || [])
 
       // True totals via server-side aggregate — always accurate regardless
       // of the row cap above. See production_totals.sql.
@@ -2002,17 +2008,21 @@ export function Production() {
       if (form.id) {
         // Strip client-side virtual fields before saving to DB
         const { _contact_count, agents, ...cleanForm } = form
-        const { data, error } = await supabase.from('deals').update({ ...cleanForm, updated_at: new Date().toISOString() }).eq('id', form.id).select('*, agents(id,name,color)').single()
+        const write = prepareRecordIdentifierDatabaseWrite('deals', cleanForm)
+        const { data, error } = await supabase.from('deals').update({ ...write, updated_at: new Date().toISOString() }).eq('id', form.id).select('*, agents(id,name,color)').single()
         if (error) throw error
-        setDeals(prev => prev.map(d => d.id === form.id ? data : d))
-        setSelected(data)
+        const decorated = decorateRecordIdentifiers('deals', data)
+        setDeals(prev => prev.map(d => d.id === form.id ? decorated : d))
+        setSelected(decorated)
         toast('✅ Deal saved')
       } else {
         const { _contact_count: _cc, agents: _ag, id: _id, ...cleanFormInsert } = form
-        const { data, error } = await supabase.from('deals').insert({ ...cleanFormInsert, agent_id: form.agent_id || agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select('*, agents(id,name,color)').single()
+        const write = prepareRecordIdentifierDatabaseWrite('deals', cleanFormInsert)
+        const { data, error } = await supabase.from('deals').insert({ ...write, agent_id: form.agent_id || agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select('*, agents(id,name,color)').single()
         if (error) throw error
-        setDeals(prev => [data, ...prev])
-        setSelected(data)
+        const decorated = decorateRecordIdentifiers('deals', data)
+        setDeals(prev => [decorated, ...prev])
+        setSelected(decorated)
         navigate('/production/' + data.id, { replace: true })
         toast('✅ Deal added')
       }
@@ -2071,9 +2081,10 @@ export function Production() {
       if (foreign.length) { toast('You can only update your own deals', '#DC2626'); return }
     }
     try {
-      const { error } = await supabase.from('deals').update({ stage, updated_at: new Date().toISOString() }).in('id', selectedIds)
+      const write = prepareRecordIdentifierDatabaseWrite('deals', { stage })
+      const { error } = await supabase.from('deals').update({ ...write, updated_at: new Date().toISOString() }).in('id', selectedIds)
       if (error) throw error
-      setDeals(prev => prev.map(d => selectedIds.includes(d.id) ? { ...d, stage } : d))
+      setDeals(prev => prev.map(d => selectedIds.includes(d.id) ? decorateRecordIdentifiers('deals', { ...d, ...write }) : d))
       toast('✅ Updated ' + selectedIds.length + ' deals to "' + stage + '"')
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
@@ -2141,7 +2152,7 @@ export function Production() {
       toast('You can only move your own deals', '#DC2626')
       setDraggedDealId(null); setDragOverGroupId(null); return
     }
-    if (deal && group.stages?.[0] && deal.stage !== group.stages[0]) {
+    if (deal && group.stages?.[0] && !sameDealStage(deal, group.stages[0])) {
       quickUpdate(deal, 'stage', group.stages[0])
     }
     setDraggedDealId(null)
@@ -2171,7 +2182,7 @@ export function Production() {
     const positionUpdates = newOrder.map((d, i) => ({ id: d.id, board_position: i }))
 
     // Optimistic update — reorder + stage change (if crossing groups) immediately
-    const newStage = (group.stages?.[0] && deal.stage !== group.stages[0]) ? group.stages[0] : null
+    const newStage = (group.stages?.[0] && !sameDealStage(deal, group.stages[0])) ? group.stages[0] : null
     setDeals(prev => prev.map(d => {
       const u = positionUpdates.find(x => x.id === d.id)
       if (!u) return d
@@ -2236,16 +2247,19 @@ export function Production() {
     }
 
     // Auto-date logic: set the relevant date if not already set
-    const autoFields = { [field]: value, updated_at: new Date().toISOString() }
+    const nextStageCode = field === 'stage' ? identifierCodeFor('deals', 'stage', value) : null
+    const currentStageCode = field === 'stage' ? identifierCodeFor('deals', 'stage', deal) : null
+    const autoFields = field === 'stage'
+      ? { ...prepareRecordIdentifierDatabaseWrite('deals', { stage: value }), updated_at: new Date().toISOString() }
+      : { [field]: value, updated_at: new Date().toISOString() }
     if (field === 'stage') {
-      if (value === 'Closed'           && !deal.close_date)     autoFields.close_date     = today
-      if (value === 'Offer Accapted'   && !deal.ao_date)        autoFields.ao_date        = today
-      if (value === 'Under Contract'   && !deal.contract_date)  autoFields.contract_date  = today
-      if (value === 'Under Shtar'      && !deal.contract_date)  autoFields.contract_date  = today
+      if (nextStageCode === 'closed'         && !deal.close_date)    autoFields.close_date = today
+      if (nextStageCode === 'offer_accepted' && !deal.ao_date)       autoFields.ao_date = today
+      if (['under_contract', 'under_shtar'].includes(nextStageCode) && !deal.contract_date) autoFields.contract_date = today
     }
 
     // Optimistic update immediately — UI responds instantly
-    setDeals(prev => prev.map(d => d.id === deal.id ? { ...d, ...autoFields } : d))
+    setDeals(prev => prev.map(d => d.id === deal.id ? decorateRecordIdentifiers('deals', { ...d, ...autoFields }) : d))
     try {
       const { data, error } = await supabase
         .from('deals')
@@ -2254,14 +2268,14 @@ export function Production() {
         .select('*, agents(id,name,color)')
         .maybeSingle()
       if (error) throw error
-      if (data) setDeals(prev => prev.map(d => d.id === deal.id ? data : d))
+      if (data) setDeals(prev => prev.map(d => d.id === deal.id ? decorateRecordIdentifiers('deals', data) : d))
       logDealChange(deal, field, deal[field], value)
 
       // Automation: Offer Accepted -> Under Contract triggers an email
       // to the deal's agent. Board placement itself needs no extra
       // code -- groups are derived from `stage`, so the deal moves
       // automatically once this update lands.
-      if (field === 'stage' && deal.stage === 'Offer Accapted' && value === 'Under Contract') {
+      if (field === 'stage' && currentStageCode === 'offer_accepted' && nextStageCode === 'under_contract') {
         notifyUnderContract(deal)
       }
     } catch(e) {
@@ -2299,7 +2313,7 @@ export function Production() {
 
   // ── FILTERING ──────────────────────────────────────────────────
   const filtered = useMemo(() => deals.filter(d => {
-    if (stageF    && d.stage         !== stageF)    return false
+    if (stageF    && !sameDealStage(d, stageF)) return false
     if (agentF    && d.agent_id      !== agentF)    return false
     if (sideF     && d.side          !== sideF)     return false
     if (saleTypeF && d.sale_type     !== saleTypeF) return false
@@ -2323,7 +2337,7 @@ export function Production() {
       if (group.custom && (!group.stages || group.stages.length === 0)) {
         return !allClaimedStages.has(d.stage)
       }
-      const stageMatch = (group.stages || []).includes(d.stage)
+      const stageMatch = (group.stages || []).some(stage => sameDealStage(d, stage))
       if (!stageMatch) return false
       if (group.yearMatch) {
         const year = d.close_date?.slice(0, 4) || d.ao_date?.slice(0, 4) || d.created_at?.slice(0, 4)
@@ -2343,9 +2357,10 @@ export function Production() {
       if (bp != null) return 1
 
       const dateFor = (d) => {
-        if (['Negotiations', 'Offer Accapted'].includes(d.stage)) return d.ao_date
-        if (['Under Shtar', 'Under Contract'].includes(d.stage)) return d.contract_date
-        if (d.stage === 'Closed') return d.close_date
+        const stageCode = dealStageCode(d)
+        if (['negotiations', 'offer_accepted'].includes(stageCode)) return d.ao_date
+        if (['under_shtar', 'under_contract'].includes(stageCode)) return d.contract_date
+        if (stageCode === 'closed') return d.close_date
         // Deal Fell Through or anything else: best available date
         return d.close_date || d.contract_date || d.ao_date || d.created_at
       }
@@ -3059,7 +3074,7 @@ function CustomSelectEditor({ fieldKey, onClose, onSaved }) {
       if (!alive) return
       if (f) {
         setTitle('Edit Labels & Colors — ' + f.label)
-        setRows((f.options || []).map(o => { const n = normalizeOption(o); return { label: n.label, value: n.value, color: n.color || '' } }))
+        setRows((f.options || []).map(o => { const n = normalizeOption(o); return { id:n.id, code:n.code, label:n.label, value:n.value, color:n.color || '' } }))
       } else { setRows([]) }
     }).catch(e => { if (alive) { setErr(e.message || 'Load failed'); setRows([]) } })
     return () => { alive = false }
@@ -3068,16 +3083,14 @@ function CustomSelectEditor({ fieldKey, onClose, onSaved }) {
   function patch(i, p) { setRows(rs => rs.map((r, idx) => idx === i ? { ...r, ...p } : r)) }
   function move(i, dir) { setRows(rs => { const n = [...rs]; const j = i + dir; if (j < 0 || j >= n.length) return n; const t = n[i]; n[i] = n[j]; n[j] = t; return n }) }
   function remove(i) { setRows(rs => rs.filter((_, idx) => idx !== i)) }
-  function add() { setRows(rs => [...(rs || []), { label: '', value: '', color: '', _new: true }]) }
+  function add() { setRows(rs => [...(rs || []), { ...createOptionDefinition(''), color: '', _new: true }]) }
 
-  // Effective value per row: existing rows keep their stored value; new rows
-  // derive it from the trimmed label. This preserves stored deal data when an
-  // admin changes only an option's displayed label.
+  // Every option keeps an immutable value. Labels are presentation only.
   const norm = (rows || []).map(r => {
     const label = (r.label || '').trim()
-    const value = (r._new ? label : (r.value ?? '')).toString().trim()
+    const value = (r.value ?? r.code ?? r.id ?? '').toString().trim()
     const color = (r.color || '').trim()
-    return { label, value, color }
+    return { id: r.id || r.code || value, code: r.code || r.id || value, label, value, color }
   })
   const valueCounts = {}
   norm.forEach(n => { if (n.value) valueCounts[n.value] = (valueCounts[n.value] || 0) + 1 })
@@ -3095,8 +3108,7 @@ function CustomSelectEditor({ fieldKey, onClose, onSaved }) {
     if (anyError) return
     setBusy(true); setErr('')
     try {
-      // Persist as {label,value,color}; color normalized (trim+lowercase) or null.
-      const options = norm.map(n => ({ label: n.label, value: n.value, color: normHex(n.color) }))
+      const options = norm.map(n => ({ id:n.id, code:n.code, label:n.label, value:n.value, color:normHex(n.color) }))
       await saveFieldOptions('deals', fieldKey, options)
       onSaved?.()
     } catch (e) { setErr(e.message || 'Save failed') } finally { setBusy(false) }

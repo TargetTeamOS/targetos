@@ -6,6 +6,7 @@
 
 import { supabase } from './supabase'
 import { notifyAgent, notifyAgentEmail } from './notify'
+import { decorateRecordIdentifiers, decorateRecordList, identifierCodeFor, prepareRecordIdentifierDatabaseWrite, recordIdentifierFilterValues } from './recordIdentifiers'
 
 // Fire automation trigger safely
 async function fireTrigger(name, ...args) {
@@ -38,6 +39,10 @@ function stripVirtual(data) {
     }
   }
   return clean
+}
+
+function prepareWrite(tableName, data) {
+  return stripVirtual(prepareRecordIdentifierDatabaseWrite(tableName, data))
 }
 
 
@@ -154,7 +159,7 @@ contacts: {
   async list(filters = {}) {
     let q = supabase.from('contacts').select('*, agents(id,name,color)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
-    if (filters.status)   q = q.eq('status', filters.status)
+    if (filters.status)   q = q.in('status', recordIdentifierFilterValues('contacts', 'status', filters.status))
     if (filters.type)     q = q.eq('type', filters.type)
     if (filters.search) {
       // Server-side search — efficient with DB index
@@ -162,22 +167,22 @@ contacts: {
     }
     const limit  = filters.limit  || 100
     const offset = filters.offset || 0
-    return run(
+    return decorateRecordList('contacts', await run(
       q.order('last_activity', { ascending: false, nullsFirst: false })
        .order('created_at',   { ascending: false })
        .range(offset, offset + limit - 1)
-    )
+    ))
   },
   async count(filters = {}) {
     let q = supabase.from('contacts').select('id', { count: 'exact', head: true })
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
-    if (filters.status)   q = q.eq('status', filters.status)
+    if (filters.status)   q = q.in('status', recordIdentifierFilterValues('contacts', 'status', filters.status))
     if (filters.search)   q = q.or('first_name.ilike.%' + filters.search + '%,last_name.ilike.%' + filters.search + '%,phone.ilike.%' + filters.search + '%,email.ilike.%' + filters.search + '%')
     const { count } = await q
     return count || 0
   },
   async get(id) {
-    return run(supabase.from('contacts').select('*, agents(id,name,color)').eq('id', id).single())
+    return decorateRecordIdentifiers('contacts', await run(supabase.from('contacts').select('*, agents(id,name,color)').eq('id', id).single()))
   },
   async create(data, force) {
     // Duplicate-phone check: if a contact with this phone already
@@ -205,11 +210,12 @@ contacts: {
         }
       }
     }
-    const result = await run(supabase.from('contacts').insert({ ...stripVirtual(data),
+    const rawResult = await run(supabase.from('contacts').insert({ ...prepareWrite('contacts', data),
       last_activity: new Date().toISOString(),
       created_at:    new Date().toISOString(),
       updated_at:    new Date().toISOString(),
     }).select().single())
+    const result = decorateRecordIdentifiers('contacts', rawResult)
     await log(data.agent_id, 'contacts', result.id, 'created', {
       metadata: {
         description: (result.first_name || '') + ' ' + (result.last_name || '') + ' added',
@@ -227,7 +233,7 @@ contacts: {
   async update(id, data, actingAgentId) {
     // Fetch before state for diff
     const before = await run(supabase.from('contacts').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('contacts').update({ ...stripVirtual(data),
+    const rawResult = await run(supabase.from('contacts').update({ ...prepareWrite('contacts', data),
       last_activity: new Date().toISOString(),
       updated_at:    new Date().toISOString(),
     }).eq('id', id).select().single())
@@ -235,9 +241,10 @@ contacts: {
     // whoever the contact happens to be assigned to -- those are
     // often different people (e.g. a secretary or another agent
     // editing someone else's contact).
+    const result = decorateRecordIdentifiers('contacts', rawResult)
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     const label = (result.first_name || '') + ' ' + (result.last_name || '')
-    await logDiff(agentId, 'contacts', id, before, result, label.trim())
+    await logDiff(agentId, 'contacts', id, before, rawResult, label.trim())
     fireTrigger('contactUpdated', result, before)
     // Reassignment to a new agent -- notify them, same as a brand new lead
     if (data.agent_id && before && data.agent_id !== before.agent_id) {
@@ -260,15 +267,16 @@ deals: {
   async list(filters = {}) {
     let q = supabase.from('deals').select('*, agents(id,name,color)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
-    if (filters.stage)    q = q.eq('stage', filters.stage)
+    if (filters.stage)    q = q.in('stage', recordIdentifierFilterValues('deals', 'stage', filters.stage))
     if (filters.year) q = q.gte('ao_date', filters.year + '-01-01').lte('ao_date', filters.year + '-12-31')
-    return run(q.order('ao_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }))
+    return decorateRecordList('deals', await run(q.order('ao_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })))
   },
   async get(id) {
-    return run(supabase.from('deals').select('*, agents(id,name,color)').eq('id', id).single())
+    return decorateRecordIdentifiers('deals', await run(supabase.from('deals').select('*, agents(id,name,color)').eq('id', id).single()))
   },
   async create(data) {
-    const result = await run(supabase.from('deals').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const rawResult = await run(supabase.from('deals').insert({ ...prepareWrite('deals', data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = decorateRecordIdentifiers('deals', rawResult)
     await log(data.agent_id, 'deals', result.id, 'created', {
       metadata: { description: 'Deal at ' + (result.addr || '') + ' added', field_label: 'Deal Created' }
     })
@@ -277,9 +285,11 @@ deals: {
   },
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('deals').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('deals').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const write = prepareWrite('deals', data)
+    const rawResult = await run(supabase.from('deals').update({ ...write, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('deals', rawResult)
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
-    await logDiff(agentId, 'deals', id, before, result, result.addr || 'Deal')
+    await logDiff(agentId, 'deals', id, before, rawResult, result.addr || 'Deal')
     fireTrigger('dealUpdated', result, before, { actingAgentId })
     // ── LIFECYCLE: deal stage mirrors EVERYWHERE (July 2026) ────────
     // Every stage change on the Production board updates the linked
@@ -288,16 +298,23 @@ deals: {
     // Fell Through releases the listing back to Active for everyone.
     // Never blocks the save.
     try {
-      if (data.stage && data.stage !== before?.stage) {
-        const { stageToListingStatus, stageToTcPhase } = await import('./tcPhaseMap')
+      if (write.stage && write.stage !== before?.stage) {
+        const { dealStageToListingStatusCode, dealStageToTcPhaseCode } = await import('./tcPhaseMap')
         const listingId = result.listing_id || before?.listing_id
-        const newStatus = stageToListingStatus[data.stage]
-        if (listingId && newStatus) {
-          await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listingId)
+        const stageCode = identifierCodeFor('deals', 'stage', write.stage)
+        const newStatusCode = dealStageToListingStatusCode[stageCode]
+        if (listingId && newStatusCode) {
+          await supabase.from('listings').update({
+            ...prepareWrite('listings', { status_code: newStatusCode }),
+            updated_at: new Date().toISOString(),
+          }).eq('id', listingId)
         }
-        const newPhase = stageToTcPhase[data.stage]
+        const newPhase = dealStageToTcPhaseCode[stageCode]
         if (newPhase) {
-          await supabase.from('tc_deals').update({ tc_phase: newPhase, updated_at: new Date().toISOString() }).eq('linked_deal_id', id).then(()=>{}).catch(()=>{})
+          await supabase.from('tc_deals').update({
+            ...prepareWrite('tc_deals', { phase_code: newPhase }),
+            updated_at: new Date().toISOString(),
+          }).eq('linked_deal_id', id).then(()=>{}).catch(()=>{})
         }
       }
     } catch(e) { console.warn('[lifecycle] deal→boards sync skipped:', e.message) }
@@ -315,14 +332,15 @@ listings: {
   async list(filters = {}) {
     let q = supabase.from('listings').select('*, agents(id,name,color)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
-    if (filters.status)   q = q.eq('status', filters.status)
-    return run(q.order('created_at', { ascending: false }))
+    if (filters.status)   q = q.in('status', recordIdentifierFilterValues('listings', 'status', filters.status))
+    return decorateRecordList('listings', await run(q.order('created_at', { ascending: false })))
   },
   async get(id) {
-    return run(supabase.from('listings').select('*, agents(id,name,color)').eq('id', id).single())
+    return decorateRecordIdentifiers('listings', await run(supabase.from('listings').select('*, agents(id,name,color)').eq('id', id).single()))
   },
   async create(data) {
-    const result = await run(supabase.from('listings').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const rawResult = await run(supabase.from('listings').insert({ ...prepareWrite('listings', data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = decorateRecordIdentifiers('listings', rawResult)
     await log(data.agent_id, 'listings', result.id, 'created', {
       metadata: { description: 'Listing at ' + (result.addr || '') + ' added', field_label: 'Listing Created' }
     })
@@ -330,7 +348,8 @@ listings: {
   },
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('listings').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('listings').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const rawResult = await run(supabase.from('listings').update({ ...prepareWrite('listings', data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('listings', rawResult)
     // ── LIFECYCLE PROPAGATION (July 2026) ─────────────────────────
     // The listing is the source of truth: address and price changes
     // flow to the linked Production deal and TC deal automatically,
@@ -349,7 +368,7 @@ listings: {
       }
     } catch(e) { console.warn('[lifecycle] listing sync skipped:', e.message) }
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
-    await logDiff(agentId, 'listings', id, before, result, result.addr || 'Listing')
+    await logDiff(agentId, 'listings', id, before, rawResult, result.addr || 'Listing')
     fireTrigger('listingUpdated', result, before, { actingAgentId })  // was passing 'data' as prev — status changes never detected
     return result
   },
@@ -365,14 +384,15 @@ gifts: {
   async list(filters = {}) {
     let q = supabase.from('gifts').select('*, agents(id,name,color), deals(id,addr)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
-    if (filters.status)   q = q.eq('status', filters.status)
-    return run(q.order('created_at', { ascending: false }))
+    if (filters.status)   q = q.in('status', recordIdentifierFilterValues('gifts', 'status', filters.status))
+    return decorateRecordList('gifts', await run(q.order('created_at', { ascending: false })))
   },
   async get(id) {
-    return run(supabase.from('gifts').select('*, agents(id,name,color)').eq('id', id).single())
+    return decorateRecordIdentifiers('gifts', await run(supabase.from('gifts').select('*, agents(id,name,color)').eq('id', id).single()))
   },
   async create(data) {
-    const result = await run(supabase.from('gifts').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const rawResult = await run(supabase.from('gifts').insert({ ...prepareWrite('gifts', data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = decorateRecordIdentifiers('gifts', rawResult)
     await log(data.agent_id, 'gifts', result.id, 'created', {
       metadata: { description: 'Gift for ' + (result.client_name || '') + ' added', field_label: 'Gift Created' }
     })
@@ -380,7 +400,8 @@ gifts: {
   },
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('gifts').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('gifts').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const rawResult = await run(supabase.from('gifts').update({ ...prepareWrite('gifts', data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('gifts', rawResult)
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'gifts', id, before, result, result.client_name || 'Gift')
     return result
@@ -396,16 +417,17 @@ offers: {
   async list(filters = {}) {
     let q = supabase.from('offers').select('*, agents(id,name,color)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
-    if (filters.status)   q = q.eq('status', filters.status)
+    if (filters.status)   q = q.in('status', recordIdentifierFilterValues('offers', 'status', filters.status))
     const limit  = filters.limit  || 200
     const offset = filters.offset || 0
-    return run(q.order('created_at', { ascending: false }).range(offset, offset + limit - 1))
+    return decorateRecordList('offers', await run(q.order('created_at', { ascending: false }).range(offset, offset + limit - 1)))
   },
   async get(id) {
-    return run(supabase.from('offers').select('*, agents(id,name,color)').eq('id', id).single())
+    return decorateRecordIdentifiers('offers', await run(supabase.from('offers').select('*, agents(id,name,color)').eq('id', id).single()))
   },
   async create(data) {
-    const result = await run(supabase.from('offers').insert({ ...stripVirtual(data), created_at: new Date().toISOString() }).select().single())
+    const rawResult = await run(supabase.from('offers').insert({ ...prepareWrite('offers', data), created_at: new Date().toISOString() }).select().single())
+    const result = decorateRecordIdentifiers('offers', rawResult)
     await log(data.agent_id, 'offers', result.id, 'created', {
       metadata: { description: 'Offer on ' + (result.listing_addr || '') + ' added', field_label: 'Offer Created' }
     })
@@ -413,9 +435,10 @@ offers: {
   },
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('offers').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('offers').update(data).eq('id', id).select().single())
+    const rawResult = await run(supabase.from('offers').update(prepareWrite('offers', data)).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('offers', rawResult)
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
-    await logDiff(agentId, 'offers', id, before, result, result.listing_addr || 'Offer')
+    await logDiff(agentId, 'offers', id, before, rawResult, result.listing_addr || 'Offer')
     return result
   },
   async delete(id, agentId) {
@@ -459,18 +482,19 @@ tasks: {
   async list(filters = {}) {
     let q = supabase.from('tasks').select('*, agents(id,name,color)')
     if (filters.agent_id)   q = q.eq('agent_id', filters.agent_id)
-    if (filters.status)     q = q.eq('status', filters.status)
+    if (filters.status)     q = q.in('status', recordIdentifierFilterValues('tasks', 'status', filters.status))
     if (filters.deal_id)    q = q.eq('deal_id', filters.deal_id)
     if (filters.contact_id) q = q.eq('contact_id', filters.contact_id)
     const limit  = filters.limit  || 200
     const offset = filters.offset || 0
-    return run(q.order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }).range(offset, offset + limit - 1))
+    return decorateRecordList('tasks', await run(q.order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }).range(offset, offset + limit - 1)))
   },
   async get(id) {
-    return run(supabase.from('tasks').select('*, agents(id,name,color)').eq('id', id).single())
+    return decorateRecordIdentifiers('tasks', await run(supabase.from('tasks').select('*, agents(id,name,color)').eq('id', id).single()))
   },
   async create(data) {
-    const result = await run(supabase.from('tasks').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const rawResult = await run(supabase.from('tasks').insert({ ...prepareWrite('tasks', data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = decorateRecordIdentifiers('tasks', rawResult)
     await log(data.agent_id || data.created_by, 'tasks', result.id, 'created', {
       metadata: { description: result.title, field_label: 'Task Created' }
     })
@@ -479,14 +503,16 @@ tasks: {
   },
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('tasks').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('tasks').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const rawResult = await run(supabase.from('tasks').update({ ...prepareWrite('tasks', data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('tasks', rawResult)
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
-    await logDiff(agentId, 'tasks', id, before, result, result.title || 'Task')
+    await logDiff(agentId, 'tasks', id, before, rawResult, result.title || 'Task')
     fireTrigger('taskUpdated', result, before)
     return result
   },
   async complete(id, agentId) {
-    const result = await run(supabase.from('tasks').update({ status: 'done', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const rawResult = await run(supabase.from('tasks').update({ status: 'done', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('tasks', rawResult)
     await log(agentId, 'tasks', id, 'updated', {
       metadata: { field: 'status', field_label: 'Status', old_value: 'pending', new_value: 'done', description: result.title + ' completed' }
     })
@@ -530,13 +556,14 @@ calls: {
     let q = supabase.from('calls').select('*, agents(id,name,color)')
     if (filters.agent_id)   q = q.eq('agent_id', filters.agent_id)
     if (filters.contact_id) q = q.eq('contact_id', filters.contact_id)
-    return run(q.order('called_at', { ascending: false }))
+    return decorateRecordList('calls', await run(q.order('called_at', { ascending: false })))
   },
   async get(id) {
-    return run(supabase.from('calls').select('*, agents(id,name,color)').eq('id', id).single())
+    return decorateRecordIdentifiers('calls', await run(supabase.from('calls').select('*, agents(id,name,color)').eq('id', id).single()))
   },
   async create(data) {
-    const result = await run(supabase.from('calls').insert({ ...stripVirtual(data), called_at: data.called_at || new Date().toISOString() }).select().single())
+    const rawResult = await run(supabase.from('calls').insert({ ...prepareWrite('calls', data), called_at: data.called_at || new Date().toISOString() }).select().single())
+    const result = decorateRecordIdentifiers('calls', rawResult)
     await log(data.agent_id, 'calls', result.id, 'created', {
       metadata: { description: 'Call to ' + (result.contact_name || result.from_number || '') + ' — ' + (result.outcome || 'logged'), field_label: 'Call Logged' }
     })
@@ -550,7 +577,8 @@ calls: {
   },
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('calls').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('calls').update(data).eq('id', id).select().single())
+    const rawResult = await run(supabase.from('calls').update(prepareWrite('calls', data)).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('calls', rawResult)
     await logDiff(actingAgentId || data.agent_id || before?.agent_id, 'calls', id, before, result, result.contact_name || 'Call')
     return result
   },
@@ -667,13 +695,14 @@ signs: {
   async list(filters = {}) {
     let q = supabase.from('signs').select('*, agents(id,name,color)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
-    return run(q.order('created_at', { ascending: false }))
+    return decorateRecordList('signs', await run(q.order('created_at', { ascending: false })))
   },
   async get(id) {
-    return run(supabase.from('signs').select('*').eq('id', id).single())
+    return decorateRecordIdentifiers('signs', await run(supabase.from('signs').select('*').eq('id', id).single()))
   },
   async create(data) {
-    const result = await run(supabase.from('signs').insert({ ...stripVirtual(data), created_at: new Date().toISOString() }).select().single())
+    const rawResult = await run(supabase.from('signs').insert({ ...prepareWrite('signs', data), created_at: new Date().toISOString() }).select().single())
+    const result = decorateRecordIdentifiers('signs', rawResult)
     await log(data.agent_id, 'signs', result.id, 'created', {
       metadata: { description: 'Sign at ' + (result.addr || ''), field_label: 'Sign Created' }
     })
@@ -681,7 +710,8 @@ signs: {
   },
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('signs').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('signs').update(data).eq('id', id).select().single())
+    const rawResult = await run(supabase.from('signs').update(prepareWrite('signs', data)).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('signs', rawResult)
     await logDiff(actingAgentId || data.agent_id || before?.agent_id, 'signs', id, before, result, result.addr || 'Sign')
     return result
   },

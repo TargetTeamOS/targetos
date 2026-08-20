@@ -28,7 +28,9 @@
     "preview": "vite preview",
     "smoke": "node scripts/smoke.js",
     "preflight": "npm run build && node scripts/validate.js && node scripts/smoke.js && node scripts/render-smoke.js",
-    "render-smoke": "node scripts/render-smoke.js"
+    "render-smoke": "node scripts/render-smoke.js",
+    "identifiers:generate": "node scripts/generate-identifier-seed.js",
+    "identifiers:check": "node scripts/validate-identifier-catalog.js"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",

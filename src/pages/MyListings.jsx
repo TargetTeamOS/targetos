@@ -26,8 +26,10 @@ import { PageHeader, Btn, Modal, ModalActions, Loading, Empty, Avatar } from '..
 import { logRecordChange } from '../lib/recordActivity'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { mainThemeFor, themeLabel } from '../lib/feedbackThemes'
+import { identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const listingStatusCode = value => identifierCodeFor('listings', 'status', value)
 
 const LISTING_STATUSES = ['Active','Coming Soon','Under Contract','Sold','Expired','Withdrawn']
 const STATUS_COLORS = {
@@ -68,6 +70,7 @@ function DOMBadge({ days }) {
 function ListingRow({ listing, agent, showings, openHouses, onOpen, connected }) {
   const dom    = daysOnMarket(listing.listed_date || listing.list_date || listing.created_at)
   const status = listing.status || 'Active'
+  const statusCode = listingStatusCode(listing)
   const sc     = STATUS_COLORS[status] || '#94A3B8'
   const avgInterest = showings.length
     ? (showings.reduce((s, sh) => s + (sh.interest_level || 3), 0) / showings.length).toFixed(1)
@@ -76,7 +79,7 @@ function ListingRow({ listing, agent, showings, openHouses, onOpen, connected })
   const priceChanges = Array.isArray(listing.price_history) ? listing.price_history.length : 0
   const sellerStale = !listing.seller_updated_at || (Date.now() - new Date(listing.seller_updated_at).getTime() > 7 * 86400000)
   const priceChanged = (listing.original_price && listing.list_price && listing.original_price !== listing.list_price) || priceChanges > 0
-  const closingSoon = status === 'Under Contract'
+  const closingSoon = statusCode === 'under_contract'
   // Top feedback theme across this listing's showings — same shared engine
   // used by the workspace's Buyer Feedback tab and Seller Report.
   const topTheme = (() => {
@@ -88,9 +91,9 @@ function ListingRow({ listing, agent, showings, openHouses, onOpen, connected })
 
   // Alert chips
   const chips = []
-  if (showings.length === 0 && status === 'Active') chips.push({ t:'No showings', c:'#B45309' })
-  if (sellerStale && (status === 'Active' || status === 'Coming Soon')) chips.push({ t:'Seller update overdue', c:'#DC2626' })
-  if (dom != null && dom > 60 && status === 'Active') chips.push({ t:'60+ DOM', c:'#B45309' })
+  if (showings.length === 0 && statusCode === 'active') chips.push({ t:'No showings', c:'#B45309' })
+  if (sellerStale && ['active', 'coming_soon'].includes(statusCode)) chips.push({ t:'Seller update overdue', c:'#DC2626' })
+  if (dom != null && dom > 60 && statusCode === 'active') chips.push({ t:'60+ DOM', c:'#B45309' })
   if (priceChanged) chips.push({ t:'Price changed', c:'#2563EB' })
   if (!listing.seller_contact_id) chips.push({ t:'Missing seller contact', c:'#B45309' })
   if (closingSoon) chips.push({ t:'Under contract', c:'#F97316' })
@@ -235,7 +238,7 @@ export function MyListings() {
 
   const filtered = useMemo(() => {
     return listings.filter(l => {
-      if (statusFilter !== 'All' && l.status !== statusFilter) return false
+      if (statusFilter !== 'All' && listingStatusCode(l) !== listingStatusCode(statusFilter)) return false
       if (search && !matchSearch(l, search, ['addr', 'city', 'mls_number'])) return false
       return true
     })
@@ -368,7 +371,11 @@ export function MyListings() {
 
   async function updateStatus(listing, newStatus) {
     try {
-      const { error } = await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listing.id)
+      const listingUpdate = prepareRecordIdentifierDatabaseWrite('listings', {
+        status_code: listingStatusCode(newStatus),
+        updated_at: new Date().toISOString(),
+      })
+      const { error } = await supabase.from('listings').update(listingUpdate).eq('id', listing.id)
       if (error) throw error
       setListings(p => p.map(l => l.id === listing.id ? { ...l, status: newStatus } : l))
       logRecordChange({ tableName:'listings', recordId:listing.id, agentId:agent?.id, field:'status', oldValue:listing.status, newValue:newStatus, recordName:listing.addr })
@@ -380,8 +387,8 @@ export function MyListings() {
         tcDeal = r.data
       } catch(e) { console.warn('tc_deals sync lookup failed:', e.message) }
       if (tcDeal?.id) {
-        const statusToPhase = { 'Active': 'active', 'Under Contract': 'under_contract', 'Sold': 'closed', 'Coming Soon': 'pre_listing' }
-        const phase = statusToPhase[newStatus]
+        const statusToPhase = { active: 'active', under_contract: 'under_contract', sold: 'closed', coming_soon: 'pre_listing' }
+        const phase = statusToPhase[listingStatusCode(newStatus)]
         if (phase) await supabase.from('tc_deals').update({ tc_phase: phase, updated_at: new Date().toISOString() }).eq('id', tcDeal.id)
       }
 
@@ -393,9 +400,9 @@ export function MyListings() {
   const SL = { fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:5, marginTop:12, display:'block' }
 
   const stats = {
-    active:  listings.filter(l => l.status === 'Active').length,
-    uc:      listings.filter(l => l.status === 'Under Contract').length,
-    sold:    listings.filter(l => l.status === 'Sold').length,
+    active:  listings.filter(l => listingStatusCode(l) === 'active').length,
+    uc:      listings.filter(l => listingStatusCode(l) === 'under_contract').length,
+    sold:    listings.filter(l => listingStatusCode(l) === 'sold').length,
     totalShowings: showings.length,
   }
 

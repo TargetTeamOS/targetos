@@ -5,8 +5,7 @@
 // this may hang in a lobby.
 
 const { sb, getIntegration } = require('./_lib/connectors')
-
-const ACTIVE_STAGES = ['Negotiations', 'Offer Accapted', 'Under Shtar', 'Under Contract']
+const { recordIdentifierCode, recordIdentifierMatches } = require('./_lib/recordIdentifiers')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -75,9 +74,9 @@ module.exports = async function handler(req, res) {
     const num = v => Number(v) || 0
 
     const acceptedMTD = all.filter(d => d.ao_date && d.ao_date >= monthStart)
-    const closedYTD   = all.filter(d => d.stage === 'Closed' && d.close_date && d.close_date >= yearStart)
-    const pipeline    = all.filter(d => ACTIVE_STAGES.includes(d.stage))
-    const closingSoon = all.filter(d => d.close_date && d.close_date >= today && d.close_date <= in30 && d.stage !== 'Closed' && d.stage !== 'Deal Fell Through')
+    const closedYTD   = all.filter(d => recordIdentifierMatches('deals', 'stage', d, 'closed') && d.close_date && d.close_date >= yearStart)
+    const pipeline    = all.filter(d => ['negotiations','offer_accepted','under_shtar','under_contract'].includes(recordIdentifierCode('deals', 'stage', d)))
+    const closingSoon = all.filter(d => d.close_date && d.close_date >= today && d.close_date <= in30 && !['closed','fell_through'].includes(recordIdentifierCode('deals', 'stage', d)))
       .sort((a, b) => a.close_date.localeCompare(b.close_date)).slice(0, 8)
     const recentAccepted = all.filter(d => d.ao_date)
       .sort((a, b) => b.ao_date.localeCompare(a.ao_date)).slice(0, 6)

@@ -4,7 +4,7 @@
 // from the self-scoped A9 RPCs (app_user_widgets_*), which never accept an agent
 // id and always compute over the caller's own records — so an agent can only ever
 // build cards from their own deals / performance, never another agent's.
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FONT, TYPE, CARD, INK, fmtCompactMoney, fmtCompactNum } from '../../lib/dashboardTheme'
 import { DrillDown } from './DrillDown'
@@ -64,21 +64,35 @@ function KpiCard({ w, onOpen, onDelete }) {
 
 export function MyWidgetsSection() {
   const navigate = useNavigate()
+  const mounted = useRef(false)
   const [state, setState] = useState({ loading: true, deployed: null, widgets: [], error: null })
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
   const [drill, setDrill] = useState({ open: false, loading: false, rows: null, title: '', metric: null, range: 'ytd' })
 
   const load = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true }))
-    try { const r = await fetchUserWidgets(); setState({ loading: false, deployed: r.deployed, widgets: r.widgets || [], error: r.error || null }) }
-    catch (e) { setState({ loading: false, deployed: true, widgets: [], error: e.message || 'Could not load your widgets' }) }
+    if (mounted.current) setState((s) => ({ ...s, loading: true }))
+    try {
+      const r = await fetchUserWidgets()
+      if (mounted.current) setState({ loading: false, deployed: r.deployed, widgets: r.widgets || [], error: r.error || null })
+    } catch (e) {
+      if (mounted.current) setState({ loading: false, deployed: true, widgets: [], error: e.message || 'Could not load your widgets' })
+    }
   }, [])
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    mounted.current = true
+    load()
+    return () => { mounted.current = false }
+  }, [load])
 
   const onSave = async (p) => {
     setSaving(true)
-    try { const r = await saveUserWidget(p); if (r.ok) { setAdding(false); await load() } } finally { setSaving(false) }
+    try {
+      const r = await saveUserWidget(p)
+      if (r.ok && mounted.current) { setAdding(false); await load() }
+    } finally {
+      if (mounted.current) setSaving(false)
+    }
   }
   const onDelete = async (id) => { await deleteUserWidget(id); await load() }
 
@@ -86,7 +100,7 @@ export function MyWidgetsSection() {
     const meta = metricMeta(w.metric)
     setDrill({ open: true, loading: true, rows: null, title: w.title, metric: w.metric, range: w.date_range })
     const r = await fetchUserWidgetRecords(w.metric, w.date_range)
-    setDrill({ open: true, loading: false, rows: r.rows, title: w.title, metric: w.metric, range: w.date_range, kind: meta.kind })
+    if (mounted.current) setDrill({ open: true, loading: false, rows: r.rows, title: w.title, metric: w.metric, range: w.date_range, kind: meta.kind })
   }
 
   const shell = (body) => (

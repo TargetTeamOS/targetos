@@ -1,0 +1,294 @@
+{
+  "catalogVersion": 1,
+  "workflows": [
+    {
+      "code": "deal.lifecycle",
+      "label": "Deal Stage",
+      "entityTypeCode": "deal",
+      "states": [
+        { "code": "negotiations", "label": "Negotiations", "color": "#037f4c", "semanticType": "open", "isInitial": true, "countsAsActive": true, "legacyValues": ["Negotiations"] },
+        { "code": "offer_accepted", "label": "Offer Accepted", "storageValue": "Offer Accepted", "color": "#00c875", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Offer Accapted", "Offer Accepted"] },
+        { "code": "under_shtar", "label": "Under Shtar", "color": "#bb3354", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Under Shtar"] },
+        { "code": "under_contract", "label": "Under Contract", "color": "#757575", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Under Contract"] },
+        { "code": "closed", "label": "Closed", "color": "#225091", "semanticType": "won", "isTerminal": true, "countsAsWon": true, "legacyValues": ["Closed"] },
+        { "code": "fell_through", "label": "Deal Fell Through", "color": "#ff007f", "semanticType": "lost", "isTerminal": true, "legacyValues": ["Deal Fell Through"] }
+      ]
+    },
+    {
+      "code": "listing.lifecycle",
+      "label": "Listing Status",
+      "entityTypeCode": "listing",
+      "states": [
+        { "code": "incomplete", "label": "Incomplete", "color": "#c4c4c4", "semanticType": "draft", "isInitial": true, "legacyValues": ["incomplete", "Incomplete"] },
+        { "code": "coming_soon", "label": "Coming Soon", "color": "#579bfc", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Coming Soon"] },
+        { "code": "active", "label": "Active", "color": "#00c875", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Active"] },
+        { "code": "off_market", "label": "Off Market", "color": "#fdab3d", "semanticType": "inactive", "legacyValues": ["Off Market"] },
+        { "code": "offer_accepted", "label": "Accepted Offer", "color": "#784bd1", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Accepted offer", "Accepted Offer"] },
+        { "code": "under_contract", "label": "Under Contract", "color": "#007eb5", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Under Contract"] },
+        { "code": "sold", "label": "Sold", "color": "#ffcb00", "semanticType": "won", "isTerminal": true, "countsAsWon": true, "legacyValues": ["Sold"] },
+        { "code": "expired", "label": "Expired", "color": "#df2f4a", "semanticType": "lost", "isTerminal": true, "legacyValues": ["Expired"] },
+        { "code": "withdrawn", "label": "Withdrawn", "color": "#6B7280", "semanticType": "cancelled", "isTerminal": true, "legacyValues": ["Withdrawn", "Temporary off market", "Seller not selling"] }
+      ]
+    },
+    {
+      "code": "contact.lifecycle",
+      "label": "Contact Status",
+      "entityTypeCode": "contact",
+      "states": [
+        { "code": "new", "label": "New", "color": "#0EA5E9", "semanticType": "open", "isInitial": true, "countsAsActive": true, "legacyValues": ["New"] },
+        { "code": "hot", "label": "Hot", "color": "#DC2626", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Hot"] },
+        { "code": "warm", "label": "Warm", "color": "#F97316", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Warm"] },
+        { "code": "cold", "label": "Cold", "color": "#94A3B8", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Cold"] },
+        { "code": "active", "label": "Active", "color": "#10B981", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Active"] },
+        { "code": "nurturing", "label": "Nurturing", "color": "#8B5CF6", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Nurturing"] },
+        { "code": "under_contract", "label": "Under Contract", "color": "#F5A623", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Under Contract"] },
+        { "code": "closed", "label": "Closed", "color": "#225091", "semanticType": "completed", "isTerminal": true, "legacyValues": ["Closed", "Past Client", "Client"] },
+        { "code": "unresponsive", "label": "Unresponsive", "color": "#6B7280", "semanticType": "inactive", "legacyValues": ["Unresponsive", "Do Not Contact"] }
+      ]
+    },
+    {
+      "code": "task.lifecycle",
+      "label": "Task Status",
+      "entityTypeCode": "task",
+      "states": [
+        { "code": "pending", "label": "Pending", "color": "#F97316", "semanticType": "open", "isInitial": true, "countsAsActive": true, "legacyValues": ["pending", "Pending", "open"] },
+        { "code": "in_progress", "label": "In Progress", "color": "#3B82F6", "semanticType": "open", "countsAsActive": true, "legacyValues": ["in_progress", "In Progress"] },
+        { "code": "done", "label": "Done", "color": "#10B981", "semanticType": "completed", "isTerminal": true, "legacyValues": ["done", "Done", "completed", "Completed"] },
+        { "code": "cancelled", "label": "Cancelled", "color": "#94A3B8", "semanticType": "cancelled", "isTerminal": true, "legacyValues": ["cancelled", "Cancelled", "canceled", "Canceled"] }
+      ]
+    },
+    {
+      "code": "offer.lifecycle",
+      "label": "Offer Status",
+      "entityTypeCode": "offer",
+      "states": [
+        { "code": "draft", "label": "Draft", "color": "#94A3B8", "semanticType": "draft", "isInitial": true, "countsAsActive": true, "legacyValues": ["Draft"] },
+        { "code": "sent", "label": "Sent", "color": "#fdab3d", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Sent"] },
+        { "code": "negotiating", "label": "Negotiating", "color": "#df2f4a", "semanticType": "open", "countsAsActive": true, "legacyValues": ["Negotiating", "Stuck"] },
+        { "code": "accepted", "label": "Accepted", "color": "#00c875", "semanticType": "won", "isTerminal": true, "countsAsWon": true, "legacyValues": ["Accepted", "AO", "Closed"] },
+        { "code": "rejected", "label": "Rejected", "color": "#DC2626", "semanticType": "lost", "isTerminal": true, "legacyValues": ["Rejected", "Fell through"] },
+        { "code": "withdrawn", "label": "Withdrawn", "color": "#6B7280", "semanticType": "cancelled", "isTerminal": true, "legacyValues": ["Withdrawn"] },
+        { "code": "expired", "label": "Expired", "color": "#78716C", "semanticType": "lost", "isTerminal": true, "legacyValues": ["Expired"] }
+      ]
+    },
+    {
+      "code": "tc.phase",
+      "label": "Transaction Coordination Phase",
+      "entityTypeCode": "transaction",
+      "states": [
+        { "code": "pre_listing", "label": "Pre-Listing", "semanticType": "open", "isInitial": true, "countsAsActive": true, "legacyValues": ["pre_listing", "Pre-Listing"] },
+        { "code": "active", "label": "Active Listing", "semanticType": "open", "countsAsActive": true, "legacyValues": ["active", "Active"] },
+        { "code": "offer", "label": "Offer Accepted", "semanticType": "open", "countsAsActive": true, "legacyValues": ["offer", "Offer Accepted"] },
+        { "code": "under_contract", "label": "Under Contract", "semanticType": "open", "countsAsActive": true, "legacyValues": ["under_contract", "Under Contract"] },
+        { "code": "closed", "label": "Closed", "semanticType": "completed", "isTerminal": true, "legacyValues": ["closed", "Closed"] }
+      ]
+    },
+    {
+      "code": "deal.ctc",
+      "label": "Contract-to-Close Stage",
+      "entityTypeCode": "deal",
+      "states": [
+        { "code": "inspection_scheduled", "label": "Inspection Scheduled", "color": "#007eb5", "isInitial": true, "countsAsActive": true, "legacyValues": ["Inspection scheduled"] },
+        { "code": "mortgage_process", "label": "Mortgage Process", "color": "#9d50dd", "countsAsActive": true, "legacyValues": ["Mortgage process"] },
+        { "code": "appraisal_ordered", "label": "Appraisal Ordered", "color": "#579bfc", "countsAsActive": true, "legacyValues": ["Appraisal ordered"] },
+        { "code": "conditional_approval", "label": "Conditional Approval", "color": "#cab641", "countsAsActive": true, "legacyValues": ["Conditional Approval"] },
+        { "code": "clear_to_close", "label": "Clear to Close", "color": "#00c875", "countsAsActive": true, "legacyValues": ["Clear to close", "Clear to Close"] },
+        { "code": "closing_scheduled", "label": "Closing Scheduled", "color": "#ffcb00", "countsAsActive": true, "legacyValues": ["Closing scheduled"] },
+        { "code": "closed", "label": "Closed", "color": "#037f4c", "isTerminal": true, "countsAsWon": true, "legacyValues": ["Closed"] },
+        { "code": "issue", "label": "Issue", "color": "#fdab3d", "countsAsActive": true, "legacyValues": ["Issue"] },
+        { "code": "cancelled", "label": "Cancelled", "color": "#df2f4a", "isTerminal": true, "legacyValues": ["Canceled", "Cancelled"] }
+      ]
+    },
+    {
+      "code": "deal.progress",
+      "label": "Deal Progress",
+      "entityTypeCode": "deal",
+      "states": [
+        { "code": "under_contract", "label": "Under Contract", "isInitial": true, "countsAsActive": true, "legacyValues": ["UC"] },
+        { "code": "financing", "label": "Financing", "countsAsActive": true, "legacyValues": ["Financing"] },
+        { "code": "clear_to_close", "label": "Clear to Close", "countsAsActive": true, "legacyValues": ["Clear to Close"] },
+        { "code": "closed", "label": "Closed", "isTerminal": true, "countsAsWon": true, "legacyValues": ["Closed"] },
+        { "code": "accepted_offer", "label": "Accepted Offer", "countsAsActive": true, "legacyValues": ["AO"] }
+      ]
+    },
+    {
+      "code": "command.lifecycle",
+      "label": "Command Document Status",
+      "entityTypeCode": "deal",
+      "states": [
+        { "code": "contact_info_needed", "label": "Contact Info Needed", "isInitial": true, "legacyValues": ["Contact Info needed"] },
+        { "code": "working", "label": "Working On It", "legacyValues": ["Working on it"] },
+        { "code": "waiting_approval", "label": "Waiting For Approval", "legacyValues": ["Waiting for approval"] },
+        { "code": "sent_not_signed", "label": "Sent, Not Signed", "legacyValues": ["Sent not signd", "Sent not signed"] },
+        { "code": "done", "label": "Done", "isTerminal": true, "legacyValues": ["Done"] },
+        { "code": "waiting_for_lead", "label": "Sent — Waiting For Lead", "legacyValues": ["Sent - Watting for lead", "Sent - Waiting for lead"] },
+        { "code": "stuck", "label": "Stuck", "legacyValues": ["Stuck"] },
+        { "code": "not_configured", "label": "No Command", "legacyValues": ["No command"] },
+        { "code": "waiting", "label": "Waiting", "legacyValues": ["Waiting"] },
+        { "code": "declined", "label": "Doesn't Want To Sign", "isTerminal": true, "legacyValues": ["Doesn't Want To Sign", "Doesn’t Want To Sign"] },
+        { "code": "client_notified", "label": "Client Notified To Sign", "legacyValues": ["Client has been notified"] },
+        { "code": "not_yet", "label": "Not Yet", "legacyValues": ["Not Yet"] },
+        { "code": "office_commission", "label": "Lazer Gets Commission", "legacyValues": ["Lazer gets the commission"] },
+        { "code": "reminder_1", "label": "Reminder To Sign 1", "legacyValues": ["Reminder to sign 1"] },
+        { "code": "reminder_2", "label": "Reminder To Sign 2", "legacyValues": ["Reminder to sign 2"] },
+        { "code": "reminder_3", "label": "Reminder To Sign 3", "legacyValues": ["Reminder to sign 3"] }
+      ]
+    },
+    {
+      "code": "commission.collection",
+      "label": "Commission Collection Status",
+      "entityTypeCode": "deal",
+      "states": [
+        { "code": "pending", "label": "Pending", "isInitial": true, "legacyValues": ["pending", "Pending"] },
+        { "code": "partial", "label": "Partially Collected", "legacyValues": ["partial", "Partial"] },
+        { "code": "collected", "label": "Collected", "isTerminal": true, "countsAsWon": true, "legacyValues": ["collected", "Collected"] }
+      ]
+    },
+    {
+      "code": "sign.lifecycle",
+      "label": "Sign Order Status",
+      "entityTypeCode": "sign",
+      "states": [
+        { "code": "order_sent", "label": "Order Sent", "isInitial": true, "countsAsActive": true, "legacyValues": ["Order Sent In"] },
+        { "code": "on_property", "label": "On Property", "countsAsActive": true, "legacyValues": ["On Property"] },
+        { "code": "missing", "label": "Missing or Broken", "countsAsActive": true, "legacyValues": ["Missing - broken"] },
+        { "code": "removed", "label": "Removed", "isTerminal": true, "legacyValues": ["Took Away"] },
+        { "code": "removal_ordered", "label": "Removal Order Sent", "countsAsActive": true, "legacyValues": ["Removal Order Sent"] },
+        { "code": "auto_remove", "label": "Automatic Removal Ordered", "countsAsActive": true, "legacyValues": ["Auto Remove Order"] }
+      ]
+    },
+    {
+      "code": "gift.lifecycle",
+      "label": "Gift Delivery Status",
+      "entityTypeCode": "gift",
+      "states": [
+        { "code": "under_contract", "label": "Under Contract", "isInitial": true, "countsAsActive": true, "legacyValues": ["Under Contract"] },
+        { "code": "please_deliver", "label": "Please Deliver", "countsAsActive": true, "legacyValues": ["Please deliver"] },
+        { "code": "shipped", "label": "Shipped", "countsAsActive": true, "legacyValues": ["Shipped out"] },
+        { "code": "delivered", "label": "Delivered", "isTerminal": true, "legacyValues": ["Delivered"] },
+        { "code": "delivery_failed", "label": "Couldn't Deliver", "legacyValues": ["Couldn't Deliver"] },
+        { "code": "too_late", "label": "Too Late", "isTerminal": true, "legacyValues": ["Too Late"] },
+        { "code": "do_not_send", "label": "Don't Send", "isTerminal": true, "legacyValues": ["Don't send"] },
+        { "code": "check_note", "label": "Check Note", "legacyValues": ["Check Note"] }
+      ]
+    },
+    {
+      "code": "gift.closing",
+      "label": "Closing Gift Status",
+      "entityTypeCode": "gift",
+      "states": [
+        { "code": "order_created", "label": "Order Created", "isInitial": true, "legacyValues": ["Order Created"] },
+        { "code": "sent", "label": "Sent", "isTerminal": true, "legacyValues": ["sent", "Sent"] },
+        { "code": "not_sending", "label": "Not Sending", "isTerminal": true, "legacyValues": ["Not Sending"] }
+      ]
+    },
+    {
+      "code": "call.outcome",
+      "label": "Call Outcome",
+      "entityTypeCode": "call",
+      "states": [
+        { "code": "connected", "label": "Connected", "legacyValues": ["Connected", "Answered"] },
+        { "code": "completed", "label": "Completed", "legacyValues": ["Completed"] },
+        { "code": "no_answer", "label": "No Answer", "legacyValues": ["No Answer"] },
+        { "code": "voicemail", "label": "Voicemail", "legacyValues": ["Voicemail"] },
+        { "code": "busy", "label": "Busy", "legacyValues": ["Busy"] },
+        { "code": "left_message", "label": "Left Message", "legacyValues": ["Left Message"] },
+        { "code": "callback_requested", "label": "Callback Requested", "legacyValues": ["Callback Requested"] },
+        { "code": "hot_lead", "label": "Hot Lead", "legacyValues": ["Hot Lead"] },
+        { "code": "appointment_set", "label": "Appointment Set", "legacyValues": ["Appointment Set"] },
+        { "code": "not_interested", "label": "Not Interested", "legacyValues": ["Not Interested"] },
+        { "code": "wrong_number", "label": "Wrong Number", "legacyValues": ["Wrong Number"] },
+        { "code": "auto_logged", "label": "Automatically Logged", "legacyValues": ["Auto-logged"] }
+      ]
+    },
+    {
+      "code": "photography.lifecycle",
+      "label": "Photography Status",
+      "entityTypeCode": "photography",
+      "states": [
+        { "code": "needs_prep", "label": "Needs Preparation", "isInitial": true, "countsAsActive": true, "legacyValues": ["Needs Prep"] },
+        { "code": "ready", "label": "Ready", "countsAsActive": true, "legacyValues": ["Ready"] },
+        { "code": "scheduled", "label": "Scheduled", "countsAsActive": true, "legacyValues": ["Scheduled"] },
+        { "code": "shot", "label": "Photographed", "countsAsActive": true, "legacyValues": ["Shot"] },
+        { "code": "received", "label": "Photos Received", "isTerminal": true, "legacyValues": ["Photos Received"] }
+      ]
+    },
+    {
+      "code": "campaign.lifecycle",
+      "label": "Campaign Status",
+      "entityTypeCode": "campaign",
+      "states": [
+        { "code": "draft", "label": "Draft", "isInitial": true, "legacyValues": ["draft", "Draft"] },
+        { "code": "sending", "label": "Sending", "countsAsActive": true, "legacyValues": ["sending", "Sending"] },
+        { "code": "sent", "label": "Sent", "isTerminal": true, "legacyValues": ["sent", "Sent"] },
+        { "code": "failed", "label": "Failed", "isTerminal": true, "legacyValues": ["failed", "Failed"] }
+      ]
+    },
+    {
+      "code": "connector.lifecycle",
+      "label": "Connector Status",
+      "entityTypeCode": "connector",
+      "states": [
+        { "code": "not_configured", "label": "Not Configured", "isInitial": true, "legacyValues": ["not_configured"] },
+        { "code": "needs_connect", "label": "Connection Required", "legacyValues": ["needs_connect"] },
+        { "code": "pending", "label": "Pending", "countsAsActive": true, "legacyValues": ["pending"] },
+        { "code": "connected", "label": "Connected", "countsAsActive": true, "legacyValues": ["connected"] },
+        { "code": "error", "label": "Error", "legacyValues": ["error"] }
+      ]
+    },
+    {
+      "code": "send.lifecycle",
+      "label": "Outbound Send Status",
+      "entityTypeCode": "communication",
+      "states": [
+        { "code": "queued", "label": "Queued", "isInitial": true, "countsAsActive": true, "legacyValues": ["Queued", "queued"] },
+        { "code": "sent", "label": "Sent", "isTerminal": true, "legacyValues": ["Sent", "sent"] },
+        { "code": "failed", "label": "Failed", "isTerminal": true, "legacyValues": ["Failed", "failed"] }
+      ]
+    }
+  ],
+  "choiceSets": [
+    { "code": "task.priority", "label": "Task Priority", "options": [
+      { "code": "urgent", "label": "Urgent", "color": "#DC2626", "legacyValues": ["urgent", "Urgent"] },
+      { "code": "high", "label": "High", "color": "#F97316", "legacyValues": ["high", "High"] },
+      { "code": "normal", "label": "Normal", "color": "#3B82F6", "legacyValues": ["normal", "Normal"] },
+      { "code": "low", "label": "Low", "color": "#94A3B8", "legacyValues": ["low", "Low"] }
+    ]},
+    { "code": "deal.side", "label": "Deal Side", "options": [
+      { "code": "buyer", "label": "Buyer", "legacyValues": ["Buyer"] },
+      { "code": "seller", "label": "Seller", "legacyValues": ["Seller"] },
+      { "code": "listing", "label": "Listing", "legacyValues": ["Listing"] },
+      { "code": "dual", "label": "Dual", "legacyValues": ["Dual", "Dual Buyer", "Dual Listing"] },
+      { "code": "rental", "label": "Rental", "legacyValues": ["Rental"] },
+      { "code": "flip", "label": "Flip", "legacyValues": ["Flip"] }
+    ]},
+    { "code": "contact.interest", "label": "Interest Level", "options": [
+      { "code": "hot", "label": "Hot", "legacyValues": ["Hot"] },
+      { "code": "warm", "label": "Warm", "legacyValues": ["Warm"] },
+      { "code": "cold", "label": "Cold", "legacyValues": ["Cold"] },
+      { "code": "just_looking", "label": "Just Looking", "legacyValues": ["Just Looking"] }
+    ]},
+    { "code": "call.direction", "label": "Call Direction", "options": [
+      { "code": "inbound", "label": "Inbound", "legacyValues": ["Inbound", "inbound"] },
+      { "code": "outbound", "label": "Outbound", "legacyValues": ["Outbound", "outbound"] }
+    ]},
+    { "code": "gift.recipient_type", "label": "Gift Recipient Type", "options": [
+      { "code": "home_owner", "label": "Home Owner", "legacyValues": ["Home Owner"] },
+      { "code": "investor", "label": "Investor", "legacyValues": ["Investor"] },
+      { "code": "seller", "label": "Seller", "legacyValues": ["Seller"] }
+    ]}
+  ],
+  "roles": [
+    { "code": "admin", "label": "Administrator", "legacyValues": ["admin", "Admin", "administrator"] },
+    { "code": "secretary", "label": "Secretary", "legacyValues": ["secretary", "Secretary"] },
+    { "code": "agent", "label": "Agent", "legacyValues": ["agent", "Agent"] }
+  ],
+  "boards": [
+    { "code": "contacts", "label": "Contacts", "entityTypeCode": "contact" },
+    { "code": "deals", "label": "Production", "entityTypeCode": "deal" },
+    { "code": "listings", "label": "Listings", "entityTypeCode": "listing" },
+    { "code": "tasks", "label": "Tasks", "entityTypeCode": "task" },
+    { "code": "offers", "label": "Offers", "entityTypeCode": "offer" },
+    { "code": "transactions", "label": "Transaction Coordinator", "entityTypeCode": "transaction" }
+  ]
+}

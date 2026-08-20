@@ -15,11 +15,13 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { sendEmail } from '../lib/emailService'
 import { Btn, Modal, ModalActions } from './UI'
+import { workflowStorageOptions } from '../lib/identifiers'
+import { decorateRecordIdentifiers, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 
 const inp = { width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, background: 'var(--bg)', color: 'var(--text)', boxSizing: 'border-box' }
 const lb = { fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', display: 'block', margin: '8px 0 3px' }
 
-const SIGN_STATUSES = ['On Property', 'Order Sent In', 'Missing - broken', 'Took Away', 'Removal Order Sent', 'Auto Remove Order']
+const SIGN_STATUSES = workflowStorageOptions('sign.lifecycle')
 
 // ── SIGN PANEL ─────────────────────────────────────────────────────
 export function TCSignPanel({ deal, onLinked, toast }) {
@@ -29,7 +31,7 @@ export function TCSignPanel({ deal, onLinked, toast }) {
   async function load() {
     if (!deal?.linked_sign_id) { setSign(null); return }
     const { data } = await supabase.from('signs').select('*').eq('id', deal.linked_sign_id).maybeSingle()
-    setSign(data || null)
+    setSign(data ? decorateRecordIdentifiers('signs', data) : null)
   }
   useEffect(() => { load() }, [deal?.linked_sign_id])
 
@@ -39,35 +41,23 @@ export function TCSignPanel({ deal, onLinked, toast }) {
       const { data, error } = await supabase.from('signs').insert({
         addr: deal.addr || '', agent_id: deal.agent_id || null,
         upper_rider: 'For Sale', lower_rider: '',
-        status: 'Order Sent In', created_at: new Date().toISOString(),
+        ...prepareRecordIdentifierDatabaseWrite('signs', { order_status_code: 'order_sent' }), created_at: new Date().toISOString(),
       }).select().single()
       if (error) throw error
       await supabase.from('tc_deals').update({ linked_sign_id: data.id, updated_at: new Date().toISOString() }).eq('id', deal.id)
-      setSign(data); onLinked?.(data.id)
+      setSign(decorateRecordIdentifiers('signs', data)); onLinked?.(data.id)
       toast?.('🪧 Sign created on the Signs board and linked')
     } catch (e) { toast?.('Sign create failed: ' + e.message, '#DC2626') }
     finally { setBusy(false) }
   }
 
-  async function linkExisting() {
-    setBusy(true)
-    try {
-      const like = '%' + (deal.addr || '').split(',')[0].trim() + '%'
-      const { data } = await supabase.from('signs').select('*').ilike('addr', like).limit(1)
-      if (!data?.length) { toast?.('No sign found matching this address — use Create', '#D97706'); return }
-      await supabase.from('tc_deals').update({ linked_sign_id: data[0].id, updated_at: new Date().toISOString() }).eq('id', deal.id)
-      setSign(data[0]); onLinked?.(data[0].id)
-      toast?.('🪧 Linked existing sign')
-    } catch (e) { toast?.('Link failed: ' + e.message, '#DC2626') }
-    finally { setBusy(false) }
-  }
-
   async function patchSign(patch) {
+    const write = prepareRecordIdentifierDatabaseWrite('signs', patch)
     const { data, error } = await supabase.from('signs')
-      .update({ ...patch, updated_at: new Date().toISOString() })
+      .update({ ...write, updated_at: new Date().toISOString() })
       .eq('id', sign.id).select().single()
     if (error) { toast?.('Sign update failed: ' + error.message, '#DC2626'); return }
-    setSign(data)
+    setSign(decorateRecordIdentifiers('signs', data))
     toast?.('Sign board updated')
   }
 
@@ -77,15 +67,14 @@ export function TCSignPanel({ deal, onLinked, toast }) {
       {!sign && (
         <div style={{ display: 'flex', gap: 6 }}>
           <Btn variant="secondary" onClick={createSign} disabled={busy}>Create sign for this address</Btn>
-          <Btn variant="secondary" onClick={linkExisting} disabled={busy}>Link existing</Btn>
         </div>
       )}
       {sign && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
           <div>
             <span style={lb}>Status</span>
-            <select style={inp} value={sign.status || ''} onChange={e => patchSign({ status: e.target.value })}>
-              {[...new Set([sign.status, ...SIGN_STATUSES])].filter(Boolean).map(s => <option key={s} value={s}>{s}</option>)}
+            <select style={inp} value={sign.order_status || ''} onChange={e => patchSign({ order_status: e.target.value })}>
+              {SIGN_STATUSES.map(option => <option key={option.code} value={option.value}>{option.label}</option>)}
             </select>
           </div>
           <div>

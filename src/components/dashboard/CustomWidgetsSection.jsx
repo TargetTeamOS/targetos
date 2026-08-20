@@ -5,7 +5,7 @@
 // session, never a service key. Until the engine is deployed the section shows a
 // clearly-labelled sample gallery and every persist action is disabled.
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -45,6 +45,7 @@ export function CustomWidgetsSection() {
   const navigate = useNavigate()
   const { agent } = useAuth()
   const isAdmin = agent?.role === 'admin'
+  const mounted = useRef(false)
   const [engineReady, setEngineReady] = useState(null) // null=loading
   const [list, setList] = useState([])                 // admin working forms
   const [values, setValues] = useState([])             // computed values (all users)
@@ -55,24 +56,33 @@ export function CustomWidgetsSection() {
   const [drill, setDrill] = useState(null)             // {title, explanation}
 
   const load = useCallback(async () => {
-    setLoading(true); setSaveErr(null)
+    if (mounted.current) { setLoading(true); setSaveErr(null) }
     const { from, to } = boardRange()
     try {
       const { data, error } = await supabase.rpc('app_production_widget_values', { board_from: from, board_to: to })
-      if (error) { if (NOT_DEPLOYED.test(error.message || '')) { setEngineReady(false); return } throw error }
+      if (error) { if (NOT_DEPLOYED.test(error.message || '')) { if (mounted.current) setEngineReady(false); return } throw error }
+      if (!mounted.current) return
       setEngineReady(true)
       const vals = Array.isArray(data) ? data : []
       setValues(vals)
       if (isAdmin) {
         const d = await supabase.rpc('app_get_production_widgets')
-        if (!d.error && Array.isArray(d.data)) setList(d.data.map(defToForm))
+        if (mounted.current && !d.error && Array.isArray(d.data)) setList(d.data.map(defToForm))
       } else {
         setList(vals.map((v) => ({ ...newWidgetForm(v.position || 0), id: v.id, title: v.title, subtitle: v.subtitle, color: v.color, format: v.display_format, metric: v.metric })))
       }
-    } catch { setEngineReady(true); setSaveErr('Couldn’t load widgets.') } finally { setLoading(false) }
+    } catch {
+      if (mounted.current) { setEngineReady(true); setSaveErr('Couldn’t load widgets.') }
+    } finally {
+      if (mounted.current) setLoading(false)
+    }
   }, [isAdmin])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    mounted.current = true
+    load()
+    return () => { mounted.current = false }
+  }, [load])
 
   const valueFor = (id) => { const v = values.find((x) => x.id === id); return v && !v.error ? (v.value != null ? v.value : v.pct) : null }
 
@@ -81,9 +91,13 @@ export function CustomWidgetsSection() {
     setSaving(true); setSaveErr(null)
     try {
       const { data, error } = await supabase.rpc('app_save_production_widgets', { config: toEngineConfig(newList) })
-      if (error || (data && data.error)) { setSaveErr((data && data.error) || error.message || 'Save failed.'); return }
-      setBuilder(null); await load()
-    } catch (e) { setSaveErr(e.message || 'Save failed.') } finally { setSaving(false) }
+      if (error || (data && data.error)) { if (mounted.current) setSaveErr((data && data.error) || error.message || 'Save failed.'); return }
+      if (mounted.current) { setBuilder(null); await load() }
+    } catch (e) {
+      if (mounted.current) setSaveErr(e.message || 'Save failed.')
+    } finally {
+      if (mounted.current) setSaving(false)
+    }
   }, [engineReady, load])
 
   const onSave = (form) => {

@@ -23,6 +23,8 @@ import { RecordActivityFeed as RecordActivity } from '../components/RecordActivi
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { fmt$, fmtDate, fmtPhone, initials, matchSearch } from '../lib/utils'
 import { CONTACT_TYPES, CONTACT_TYPE_COLORS, CONTACT_STATUSES, CONTACT_SOURCES } from '../lib/constants'
+import { resolveWorkflowState } from '../lib/identifiers'
+import { decorateRecordList, identifierCodeFor, recordIdentifierFilterValues } from '../lib/recordIdentifiers'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Tabs, SectionTitle,
@@ -32,6 +34,14 @@ import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { applySegmentCondition } from '../lib/segments'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const contactStatusCode = value => identifierCodeFor('contacts', 'status', value)
+const contactStatusMatches = (recordOrValue, expectedValue) => {
+  const actualCode = contactStatusCode(recordOrValue)
+  const expectedCode = contactStatusCode(expectedValue)
+  if (actualCode && expectedCode) return actualCode === expectedCode
+  const actualValue = recordOrValue && typeof recordOrValue === 'object' ? recordOrValue.status : recordOrValue
+  return actualValue === expectedValue
+}
 
 const CONTACT_EXPORT_COLS = [
   { key:'first_name', label:'First Name', example:'John' },
@@ -320,7 +330,7 @@ export function Contacts() {
           p_offset: offset,
         })
         if (error) throw error
-        const rows = Array.isArray(data) ? data : []
+        const rows = decorateRecordList('contacts', Array.isArray(data) ? data : [])
         setTotalCount(Number(rows[0]?._total_count || rows.length || 0))
         setContacts(prev => append ? [...prev, ...rows] : rows)
         setPageOffset(offset)
@@ -328,7 +338,7 @@ export function Contacts() {
       }
 
       let q = supabase.from('contacts').select('*, agents(id,name,color)', { count: 'exact' })
-      if (statusF)     q = q.eq('status', statusF)
+      if (statusF)     q = q.in('status', recordIdentifierFilterValues('contacts', 'status', statusF))
       if (typeF)       q = q.eq('type', typeF)
       if (agentF)      q = q.eq('agent_id', agentF)
       if (search && search.length >= 2) {
@@ -341,7 +351,8 @@ export function Contacts() {
       const { data, count, error } = await q
       if (error) throw error
       setTotalCount(count || 0)
-      setContacts(prev => append ? [...prev, ...(data||[])] : (data||[]))
+      const rows = decorateRecordList('contacts', data || [])
+      setContacts(prev => append ? [...prev, ...rows] : rows)
       setPageOffset(offset)
     } catch(e) { console.error('Load contacts:', e.message) }
     finally { if (offset === 0) setLoading(false) }
@@ -499,7 +510,7 @@ export function Contacts() {
   const filtered = React.useMemo(() => {
     let result = contacts.filter(c => {
       if (segmentContactIds && !segmentContactIds.includes(c.id)) return false
-      if (statusF && c.status    !== statusF) return false
+      if (statusF && !contactStatusMatches(c, statusF)) return false
       if (agentF  && c.agent_id  !== agentF)  return false
       if (sourceF && c.source    !== sourceF) return false
       if (typeF   && c.type      !== typeF)   return false
@@ -532,7 +543,7 @@ export function Contacts() {
   const toggleRole = t => setCollapsed(p => ({ ...p, [t || '']: !p[t || ''] }))
   const roleCount  = t => displayList.filter(x => (x.type || '') === (t || '')).length
 
-  const statusColor = (s) => CONTACT_STATUSES.find(x => x.value === s)?.color || '#94A3B8'
+  const statusColor = (s) => resolveWorkflowState('contact.lifecycle', s)?.color || '#94A3B8'
 
   async function bulkDelete() {
     if (!can('contacts.delete')) { toast("You don't have permission to delete contacts", '#DC2626'); return }

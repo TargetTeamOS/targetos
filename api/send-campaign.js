@@ -12,6 +12,7 @@
 const { getSupabase } = require('./_lib/phone')
 const { unsubToken } = require('./unsubscribe')
 const { requireExternalEffects } = require('./_lib/externalEffects')
+const { recordIdentifierValues } = require('./_lib/recordIdentifiers')
 
 const BASE = process.env.PUBLIC_BASE_URL || 'https://app.targetreteam.com'
 const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
@@ -54,7 +55,7 @@ module.exports = async function handler(req, res) {
   try {
     // Resolve audience → contact emails
     let q = supabase.from('contacts').select('email, first_name').not('email', 'is', null)
-    if (audience.type === 'status') q = q.eq('status', audience.value)
+    if (audience.type === 'status') q = q.in('status', recordIdentifierValues('contacts', 'status', audience.value))
     if (audience.type === 'tag')    q = q.contains('tags', [audience.value])
     const { data: contacts, error } = await q.limit(5000)
     if (error) throw error

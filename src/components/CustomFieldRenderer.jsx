@@ -8,6 +8,7 @@
 //   readOnly — show as text only
 
 import React from 'react'
+import { normalizeOptions } from '../lib/customFields'
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const S  = { width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }
 
@@ -21,6 +22,7 @@ export function CustomFieldRenderer({ field, value, onChange, readOnly = false }
 
   if (readOnly) {
     let display = value ?? '—'
+    if (field.type === 'select') display = normalizeOptions(field.options).find(option => String(option.value) === String(value))?.label ?? display
     if (field.type === 'checkbox') display = value ? '✅ Yes' : '❌ No'
     if (field.type === 'currency' && value) display = fmtCurrency(value)
     if (field.type === 'url' && value) return <a href={value} target="_blank" rel="noopener noreferrer" style={{ color:'var(--brand)', fontSize:13 }}>{value}</a>
@@ -32,9 +34,7 @@ export function CustomFieldRenderer({ field, value, onChange, readOnly = false }
       return <textarea value={value||''} onChange={e=>onChange(e.target.value)} placeholder={field.label} rows={3} style={{...S,resize:'vertical'}} />
 
     case 'select': {
-      const opts = (field.options||[]).map(o => (o && typeof o === 'object')
-        ? { label: o.label ?? String(o.value), value: o.value ?? o.label, color: o.color || null }
-        : { label: String(o), value: String(o), color: null })
+      const opts = normalizeOptions(field.options)
       const sel = opts.find(o => String(o.value) === String(value))
       return (
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>

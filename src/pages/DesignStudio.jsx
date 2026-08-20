@@ -13,6 +13,7 @@ import { uploadFile } from '../lib/storage'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { Btn, Modal, ModalActions, Toggle } from '../components/UI'
+import { recordIdentifierFilterValues } from '../lib/recordIdentifiers'
 import {
   PRESETS, FONTS, fontLabel, clone,
   newText, newShape, newImage, builtinTemplates,
@@ -284,7 +285,7 @@ export function DesignStudio() {
     setShowListings(true)
     const { data } = await supabase.from('listings')
       .select('id, addr, city, list_price, beds, baths, sqft')
-      .eq('status', 'Active').order('created_at', { ascending: false }).limit(30)
+      .in('status', recordIdentifierFilterValues('listings', 'status', 'active')).order('created_at', { ascending: false }).limit(30)
     setListings(data || [])
   }
   function insertListing(l) {

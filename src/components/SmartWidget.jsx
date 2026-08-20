@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { BOARD_OPTIONS } from '../lib/boardOptions'
+import { BOARD_OPTIONS, boardStatusFilterValues } from '../lib/boardOptions'
 
 // One renderer for every smart-board widget. A widget is a saved query:
 //   { board, statuses[], groupBy, dateRange, agentScope, display, metric, columns[], color, title }
@@ -65,7 +65,7 @@ export function WidgetContent({ config, agentId, isAdmin }) {
         const scope = config.agentScope || (isAdmin ? 'all' : 'mine')
         if (scope === 'mine' && agentId) q = q.eq('agent_id', agentId)
         else if (scope !== 'all' && scope !== 'mine') q = q.eq('agent_id', scope)
-        if (config.statuses?.length && boardDef.statusField) q = q.in(boardDef.statusField, config.statuses)
+        if (config.statuses?.length && boardDef.statusField) q = q.in(boardDef.statusField, boardStatusFilterValues(boardDef, config.statuses))
         // extra multi-select filters: { field: [values] }
         if (config.filters) for (const [f, vals] of Object.entries(config.filters)) {
           if (Array.isArray(vals) && vals.length) q = q.in(f, vals)

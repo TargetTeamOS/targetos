@@ -14,11 +14,17 @@ import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { FilterBar } from '../components/FilterBar'
 import { useAgents } from '../lib/hooks'
 import { CallDiagnostics } from './CallDiagnostics'
+import { choiceStorageOptions, workflowStorageOptions } from '../lib/identifiers'
+import { decorateRecordIdentifiers, decorateRecordList, identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-const DIRECTIONS = ['Inbound','Outbound']
-const OUTCOMES   = ['Connected','No Answer','Voicemail','Callback Requested','Hot Lead','Appointment Set','Not Interested','Wrong Number']
+const DIRECTIONS = choiceStorageOptions('call.direction')
+const OUTCOMES   = workflowStorageOptions('call.outcome')
+const optionValue = option => option?.value ?? option
+const optionLabel = option => option?.label ?? String(option)
+const callDirectionCode = value => identifierCodeFor('calls', 'direction', value)
+const callOutcomeCode = value => identifierCodeFor('calls', 'outcome', value)
 const RULE_TYPES = [
   { id: 'round_robin',   label: 'Round Robin',     icon: '🔄', desc: 'Distribute calls evenly across all available agents' },
   { id: 'contact_match', label: 'Contact Match',    icon: '👤', desc: 'Route to the assigned agent if caller is a known contact' },
@@ -163,7 +169,7 @@ function CallDrawer({ call, agents, onSave, onClose, onDelete, saving }) {
     <select value={form[k]??''} onChange={e => set(k, e.target.value)}
       style={{ width:'100%', padding:'7px 9px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff }}>
       <option value="">—</option>
-      {options.map(o => <option key={o} value={o}>{o}</option>)}
+      {options.map(o => <option key={optionValue(o)} value={optionValue(o)}>{optionLabel(o)}</option>)}
     </select>
   )
 
@@ -1130,7 +1136,7 @@ export function Calls() {
       const { data, error } = await supabase.rpc('app_calls_list', { p_limit: 200 })
       if (error) throw error
       // Reshape to match what the rest of this page expects (nested agents object)
-      setCalls((data || []).map(c => ({ ...c, agents: c.agent_id ? { id: c.agent_id, name: c.agent_name, color: c.agent_color } : null })))
+      setCalls(decorateRecordList('calls', (data || []).map(c => ({ ...c, agents: c.agent_id ? { id: c.agent_id, name: c.agent_name, color: c.agent_color } : null }))))
     } catch(e) { console.warn('calls load error:', e.message); setCalls([]) }
     finally { setLoading(false) }
   }
@@ -1140,16 +1146,19 @@ export function Calls() {
     try {
       if (callForm.id) {
         const { agents: _ca, ...cleanCall } = callForm
-        const { data, error } = await supabase.from('calls').update({ ...cleanCall, updated_at: new Date().toISOString() }).eq('id', callForm.id).select('*, agents(id,name,color)').single()
+        const write = prepareRecordIdentifierDatabaseWrite('calls', { ...cleanCall, updated_at: new Date().toISOString() })
+        const { data, error } = await supabase.from('calls').update(write).eq('id', callForm.id).select('*, agents(id,name,color)').single()
         if (error) throw error
-        setCalls(prev => prev.map(c => c.id === callForm.id ? data : c))
-        setSelected(data)
+        const decorated = decorateRecordIdentifiers('calls', data)
+        setCalls(prev => prev.map(c => c.id === callForm.id ? decorated : c))
+        setSelected(decorated)
         toast('✅ Call saved')
       } else {
         const { agents: _ca2, id: _cid, ...cleanCallIns } = callForm
-        const { data, error } = await supabase.from('calls').insert({ ...cleanCallIns, agent_id: callForm.agent_id || agent?.id, called_at: new Date().toISOString() }).select('*, agents(id,name,color)').single()
+        const write = prepareRecordIdentifierDatabaseWrite('calls', { ...cleanCallIns, agent_id: callForm.agent_id || agent?.id, called_at: new Date().toISOString() })
+        const { data, error } = await supabase.from('calls').insert(write).select('*, agents(id,name,color)').single()
         if (error) throw error
-        setCalls(prev => [data, ...prev])
+        setCalls(prev => [decorateRecordIdentifiers('calls', data), ...prev])
         setShowAdd(false)
         setContactPrefill(null)
         setForm({})
@@ -1174,14 +1183,14 @@ export function Calls() {
   const filtered = calls.filter(c => {
     const q = search.toLowerCase()
     if (search && !c.contact_name?.toLowerCase().includes(q) && !c.from_number?.includes(search) && !c.notes?.toLowerCase().includes(q)) return false
-    if (dirFilter && c.direction !== dirFilter) return false
-    if (outFilter && c.outcome  !== outFilter)  return false
+    if (dirFilter && callDirectionCode(c) !== callDirectionCode(dirFilter)) return false
+    if (outFilter && callOutcomeCode(c) !== callOutcomeCode(outFilter)) return false
     return true
   })
 
   const todayCalls = calls.filter(c => (c.called_at||'').slice(0,10) === new Date().toISOString().slice(0,10))
-  const connected  = calls.filter(c => c.outcome === 'Connected').length
-  const hotLeads   = calls.filter(c => c.outcome === 'Hot Lead').length
+  const connected  = calls.filter(c => callOutcomeCode(c) === 'connected').length
+  const hotLeads   = calls.filter(c => callOutcomeCode(c) === 'hot_lead').length
   const voicemails = calls.filter(c => c.is_voicemail).length
 
   return (
@@ -1254,8 +1263,8 @@ export function Calls() {
               onChange={(k,v) => { if(k==='dirFilter') setDirFilter(v); if(k==='outFilter') setOutFilter(v) }}
               total={calls.length} filtered={filtered.length}
               filters={[
-                { key:'dirFilter', label:'Direction', type:'select', options:DIRECTIONS.map(d=>({value:d,label:d})), placeholder:'Direction' },
-                { key:'outFilter', label:'Outcome',   type:'select', options:OUTCOMES.map(o=>({value:o,label:o})),   placeholder:'Outcome'   },
+                { key:'dirFilter', label:'Direction', type:'select', options:DIRECTIONS, placeholder:'Direction' },
+                { key:'outFilter', label:'Outcome',   type:'select', options:OUTCOMES,   placeholder:'Outcome'   },
               ]}
             />
           </div>
@@ -1366,7 +1375,7 @@ export function Calls() {
                     <select value={form[k]??''} onChange={e => setForm(x => ({ ...x, [k]: e.target.value }))}
                       style={{ width:'100%', padding:'8px 10px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff }}>
                       <option value="">—</option>
-                      {(k==='direction' ? DIRECTIONS : OUTCOMES).map(o => <option key={o} value={o}>{o}</option>)}
+                      {(k==='direction' ? DIRECTIONS : OUTCOMES).map(o => <option key={optionValue(o)} value={optionValue(o)}>{optionLabel(o)}</option>)}
                     </select>
                   </div>
                 ))}

@@ -1,9 +1,11 @@
+import { decorateRecordIdentifiers, identifierCodeFor, recordIdentifierFilterValues } from './recordIdentifiers'
+
 // Shared board query definitions — the 'calculator' engine behind
 // both the classic dashboard's custom widgets and the smart grid board.
 // Every board: which table, filterable fields, group-by, chart, sort,
 // display columns, and numeric aggregations.
 
-export const BOARD_OPTIONS = [
+const RAW_BOARD_OPTIONS = [
   {
     id:'contacts', label:'Contacts', icon:'👤', table:'contacts',
     statusField:'status', nameField:'first_name', subField:'source', valueField:null,
@@ -93,18 +95,18 @@ export const BOARD_OPTIONS = [
   },
   {
     id:'gifts', label:'Gifts', icon:'🎁', table:'gifts',
-    statusField:'order_status', nameField:'client_name', subField:'gift_type', valueField:'amount',
+    statusField:'status', nameField:'client_name', subField:'gift_type', valueField:'amount',
     dateField:'sent_date',
-    groupByOptions:['order_status','gift_type','occasion'],
-    statusOptions:['Pending','Ordered','Shipped','Delivered'],
+    groupByOptions:['status','gift_type','occasion'],
+    statusOptions:['Under Contract','Please deliver','Shipped out','Delivered',"Couldn't Deliver",'Too Late',"Don't send",'Check Note'],
     extraFilters:[{field:'gift_type',label:'Type'},{field:'occasion',label:'Occasion'}],
     sortOptions:[{field:'created_at',label:'Newest'},{field:'client_name',label:'Name'},{field:'amount',label:'Amount'}],
     displayCols:[
       {field:'client_name',label:'Client'},{field:'gift_type',label:'Type'},
-      {field:'order_status',label:'Status'},{field:'amount',label:'Amount'},
+      {field:'status',label:'Status'},{field:'amount',label:'Amount'},
       {field:'sent_date',label:'Sent'},{field:'occasion',label:'Occasion'},{field:'agent_id',label:'Agent'},
     ],
-    chartFields:[{field:'order_status',label:'By Status'},{field:'gift_type',label:'By Type'},{field:'occasion',label:'By Occasion'}],
+    chartFields:[{field:'status',label:'By Status'},{field:'gift_type',label:'By Type'},{field:'occasion',label:'By Occasion'}],
     numericFields:[{field:'amount',label:'Total Spent'}],
   },
   {
@@ -154,3 +156,33 @@ export const BOARD_OPTIONS = [
     numericFields:[],
   },
 ]
+
+function normalizeBoardStatusOption(board, value) {
+  const code = identifierCodeFor(board.table, board.statusField, value) || String(value)
+  const decorated = decorateRecordIdentifiers(board.table, { [board.statusField]: value })
+  const labelField = board.statusField === 'stage' ? 'stage_label' : `${board.statusField}_label`
+  return Object.freeze({ code, value: code, label: decorated?.[labelField] || String(value) })
+}
+
+export const BOARD_OPTIONS = RAW_BOARD_OPTIONS.map(board => Object.freeze({
+  ...board,
+  statusOptions: (board.statusOptions || []).map(value => normalizeBoardStatusOption(board, value)),
+}))
+
+export function boardStatusCode(board, value) {
+  return identifierCodeFor(board?.table, board?.statusField, value) || String(value ?? '')
+}
+
+export function boardStatusFilterValues(board, values) {
+  return [...new Set((values || []).flatMap(value => {
+    const expanded = recordIdentifierFilterValues(board?.table, board?.statusField, value)
+    return expanded?.length ? expanded : [value]
+  }).filter(value => value != null && value !== ''))]
+}
+
+export function boardStatusLabels(board, values) {
+  return (values || []).map(value => {
+    const code = boardStatusCode(board, value)
+    return board?.statusOptions?.find(option => option.code === code)?.label || String(value)
+  })
+}

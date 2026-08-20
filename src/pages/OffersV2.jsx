@@ -28,11 +28,12 @@ import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
 import { useOffers, useAgents } from '../lib/hooks'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
-import { OFFER_STATUSES, OFFER_ACCEPTED_VALUES, OFFER_PENDING_VALUES } from '../lib/constants'
+import { OFFER_STATUSES } from '../lib/constants'
 import { dedupeCanonicalAgents } from '../lib/utils'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { computeOfferFinancials } from '../lib/offerCalc'
 import { getConnectedEmailAccount } from '../lib/emailService'
+import { identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 import AdminOfferReports from '../components/AdminOfferReports'
 import { PolishWordingButton } from '../components/PolishWordingButton'
 import { ContactSearch } from '../components/ContactSearch'
@@ -42,6 +43,8 @@ import {
 } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const offerStatusCode = value => identifierCodeFor('offers', 'status', value)
+const dealStageCode = value => identifierCodeFor('deals', 'stage', value)
 const S  = { width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, boxSizing:'border-box' }
 const SL = { fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4, marginTop:10, display:'block' }
 
@@ -119,8 +122,8 @@ function FileUploader({ label, fileUrl, onUploaded, folder }) {
 // ── AGENT STATS CARD ──────────────────────────────────────────────
 function AgentStatsCard({ ag, agentOffers, onFilter, isActive }) {
   const total    = agentOffers.length
-  const accepted = agentOffers.filter(o => OFFER_ACCEPTED_VALUES.includes(o.status)).length
-  const pending  = agentOffers.filter(o => OFFER_PENDING_VALUES.includes(o.status)).length
+  const accepted = agentOffers.filter(o => offerStatusCode(o) === 'accepted').length
+  const pending  = agentOffers.filter(o => ['sent', 'negotiating'].includes(offerStatusCode(o))).length
   const convRate = total > 0 ? Math.round(accepted / total * 100) : 0
   // Unique buyers per agent
   // uniqueBuyers intentionally removed from the header display per
@@ -848,8 +851,8 @@ export function OffersV2() {
       // earlier successful run already handled conversion — never
       // create a second deal in that case. The existing address-based
       // dupe check is kept as defense in depth, not the primary guard.
-      const nowAccepted = OFFER_ACCEPTED_VALUES.includes(statusOverride || form.status)
-      const wasAccepted = selected && OFFER_ACCEPTED_VALUES.includes(selected.status)
+      const nowAccepted = offerStatusCode(statusOverride || form.status) === 'accepted'
+      const wasAccepted = selected && offerStatusCode(selected) === 'accepted'
       if (nowAccepted && !wasAccepted && !selected?.deal_id) {
         try {
           const claimKey = 'offer_accept:' + selected.id
@@ -866,25 +869,31 @@ export function OffersV2() {
 
           if (claimed && claimed.length > 0) {
             // We won the claim — safe to create the deal exactly once.
-            const { data: dupe } = await supabase.from('deals').select('id')
-              .eq('addr', form.listing_addr).not('stage', 'in', '("Closed","Deal Fell Through")').limit(1)
-            if (!dupe?.length) {
-              const { data: newDeal, error: dealErr } = await supabase.from('deals').insert({
+            const { data: possibleDupes } = await supabase.from('deals').select('id,stage')
+              .eq('addr', form.listing_addr)
+            const dupe = (possibleDupes || []).find(deal => !['closed', 'fell_through'].includes(dealStageCode(deal)))
+            if (!dupe) {
+              const dealInsert = prepareRecordIdentifierDatabaseWrite('deals', {
                 addr:        form.listing_addr,
                 side:        form.inhouse_listing_id ? 'Listing' : 'Buyer',
-                stage:       'Offer Accapted',   // house spelling — matches DEAL_STAGES
+                stage_code:  'offer_accepted',
                 production:  form.purchase_price || null,
                 client_name: form.inhouse_listing_id ? (form.seller_name || form.buyer_name) : form.buyer_name,
                 agent_id:    form.buyers_agent_id || agent?.id || null,
                 ao_date:     form.offer_date || new Date().toISOString().slice(0, 10),
                 listing_id:  form.inhouse_listing_id || null,
                 created_at:  new Date().toISOString(),
-              }).select().single()
+              })
+              const { data: newDeal, error: dealErr } = await supabase.from('deals').insert(dealInsert).select().single()
               if (dealErr) throw dealErr
               const offerId = selected?.id
               if (offerId && newDeal) await supabase.from('offers').update({ deal_id: newDeal.id }).eq('id', offerId).then(() => {}).catch(() => {})
               if (form.inhouse_listing_id) {
-                await supabase.from('listings').update({ status: 'Accepted offer', updated_at: new Date().toISOString() }).eq('id', form.inhouse_listing_id)
+                const listingUpdate = prepareRecordIdentifierDatabaseWrite('listings', {
+                  status_code: 'offer_accepted',
+                  updated_at: new Date().toISOString(),
+                })
+                await supabase.from('listings').update(listingUpdate).eq('id', form.inhouse_listing_id)
               }
               // Audit: links the accepted offer, its current revision,
               // and the resulting Production record together, since
@@ -945,7 +954,7 @@ export function OffersV2() {
   }, [offers])
 
   const filtered = offers.filter(o => {
-    if (statusF && o.status !== statusF) return false
+    if (statusF && offerStatusCode(o) !== offerStatusCode(statusF)) return false
     if (agentF === 'none' && o.agent_id) return false
     if (agentF && agentF !== 'none') {
       // Clicking a canonical (deduplicated) bucket must still match
@@ -961,7 +970,7 @@ export function OffersV2() {
 
   const statusColor = s => OFFER_STATUSES.find(x=>x.value===s)?.hex || '#c4c4c4'
   const totalOffers = offers.length
-  const totalAO     = offers.filter(o=>OFFER_ACCEPTED_VALUES.includes(o.status)).length
+  const totalAO     = offers.filter(o=>offerStatusCode(o) === 'accepted').length
   const totalVol    = offers.reduce((s,o)=>s+(parseFloat(o.purchase_price||o.production)||0),0)
 
   // ── RENDER ────────────────────────────────────────────────────
@@ -1601,7 +1610,7 @@ export function OffersV2() {
 
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight:4, color:'#DC2626' }} onClick={()=>setConfirmDel(true)}>Delete</Btn>}
-          {selected && OFFER_PENDING_VALUES.includes(form.status) && (
+          {selected && ['sent', 'negotiating'].includes(offerStatusCode(form.status)) && (
             <div style={{ display:'flex', gap:4, marginRight:'auto' }}>
               <Btn variant="ghost" style={{ color:'#10B981', fontSize:11 }} onClick={()=>markOutcome('Accepted')}>✓ Mark Accepted</Btn>
               <Btn variant="ghost" style={{ color:'#DC2626', fontSize:11 }} onClick={()=>markOutcome('Rejected')}>Mark Rejected</Btn>

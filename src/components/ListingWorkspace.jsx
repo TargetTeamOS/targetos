@@ -18,8 +18,11 @@ import ContactPicker from './ContactPicker'
 import ListingFilesPanel from './ListingFilesPanel'
 import { THEME_DEFS, themeLabel, mainThemeFor, buildThemeSummary, buildBuyerStats, buildSummarySentences } from '../lib/feedbackThemes'
 import { sendContactEmail, getConnectedEmailAccount } from '../lib/emailService'
+import { identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 
 const ff = 'Inter,system-ui,sans-serif'
+const listingStatusCode = value => identifierCodeFor('listings', 'status', value)
+const tcTaskStatusCode = value => identifierCodeFor('tc_tasks', 'status', value)
 const ALL_TABS = [
   { id:'tasks',     label:'Summary / Next Action' },
   { id:'feedback',  label:'Buyer Feedback' },
@@ -338,12 +341,13 @@ export default function ListingWorkspace({
         } catch {}
       }
       if (alsoCreateTask) {
-        const { error } = await supabase.from('tasks').insert({
+        const taskInsert = prepareRecordIdentifierDatabaseWrite('tasks', {
           title: '[' + listing.addr + '] ' + taskMsg.trim().slice(0,80),
           notes: 'Re: ' + listing.addr + '\n\n' + taskMsg.trim() + '\n\n— sent from My Listings by ' + (agent?.name||'agent'),
-          agent_id: taskAssignee, status:'pending', priority:'normal',
+          agent_id: taskAssignee, status_code:'pending', priority_code:'normal',
           created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         })
+        const { error } = await supabase.from('tasks').insert(taskInsert)
         if (error) throw error
         try {
           await supabase.from('audit_log').insert({ agent_id: agent?.id||listing.agent_id, table_name:'listings', record_id:listing.id, action:'task_sent', field_name:'Task', metadata:{ description:'Also created a task for the office' }, created_at:new Date().toISOString() })
@@ -438,7 +442,10 @@ export default function ListingWorkspace({
   async function saveField(key, value, label) {
     setSaving(key)
     try {
-      const { error } = await supabase.from('listings').update({ [key]: value, updated_at: new Date().toISOString() }).eq('id', listing.id)
+      const patch = key === 'status'
+        ? prepareRecordIdentifierDatabaseWrite('listings', { status_code: listingStatusCode(value) })
+        : { [key]: value }
+      const { error } = await supabase.from('listings').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', listing.id)
       if (error) throw error
       onSaved?.({ ...listing, [key]: value })
     } catch (e) { alert('Could not save ' + (label||key) + ': ' + (e.message||e)) }
@@ -506,6 +513,7 @@ export default function ListingWorkspace({
   }
 
   const d = dom(listing)
+  const statusCode = listingStatusCode(status)
   const sc = STATUS_COLORS[status] || '#94A3B8'
   const avgInterest = showings.length ? (showings.reduce((s,x)=>s+(x.interest_level||3),0)/showings.length).toFixed(1) : null
   const ph = Array.isArray(listing.price_history) ? listing.price_history : []
@@ -541,22 +549,22 @@ export default function ListingWorkspace({
   // Alerts badge and the Tasks/Next Action tab's detailed list.
   const needsAttentionItems = (() => {
     const items = []
-    if (sellerOverdue && (status==='Active'||status==='Coming Soon')) items.push(['⚠️','Seller update overdue','#DC2626'])
-    if (showings.length===0 && status==='Active') items.push(['👀','No showings logged yet','#B45309'])
-    if (d!=null && d>60 && status==='Active') items.push(['📅','On market 60+ days ('+d+')','#B45309'])
+    if (sellerOverdue && ['active','coming_soon'].includes(statusCode)) items.push(['⚠️','Seller update overdue','#DC2626'])
+    if (showings.length===0 && statusCode==='active') items.push(['👀','No showings logged yet','#B45309'])
+    if (d!=null && d>60 && statusCode==='active') items.push(['📅','On market 60+ days ('+d+')','#B45309'])
     if (!listing.seller_contact_id) items.push(['🧑','Missing primary seller contact','#B45309'])
     if (objections.some(([w])=>w==='price') && showings.length>=3) items.push(['💰','Price is a recurring objection','#2563EB'])
-    if (mktTasks && mktTasks.some(t=>t.status!=='done')) items.push(['📣','Marketing tasks still open on TC file','#B45309'])
+    if (mktTasks && mktTasks.some(t=>tcTaskStatusCode(t)!=='done')) items.push(['📣','Marketing tasks still open on TC file','#B45309'])
     return items
   })()
 
   // Recommended next action (from existing data)
   const recommendation = (() => {
-    if (sellerOverdue && (status==='Active'||status==='Coming Soon')) return 'Seller update is overdue — send a status update to the seller.'
-    if (showings.length===0 && status==='Active') return 'No showings yet — review pricing and marketing exposure.'
+    if (sellerOverdue && ['active','coming_soon'].includes(statusCode)) return 'Seller update is overdue — send a status update to the seller.'
+    if (showings.length===0 && statusCode==='active') return 'No showings yet — review pricing and marketing exposure.'
     if (avgInterest && +avgInterest < 2.5 && showings.length>=3) return 'Interest is low across several showings — consider a price adjustment or addressing common objections.'
     if (objections.some(([w])=>w==='price') && showings.length>=3) return 'Price is a recurring objection — discuss a price adjustment with the seller.'
-    if (d!=null && d>60 && status==='Active') return 'On market 60+ days — refresh marketing and reassess price with the seller.'
+    if (d!=null && d>60 && statusCode==='active') return 'On market 60+ days — refresh marketing and reassess price with the seller.'
     return 'On track — keep the seller informed with the latest showing feedback.'
   })()
 
@@ -584,9 +592,9 @@ export default function ListingWorkspace({
     if (listing.original_price && listing.list_price && listing.original_price !== listing.list_price) {
       lines.push('- Price moved ' + fmt$(listing.original_price) + ' → ' + fmt$(listing.list_price) + ' (' + ph.length + ' change' + (ph.length!==1?'s':'') + ')')
     }
-    lines.push('- Marketing: ' + (mktStatus || 'not set') + (mktTasks && mktTasks.length ? ' · ' + mktTasks.filter(t=>t.status==='done').length + '/' + mktTasks.length + ' items done' : '') + (photography ? ' · Photography: ' + (photography.status||'Needs Prep') : ''))
-    if (mktTasks && mktTasks.filter(t=>t.status==='done').length>0) {
-      lines.push('  Completed: ' + mktTasks.filter(t=>t.status==='done').map(t=>t.title).join(', '))
+    lines.push('- Marketing: ' + (mktStatus || 'not set') + (mktTasks && mktTasks.length ? ' · ' + mktTasks.filter(t=>tcTaskStatusCode(t)==='done').length + '/' + mktTasks.length + ' items done' : '') + (photography ? ' · Photography: ' + (photography.status||'Needs Prep') : ''))
+    if (mktTasks && mktTasks.filter(t=>tcTaskStatusCode(t)==='done').length>0) {
+      lines.push('  Completed: ' + mktTasks.filter(t=>tcTaskStatusCode(t)==='done').map(t=>t.title).join(', '))
     }
     const positives = themeSummary.filter(t => t.id === 'positive')
     if (objections.length) {
@@ -1090,7 +1098,7 @@ export default function ListingWorkspace({
             <div>• <strong>{showingsSinceUpdate.length}</strong> new showing{showingsSinceUpdate.length!==1?'s':''}</div>
             <div>• <strong>{openHousesSinceUpdate.length}</strong> new open house{openHousesSinceUpdate.length!==1?'s':''}</div>
             <div>• <strong>{priceChangesSinceUpdate.length}</strong> price change{priceChangesSinceUpdate.length!==1?'s':''}</div>
-            <div>• Marketing: {mktTasks && mktTasks.length ? mktTasks.filter(t=>t.status==='done').length + ' of ' + mktTasks.length + ' items completed' : (mktStatus || 'not set')}</div>
+            <div>• Marketing: {mktTasks && mktTasks.length ? mktTasks.filter(t=>tcTaskStatusCode(t)==='done').length + ' of ' + mktTasks.length + ' items completed' : (mktStatus || 'not set')}</div>
             {showingsSinceUpdate.length===0 && openHousesSinceUpdate.length===0 && priceChangesSinceUpdate.length===0 && (
               <div style={{ color:'var(--muted)', fontStyle:'italic' }}>Nothing new {sinceLabel} — the report below will be quiet.</div>
             )}
@@ -1103,9 +1111,9 @@ export default function ListingWorkspace({
             <div>• Feedback captured on <strong>{showings.filter(s=>s.feedback).length}</strong> of {showings.length} showings</div>
             {showings.length>0 && <div>• Unique buyers: <strong>{buyerStats.uniqueBuyers}</strong> · 👍 {buyerStats.interested} interested · 🤔 {buyerStats.neutral} neutral · 👎 {buyerStats.notInterested} not interested{buyerStats.noFeedback>0?' · '+buyerStats.noFeedback+' no feedback':''}</div>}
             {listing.original_price&&listing.list_price&&listing.original_price!==listing.list_price && <div>• Price moved {fmt$(listing.original_price)} → {fmt$(listing.list_price)} ({ph.length} change{ph.length!==1?'s':''})</div>}
-            <div>• Marketing: {mktStatus || 'not set'}{mktTasks && mktTasks.length ? ' · ' + mktTasks.filter(t=>t.status==='done').length + '/' + mktTasks.length + ' items done' : ''}{photography ? ' · Photography: ' + (photography.status || 'Needs Prep') : ''}</div>
-            {mktTasks && mktTasks.filter(t=>t.status==='done').length>0 && (
-              <div style={{ fontSize:12, color:'var(--muted)' }}>&nbsp;&nbsp;Completed: {mktTasks.filter(t=>t.status==='done').map(t=>t.title).join(', ')}</div>
+            <div>• Marketing: {mktStatus || 'not set'}{mktTasks && mktTasks.length ? ' · ' + mktTasks.filter(t=>tcTaskStatusCode(t)==='done').length + '/' + mktTasks.length + ' items done' : ''}{photography ? ' · Photography: ' + (photography.status || 'Needs Prep') : ''}</div>
+            {mktTasks && mktTasks.filter(t=>tcTaskStatusCode(t)==='done').length>0 && (
+              <div style={{ fontSize:12, color:'var(--muted)' }}>&nbsp;&nbsp;Completed: {mktTasks.filter(t=>tcTaskStatusCode(t)==='done').map(t=>t.title).join(', ')}</div>
             )}
             {adminLog.filter(a=>a.action==='email_sent').length>0 && (
               <div>• Correspondence sent: <strong>{adminLog.filter(a=>a.action==='email_sent').length}</strong> email{adminLog.filter(a=>a.action==='email_sent').length!==1?'s':''}</div>
@@ -1192,8 +1200,8 @@ export default function ListingWorkspace({
             ) : (
               <div>
                 {(() => {
-                  const done = mktTasks.filter(t=>t.status==='done')
-                  const pending = mktTasks.filter(t=>t.status!=='done')
+                  const done = mktTasks.filter(t=>tcTaskStatusCode(t)==='done')
+                  const pending = mktTasks.filter(t=>tcTaskStatusCode(t)!=='done')
                   const pct = mktTasks.length ? Math.round(done.length/mktTasks.length*100) : 0
                   return (
                     <>

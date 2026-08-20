@@ -10,6 +10,7 @@ import React, { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import * as XLSX from 'xlsx'
+import { prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -424,7 +425,11 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         delete record._unmatched_agent
       }
 
-      records.push({ record: record, idField: idField })
+      try {
+        records.push({ record: prepareRecordIdentifierDatabaseWrite(table, record), idField: idField })
+      } catch (e) {
+        errors.push('Row ' + (ri + 1) + ': ' + e.message)
+      }
     }
 
     console.log('ImportExport: allRows=' + allRows.length + ' valid records=' + records.length + ' pre-import errors=' + errors.length)

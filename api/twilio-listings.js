@@ -7,6 +7,7 @@
 // than a hardcoded list that could drift out of sync with real data.
 // Only searches listings with ivr_enabled=true and status=Active.
 'use strict'
+const { recordIdentifierValues } = require('./_lib/recordIdentifiers')
 const querystring = require('querystring')
 
 const { getSupabase, say, wrap, esc, BASE_URL, checkTwilioSignature, logCallEvent } = require('./_lib/phone')
@@ -178,7 +179,7 @@ async function runSearch(res, voice, maxRes, base, p) {
   const summaryLabel = filterLabel(p)
   try {
     let q = supabase.from('listings').select('addr,city,list_price,beds,baths,property_type,sqft,agent_id')
-      .eq('status', 'Active').eq('ivr_enabled', true)
+      .in('status', recordIdentifierValues('listings', 'status', 'active')).eq('ivr_enabled', true)
     q = buildFilter(p)(q)
     q = q.order('list_price', { ascending: true }).limit(maxRes)
     const { data: results, error } = await q
@@ -276,7 +277,7 @@ module.exports = async function handler(req, res) {
   if (step === 'area') {
     if (!sb) return res.send(wrap(say('Search is temporarily unavailable. Please call back shortly.', voice)))
     const { data: rows } = await sb.from('listings').select('addr')
-      .eq('status', 'Active').eq('ivr_enabled', true)
+      .in('status', recordIdentifierValues('listings', 'status', 'active')).eq('ivr_enabled', true)
     const addrs = (rows || []).map(x => (x.addr || '').toLowerCase())
     const cities = settings.areas.filter(area => addrs.some(a => a.includes(area.toLowerCase()))).slice(0, 9)
     if (!cities.length) {

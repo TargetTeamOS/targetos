@@ -8,8 +8,12 @@ import { useApp }  from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, isDueToday, isOverdue, getDaysUntil } from '../lib/utils'
 import { Btn, Loading } from '../components/UI'
+import { identifierCodeFor, recordIdentifierFilterValues } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const dealStageCode = value => identifierCodeFor('deals', 'stage', value)
+const taskStatusCode = value => identifierCodeFor('tasks', 'status', value)
+const contactStatusCode = value => identifierCodeFor('contacts', 'status', value)
 
 // ── KW / GARY KELLER QUOTES ──────────────────────────────────────
 const KW_QUOTES = [
@@ -110,7 +114,7 @@ function buildEmailHTML(agentName, data, prefs, quote, customMsg, style) {
   const leadRows = (prefs.showLeads && data.hotLeads && data.hotLeads.length > 0)
     ? data.hotLeads.slice(0, 8).map(c => row(
         (c.first_name || '') + ' ' + (c.last_name || ''),
-        '<span style="background:' + (c.status === 'Hot' ? '#FEE2E2' : '#FFF7ED') + ';color:' + (c.status === 'Hot' ? '#CC0000' : '#C2410C') + ';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold">' + c.status + '</span>',
+        '<span style="background:' + (contactStatusCode(c) === 'hot' ? '#FEE2E2' : '#FFF7ED') + ';color:' + (contactStatusCode(c) === 'hot' ? '#CC0000' : '#C2410C') + ';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold">' + c.status + '</span>',
         false
       )).join('')
     : (prefs.showLeads ? row('No hot or warm leads right now.', '', false) : '')
@@ -245,10 +249,10 @@ export function DailyBriefing() {
       const isAdminView = isAdmin || canManage
       const filter  = (!isAdminView || previewFor) ? viewAgent.id : null
 
-      let tasksQ   = supabase.from('tasks').select('*').neq('status','done')
+      let tasksQ   = supabase.from('tasks').select('*')
       let dealsQ   = supabase.from('deals').select('*')
       let conQ     = supabase.from('contacts').select('id,first_name,last_name,status,phone')
-      let listQ    = supabase.from('listings').select('*').eq('status','Active')
+      let listQ    = supabase.from('listings').select('*').in('status', recordIdentifierFilterValues('listings', 'status', 'active'))
       let ohQ      = supabase.from('open_houses').select('*').gte('date',today).lte('date',wkStr)
       let calQ     = supabase.from('calendar_events').select('*').eq('start_date',today).order('start_time')
 
@@ -271,17 +275,18 @@ export function DailyBriefing() {
         calQ.then(r => r.data || []),
       ])
 
-      const todayTasks    = tasks.filter(t => isDueToday(t.due_date) || isOverdue(t.due_date))
-      const overdueTasks  = tasks.filter(t => isOverdue(t.due_date))
-      const activeDeals   = deals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
+      const openTasks = tasks.filter(t => taskStatusCode(t) !== 'done')
+      const todayTasks    = openTasks.filter(t => isDueToday(t.due_date) || isOverdue(t.due_date))
+      const overdueTasks  = openTasks.filter(t => isOverdue(t.due_date))
+      const activeDeals   = deals.filter(d => !['closed','fell_through'].includes(dealStageCode(d)))
       const upcomingClose = deals.filter(d => {
         const dt = d.expected_close_date || d.close_date
         if (!dt) return false
         const dy = getDaysUntil(dt)
-        return dy !== null && dy >= 0 && dy <= 30 && d.stage !== 'Closed'
+        return dy !== null && dy >= 0 && dy <= 30 && dealStageCode(d) !== 'closed'
       }).sort((a,b) => getDaysUntil(a.expected_close_date||a.close_date) - getDaysUntil(b.expected_close_date||b.close_date))
-      const hotLeads      = contacts.filter(c => ['Hot','Warm'].includes(c.status))
-      const closedGCI     = deals.filter(d => d.stage==='Closed' && (d.ao_date||'').startsWith(String(new Date().getFullYear()))).reduce((s,d) => s+(parseFloat(d.gci)||0), 0)
+      const hotLeads      = contacts.filter(c => ['hot','warm'].includes(contactStatusCode(c)))
+      const closedGCI     = deals.filter(d => dealStageCode(d)==='closed' && (d.ao_date||'').startsWith(String(new Date().getFullYear()))).reduce((s,d) => s+(parseFloat(d.gci)||0), 0)
 
       setData({ todayTasks, overdueTasks, activeDeals, upcomingClose, hotLeads, listings, openHouses, todayEvents, closedGCI })
     } catch(e) { toast('Load failed: ' + e.message, '#DC2626') }
@@ -397,21 +402,21 @@ export function DailyBriefing() {
           const today  = new Date().toISOString().slice(0,10)
           const wkEnd  = new Date(); wkEnd.setDate(wkEnd.getDate()+7)
           const [tasks,deals,cons,listings,ohs,cals] = await Promise.all([
-            supabase.from('tasks').select('*').eq('agent_id',ag.id).neq('status','done').then(r=>r.data||[]),
+            supabase.from('tasks').select('*').eq('agent_id',ag.id).then(r=>(r.data||[]).filter(t=>taskStatusCode(t)!=='done')),
             supabase.from('deals').select('*').eq('agent_id',ag.id).then(r=>r.data||[]),
             supabase.from('contacts').select('id,first_name,last_name,status').eq('agent_id',ag.id).then(r=>r.data||[]),
-            supabase.from('listings').select('*').eq('agent_id',ag.id).eq('status','Active').then(r=>r.data||[]),
+            supabase.from('listings').select('*').eq('agent_id',ag.id).in('status',recordIdentifierFilterValues('listings','status','active')).then(r=>r.data||[]),
             supabase.from('open_houses').select('*').eq('agent_id',ag.id).gte('date',today).lte('date',wkEnd.toISOString().slice(0,10)).then(r=>r.data||[]),
             supabase.from('calendar_events').select('*').eq('agent_id',ag.id).eq('start_date',today).then(r=>r.data||[]),
           ])
           const agData = {
             todayTasks:    tasks.filter(t=>isDueToday(t.due_date)||isOverdue(t.due_date)),
             overdueTasks:  tasks.filter(t=>isOverdue(t.due_date)),
-            activeDeals:   deals.filter(d=>!['Closed','Deal Fell Through'].includes(d.stage)),
-            upcomingClose: deals.filter(d=>{const dt=d.expected_close_date||d.close_date;if(!dt)return false;const dy=getDaysUntil(dt);return dy!==null&&dy>=0&&dy<=30&&d.stage!=='Closed'}).sort((a,b)=>getDaysUntil(a.expected_close_date||a.close_date)-getDaysUntil(b.expected_close_date||b.close_date)),
-            hotLeads:      cons.filter(c=>['Hot','Warm'].includes(c.status)),
+            activeDeals:   deals.filter(d=>!['closed','fell_through'].includes(dealStageCode(d))),
+            upcomingClose: deals.filter(d=>{const dt=d.expected_close_date||d.close_date;if(!dt)return false;const dy=getDaysUntil(dt);return dy!==null&&dy>=0&&dy<=30&&dealStageCode(d)!=='closed'}).sort((a,b)=>getDaysUntil(a.expected_close_date||a.close_date)-getDaysUntil(b.expected_close_date||b.close_date)),
+            hotLeads:      cons.filter(c=>['hot','warm'].includes(contactStatusCode(c))),
             listings, openHouses:ohs, todayEvents:cals,
-            closedGCI: deals.filter(d=>d.stage==='Closed'&&(d.ao_date||'').startsWith(String(new Date().getFullYear()))).reduce((s,d)=>s+(parseFloat(d.gci)||0),0),
+            closedGCI: deals.filter(d=>dealStageCode(d)==='closed'&&(d.ao_date||'').startsWith(String(new Date().getFullYear()))).reduce((s,d)=>s+(parseFloat(d.gci)||0),0),
           }
           const agStyle = (ap && ap.email_style) ? { ...DEFAULT_STYLE, ...ap.email_style } : emailStyle
           const agPrefs2 = ap?.sections ? { ...DEFAULT_PREFS, ...ap.sections } : DEFAULT_PREFS
@@ -639,7 +644,7 @@ export function DailyBriefing() {
                     {data.hotLeads?.slice(0,8).map(c => (
                       <AppRow key={c.id}>
                         <div style={{ flex:1, fontSize:13, color:'var(--text)' }}>{c.first_name} {c.last_name}</div>
-                        <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:c.status==='Hot'?'#FEE2E2':'#FFF7ED', color:c.status==='Hot'?'#DC2626':'#F97316', fontWeight:700 }}>{c.status}</span>
+                        <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:contactStatusCode(c)==='hot'?'#FEE2E2':'#FFF7ED', color:contactStatusCode(c)==='hot'?'#DC2626':'#F97316', fontWeight:700 }}>{c.status}</span>
                       </AppRow>
                     ))}
                   </AppSection>}
