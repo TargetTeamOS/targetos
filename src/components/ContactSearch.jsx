@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { CONTACT_TYPE_COLORS } from '../lib/constants'
-import { ContactPeek } from './ContactPeek'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const inputStyle = { width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, boxSizing:'border-box' }
@@ -43,7 +41,6 @@ export function ContactSearch({ value, onChange, onSelect, placeholder, filter, 
   const [creating, setCreating] = useState(false)
   const ref = useRef(null)
   const { agent: me, isAdmin } = useAuth()
-  const [peekId, setPeekId] = useState(null)
 
   useEffect(() => { setQ(value || '') }, [value])
 
@@ -51,24 +48,38 @@ export function ContactSearch({ value, onChange, onSelect, placeholder, filter, 
     if (q.length < 2) { setResults([]); setSearching(false); return }
     setSearching(true)
     const t = setTimeout(async () => {
-      let query = supabase.from('contacts')
-        .select('id,first_name,last_name,phone,email,company,address,type,is_private,agent_id')
-        .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`)
+      // Queries the shared directory view (sql/offers_v2/H_shared_contact_directory.sql),
+      // NOT the base contacts table directly. The view only ever
+      // returns id/first_name/last_name/phone/email/type, regardless
+      // of what RLS on the base table would otherwise allow -- a real
+      // structural guarantee, not just a convention this component
+      // could get wrong. `type` is used only to filter (Attorney vs
+      // Agent); it is never rendered below, matching "only the name,
+      // phone, and email, nothing more." No client-side privacy
+      // filtering is needed anymore -- the database enforces this now,
+      // not the frontend.
+      let query = supabase.from('contacts_directory')
+        .select('id,first_name,last_name,phone,email,type')
+        .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
         .limit(12)
       if (filter) query = query.eq('type', filter)
       let { data, error } = await query
-      if (error && /is_private|column/i.test(error.message || '')) {
-        // sql/private_contacts.sql not run yet — search without the flag
+      if (error && /contacts_directory|relation.*does not exist/i.test(error.message || '')) {
+        // sql/offers_v2/H_shared_contact_directory.sql not run yet on
+        // this environment — fall back to the base table so search
+        // still works, rather than breaking entirely. This fallback
+        // path is intentionally MORE permissive (full row, then
+        // filtered client-side) than the view, and should stop being
+        // reachable once that migration is applied everywhere.
         let q2 = supabase.from('contacts')
-          .select('id,first_name,last_name,phone,email,company,address,type,agent_id')
-          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`)
+          .select('id,first_name,last_name,phone,email,type,is_private,agent_id')
+          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
           .limit(12)
         if (filter) q2 = q2.eq('type', filter)
-        data = (await q2).data
+        const fallback = await q2
+        data = (fallback.data || []).filter(c => isAdmin || !c.is_private || (me?.id && c.agent_id === me.id))
       }
-      // PRIVACY: other agents' private contacts never appear in search
-      const visible = (data || []).filter(c => isAdmin || !c.is_private || (me?.id && c.agent_id === me.id))
-      setResults(visible.slice(0, 6))
+      setResults((data || []).slice(0, 6))
       setSearching(false)
       setOpen(true)
     }, 250)
@@ -129,13 +140,9 @@ export function ContactSearch({ value, onChange, onSelect, placeholder, filter, 
               onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
               onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontWeight:700, color:'var(--text)', display:'flex', alignItems:'center', gap:6 }}>{c.first_name} {c.last_name}{c.company?' — '+c.company:''}
-                  {c.type && <span style={{ fontSize:9.5, fontWeight:800, padding:'1px 7px', borderRadius:99, background:(CONTACT_TYPE_COLORS[c.type]||'#94A3B8')+'22', color:CONTACT_TYPE_COLORS[c.type]||'#94A3B8', textTransform:'uppercase', letterSpacing:'.03em' }}>{c.type}</span>}
-                </div>
-                <div style={{ color:'var(--muted)', fontSize:11 }}>{[c.phone,c.email].filter(Boolean).join(' · ')}</div>
+                <div style={{ fontWeight:700, color:'var(--text)' }}>{c.first_name} {c.last_name}</div>
+                <div style={{ color:'var(--muted)', fontSize:11 }}>{[c.phone,c.email].filter(Boolean).join(' · ') || '—'}</div>
               </div>
-              <button onMouseDown={e => { e.stopPropagation(); e.preventDefault(); setPeekId(c.id) }} title="Verify — phone, email, address, past deals"
-                style={{ border:'none', background:'none', fontSize:13, cursor:'pointer', padding:4, flexShrink:0, opacity:.7 }}>👁</button>
             </div>
           ))}
           {!searching && !showCreate && (
@@ -168,7 +175,6 @@ export function ContactSearch({ value, onChange, onSelect, placeholder, filter, 
           )}
         </div>
       )}
-      {peekId && <ContactPeek contactId={peekId} onClose={() => setPeekId(null)} onSelect={c => { onSelect(c); setQ([c.first_name,c.last_name].filter(Boolean).join(' ')); setOpen(false) }} />}
     </div>
   )
 }
