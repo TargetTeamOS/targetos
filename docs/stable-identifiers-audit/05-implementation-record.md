@@ -180,3 +180,41 @@ the paths listed above.
 No SQL was run, no Supabase row was created or changed, no communication or webhook
 was sent, no external effect was enabled, and no Production deployment was performed
 for Package 5.
+
+## Package 6 — Transaction Coordinator identity and cross-board synchronization
+
+Status: **Implemented in code; additive TC-task migration prepared but not executed**
+
+This package replaces the TC synchronization layer's historical label-key contract
+with immutable lifecycle codes. In particular, the misspelled legacy value
+`Offer Accapted` is now only a recognized compatibility alias; it is no longer
+described or used as a canonical machine identity.
+
+The package adds stable code maps for TC phase → Production stage, TC phase → Listing
+status, Production stage → Listing status, and Production stage → TC phase. The older
+text maps remain deprecated compatibility exports derived from the catalog. Deal
+updates, TC edits, and the TC Sync Health repair tool compare codes and prepare legacy
+database writes through the shared adapter.
+
+TC tasks now share the canonical task lifecycle and priority identities in the browser
+adapter, matching the server adapter. The TC board, morning summary, work-queue drawer,
+Listing transaction progress, and Listing workspace use resolved task identities for
+completion, overdue, progress, filtering, and generated task writes. Listing lifecycle
+edits and Listing-created office tasks also pass through the adapter.
+
+`004_tc_task_ids.sql` and its read-only verification companion prepare nullable
+`status_id` and `priority_id` columns, exact backfills, exception capture, and dual-write
+triggers for `tc_tasks`. They are sequenced after migrations 001-003 and have not been
+run.
+
+### Package 6 boundary
+
+Photography/service readiness states, call outcomes, commission states, gifts, signs,
+generic transactions, import/export contracts, administrator-configurable tabs and
+labels, and external-provider mappings remain for later packages. Local component
+states and provider protocol statuses are not presentation labels and must not be
+mistaken for administrator-renamable business definitions.
+
+No SQL was run, no Supabase row was created or changed, no communication or webhook
+was sent, no external effect was enabled, and no Production deployment was performed
+for Package 6.

@@ -7,10 +7,13 @@
 // Uses ONLY existing tc_tasks / tc_deals / agents data. No new tables.
 // ═══════════════════════════════════════════════════════════════
 import React, { useState } from 'react'
+import { identifierCodeFor } from '../lib/recordIdentifiers'
 
 const ff = 'Inter,system-ui,sans-serif'
 const PRIORITY_COLOR = { urgent:'#DC2626', high:'#D97706', normal:'#2563EB', low:'#6B7280' }
 const PRIORITIES = ['urgent','high','normal','low']
+const taskStatusCode = value => identifierCodeFor('tc_tasks', 'status', value)
+const tcPhaseCode = value => identifierCodeFor('tc_deals', 'tc_phase', value)
 
 export default function TCWorkQueueDrawer({
   open, onClose, title, rows, agents = [], phases = [],
@@ -26,7 +29,7 @@ export default function TCWorkQueueDrawer({
   const filtered = (rows || []).filter(r => {
     if (agentF !== 'all' && r.deal?.agent_id !== agentF) return false
     if (prioF !== 'all' && (r.task?.priority || 'normal') !== prioF) return false
-    if (stageF !== 'all' && r.deal?.tc_phase !== stageF) return false
+    if (stageF !== 'all' && tcPhaseCode(r.deal) !== tcPhaseCode(stageF)) return false
     return true
   })
 
@@ -95,13 +98,14 @@ export default function TCWorkQueueDrawer({
                 {filtered.map(r => {
                   const task = r.task, deal = r.deal
                   const isTask = !!task
-                  const overdueRow = isTask && task.due_date && task.due_date < new Date().toISOString().slice(0,10) && task.status !== 'done'
+                  const taskDone = isTask && taskStatusCode(task) === 'done'
+                  const overdueRow = isTask && task.due_date && task.due_date < new Date().toISOString().slice(0,10) && !taskDone
                   return (
                     <tr key={r.key} style={{ background: overdueRow ? 'rgba(220,38,38,.03)' : 'transparent' }}>
                       {/* done checkbox */}
                       <td style={td}>
                         {isTask && (
-                          <input type="checkbox" checked={task.status === 'done'} title="Mark done"
+                          <input type="checkbox" checked={taskDone} title="Mark done"
                             onChange={()=>onCompleteTask?.(task)} style={{ width:16, height:16, cursor:'pointer', accentColor:'#0B7A45' }} />
                         )}
                       </td>
@@ -117,7 +121,7 @@ export default function TCWorkQueueDrawer({
                         )}
                       </td>
                       {/* stage */}
-                      <td style={{ ...td, whiteSpace:'nowrap', color:'var(--muted)' }}>{phaseLabel(deal?.tc_phase)}</td>
+                      <td style={{ ...td, whiteSpace:'nowrap', color:'var(--muted)' }}>{phaseLabel(tcPhaseCode(deal))}</td>
                       {/* responsible (editable) */}
                       <td style={td}>
                         {isTask ? (

@@ -86,4 +86,12 @@ describe('record identifier compatibility', () => {
     expect(prepareRecordIdentifierDatabaseWrite('listings', { status_code: 'offer_accepted' }))
       .toEqual({ status: 'Accepted offer' })
   })
+
+  it('uses the shared task identities for transaction-coordinator tasks', () => {
+    expect(identifierCodeFor('tc_tasks', 'status', 'completed')).toBe('done')
+    expect(prepareRecordIdentifierDatabaseWrite('tc_tasks', {
+      status_code: 'done',
+      priority_code: 'high',
+    })).toEqual({ status: 'done', priority: 'high' })
+  })
 })

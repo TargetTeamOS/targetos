@@ -1,7 +1,8 @@
 # Stable-Identifier Migrations
 
 These migrations are additive. They do not deploy the application, enable external
-effects, or change existing CRM records.
+effects, delete records, or rewrite legacy workflow text. The reviewed backfill
+migrations do populate newly added identifier columns on existing records.
 
 ## Required order
 
@@ -13,6 +14,10 @@ effects, or change existing CRM records.
 5. Run `001_registry_verify.sql`.
 6. Run `002_catalog_seed.generated.sql`.
 7. Run `002_catalog_seed_verify.sql`.
+8. Run `003_core_record_ids.sql` only after reviewing its backfill scope.
+9. Run `003_core_record_ids_verify.sql` and resolve every exception.
+10. Run `004_tc_task_ids.sql` only after confirming the TC Board tables exist.
+11. Run `004_tc_task_ids_verify.sql` and resolve every exception.
 
 `002_catalog_seed.generated.sql` is produced by `npm run identifiers:generate` and
 must pass `npm run identifiers:check`. Existing definition labels and semantic flags
@@ -28,8 +33,8 @@ Use a reviewed forward-fix migration for schema defects.
 
 ## Safety boundary
 
-- Do not add record ID columns or execute backfills until the census is reviewed.
+- Do not execute the prepared record-ID migrations or backfills until the census and
+  migration-specific verification plan are reviewed.
 - Do not enable external effects during migration testing.
 - Do not update labels to repair an alias; aliases are compatibility data.
 - Do not edit generated seed SQL directly.
-

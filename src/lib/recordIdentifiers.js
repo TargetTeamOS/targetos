@@ -21,6 +21,10 @@ export const RECORD_IDENTIFIER_FIELDS = Object.freeze({
     { kind: 'workflow', definitionCode: 'task.lifecycle', legacyField: 'status', idField: 'status_id' },
     { kind: 'choice', definitionCode: 'task.priority', legacyField: 'priority', idField: 'priority_id', passthroughValues: ['note'] },
   ],
+  tc_tasks: [
+    { kind: 'workflow', definitionCode: 'task.lifecycle', legacyField: 'status', idField: 'status_id' },
+    { kind: 'choice', definitionCode: 'task.priority', legacyField: 'priority', idField: 'priority_id' },
+  ],
   offers: [
     { kind: 'workflow', definitionCode: 'offer.lifecycle', legacyField: 'status', idField: 'status_id' },
   ],

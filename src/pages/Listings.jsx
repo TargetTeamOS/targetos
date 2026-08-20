@@ -33,6 +33,7 @@ import { MLSSearch } from '../components/MLSSearch'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const listingStatusCode = value => identifierCodeFor('listings', 'status', value)
+const tcTaskStatusCode = value => identifierCodeFor('tc_tasks', 'status', value)
 const listingStatusMatches = (recordOrValue, expectedValue) => {
   const actualCode = listingStatusCode(recordOrValue)
   const expectedCode = listingStatusCode(expectedValue)
@@ -248,11 +249,11 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
               {/* Transaction Progress — TC steps marked 👁 for this listing */}
               {tcSteps && tcSteps.length > 0 && (
                 <div style={{ background:'var(--dim)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', marginBottom:12 }}>
-                  <div style={{ fontSize:12, fontWeight:800, color:'var(--text)', marginBottom:8 }}>📋 Transaction Progress <span style={{ fontWeight:400, color:'var(--muted)', fontSize:10 }}>({tcSteps.filter(t=>t.status==='done').length}/{tcSteps.length} done)</span></div>
+                  <div style={{ fontSize:12, fontWeight:800, color:'var(--text)', marginBottom:8 }}>📋 Transaction Progress <span style={{ fontWeight:400, color:'var(--muted)', fontSize:10 }}>({tcSteps.filter(t=>tcTaskStatusCode(t)==='done').length}/{tcSteps.length} done)</span></div>
                   {tcSteps.map(t => (
                     <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0', fontSize:12 }}>
-                      <span style={{ color: t.status==='done' ? '#10B981' : 'var(--muted)', fontWeight:900, flexShrink:0 }}>{t.status==='done' ? '✓' : '○'}</span>
-                      <span style={{ flex:1, color:'var(--text)', textDecoration: t.status==='done' ? 'line-through' : 'none', opacity: t.status==='done' ? .6 : 1 }}>{t.title}</span>
+                      <span style={{ color: tcTaskStatusCode(t)==='done' ? '#10B981' : 'var(--muted)', fontWeight:900, flexShrink:0 }}>{tcTaskStatusCode(t)==='done' ? '✓' : '○'}</span>
+                      <span style={{ flex:1, color:'var(--text)', textDecoration: tcTaskStatusCode(t)==='done' ? 'line-through' : 'none', opacity: tcTaskStatusCode(t)==='done' ? .6 : 1 }}>{t.title}</span>
                       {t.due_date && <span style={{ color:'var(--muted)', fontSize:10, flexShrink:0 }}>{new Date(t.due_date).toLocaleDateString()}</span>}
                     </div>
                   ))}

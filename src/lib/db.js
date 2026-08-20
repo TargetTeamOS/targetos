@@ -6,7 +6,7 @@
 
 import { supabase } from './supabase'
 import { notifyAgent, notifyAgentEmail } from './notify'
-import { decorateRecordIdentifiers, decorateRecordList, prepareRecordIdentifierDatabaseWrite, recordIdentifierFilterValues } from './recordIdentifiers'
+import { decorateRecordIdentifiers, decorateRecordList, identifierCodeFor, prepareRecordIdentifierDatabaseWrite, recordIdentifierFilterValues } from './recordIdentifiers'
 
 // Fire automation trigger safely
 async function fireTrigger(name, ...args) {
@@ -299,15 +299,22 @@ deals: {
     // Never blocks the save.
     try {
       if (write.stage && write.stage !== before?.stage) {
-        const { stageToListingStatus, stageToTcPhase } = await import('./tcPhaseMap')
+        const { dealStageToListingStatusCode, dealStageToTcPhaseCode } = await import('./tcPhaseMap')
         const listingId = result.listing_id || before?.listing_id
-        const newStatus = stageToListingStatus[write.stage]
-        if (listingId && newStatus) {
-          await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listingId)
+        const stageCode = identifierCodeFor('deals', 'stage', write.stage)
+        const newStatusCode = dealStageToListingStatusCode[stageCode]
+        if (listingId && newStatusCode) {
+          await supabase.from('listings').update({
+            ...prepareWrite('listings', { status_code: newStatusCode }),
+            updated_at: new Date().toISOString(),
+          }).eq('id', listingId)
         }
-        const newPhase = stageToTcPhase[write.stage]
+        const newPhase = dealStageToTcPhaseCode[stageCode]
         if (newPhase) {
-          await supabase.from('tc_deals').update({ tc_phase: newPhase, updated_at: new Date().toISOString() }).eq('linked_deal_id', id).then(()=>{}).catch(()=>{})
+          await supabase.from('tc_deals').update({
+            ...prepareWrite('tc_deals', { phase_code: newPhase }),
+            updated_at: new Date().toISOString(),
+          }).eq('linked_deal_id', id).then(()=>{}).catch(()=>{})
         }
       }
     } catch(e) { console.warn('[lifecycle] deal→boards sync skipped:', e.message) }

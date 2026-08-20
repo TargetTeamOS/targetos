@@ -19,7 +19,8 @@ import { useAuth }    from '../context/AuthContext'
 import { useApp }     from '../context/AppContext'
 import { supabase }   from '../lib/supabase'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
-import { phaseToStage, phaseToStatus } from '../lib/tcPhaseMap'
+import { phaseToDealStageCode, phaseToListingStatusCode } from '../lib/tcPhaseMap'
+import { identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 import { logRecordChange } from '../lib/recordActivity'
 import { ActivityPanel } from '../components/ActivityPanel'
 import { DEFAULT_PHASE_TASKS, loadTcSettings } from '../lib/tcSettings'
@@ -40,6 +41,8 @@ import SellerContacts from '../components/SellerContacts'
 import LinkListingControl from '../components/LinkListingControl'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const taskStatusCode = value => identifierCodeFor('tc_tasks', 'status', value)
+const tcPhaseCode = value => identifierCodeFor('tc_deals', 'tc_phase', value)
 
 // ── PHASES ────────────────────────────────────────────────────────
 const PHASES = [
@@ -77,13 +80,13 @@ function deriveCardSignals(deal, tasks, roleSet) {
   const now = new Date()
   const startToday = new Date(); startToday.setHours(0,0,0,0)
   const endToday   = new Date(); endToday.setHours(23,59,59,999)
-  const open = tasks.filter(t => t.status !== 'done')
+  const open = tasks.filter(t => taskStatusCode(t) !== 'done')
   const overdue = open.filter(t => t.due_date && new Date(t.due_date) < startToday).length
   const dueToday = open.filter(t => t.due_date && new Date(t.due_date) >= startToday && new Date(t.due_date) <= endToday).length
 
   const chips = []
   // Missing critical parties for the stage
-  const missing = (STAGE_CRITICAL_ROLES[deal.tc_phase] || []).filter(r => !rolePresent(deal, roleSet, r))
+  const missing = (STAGE_CRITICAL_ROLES[tcPhaseCode(deal)] || []).filter(r => !rolePresent(deal, roleSet, r))
   missing.forEach(r => chips.push({ kind:'missing', label:'Missing ' + (ROLE_LABEL[r]||r) }))
 
   // Closing soon
@@ -178,7 +181,7 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
     } catch(err) { alert('Run sql/listing_lifecycle.sql first: ' + err.message) }
   }
 
-  const done    = task.status === 'done'
+  const done    = taskStatusCode(task) === 'done'
   const overdue = !done && task.due_date && new Date(task.due_date) < new Date()
   const agent   = agents.find(a => a.id === task.agent_id)
   const pc      = PC[task.priority] || '#94A3B8'
@@ -245,15 +248,16 @@ function TaskRow({ task, agents, onCheck, onEdit }) {
 // ── DEAL CARD ─────────────────────────────────────────────────────
 function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle }) {
   const [subTab, setSubTab] = useState('overview')   // overview | tasks | people | photo | email
-  const phase    = PHASES.find(p => p.id === deal.tc_phase) || PHASES[0]
+  const phaseCode = tcPhaseCode(deal)
+  const phase    = PHASES.find(p => p.id === phaseCode) || PHASES[0]
   const agent    = agents.find(a => a.id === deal.agent_id)
 
   // ── Phase-aware task classification (DISPLAY ONLY — no DB writes) ──
   const phaseOrder = PHASES.reduce((m, p, i) => { m[p.id] = i; return m }, {})
-  const curIdx = phaseOrder[deal.tc_phase] ?? 0
+  const curIdx = phaseOrder[phaseCode] ?? 0
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
   const endOfToday   = new Date(); endOfToday.setHours(23, 59, 59, 999)
-  const isOpen = t => t.status !== 'done'
+  const isOpen = t => taskStatusCode(t) !== 'done'
   // A task belongs to "current/relevant" if its phase == current phase, has no
   // phase, or is from a LATER phase (so nothing ever disappears). Carryover =
   // open tasks whose phase is strictly EARLIER than the current phase.
@@ -263,7 +267,7 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
 
   const currentOpen  = tasks.filter(t => isOpen(t) && isCurrentRel(t))
   const carryover    = tasks.filter(isCarryover)
-  const doneTasks    = tasks.filter(t => t.status === 'done')
+  const doneTasks    = tasks.filter(t => taskStatusCode(t) === 'done')
 
   const overdueTasks = currentOpen.filter(t => t.due_date && new Date(t.due_date) < startOfToday)
   const dueTodayTasks = currentOpen.filter(t => t.due_date && new Date(t.due_date) >= startOfToday && new Date(t.due_date) <= endOfToday)
@@ -278,7 +282,7 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
 
   // Progress bar = current-stage completion (done current-phase / all current-phase)
   const curPhaseAll  = tasks.filter(t => isCurrentRel(t))
-  const curPhaseDone = curPhaseAll.filter(t => t.status === 'done').length
+  const curPhaseDone = curPhaseAll.filter(t => taskStatusCode(t) === 'done').length
   const pct = curPhaseAll.length > 0 ? Math.round(curPhaseDone / curPhaseAll.length * 100) : 0
 
   // Next action = most urgent current-stage open task (overdue → due today → soonest)
@@ -413,7 +417,7 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
                 {/* Parties */}
                 <OverviewCell title="Parties">
                   {(() => {
-                    const need = STAGE_CRITICAL_ROLES[deal.tc_phase] || []
+                    const need = STAGE_CRITICAL_ROLES[phaseCode] || []
                     const have = need.filter(r => rolePresent(deal, roleSet, r))
                     const miss = need.filter(r => !rolePresent(deal, roleSet, r))
                     return (
@@ -473,9 +477,9 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
               {PHASES.map(p => (
                 <button key={p.id} onClick={() => onPhaseChange(deal, p.id)}
                   style={{ padding:'4px 11px', borderRadius:99, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff,
-                    border:'1.5px solid '+(deal.tc_phase===p.id?p.color:'var(--border)'),
-                    background: deal.tc_phase===p.id?p.color:'transparent',
-                    color: deal.tc_phase===p.id?'#fff':'var(--muted)', transition:'all .12s' }}>
+                    border:'1.5px solid '+(phaseCode===p.id?p.color:'var(--border)'),
+                    background: phaseCode===p.id?p.color:'transparent',
+                    color: phaseCode===p.id?'#fff':'var(--muted)', transition:'all .12s' }}>
                   {p.icon} {p.label}
                 </button>
               ))}
@@ -645,11 +649,11 @@ export function TransactionCoordinator() {
 
   // Safe insert — only columns confirmed in tc_deals table
   function dealPayload(f) {
-    return {
+    return prepareRecordIdentifierDatabaseWrite('tc_deals', {
       addr:            f.addr,
       side:            f.side || 'Seller',
       agent_id:        f.agent_id || null,
-      tc_phase:        f.tc_phase || 'pre_listing',
+      phase_code:      tcPhaseCode(f.tc_phase || 'pre_listing'),
       list_price:      f.list_price ? parseFloat(String(f.list_price).replace(/[$,]/g,'')) : null,
       sale_price:      f.sale_price ? parseFloat(String(f.sale_price).replace(/[$,]/g,'')) : null,
       ao_date:         f.ao_date    || null,
@@ -663,7 +667,7 @@ export function TransactionCoordinator() {
       inspector:       f.inspector       || null,
       inspector_phone: f.inspector_phone || null,
       notes:           f.notes || null,
-    }
+    })
   }
   const TASK_BLANK = {
     title:'', priority:'high', due_date:'', agent_id:'',
@@ -751,7 +755,8 @@ export function TransactionCoordinator() {
     const synced = []
     let failed = false
     try {
-      const r0 = await supabase.from('tc_deals').update({ ...updates, updated_at:new Date().toISOString() }).eq('id', deal.id)
+      const tcUpdate = prepareRecordIdentifierDatabaseWrite('tc_deals', { ...updates, updated_at:new Date().toISOString() })
+      const r0 = await supabase.from('tc_deals').update(tcUpdate).eq('id', deal.id)
       if (r0.error) throw r0.error
       // Per-record activity log: TC deals update via raw supabase, so
       // they bypass db.js's auto-logger — capture who changed what here.
@@ -791,13 +796,20 @@ export function TransactionCoordinator() {
         if (!synced.includes('Production')) synced.push('Production')
       }
       if (updates.tc_phase !== undefined) {
+        const nextPhaseCode = tcPhaseCode(updates.tc_phase)
         if (deal.linked_deal_id) {
-          const r = await supabase.from('deals').update({ stage:phaseToStage[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
+          const r = await supabase.from('deals').update({
+            ...prepareRecordIdentifierDatabaseWrite('deals', { stage_code: phaseToDealStageCode[nextPhaseCode] }),
+            updated_at:new Date().toISOString(),
+          }).eq('id', deal.linked_deal_id)
           if (r.error) throw r.error
           if (!synced.includes('Production')) synced.push('Production')
         }
         if (deal.linked_listing_id) {
-          const r = await supabase.from('listings').update({ status:phaseToStatus[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_listing_id)
+          const r = await supabase.from('listings').update({
+            ...prepareRecordIdentifierDatabaseWrite('listings', { status_code: phaseToListingStatusCode[nextPhaseCode] }),
+            updated_at:new Date().toISOString(),
+          }).eq('id', deal.linked_listing_id)
           if (r.error) throw r.error
           if (!synced.includes('Listings')) synced.push('Listings')
         }
@@ -903,7 +915,8 @@ export function TransactionCoordinator() {
         })
       }
       if (rows.length) {
-        const { error } = await supabase.from('tc_tasks').insert(rows)
+        const taskRows = rows.map(row => prepareRecordIdentifierDatabaseWrite('tc_tasks', row))
+        const { error } = await supabase.from('tc_tasks').insert(taskRows)
         if (error) throw error
         setTasks(prev => [...prev, ...rows])
         toast('📋 ' + rows.length + ' contract-to-close tasks generated')
@@ -926,7 +939,8 @@ export function TransactionCoordinator() {
       created_at:    new Date().toISOString(),
       updated_at:    new Date().toISOString(),
     }))
-    const { error } = await supabase.from('tc_tasks').insert(rows)
+    const taskRows = rows.map(row => prepareRecordIdentifierDatabaseWrite('tc_tasks', row))
+    const { error } = await supabase.from('tc_tasks').insert(taskRows)
     if (error) throw error
 
     // Create calendar events for tasks that need it
@@ -959,7 +973,7 @@ export function TransactionCoordinator() {
   }
 
   async function changePhase(deal, newPhase) {
-    if (deal.tc_phase === newPhase) return
+    if (tcPhaseCode(deal) === tcPhaseCode(newPhase)) return
     const pDef     = PHASES.find(p => p.id === newPhase)
     const taskCount= templatesFor(newPhase).length
     const calCount = PHASE_TASKS[newPhase]?.filter(t=>t.cal).length || 0
@@ -986,7 +1000,8 @@ export function TransactionCoordinator() {
   // Inline task edit from the work-queue drawer (existing tc_tasks rows only)
   async function updateTask(taskId, patch) {
     try {
-      const { error } = await supabase.from('tc_tasks').update({ ...patch, updated_at:new Date().toISOString() }).eq('id', taskId)
+      const taskUpdate = prepareRecordIdentifierDatabaseWrite('tc_tasks', { ...patch, updated_at:new Date().toISOString() })
+      const { error } = await supabase.from('tc_tasks').update(taskUpdate).eq('id', taskId)
       if (error) throw error
       setTasks(p => p.map(t => t.id === taskId ? { ...t, ...patch } : t))
     } catch (e) { alert('Could not update task: ' + (e.message || e)) }
@@ -1003,11 +1018,12 @@ export function TransactionCoordinator() {
   }
 
   async function checkTask(task) {
-    if (task.status === 'done') return
+    if (taskStatusCode(task) === 'done') return
     try {
-      const { error } = await supabase.from('tc_tasks').update({
-        status:'done', completed_at:new Date().toISOString(), updated_at:new Date().toISOString()
-      }).eq('id', task.id)
+      const taskUpdate = prepareRecordIdentifierDatabaseWrite('tc_tasks', {
+        status_code:'done', completed_at:new Date().toISOString(), updated_at:new Date().toISOString()
+      })
+      const { error } = await supabase.from('tc_tasks').update(taskUpdate).eq('id', task.id)
       if (error) throw error
       setTasks(p => p.map(t => t.id===task.id ? {...t, status:'done'} : t))
 
@@ -1023,13 +1039,14 @@ export function TransactionCoordinator() {
           }).catch(() => {})
         }
       } else if (task.completion_action === 'create_next_task' && task.completion_note) {
-        const { error: nextErr } = await supabase.from('tc_tasks').insert({
+        const nextTask = prepareRecordIdentifierDatabaseWrite('tc_tasks', {
           deal_id:    task.deal_id,
           title:      task.completion_note,
-          priority:   'high', status:'pending',
+          priority_code:'high', status_code:'pending',
           agent_id:   task.agent_id, phase:task.phase,
           created_at: new Date().toISOString(), updated_at:new Date().toISOString(),
         })
+        const { error: nextErr } = await supabase.from('tc_tasks').insert(nextTask)
         if (nextErr) throw nextErr
         loadAll()
       }
@@ -1042,9 +1059,10 @@ export function TransactionCoordinator() {
     try {
       if (selTask) {
         // Edit existing
-        const { error: e1 } = await supabase.from('tc_tasks').update({
+        const taskUpdate = prepareRecordIdentifierDatabaseWrite('tc_tasks', {
           ...taskForm, updated_at:new Date().toISOString()
-        }).eq('id', selTask.id)
+        })
+        const { error: e1 } = await supabase.from('tc_tasks').update(taskUpdate).eq('id', selTask.id)
         if (e1) throw e1
         if (taskForm.needs_calendar && taskForm.due_date) {
           const { error: e2 } = await supabase.from('calendar_events').insert({
@@ -1059,15 +1077,16 @@ export function TransactionCoordinator() {
         toast('✅ Task updated')
       } else {
         // Add new
-        const { error: e3 } = await supabase.from('tc_tasks').insert({
+        const taskInsert = prepareRecordIdentifierDatabaseWrite('tc_tasks', {
           deal_id:    selDeal.id,
           agent_id:   taskForm.agent_id || selDeal.agent_id,
-          phase:      selDeal.tc_phase,
-          status:     'pending',
+          phase:      tcPhaseCode(selDeal),
+          status_code:'pending',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           ...taskForm,
         })
+        const { error: e3 } = await supabase.from('tc_tasks').insert(taskInsert)
         if (e3) throw e3
         if (taskForm.needs_calendar && taskForm.due_date) {
           const { error: e4 } = await supabase.from('calendar_events').insert({
@@ -1122,7 +1141,7 @@ export function TransactionCoordinator() {
     const wk = (()=>{ const d=new Date(); d.setDate(d.getDate()+7); return d.toISOString().slice(0,10) })()
     deals.forEach(d => {
       const s = signalsByDeal[d.id]; if (!s) return
-      const dTasks = (tasksByDeal[d.id] || []).filter(x => x.status !== 'done')
+      const dTasks = (tasksByDeal[d.id] || []).filter(x => taskStatusCode(x) !== 'done')
       if (s.level === 'red') b.attention.push(d.id)
       if (dTasks.some(x => x.due_date === t)) b.today.push(d.id)
       if (dTasks.some(x => x.due_date && x.due_date > t && x.due_date <= wk)) b.week.push(d.id)
@@ -1138,7 +1157,7 @@ export function TransactionCoordinator() {
   }, [deals, signalsByDeal, tasksByDeal])
 
   const filteredDeals = useMemo(() => deals.filter(d => {
-    if (phaseFilter !== 'all' && d.tc_phase !== phaseFilter) return false
+    if (phaseFilter !== 'all' && tcPhaseCode(d) !== tcPhaseCode(phaseFilter)) return false
     if (agentFilter !== 'all' && d.agent_id !== agentFilter) return false
     if (search && !matchSearch(d, search, ['addr','attorney_name','mortgage_broker','notes'])) return false
     return true
@@ -1146,10 +1165,10 @@ export function TransactionCoordinator() {
 
   const stats = useMemo(() => ({
     total:   deals.length,
-    overdue: tasks.filter(t => t.due_date && new Date(t.due_date)<new Date() && t.status!=='done').length,
-    pre:     deals.filter(d => d.tc_phase==='pre_listing').length,
-    uc:      deals.filter(d => d.tc_phase==='under_contract').length,
-    closing: deals.filter(d => d.tc_phase==='under_contract' && d.close_date && new Date(d.close_date)<=new Date(Date.now()+14*86400000)).length,
+    overdue: tasks.filter(t => t.due_date && new Date(t.due_date)<new Date() && taskStatusCode(t)!=='done').length,
+    pre:     deals.filter(d => tcPhaseCode(d)==='pre_listing').length,
+    uc:      deals.filter(d => tcPhaseCode(d)==='under_contract').length,
+    closing: deals.filter(d => tcPhaseCode(d)==='under_contract' && d.close_date && new Date(d.close_date)<=new Date(Date.now()+14*86400000)).length,
   }), [deals, tasks])
 
   const S  = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, boxSizing:'border-box' }
@@ -1302,7 +1321,7 @@ export function TransactionCoordinator() {
         const t = new Date().toISOString().slice(0,10)
         const wk = (()=>{ const d=new Date(); d.setDate(d.getDate()+7); return d.toISOString().slice(0,10) })()
         const dealById = id => deals.find(d => d.id === id)
-        const openTasksFor = id => (tasksByDeal[id] || []).filter(x => x.status !== 'done')
+        const openTasksFor = id => (tasksByDeal[id] || []).filter(x => taskStatusCode(x) !== 'done')
         const TITLES = {
           overdue:'🔴 Overdue', today:'📌 Due today', week:'📆 Due this week', attention:'⚠️ Needs attention',
           closing:'🏁 Closing ≤7 days', wait_agent:'👤 Waiting on agent', wait_attorney:'⚖️ Waiting on attorney',
@@ -1320,8 +1339,8 @@ export function TransactionCoordinator() {
         // KPI keys pull their own deal lists (not in buckets)
         let dealIds
         if (drawerTile === 'all_deals') dealIds = deals.map(d => d.id)
-        else if (drawerTile === 'pre_listing') dealIds = deals.filter(d => d.tc_phase === 'pre_listing').map(d => d.id)
-        else if (drawerTile === 'under_contract') dealIds = deals.filter(d => d.tc_phase === 'under_contract').map(d => d.id)
+        else if (drawerTile === 'pre_listing') dealIds = deals.filter(d => tcPhaseCode(d) === 'pre_listing').map(d => d.id)
+        else if (drawerTile === 'under_contract') dealIds = deals.filter(d => tcPhaseCode(d) === 'under_contract').map(d => d.id)
         else if (drawerTile === 'closing14') {
           const in14 = (()=>{ const d=new Date(); d.setDate(d.getDate()+14); return d.toISOString().slice(0,10) })()
           dealIds = deals.filter(d => d.close_date && d.close_date >= t && d.close_date <= in14).map(d => d.id)
