@@ -6,6 +6,7 @@
 
 import { supabase } from './supabase'
 import { TRIGGERS, CONDITIONS, ACTIONS } from './automationConstants'
+import { automationConditionEquals } from './automationIdentifiers'
 
 // ── VARIABLE INTERPOLATION ────────────────────────────────────────
 // Replaces {{variable}} in text with actual values from context
@@ -492,9 +493,10 @@ export function checkConditions(automation, record) {
   if (!conditions.length) return true
   return conditions.every(cond => {
     const val = record[cond.field]
+    const equal = automationConditionEquals(automation.trigger_type, cond.field, val, cond.value)
     switch (cond.operator) {
-      case 'equals':      return val === cond.value
-      case 'not_equals':  return val !== cond.value
+      case 'equals':      return equal
+      case 'not_equals':  return !equal
       case 'contains':    return String(val || '').toLowerCase().includes(String(cond.value).toLowerCase())
       case 'is_empty':    return !val
       case 'is_not_empty':return !!val

@@ -99,3 +99,43 @@ for later packages and must not be described as rename-safe yet.
 
 No SQL was run, no database row was written, no external effect was enabled, and no
 Production deployment was performed for Package 3.
+
+## Package 4 — Operational APIs, dashboards, reports, and automations
+
+Status: **Implemented in code; database migration still not executed**
+
+This package extends the canonical resolver to server-side choice options and adds a
+CommonJS record-identifier adapter for API handlers. Database filters can now expand
+a stable code to every registered legacy alias, while in-memory rules compare the
+resolved code rather than an editable label.
+
+The following operational paths now use stable workflow or choice identities:
+
+- agent activity conversion, closed-deal, and accepted-offer metrics;
+- daily-briefing task, listing, lead, pipeline, closing, and GCI selection;
+- dashboard-pin live counts and the primary CRM dashboard metrics and saved filters;
+- scheduled and preview report task, offer, deal, commission, goal, and lead logic;
+- campaign contact-status audience selection;
+- task-reminder pending-state and priority handling;
+- office-TV pipeline, closed, and closing-soon metrics;
+- offer-send Draft-to-Sent transition preconditions;
+- Twilio/IVR active-listing selection;
+- automation trigger configuration, lifecycle events, open TC tasks, and identifier
+  equality conditions; and
+- the Reports page and the remaining Production stage filter.
+
+Behavioral coverage proves that the server adapter resolves legacy aliases, expands
+database filters, rejects unknown identifiers, and preserves the historical task-note
+pseudo-priority. Automation-condition tests prove that deal, task, listing, and
+contact conditions compare stable identities rather than display text.
+
+### Package 4 boundary
+
+This package does not yet replace editable legacy values in administrator-defined
+widget configuration, form option constants, email template display text, every
+secondary analytics/performance page, TC page CRUD, import/export data, or external
+provider mappings. Those paths remain explicitly scheduled for later packages.
+
+No SQL was run, no Supabase row was created or changed, no communication or webhook
+was sent, no external effect was enabled, and no Production deployment was performed
+for Package 4.

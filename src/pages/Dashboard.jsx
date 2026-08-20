@@ -34,10 +34,17 @@ import {
   isOverdue, isDueToday, getDaysUntil
 } from '../lib/utils'
 import { DEAL_STAGES } from '../lib/constants'
+import { decorateRecordList, identifierCodeFor } from '../lib/recordIdentifiers'
 import { Avatar, Pill, Btn, Loading, Spinner, Field, Input, Confirm } from '../components/UI'
 import { usePageView } from '../components/PageViewTracking'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const recordCode = (table, field, value) => identifierCodeFor(table, field, value)
+const recordMatches = (table, field, value, expected) => {
+  const actualCode = recordCode(table, field, value)
+  const expectedCode = recordCode(table, field, expected)
+  return !!actualCode && !!expectedCode && actualCode === expectedCode
+}
 
 // ── WIDGET ERROR BOUNDARY ─────────────────────────────────────────
 // Catches errors in individual widgets so one broken widget
@@ -1714,10 +1721,11 @@ export function Dashboard() {
         supabase.from('gifts').select('id,client_name,status,agent_id').then(r => r.data || []),
       ])
 
-      const myDeals    = filter(rawDeals)
-      const myContacts = filter(rawContacts)
-      const myTasks    = filter(rawTasks)
-      const myListings = filter(rawListings)
+      const allDeals   = decorateRecordList('deals', rawDeals)
+      const myDeals    = filter(allDeals)
+      const myContacts = filter(decorateRecordList('contacts', rawContacts))
+      const myTasks    = filter(decorateRecordList('tasks', rawTasks))
+      const myListings = filter(decorateRecordList('listings', rawListings))
       const myOH       = filter(rawOH)
 
       const todayStr = new Date().toISOString().slice(0, 10)
@@ -1729,55 +1737,55 @@ export function Dashboard() {
         if (sideFilter  && d.side  !== sideFilter)           return false
         return true
       })
-      const closedDeals = yearDeals.filter(d => d.stage === 'Closed')
-      const activeDeals = myDeals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
+      const closedDeals = yearDeals.filter(d => recordMatches('deals', 'stage', d, 'closed'))
+      const activeDeals = myDeals.filter(d => !['closed','fell_through'].includes(recordCode('deals', 'stage', d)))
       const closedGCI   = closedDeals.reduce((s, d) => s + parseNum(d.gci), 0)
       const pipelineGCI = activeDeals.reduce((s, d) => s + parseNum(d.gci), 0)
 
       // Team GCI — always all agents, for team_goal widget
-      const teamClosed = rawDeals.filter(d => {
+      const teamClosed = allDeals.filter(d => {
         if (!d.ao_date?.startsWith(yearFilter)) return false
-        if (d.stage !== 'Closed') return false
+        if (!recordMatches('deals', 'stage', d, 'closed')) return false
         if (sideFilter && d.side !== sideFilter) return false
         return true
       })
       const teamGCI    = teamClosed.reduce((s, d) => s + parseNum(d.gci), 0)
       const teamDeals  = teamClosed.length
 
-      const todayTasks  = myTasks.filter(t => t.status !== 'done' && (isDueToday(t.due_date) || isOverdue(t.due_date)))
-      const overdueTasks = myTasks.filter(t => t.status !== 'done' && isOverdue(t.due_date))
-      const hotLeads    = myContacts.filter(c => c.status === 'Hot' || c.status === 'Warm').sort((a, b) => a.status === 'Hot' ? -1 : 1)
+      const todayTasks  = myTasks.filter(t => !recordMatches('tasks', 'status', t, 'done') && (isDueToday(t.due_date) || isOverdue(t.due_date)))
+      const overdueTasks = myTasks.filter(t => !recordMatches('tasks', 'status', t, 'done') && isOverdue(t.due_date))
+      const hotLeads    = myContacts.filter(c => ['hot','warm'].includes(recordCode('contacts', 'status', c))).sort((a, b) => recordCode('contacts', 'status', a) === 'hot' ? -1 : 1)
 
       const upcoming = myDeals.filter(d => {
         const date = d.expected_close_date || d.close_date
         if (!date) return false
         const days = getDaysUntil(date)
-        return days !== null && days >= 0 && days <= 30 && d.stage !== 'Closed'
+        return days !== null && days >= 0 && days <= 30 && !recordMatches('deals', 'stage', d, 'closed')
       }).sort((a, b) => getDaysUntil(a.expected_close_date||a.close_date) - getDaysUntil(b.expected_close_date||b.close_date))
 
-      const activeListings = myListings.filter(l => l.status === 'Active')
+      const activeListings = myListings.filter(l => recordMatches('listings', 'status', l, 'active'))
       const upcomingOH     = myOH.filter(oh => oh.date >= todayStr && oh.date <= weekStr)
 
       const monthlyGCI = Array.from({ length: 12 }, (_, m) => {
         const ms = yearFilter + '-' + String(m+1).padStart(2,'0')
-        const gci = myDeals.filter(d => d.ao_date?.startsWith(ms) && d.stage === 'Closed').reduce((s, d) => s + parseNum(d.gci), 0)
+        const gci = myDeals.filter(d => d.ao_date?.startsWith(ms) && recordMatches('deals', 'stage', d, 'closed')).reduce((s, d) => s + parseNum(d.gci), 0)
         return { label: 'JFMAMJJASOND'[m], value: gci }
       })
 
       const leaderboard = rawAgents.map(a => {
-        const ad  = rawDeals.filter(d => d.agent_id === a.id && d.ao_date?.startsWith(yearFilter))
-        const gci = ad.filter(d => d.stage === 'Closed').reduce((s, d) => s + parseNum(d.gci), 0)
-        return { agent: a, gci, closed: ad.filter(d => d.stage === 'Closed').length, active: ad.filter(d => !['Closed','Deal Fell Through'].includes(d.stage)).length }
+        const ad  = allDeals.filter(d => d.agent_id === a.id && d.ao_date?.startsWith(yearFilter))
+        const gci = ad.filter(d => recordMatches('deals', 'stage', d, 'closed')).reduce((s, d) => s + parseNum(d.gci), 0)
+        return { agent: a, gci, closed: ad.filter(d => recordMatches('deals', 'stage', d, 'closed')).length, active: ad.filter(d => !['closed','fell_through'].includes(recordCode('deals', 'stage', d))).length }
       }).sort((a, b) => b.gci - a.gci)
 
       const pipeByStage = DEAL_STAGES.map(s => ({
         ...s,
-        deals: activeDeals.filter(d => d.stage === s.value),
-        gci:   activeDeals.filter(d => d.stage === s.value).reduce((sum, d) => sum + parseNum(d.gci), 0),
+        deals: activeDeals.filter(d => recordMatches('deals', 'stage', d, s.value)),
+        gci:   activeDeals.filter(d => recordMatches('deals', 'stage', d, s.value)).reduce((sum, d) => sum + parseNum(d.gci), 0),
       }))
 
-      const acceptedOffers   = myDeals.filter(d => d.stage === 'Offer Accapted')
-      const underContract    = myDeals.filter(d => d.stage === 'Under Contract')
+      const acceptedOffers   = myDeals.filter(d => recordMatches('deals', 'stage', d, 'offer_accepted'))
+      const underContract    = myDeals.filter(d => recordMatches('deals', 'stage', d, 'under_contract'))
       const pendingGifts     = rawGifts.filter(g => !['Delivered'].includes(g.status))
 
       setAgents(rawAgents)
@@ -1986,7 +1994,7 @@ export function Dashboard() {
     if (w.id === 'todays_tasks') {
       const filteredTasks = data.todaysTasks?.filter(t => {
         if (wcfg.agentFilter    && t.agent_id !== wcfg.agentFilter) return false
-        if (wcfg.priorityFilter && wcfg.priorityFilter !== 'All' && t.priority !== wcfg.priorityFilter) return false
+        if (wcfg.priorityFilter && wcfg.priorityFilter !== 'All' && !recordMatches('tasks', 'priority', t, wcfg.priorityFilter)) return false
         return true
       }).slice(0, wcfg.limit || 6) || []
       return shell(
@@ -2009,7 +2017,7 @@ export function Dashboard() {
     if (w.id === 'hot_leads') {
       const filteredLeads = data.hotLeads?.filter(c => {
         if (wcfg.agentFilter && c.agent_id !== wcfg.agentFilter) return false
-        if (wcfg.statusFilter && wcfg.statusFilter !== 'All' && c.status !== wcfg.statusFilter) return false
+        if (wcfg.statusFilter && wcfg.statusFilter !== 'All' && !recordMatches('contacts', 'status', c, wcfg.statusFilter)) return false
         if (wcfg.sourceFilter && wcfg.sourceFilter !== 'All' && c.source !== wcfg.sourceFilter) return false
         return true
       }).slice(0, wcfg.limit || 6) || []
@@ -2019,7 +2027,7 @@ export function Dashboard() {
         {data.hotLeads?.slice(0, 5).map(c => (
           <div key={c.id} onClick={() => navigate('/contacts/' + c.id)}
             style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: c.status === 'Hot' ? '#DC2626' : '#F97316', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: recordCode('contacts', 'status', c) === 'hot' ? '#DC2626' : '#F97316', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>
               {initials((c.first_name || '') + ' ' + (c.last_name || ''))}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -2028,7 +2036,7 @@ export function Dashboard() {
             </div>
             <div onClick={e => e.stopPropagation()} style={{ display:'flex', alignItems:'center', gap:4 }}>
               {c.phone && <ClickToCall phone={c.phone} contactName={c.first_name + ' ' + (c.last_name || '')} contactId={c.id} size="sm" />}
-              <Pill label={c.status} color={c.status === 'Hot' ? '#DC2626' : '#F97316'} />
+              <Pill label={c.status_label || c.status} color={recordCode('contacts', 'status', c) === 'hot' ? '#DC2626' : '#F97316'} />
             </div>
           </div>
         ))}
@@ -2040,7 +2048,7 @@ export function Dashboard() {
     if (w.id === 'active_deals') {
       const filteredDeals = data.activeDeals?.filter(d => {
         if (wcfg.agentFilter && d.agent_id !== wcfg.agentFilter) return false
-        if (wcfg.stageFilter && wcfg.stageFilter !== 'All' && d.stage !== wcfg.stageFilter) return false
+        if (wcfg.stageFilter && wcfg.stageFilter !== 'All' && !recordMatches('deals', 'stage', d, wcfg.stageFilter)) return false
         if (wcfg.sideFilter  && wcfg.sideFilter  !== 'All' && d.side  !== wcfg.sideFilter)  return false
         return true
       }).slice(0, wcfg.limit || 6) || []
@@ -2235,7 +2243,7 @@ export function Dashboard() {
         const ds = d.close_date || d.ao_date || d.created_at || ''
         if (wYear  && !ds.startsWith(wYear))        return false
         if (wAgent && d.agent_id !== wAgent)         return false
-        if (wStage && d.stage    !== wStage)         return false
+        if (wStage && !recordMatches('deals', 'stage', d, wStage)) return false
         if (wSide  && d.side     !== wSide)          return false
         return true
       })
@@ -2417,13 +2425,13 @@ export function Dashboard() {
             // Calculate production totals for the current filter combo
             const allDeals = data.closedDeals || []
             const filtered = allDeals.filter(d => {
-              if (stageFilter.length > 0 && !stageFilter.includes(d.stage)) return false
+              if (stageFilter.length > 0 && !stageFilter.some(stage => recordMatches('deals', 'stage', d, stage))) return false
               if (sideFilter && d.side !== sideFilter) return false
               return true
             })
             const allActive = data.activeDeals || []
             const filteredActive = allActive.filter(d => {
-              if (stageFilter.length > 0 && !stageFilter.includes(d.stage)) return false
+              if (stageFilter.length > 0 && !stageFilter.some(stage => recordMatches('deals', 'stage', d, stage))) return false
               if (sideFilter && d.side !== sideFilter) return false
               return true
             })
@@ -2549,7 +2557,7 @@ export function Dashboard() {
       <DetailPopup open={popup === 'hot_leads'} onClose={() => setPopup(null)} title="Hot & Warm Leads" icon="🔥">
         {data.hotLeads?.map(c => (
           <DetailRow key={c.id} left={c.first_name + ' ' + (c.last_name || '')} sub={c.phone || c.source || ''}
-            badge={<Pill label={c.status} color={c.status === 'Hot' ? '#DC2626' : '#F97316'} />}
+            badge={<Pill label={c.status_label || c.status} color={recordCode('contacts', 'status', c) === 'hot' ? '#DC2626' : '#F97316'} />}
             right={c.phone ? <span onClick={e=>e.stopPropagation()}><ClickToCall phone={c.phone} contactName={c.first_name + ' ' + (c.last_name||'')} contactId={c.id} size="sm" /></span> : null}
             onClick={() => { navigate('/contacts/' + c.id); setPopup(null) }} />
         ))}
@@ -2569,7 +2577,7 @@ export function Dashboard() {
       <DetailPopup open={popup === 'todays_tasks'} onClose={() => setPopup(null)} title="Today's Tasks" icon="✅">
         {data.todayTasks?.map(t => (
           <DetailRow key={t.id} left={t.title} sub={isOverdue(t.due_date) ? '⚠️ Overdue' : 'Due today'}
-            badge={<Pill label={t.priority} color={t.priority === 'urgent' ? '#DC2626' : '#F97316'} />}
+            badge={<Pill label={t.priority_label || t.priority} color={recordCode('tasks', 'priority', t) === 'urgent' ? '#DC2626' : '#F97316'} />}
             onClick={() => { navigate('/tasks/' + t.id); setPopup(null) }} />
         ))}
         {!data.todayTasks?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>Nothing due today!</div>}

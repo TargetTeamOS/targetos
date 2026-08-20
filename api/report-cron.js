@@ -9,6 +9,7 @@
 const { getSupabase } = require('./_lib/phone')
 const { computeReport, renderReportHtml } = require('./_lib/reportEngine')
 const { requireExternalEffects } = require('./_lib/externalEffects')
+const { recordIdentifierMatches, recordIdentifierValues } = require('./_lib/recordIdentifiers')
 
 const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
 
@@ -121,7 +122,7 @@ module.exports = async function handler(req, res) {
       if (weekday !== wantDay || hour !== wantHour) { result.commission = 'not-time'; continue }
       if (await alreadySent(auto.id, 'wk')) { result.commission = 'deduped'; continue }
       const { data: closed } = await supabase.from('deals').select('addr,gci,collected_gci,commission_status,close_date')
-        .eq('stage', 'Closed')
+        .in('stage', recordIdentifierValues('deals', 'stage', 'closed'))
       const outstanding = (closed || []).filter(d => d.commission_status !== 'collected')
         .map(d => ({ addr: d.addr, amt: (Number(d.gci) || 0) - (Number(d.collected_gci) || 0) }))
         .filter(d => d.amt > 0)
@@ -142,7 +143,7 @@ module.exports = async function handler(req, res) {
       const [{ data: agents }, { data: goals }, { data: deals }] = await Promise.all([
         supabase.from('agents').select('id,name').eq('active', true),
         supabase.from('agent_goals').select('agent_id,deals,gci,production').eq('year', year),
-        supabase.from('deals').select('agent_id,gci,stage,close_date,created_at').eq('stage', 'Closed'),
+        supabase.from('deals').select('agent_id,gci,stage,close_date,created_at').in('stage', recordIdentifierValues('deals', 'stage', 'closed')),
       ])
       const goalMap = {}; (goals || []).forEach(g => { goalMap[g.agent_id] = g })
       const behind = []
@@ -171,7 +172,7 @@ module.exports = async function handler(req, res) {
         .lte('created_at', cutoff)
       const agentsRes = await supabase.from('agents').select('id,name')
       const aMap = {}; (agentsRes.data || []).forEach(a => { aMap[a.id] = a.name })
-      const uncontacted = (contacts || []).filter(c => c.contacted !== true && !c.first_contact_at && (c.status === 'New' || !c.status))
+      const uncontacted = (contacts || []).filter(c => c.contacted !== true && !c.first_contact_at && (recordIdentifierMatches('contacts', 'status', c, 'new') || !c.status))
       if (!uncontacted.length) { result.leads = 'nothing'; continue }
       const list = uncontacted.slice(0, 50).map(c => {
         const age = Math.floor((Date.now() - new Date(c.created_at).getTime()) / 86400000)

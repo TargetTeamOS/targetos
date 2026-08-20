@@ -9,6 +9,7 @@
 // current without any stored snapshot.
 
 const { createServiceClient } = require('./_lib/supabaseConfig')
+const { recordIdentifierValues } = require('./_lib/recordIdentifiers')
 function sb() {
   return createServiceClient()
 }
@@ -41,11 +42,11 @@ async function liveCount(db, board, filters) {
   const def = BOARDS[board]; if (!def) return null
   let q = db.from(def.table).select('id', { count: 'exact', head: true })
   const f = filters || {}
-  if (f.status) q = q.eq('status', f.status)
-  if (f.stage) q = q.eq('stage', f.stage)
+  if (f.status) q = q.in('status', recordIdentifierValues(def.table, 'status', f.status))
+  if (f.stage) q = q.in('stage', recordIdentifierValues(def.table, 'stage', f.stage))
   if (f.source) q = q.eq('source', f.source)
   if (f.agent_id) q = q.eq('agent_id', f.agent_id)
-  if (f.priority) q = q.eq('priority', f.priority)
+  if (f.priority) q = q.in('priority', recordIdentifierValues(def.table, 'priority', f.priority))
   const r = rangeFrom(f.dateRange)
   if (r) q = q.gte(def.dateField, r.from).lte(def.dateField, r.to)
   const { count, error } = await q

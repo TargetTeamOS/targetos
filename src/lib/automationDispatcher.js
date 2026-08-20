@@ -8,6 +8,7 @@
 
 import { supabase } from './supabase'
 import { runAutomation, checkConditions } from './automationEngine'
+import { automationIdentifierChanged as identifierChanged, automationIdentifierMatches as identifierMatches } from './automationIdentifiers'
 
 // Cache automations for 60 seconds to avoid repeated DB reads
 let _cache = null
@@ -62,10 +63,11 @@ export async function dispatch(triggerType, record, previousRecord = null, meta 
       try {
         const { data: tcDeal } = await supabase.from('tc_deals').select('id').eq('linked_deal_id', triggerData.deal_id).maybeSingle()
         if (tcDeal) {
-          const { data: tasks } = await supabase.from('tc_tasks')
-            .select('id,title,due_date,status').eq('tc_deal_id', tcDeal.id).neq('status', 'done')
-            .order('due_date', { ascending: true }).limit(40)
-          triggerData.tc_open_tasks = (tasks || []).length
+          const { data: taskRows } = await supabase.from('tc_tasks')
+            .select('id,title,due_date,status').eq('tc_deal_id', tcDeal.id)
+            .order('due_date', { ascending: true }).limit(80)
+          const tasks = (taskRows || []).filter(t => !identifierMatches('tasks', 'status', t, 'done')).slice(0, 40)
+          triggerData.tc_open_tasks = tasks.length
             ? tasks.map(t => '• <a href="https://app.targetreteam.com/tc#task-' + t.id + '">' + t.title + '</a>' + (t.due_date ? ' (due ' + t.due_date + ')' : '')).join('\n')
             : '(no open TC tasks yet — they appear once the TC deal is set up)'
         } else triggerData.tc_open_tasks = '(no TC deal linked yet)'
@@ -155,24 +157,24 @@ function matchesTriggerConfig(automation, record, prev) {
 
   switch (automation.trigger_type) {
     case 'deal_stage_change':
-      if (cfg.to_stage   && record.stage !== cfg.to_stage)   return false
-      if (cfg.from_stage && prev?.stage  !== cfg.from_stage) return false
+      if (cfg.to_stage   && !identifierMatches('deals', 'stage', record, cfg.to_stage)) return false
+      if (cfg.from_stage && !identifierMatches('deals', 'stage', prev, cfg.from_stage)) return false
       return true
 
     case 'contact_status_change':
-      if (cfg.to_status   && record.status !== cfg.to_status)   return false
-      if (cfg.from_status && prev?.status  !== cfg.from_status) return false
+      if (cfg.to_status   && !identifierMatches('contacts', 'status', record, cfg.to_status)) return false
+      if (cfg.from_status && !identifierMatches('contacts', 'status', prev, cfg.from_status)) return false
       return true
 
     case 'listing_status_change':
-      if (cfg.to_status && record.status !== cfg.to_status) return false
+      if (cfg.to_status && !identifierMatches('listings', 'status', record, cfg.to_status)) return false
       return true
 
     case 'offer_accepted':
-      return record.stage === 'Offer Accapted'
+      return identifierMatches('deals', 'stage', record, 'offer_accepted')
 
     case 'deal_closed':
-      return record.stage === 'Closed'
+      return identifierMatches('deals', 'stage', record, 'closed')
 
     case 'closing_soon': {
       if (!record.expected_close_date && !record.close_date) return false
@@ -203,36 +205,36 @@ export const trigger = {
     if (record.buyer_type) dispatch('new_buyer', record)
   },
   contactUpdated: (record, prev) => {
-    if (prev?.status !== record.status) dispatch('contact_status_change', record, prev)
+    if (identifierChanged('contacts', 'status', record, prev)) dispatch('contact_status_change', record, prev)
     if (!prev?.pre_approved && record.pre_approved) dispatch('pre_approval_received', record, prev)
     if (!prev?.agent_id && record.agent_id) dispatch('contact_assigned', record, prev)
     if (!prev?.source && record.source) dispatch('contact_source_added', record, prev)
   },
   dealCreated: (record) => dispatch('deal_created', record),
   dealUpdated: (record, prev, meta = {}) => {
-    if (prev?.stage !== record.stage) {
+    if (identifierChanged('deals', 'stage', record, prev)) {
       dispatch('deal_stage_change', record, prev, meta)
-      if (record.stage === 'Offer Accapted')    dispatch('offer_accepted',      record, prev, meta)
-      if (record.stage === 'Closed')            dispatch('deal_closed',         record, prev, meta)
-      if (record.stage === 'Under Contract')    dispatch('deal_under_contract', record, prev, meta)
-      if (record.stage === 'Deal Fell Through') dispatch('deal_fell_through',   record, prev, meta)
+      if (identifierMatches('deals', 'stage', record, 'offer_accepted')) dispatch('offer_accepted', record, prev, meta)
+      if (identifierMatches('deals', 'stage', record, 'closed')) dispatch('deal_closed', record, prev, meta)
+      if (identifierMatches('deals', 'stage', record, 'under_contract')) dispatch('deal_under_contract', record, prev, meta)
+      if (identifierMatches('deals', 'stage', record, 'fell_through')) dispatch('deal_fell_through', record, prev, meta)
     }
     dispatch('closing_soon', record, prev)
   },
   taskCreated: (record) => dispatch('task_created', record),
   photographyScheduled: (record) => dispatch('photography_scheduled', record),
   taskUpdated: (record, prev) => {
-    if (record.status === 'done' && prev?.status !== 'done') dispatch('task_completed', record, prev)
-    if (record.due_date && new Date(record.due_date) < new Date() && record.status !== 'done') dispatch('task_overdue', record, prev)
-    if (prev?.priority !== record.priority) dispatch('task_priority_changed', record, prev)
+    if (identifierMatches('tasks', 'status', record, 'done') && !identifierMatches('tasks', 'status', prev, 'done')) dispatch('task_completed', record, prev)
+    if (record.due_date && new Date(record.due_date) < new Date() && !identifierMatches('tasks', 'status', record, 'done')) dispatch('task_overdue', record, prev)
+    if (identifierChanged('tasks', 'priority', record, prev)) dispatch('task_priority_changed', record, prev)
     if (!prev?.agent_id && record.agent_id) dispatch('task_assigned', record, prev)
   },
   listingCreated: (record) => dispatch('listing_created', record),
   listingUpdated: (record, prev, meta = {}) => {
-    if (prev?.status !== record.status) {
+    if (identifierChanged('listings', 'status', record, prev)) {
       dispatch('listing_status_change', record, prev, meta)
-      if (record.status === 'Sold')    dispatch('listing_sold',    record, prev, meta)
-      if (record.status === 'Expired') dispatch('listing_expired', record, prev, meta)
+      if (identifierMatches('listings', 'status', record, 'sold')) dispatch('listing_sold', record, prev, meta)
+      if (identifierMatches('listings', 'status', record, 'expired')) dispatch('listing_expired', record, prev, meta)
     }
     if (prev?.list_price && record.list_price < prev.list_price) dispatch('listing_price_reduced', record, prev, meta)
   },

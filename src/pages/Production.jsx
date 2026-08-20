@@ -2315,7 +2315,7 @@ export function Production() {
 
   // ── FILTERING ──────────────────────────────────────────────────
   const filtered = useMemo(() => deals.filter(d => {
-    if (stageF    && d.stage         !== stageF)    return false
+    if (stageF    && !sameDealStage(d, stageF)) return false
     if (agentF    && d.agent_id      !== agentF)    return false
     if (sideF     && d.side          !== sideF)     return false
     if (saleTypeF && d.sale_type     !== saleTypeF) return false

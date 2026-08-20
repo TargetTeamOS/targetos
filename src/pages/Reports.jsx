@@ -9,11 +9,13 @@ import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { PageHeader, Tabs, Loading, Empty, Btn } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
+import { decorateRecordList, identifierCodeFor } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 const fmt$ = n => '$' + Number(n||0).toLocaleString(undefined, {maximumFractionDigits:0})
 const fmtK = n => '$' + (Number(n||0)/1000).toFixed(0) + 'K'
+const dealStageCode = value => identifierCodeFor('deals', 'stage', value)
 
 // ── MINI BAR CHART ────────────────────────────────────────────
 function MiniBar({ data, color = 'var(--brand)', valueKey = 'value', labelKey = 'label', height = 120 }) {
@@ -121,8 +123,8 @@ export function Reports() {
         supabase.from('contacts').select('id,status,source,agent_id,created_at').order('created_at',{ascending:false}).range(0,4999),
         supabase.from('agents').select('id,name,color').eq('active',true),
       ])
-      setDeals(dealsRes.data||[])
-      setContacts(contactsRes.data||[])
+      setDeals(decorateRecordList('deals', dealsRes.data || []))
+      setContacts(decorateRecordList('contacts', contactsRes.data || []))
       setAgents(agentsRes.data||[])
     } catch(e) { console.warn('reports:', e.message) }
     finally { setLoading(false) }
@@ -138,8 +140,8 @@ export function Reports() {
 
   const prevDeals = useMemo(() => deals.filter(d => (d.ao_date||d.close_date||'').startsWith(prevYear)), [deals, prevYear])
 
-  const closed     = yearDeals.filter(d=>d.stage==='Closed')
-  const prevClosed = prevDeals.filter(d=>d.stage==='Closed')
+  const closed     = yearDeals.filter(d=>dealStageCode(d)==='closed')
+  const prevClosed = prevDeals.filter(d=>dealStageCode(d)==='closed')
   const closedGCI  = closed.reduce((s,d)=>s+parseNum(d.gci),0)
   const prevGCI    = prevClosed.reduce((s,d)=>s+parseNum(d.gci),0)
   const gciTrend   = prevGCI > 0 ? ((closedGCI-prevGCI)/prevGCI)*100 : null
@@ -150,7 +152,7 @@ export function Reports() {
   // Monthly GCI chart
   const monthly = useMemo(() => 'JFMAMJJASOND'.split('').map((m,i) => {
     const ms = year+'-'+String(i+1).padStart(2,'0')
-    const gci = yearDeals.filter(d=>d.stage==='Closed'&&(d.ao_date||d.close_date||'').startsWith(ms)).reduce((s,d)=>s+parseNum(d.gci),0)
+    const gci = yearDeals.filter(d=>dealStageCode(d)==='closed'&&(d.ao_date||d.close_date||'').startsWith(ms)).reduce((s,d)=>s+parseNum(d.gci),0)
     return { label:m, value: gci }
   }), [yearDeals, year])
 
@@ -158,8 +160,8 @@ export function Reports() {
   const yearContacts = contacts.filter(c => c.created_at?.startsWith(year))
   const funnelStages = [
     { label:'New Leads',      count: yearContacts.length, gci:0,        color:'#3B82F6' },
-    { label:'Active',         count: yearDeals.filter(d=>!['Closed','Deal Fell Through'].includes(d.stage)).length, gci:0, color:'#F5A623' },
-    { label:'Offer / Under Contract', count: yearDeals.filter(d=>['Offer Accapted','Under Contract'].includes(d.stage)).length, gci:0, color:'#8B5CF6' },
+    { label:'Active',         count: yearDeals.filter(d=>!['closed','fell_through'].includes(dealStageCode(d))).length, gci:0, color:'#F5A623' },
+    { label:'Offer / Under Contract', count: yearDeals.filter(d=>['offer_accepted','under_contract'].includes(dealStageCode(d))).length, gci:0, color:'#8B5CF6' },
     { label:'Closed',         count: closed.length, gci: closedGCI, color:'#10B981' },
   ]
 
@@ -174,7 +176,7 @@ export function Reports() {
 
   // Won/Lost reasons
   const wonReasons  = {}; closed.forEach(d => { if(d.won_reason) { wonReasons[d.won_reason]=(wonReasons[d.won_reason]||0)+1 } })
-  const lostReasons = {}; yearDeals.filter(d=>d.stage==='Deal Fell Through').forEach(d => { if(d.lost_reason) { lostReasons[d.lost_reason]=(lostReasons[d.lost_reason]||0)+1 } })
+  const lostReasons = {}; yearDeals.filter(d=>dealStageCode(d)==='fell_through').forEach(d => { if(d.lost_reason) { lostReasons[d.lost_reason]=(lostReasons[d.lost_reason]||0)+1 } })
 
   // Agent leaderboard
   const agentMap = {}
@@ -227,9 +229,9 @@ export function Reports() {
             <StatCard label="Closed GCI"    value={fmtK(closedGCI)} sub={closed.length+' deals'} color='#10B981' trend={gciTrend} icon="💰" />
             <StatCard label="Volume"        value={fmtK(closedVol)} sub="total production" color='#3B82F6' icon="🏠" />
             <StatCard label="Avg GCI/Deal"  value={fmtK(avgGCI)} sub="per closed deal" color='#F5A623' icon="📊" />
-            <StatCard label="Active Deals"  value={yearDeals.filter(d=>!['Closed','Deal Fell Through'].includes(d.stage)).length} sub="in pipeline" color='#8B5CF6' icon="🔄" />
+            <StatCard label="Active Deals"  value={yearDeals.filter(d=>!['closed','fell_through'].includes(dealStageCode(d))).length} sub="in pipeline" color='#8B5CF6' icon="🔄" />
             <StatCard label="New Contacts"  value={yearContacts.length} sub={'vs '+prevDeals.length+' last yr'} color='var(--brand)' icon="👤" />
-            <StatCard label="Lost Deals"    value={yearDeals.filter(d=>d.stage==='Deal Fell Through').length} sub="fell through" color='#94A3B8' icon="💔" />
+            <StatCard label="Lost Deals"    value={yearDeals.filter(d=>dealStageCode(d)==='fell_through').length} sub="fell through" color='#94A3B8' icon="💔" />
           </div>
           <div style={{ background:'var(--panel)', borderRadius:'var(--radius)', border:'1px solid var(--border)', padding:20 }}>
             <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', marginBottom:16 }}>Monthly GCI — {year}</div>

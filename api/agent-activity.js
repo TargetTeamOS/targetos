@@ -5,6 +5,7 @@
 // Body: { days: 30 }  → { range, agents: [ {agent, metrics...} ], totals }
 
 const { createServiceClient } = require('./_lib/supabaseConfig')
+const { recordIdentifierMatches } = require('./_lib/recordIdentifiers')
 function sb() {
   return createServiceClient()
 }
@@ -40,20 +41,19 @@ module.exports = async function handler(req, res) {
     const deals = dealsR.data || [], offers = offersR.data || [], audit = auditR.data || []
     const num = v => Number(v) || 0
 
-    const ACCEPTED_OFFER = ['AO','Accepted','Closed']
-    const CLOSED_DEAL = ['Closed']
-    const CONVERTED_CONTACT = ['Client','Closed','Under Contract','Under Shtar']
-
     const rows = agents.map(a => {
       const aCalls = calls.filter(c => c.agent_id === a.id)
       const talk = aCalls.reduce((s,c)=>s+num(c.duration),0)
       const connected = aCalls.filter(c => c.outcome && !/no answer|voicemail|missed|busy/i.test(c.outcome)).length
       const aContacts = contacts.filter(c => c.agent_id === a.id)
-      const converted = aContacts.filter(c => CONVERTED_CONTACT.includes(c.status)).length
+      const converted = aContacts.filter(c =>
+        recordIdentifierMatches('contacts', 'status', c, 'closed')
+        || recordIdentifierMatches('contacts', 'status', c, 'under_contract')
+      ).length
       const aDeals = deals.filter(d => d.agent_id === a.id)
-      const closed = aDeals.filter(d => CLOSED_DEAL.includes(d.stage))
+      const closed = aDeals.filter(d => recordIdentifierMatches('deals', 'stage', d, 'closed'))
       const aOffers = offers.filter(o => o.agent_id === a.id)
-      const acceptedOffers = aOffers.filter(o => ACCEPTED_OFFER.includes(o.status)).length
+      const acceptedOffers = aOffers.filter(o => recordIdentifierMatches('offers', 'status', o, 'accepted')).length
       const aAudit = audit.filter(x => x.agent_id === a.id)
       const signIns = aAudit.filter(x => x.action === 'signed_in').length
       const emails = aAudit.filter(x => (x.table_name==='auth'?false:true) && /email/i.test(x.action || '')).length
