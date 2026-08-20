@@ -12,8 +12,14 @@ import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate } from '../lib/utils'
 import { Loading, Avatar } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
+import { identifierCodeFor } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const dealStageCode = value => identifierCodeFor('deals', 'stage', value)
+const listingStatusCode = value => identifierCodeFor('listings', 'status', value)
+const taskStatusCode = value => identifierCodeFor('tasks', 'status', value)
+const offerStatusCode = value => identifierCodeFor('offers', 'status', value)
+const contactStatusCode = value => identifierCodeFor('contacts', 'status', value)
 
 const YEARS = []
 for (let y = new Date().getFullYear(); y >= 2020; y--) YEARS.push(y.toString())
@@ -70,9 +76,9 @@ function MonthlyChart({ data, color, label }) {
 // ── AGENT CARD ─────────────────────────────────────────────────────
 function AgentCard({ agent, stats, rank, maxGCI, year }) {
   const [expanded, setExpanded] = useState(false)
-  const closedDeals   = stats.deals.filter(d => d.stage === 'Closed')
-  const activeDeals   = stats.deals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
-  const fellThrough   = stats.deals.filter(d => d.stage === 'Deal Fell Through')
+  const closedDeals   = stats.deals.filter(d => dealStageCode(d) === 'closed')
+  const activeDeals   = stats.deals.filter(d => !['closed','fell_through'].includes(dealStageCode(d)))
+  const fellThrough   = stats.deals.filter(d => dealStageCode(d) === 'fell_through')
   const avgGCI        = closedDeals.length ? stats.gci / closedDeals.length : 0
   const closeRate     = stats.deals.length ? Math.round((closedDeals.length / stats.deals.length) * 100) : 0
 
@@ -292,7 +298,7 @@ function GoalsTab({ agents, year, goals, setGoals, agentStats, contacts, savingG
           const key     = ag.id + '_' + year
           const goal    = goals[key] || {}
           const stats   = agentStats.find(s => s.agent.id === ag.id) || { gci:0, production:0, deals:[] }
-          const closed  = (stats.deals || []).filter(d => d.stage === 'Closed')
+          const closed  = (stats.deals || []).filter(d => dealStageCode(d) === 'closed')
           const leadCount = contacts[ag.id] || 0
           const isEditing = editing === ag.id
           const hasGoal = goal.gci > 0 || goal.deals > 0 || goal.production > 0 || goal.leads > 0
@@ -490,8 +496,8 @@ export function AgentPerformance() {
   // Calculate per-agent stats
   const agentStats = agents.map(agent => {
     const agentDeals    = yearDeals.filter(d => d.agent_id === agent.id)
-    const closedDeals   = agentDeals.filter(d => d.stage === 'Closed')
-    const activeDeals   = agentDeals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
+    const closedDeals   = agentDeals.filter(d => dealStageCode(d) === 'closed')
+    const activeDeals   = agentDeals.filter(d => !['closed','fell_through'].includes(dealStageCode(d)))
     const gci           = closedDeals.reduce((s, d) => s + (parseFloat(d.gci)        || 0), 0)
     const production    = closedDeals.reduce((s, d) => s + (parseFloat(d.production) || 0), 0)
     const pipelineGCI   = activeDeals.reduce((s, d) => s + (parseFloat(d.gci)        || 0), 0)
@@ -503,13 +509,13 @@ export function AgentPerformance() {
   const teamGCI      = agentStats.reduce((s, a) => s + a.gci, 0)
   const teamVolume   = agentStats.reduce((s, a) => s + a.production, 0)
   const teamPipeline = agentStats.reduce((s, a) => s + a.pipelineGCI, 0)
-  const totalClosed  = yearDeals.filter(d => d.stage === 'Closed').length
+  const totalClosed  = yearDeals.filter(d => dealStageCode(d) === 'closed').length
   const maxGCI       = agentStats[0]?.gci || 1
 
   // Monthly team GCI for chart
   const monthlyTeamGCI = Array.from({ length: 12 }, (_, m) => ({
     value: yearDeals
-      .filter(d => d.stage === 'Closed' && (d.close_date || d.ao_date || '').slice(5, 7) === String(m + 1).padStart(2, '0'))
+      .filter(d => dealStageCode(d) === 'closed' && (d.close_date || d.ao_date || '').slice(5, 7) === String(m + 1).padStart(2, '0'))
       .reduce((s, d) => s + (parseFloat(d.gci) || 0), 0)
   }))
 
@@ -643,10 +649,10 @@ function FullPictureTab({ agents, deals, offers, listings, calls, contacts, task
       const aContacts = contacts.filter(c => c.agent_id === a.id)
       const aTasks    = tasks.filter(t => t.agent_id === a.id)
 
-      const closedGCI   = aDeals.filter(d => d.stage === 'Closed').reduce((s,d) => s + (parseFloat(d.gci)||0), 0)
-      const activeDeals = aDeals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
+      const closedGCI   = aDeals.filter(d => dealStageCode(d) === 'closed').reduce((s,d) => s + (parseFloat(d.gci)||0), 0)
+      const activeDeals = aDeals.filter(d => !['closed','fell_through'].includes(dealStageCode(d)))
       const pipelineGCI = activeDeals.reduce((s,d) => s + (parseFloat(d.gci)||0), 0)
-      const offersAccepted = aOffers.filter(o => ['AO','Accepted','Closed'].includes(o.status)).length
+      const offersAccepted = aOffers.filter(o => offerStatusCode(o) === 'accepted').length
 
       return {
         agent: a,
@@ -655,13 +661,13 @@ function FullPictureTab({ agents, deals, offers, listings, calls, contacts, task
         closedGCI, pipelineGCI,
         offers: aOffers.length,
         offerConv: aOffers.length ? Math.round(offersAccepted / aOffers.length * 100) : 0,
-        listings: aListings.filter(l => l.status === 'Active').length,
+        listings: aListings.filter(l => listingStatusCode(l) === 'active').length,
         calls: aCalls.length,
         callsAnswered: aCalls.filter(c => c.outcome === 'Connected').length,
         contacts: aContacts.length,
-        hotLeads: aContacts.filter(c => ['Hot','Warm'].includes(c.status)).length,
-        tasksDone: aTasks.filter(t => t.status === 'done' || t.status === 'completed').length,
-        tasksOverdue: aTasks.filter(t => t.due_date && t.due_date < today && !['done','completed'].includes(t.status)).length,
+        hotLeads: aContacts.filter(c => ['hot', 'warm'].includes(contactStatusCode(c))).length,
+        tasksDone: aTasks.filter(t => taskStatusCode(t) === 'done').length,
+        tasksOverdue: aTasks.filter(t => t.due_date && t.due_date < today && taskStatusCode(t) !== 'done').length,
       }
     })
   }, [agents, deals, offers, listings, calls, contacts, tasks])

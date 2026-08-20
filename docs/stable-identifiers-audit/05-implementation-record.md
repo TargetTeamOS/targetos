@@ -139,3 +139,44 @@ provider mappings. Those paths remain explicitly scheduled for later packages.
 No SQL was run, no Supabase row was created or changed, no communication or webhook
 was sent, no external effect was enabled, and no Production deployment was performed
 for Package 4.
+
+## Package 5 — Secondary analytics and agent workflow pages
+
+Status: **Implemented in code; database migration still not executed**
+
+This package removes editable workflow-label comparisons from the remaining high-use
+analytics and personal workflow pages covered by this increment:
+
+- Agent Performance deal, listing, offer, contact, and task metrics;
+- Analytics pipeline, conversion, listing-health, lead-health, alert, goal, source,
+  commission, and seller-accountability calculations;
+- Daily Briefing task, pipeline, closing, active-listing, lead, and GCI selection for
+  both individual previews and administrator send-all preparation;
+- My Listings filters, alert behavior, summary counts, listing lifecycle writes, and
+  listing-to-TC phase synchronization;
+- the Pipeline board's terminal-state exclusion and stage grouping; and
+- current and legacy Offers lifecycle metrics, filters, acceptance conversion,
+  duplicate-deal detection, stable deal creation, and in-house listing transitions.
+
+Direct lifecycle writes in these pages now pass through the shared compatibility
+adapter. This means callers choose an immutable code while the current database
+continues receiving its compatible legacy storage value until the additive ID
+migration is approved. Duplicate-deal detection resolves each candidate's stage
+instead of embedding a list of terminal display strings in a database filter.
+
+Behavioral coverage now explicitly proves the legacy aliases used by these pages map
+to the expected immutable codes and that accepted-offer conversion prepares compatible
+deal and listing writes from stable codes.
+
+### Package 5 boundary
+
+This increment does not claim the entire application is rename-safe. Call outcomes,
+commission states, the legacy `dead` TC phase, several TC-specific components and CRUD
+paths, import/export formats, administrator-configurable labels and tabs, and external
+provider mappings still require cataloging or cutover in later packages. Display-only
+copy remains ordinary presentation text; it is not used to select backend behavior in
+the paths listed above.
+
+No SQL was run, no Supabase row was created or changed, no communication or webhook
+was sent, no external effect was enabled, and no Production deployment was performed
+for Package 5.

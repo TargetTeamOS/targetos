@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext'
 import { useAgents } from '../lib/hooks'
 import { fmt$, parseNum } from '../lib/utils'
 import { Loading } from '../components/UI'
+import { identifierCodeFor } from '../lib/recordIdentifiers'
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area,
@@ -18,6 +19,12 @@ import {
 
 const ff = 'Inter,system-ui,sans-serif'
 const PALETTE = ['#CC2200', '#225091', '#00c875', '#F5A623', '#8B5CF6', '#0EA5E9', '#EC4899', '#65A30D', '#B45309', '#6B7280']
+const dealStageCode = value => identifierCodeFor('deals', 'stage', value)
+const taskStatusCode = value => identifierCodeFor('tasks', 'status', value)
+const contactStatusCode = value => identifierCodeFor('contacts', 'status', value)
+const listingStatusCode = value => identifierCodeFor('listings', 'status', value)
+const offerStatusCode = value => identifierCodeFor('offers', 'status', value)
+const tcPhaseCode = value => identifierCodeFor('tc_deals', 'tc_phase', value)
 
 const iso = d => d.toISOString().slice(0, 10)
 function presetRange(kind) {
@@ -151,10 +158,10 @@ export function Analytics() {
   const biz = useMemo(() => {
     const calc = (r) => {
       const sent     = offers.filter(o => inRange(o.offer_date || o.created_at, r))
-      const accepted = offers.filter(o => ['AO','Accepted','Closed'].includes(o.status) && inRange(o.offer_date || o.created_at, r))
-      const uc       = deals.filter(d => d.stage === 'Under Contract' && inRange(d.ao_date || d.created_at, r))
-      const closed   = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, r))
-      const fell     = deals.filter(d => d.stage === 'Deal Fell Through' && inRange(d.created_at, r))
+      const accepted = offers.filter(o => offerStatusCode(o) === 'accepted' && inRange(o.offer_date || o.created_at, r))
+      const uc       = deals.filter(d => dealStageCode(d) === 'under_contract' && inRange(d.ao_date || d.created_at, r))
+      const closed   = deals.filter(d => dealStageCode(d) === 'closed' && inRange(d.close_date || d.created_at, r))
+      const fell     = deals.filter(d => dealStageCode(d) === 'fell_through' && inRange(d.created_at, r))
       const gci      = closed.reduce((s,d) => s + parseNum(d.gci), 0)
       const prod     = closed.reduce((s,d) => s + parseNum(d.production), 0)
       return {
@@ -182,7 +189,7 @@ export function Analytics() {
       inPerson: ixIn(r, x => x.type === 'in_person').length,
       showings: showings.filter(s => inRange(s.showing_date || s.created_at, r)).length,
       contacts: contacts.filter(c => inRange(c.created_at, r)).length,
-      tasksDone: tasks.filter(t => (t.status === 'done' || t.completed) && inRange(t.completed_at || t.created_at, r)).length,
+      tasksDone: tasks.filter(t => (taskStatusCode(t) === 'done' || t.completed) && inRange(t.completed_at || t.created_at, r)).length,
       notes: activity.filter(a => inRange(a.created_at, r)).length + ixIn(r, x => x.type === 'note').length,
       followUps: ixIn(r, x => x.follow_up === true).length,
       total: 0, // filled below
@@ -203,8 +210,8 @@ export function Analytics() {
       return {
         name: lbl,
         'Offers Sent': offers.filter(o => within(o.offer_date || o.created_at)).length,
-        'Closed': deals.filter(d => d.stage === 'Closed' && within(d.close_date || d.created_at)).length,
-        'GCI': Math.round(deals.filter(d => d.stage === 'Closed' && within(d.close_date || d.created_at)).reduce((s,d)=>s+parseNum(d.gci),0)),
+        'Closed': deals.filter(d => dealStageCode(d) === 'closed' && within(d.close_date || d.created_at)).length,
+        'GCI': Math.round(deals.filter(d => dealStageCode(d) === 'closed' && within(d.close_date || d.created_at)).reduce((s,d)=>s+parseNum(d.gci),0)),
         'Calls': calls.filter(c => !isSms(c) && within(c.created_at)).length,
         'SMS': calls.filter(c => isSms(c) && within(c.created_at)).length,
       }
@@ -212,7 +219,7 @@ export function Analytics() {
   }, [offers, deals, calls, cur])
 
   const sourceData = useMemo(() => {
-    const closed = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, cur))
+    const closed = deals.filter(d => dealStageCode(d) === 'closed' && inRange(d.close_date || d.created_at, cur))
     const m = {}
     closed.forEach(d => { const k = d.source || 'Unknown'; m[k] = (m[k]||0)+1 })
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a,b)=>b.value-a.value)
@@ -220,7 +227,7 @@ export function Analytics() {
 
   const agentRows = useMemo(() => {
     const calc = (id, r) => {
-      const closed = deals.filter(d => d.agent_id === id && d.stage === 'Closed' && inRange(d.close_date || d.created_at, r))
+      const closed = deals.filter(d => d.agent_id === id && dealStageCode(d) === 'closed' && inRange(d.close_date || d.created_at, r))
       const sent   = offers.filter(o => (o.agent_id === id || o.buyers_agent_id === id) && inRange(o.offer_date || o.created_at, r))
       const ixA = (pred) => (interactionsData || []).filter(x => x.agent_id === id && pred(x) && inRange(x.occurred_at, r)).length
       const callN = calls.filter(c => c.agent_id === id && !isSms(c) && inRange(c.created_at, r)).length + ixA(x => x.type === 'call')
@@ -249,14 +256,14 @@ export function Analytics() {
     const ytd = { start: new Date(asOf.getFullYear(), 0, 1), end: asOf }
     const lastYtd = { start: new Date(asOf.getFullYear()-1, 0, 1), end: new Date(asOf.getFullYear()-1, asOf.getMonth(), asOf.getDate(), 23,59,59,999) }
     const calc = (r) => {
-      const closed = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, r))
+      const closed = deals.filter(d => dealStageCode(d) === 'closed' && inRange(d.close_date || d.created_at, r))
       const sent   = offers.filter(o => inRange(o.offer_date || o.created_at, r))
       return {
         closed: closed.length,
         gci: closed.reduce((s,d)=>s+parseNum(d.gci),0),
         prod: closed.reduce((s,d)=>s+parseNum(d.production),0),
         sent: sent.length,
-        pipeline: deals.filter(d => ['Negotiations','Offer Accapted','Under Shtar','Under Contract'].includes(d.stage)).reduce((s,d)=>s+parseNum(d.production),0),
+        pipeline: deals.filter(d => ['negotiations','offer_accepted','under_shtar','under_contract'].includes(dealStageCode(d))).reduce((s,d)=>s+parseNum(d.production),0),
       }
     }
     return { asOf, now: calc(ytd), prev: calc(lastYtd) }
@@ -265,22 +272,22 @@ export function Analytics() {
   // ── Alerts (Tier A subset — from data we have) ────────────────
   const alerts = useMemo(() => {
     const now = Date.now()
-    const soon = deals.filter(d => d.stage === 'Under Contract' && d.close_date && (() => { const dd = new Date(d.close_date).getTime(); return dd >= now && dd <= now + 7*86400000 })())
-    const stale = deals.filter(d => ['Negotiations','Offer Accapted','Under Shtar','Under Contract'].includes(d.stage) && d.created_at && (now - new Date(d.created_at).getTime() > 90*86400000))
+    const soon = deals.filter(d => dealStageCode(d) === 'under_contract' && d.close_date && (() => { const dd = new Date(d.close_date).getTime(); return dd >= now && dd <= now + 7*86400000 })())
+    const stale = deals.filter(d => ['negotiations','offer_accepted','under_shtar','under_contract'].includes(dealStageCode(d)) && d.created_at && (now - new Date(d.created_at).getTime() > 90*86400000))
     // Active TC deals missing key party info
-    const active = (tcDeals || []).filter(t => t.tc_phase !== 'closed' && t.tc_phase !== 'dead')
+    const active = (tcDeals || []).filter(t => tcPhaseCode(t) !== 'closed' && t.tc_phase !== 'dead')
     const missingInfo = active.filter(t => !t.attorney_name || !t.mortgage_broker).map(t => ({
       ...t, missing: [!t.attorney_name && 'attorney', !t.mortgage_broker && 'mortgage broker'].filter(Boolean).join(', ')
     }))
-    const overdueTasks = (tasks || []).filter(t => t.status !== 'done' && !t.completed && t.due_date && new Date(t.due_date).getTime() < now)
-    const uncontacted = (contacts || []).filter(c => c.status === 'New' && c.contacted !== true)
+    const overdueTasks = (tasks || []).filter(t => taskStatusCode(t) !== 'done' && !t.completed && t.due_date && new Date(t.due_date).getTime() < now)
+    const uncontacted = (contacts || []).filter(c => contactStatusCode(c) === 'new' && c.contacted !== true)
     const overdueFollowUps = (interactionsData || []).filter(x => x.follow_up && x.follow_up_date && new Date(x.follow_up_date).getTime() < now)
     return { closingSoon: soon, stuck: stale, missingInfo, overdueTasks, uncontacted, overdueFollowUps }
   }, [deals, tcDeals, tasks, contacts, interactionsData])
 
   // Commission tracking (from Tier-B fields; falls back gracefully)
   const sideSplit = useMemo(() => {
-    const closed = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, cur))
+    const closed = deals.filter(d => dealStageCode(d) === 'closed' && inRange(d.close_date || d.created_at, cur))
     const norm = s => { const v = String(s||'').toLowerCase(); if (v.includes('dual')||v.includes('both')) return 'Dual'; if (v.includes('list')||v.includes('sell')) return 'Listing'; if (v.includes('buy')) return 'Buyer'; return 'Unspecified' }
     const g = { Buyer:{n:0,gci:0,prod:0}, Listing:{n:0,gci:0,prod:0}, Dual:{n:0,gci:0,prod:0}, Unspecified:{n:0,gci:0,prod:0} }
     closed.forEach(d => { const k = norm(d.side); g[k].n++; g[k].gci += parseNum(d.gci); g[k].prod += parseNum(d.production) })
@@ -288,7 +295,7 @@ export function Analytics() {
   }, [deals, cur])
 
   const commission = useMemo(() => {
-    const closed = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, cur))
+    const closed = deals.filter(d => dealStageCode(d) === 'closed' && inRange(d.close_date || d.created_at, cur))
     const total = closed.reduce((s,d)=>s+parseNum(d.gci),0)
     const collected = closed.reduce((s,d)=>{
       if (d.commission_status === 'collected') return s + parseNum(d.collected_gci ?? d.gci)
@@ -324,14 +331,14 @@ export function Analytics() {
   // ── Seller-update accountability ──────────────────────────────
   const sellerHealth = useMemo(() => {
     const now = Date.now()
-    const ACTIVE = ['Active', 'Coming Soon', 'Under Contract', 'Accepted offer']
+    const ACTIVE = ['active', 'coming_soon', 'under_contract', 'offer_accepted']
     const listingById = {}; (listings || []).forEach(l => { listingById[l.id] = l })
     const contactById = {}; (contacts || []).forEach(c => { contactById[c.id] = c })
     // one row per (listing, seller-contact) for active listings
     const rows = []
     ;(listingContacts || []).forEach(lc => {
       const l = listingById[lc.listing_id]; if (!l) return
-      if (!ACTIVE.includes(l.status)) return
+      if (!ACTIVE.includes(listingStatusCode(l))) return
       const c = contactById[lc.contact_id]
       const su = l.seller_updated_at ? new Date(l.seller_updated_at).getTime() : null
       const days = su ? Math.floor((now - su) / 86400000) : null
@@ -385,7 +392,7 @@ export function Analytics() {
     else if (hAgent) rows = rows.filter(c => c.agent_id === hAgent)
     if (hSource === '__none__') rows = rows.filter(c => !c.source)
     else if (hSource) rows = rows.filter(c => c.source === hSource)
-    if (hStatus) rows = rows.filter(c => (c.status || '') === hStatus)
+    if (hStatus) rows = rows.filter(c => contactStatusCode(c) === contactStatusCode(hStatus))
     if (hContacted === 'yes') rows = rows.filter(c => c.contacted === true)
     else if (hContacted === 'no') rows = rows.filter(c => c.contacted !== true)
     if (hAge === 'never') rows = rows.filter(c => !c._ever)
@@ -410,14 +417,14 @@ export function Analytics() {
     const recent = rows.filter(c => c._daysSince != null && c._daysSince <= 7).length
     const needFollowUp = rows.filter(c => c._followUp != null).length
     const overdueFollowUp = rows.filter(c => c._followUp != null && c._followUp < now).length
-    const newUncontacted24 = rows.filter(c => c.contacted !== true && c._ageHours > 24 && (c.status === 'New' || !c.status)).length
+    const newUncontacted24 = rows.filter(c => c.contacted !== true && c._ageHours > 24 && (contactStatusCode(c) === 'new' || !c.status)).length
     const firstContactSamples = rows.filter(c => c.first_contact_at && c.created_at).map(c => (new Date(c.first_contact_at).getTime() - new Date(c.created_at).getTime()) / 3600000).filter(h => h >= 0)
     const avgToFirst = firstContactSamples.length ? Math.round(firstContactSamples.reduce((a,b)=>a+b,0) / firstContactSamples.length) : null
 
     return {
       rows, total, contacted, uncontacted, noInteractionEver, recent, needFollowUp, overdueFollowUp, newUncontacted24, avgToFirst,
       lists: {
-        newUncontacted: rows.filter(c => c.contacted !== true && (c.status === 'New' || !c.status)),
+        newUncontacted: rows.filter(c => c.contacted !== true && (contactStatusCode(c) === 'new' || !c.status)),
         noEver: rows.filter(c => !c._ever),
         stale7: rows.filter(c => c._daysSince != null && c._daysSince >= 7 && c._daysSince < 30),
         stale30: rows.filter(c => c._daysSince != null && c._daysSince >= 30),
@@ -599,7 +606,7 @@ export function Analytics() {
             {(() => {
               const stages = ['Negotiations','Offer Accapted','Under Shtar','Under Contract','Closed']
               const colors = { 'Negotiations':'#037f4c','Offer Accapted':'#00c875','Under Shtar':'#bb3354','Under Contract':'#757575','Closed':'#225091' }
-              const counts = stages.map(st => ({ st, n: deals.filter(d => d.stage === st).length, gci: deals.filter(d => d.stage === st).reduce((s,d)=>s+parseNum(d.gci),0) }))
+              const counts = stages.map(st => ({ st, n: deals.filter(d => dealStageCode(d) === dealStageCode(st)).length, gci: deals.filter(d => dealStageCode(d) === dealStageCode(st)).reduce((s,d)=>s+parseNum(d.gci),0) }))
               const max = Math.max(1, ...counts.map(c => c.n))
               return counts.map(c => (
                 <div key={c.st} style={{ marginBottom: 12 }}>
@@ -630,7 +637,7 @@ export function Analytics() {
             const yearFrac = dayOfYear / 365
 
             // company totals
-            const closedYTD = deals.filter(d => d.stage === 'Closed' && (d.close_date||d.created_at||'').startsWith(String(thisYear)))
+            const closedYTD = deals.filter(d => dealStageCode(d) === 'closed' && (d.close_date||d.created_at||'').startsWith(String(thisYear)))
             const compActual = { deals: closedYTD.length, gci: closedYTD.reduce((s,d)=>s+parseNum(d.gci),0), production: closedYTD.reduce((s,d)=>s+parseNum(d.production),0) }
             const compGoal = Object.values(goals).reduce((a,g)=>({ deals:a.deals+(g.deals||0), gci:a.gci+(g.gci||0), production:a.production+(g.production||0) }), { deals:0, gci:0, production:0 })
 
@@ -680,7 +687,7 @@ export function Analytics() {
                       <tbody>
                         {(agents||[]).map(a => {
                           const g = goals[a.id] || {}
-                          const ac = deals.filter(d => d.agent_id===a.id && d.stage==='Closed' && (d.close_date||d.created_at||'').startsWith(String(thisYear)))
+                          const ac = deals.filter(d => d.agent_id===a.id && dealStageCode(d)==='closed' && (d.close_date||d.created_at||'').startsWith(String(thisYear)))
                           const acD = ac.length, acG = ac.reduce((s,d)=>s+parseNum(d.gci),0), acP = ac.reduce((s,d)=>s+parseNum(d.production),0)
                           const gInp = { width:90, padding:'5px 7px', borderRadius:6, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, textAlign:'right' }
                           return (
@@ -743,18 +750,18 @@ export function Analytics() {
         const agentName = id => (agents || []).find(a => a.id === id)?.name || '—'
         const dom = l => { const ld = l.listed_date || l.list_date || l.created_at; return ld ? Math.floor((now - new Date(ld).getTime())/86400000) : null }
         const byStatus = {}
-        ;(listings || []).forEach(l => { const k = l.status || 'Unknown'; byStatus[k] = (byStatus[k]||0)+1 })
-        const active = (listings || []).filter(l => l.status === 'Active')
+        ;(listings || []).forEach(l => { const k = listingStatusCode(l) || 'unknown'; byStatus[k] = (byStatus[k]||0)+1 })
+        const active = (listings || []).filter(l => listingStatusCode(l) === 'active')
         const sittingLong = active.filter(l => { const d = dom(l); return d != null && d > 90 })
         const reduced = (listings || []).filter(l => l.original_price && l.list_price && parseNum(l.list_price) < parseNum(l.original_price))
         const staleUpdate = active.filter(l => !l.seller_updated_at || (now - new Date(l.seller_updated_at).getTime() > 14*86400000))
         return (
           <div style={{ display: 'grid', gap: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
-              <StatCard label="Active" value={byStatus['Active']||0} now={byStatus['Active']||0} prev={null} accent="#00c875" />
-              <StatCard label="Under Contract" value={byStatus['Under Contract']||0} now={byStatus['Under Contract']||0} prev={null} accent="#007eb5" />
-              <StatCard label="Accepted Offer" value={byStatus['Accepted offer']||0} now={byStatus['Accepted offer']||0} prev={null} accent="#784bd1" />
-              <StatCard label="Sold" value={byStatus['Sold']||0} now={byStatus['Sold']||0} prev={null} accent="#ffcb00" />
+              <StatCard label="Active" value={byStatus.active||0} now={byStatus.active||0} prev={null} accent="#00c875" />
+              <StatCard label="Under Contract" value={byStatus.under_contract||0} now={byStatus.under_contract||0} prev={null} accent="#007eb5" />
+              <StatCard label="Accepted Offer" value={byStatus.offer_accepted||0} now={byStatus.offer_accepted||0} prev={null} accent="#784bd1" />
+              <StatCard label="Sold" value={byStatus.sold||0} now={byStatus.sold||0} prev={null} accent="#ffcb00" />
               <StatCard label="Avg Days on Market" value={active.length ? Math.round(active.reduce((s,l)=>s+(dom(l)||0),0)/active.length) : 0} now={0} prev={null} accent="#8B5CF6" />
               <StatCard label="Price Reductions" value={reduced.length} now={reduced.length} prev={null} invert accent="#F5A623" />
               <StatCard label="Never Updated" value={active.filter(l => !l.seller_updated_at).length} now={active.filter(l => !l.seller_updated_at).length} prev={null} invert accent="#DC2626" />
@@ -813,7 +820,7 @@ export function Analytics() {
         const srcs = {}
         const ensure = k => { if (!srcs[k]) srcs[k] = { source:k, leads:0, closed:0, gci:0, prod:0 }; return srcs[k] }
         contacts.filter(c => inRange(c.created_at, cur)).forEach(c => ensure(c.source || 'Unknown').leads++)
-        deals.filter(d => d.stage==='Closed' && inRange(d.close_date||d.created_at, cur)).forEach(d => { const e = ensure(d.source || 'Unknown'); e.closed++; e.gci += parseNum(d.gci); e.prod += parseNum(d.production) })
+        deals.filter(d => dealStageCode(d)==='closed' && inRange(d.close_date||d.created_at, cur)).forEach(d => { const e = ensure(d.source || 'Unknown'); e.closed++; e.gci += parseNum(d.gci); e.prod += parseNum(d.production) })
         const rows = Object.values(srcs).map(r => {
           const cost = (costMap[r.source] || 0) * months
           const roi = cost > 0 ? Math.round(((r.gci - cost) / cost) * 100) : null
@@ -957,7 +964,7 @@ export function Analytics() {
           const sm = sellerHealth.byAgent[a.id] || { active:0, updatedWeek:0, stale7:0, never:0 }
           return {
             agent: a, assigned: assigned.length, contacted, uncontacted: assigned.length - contacted,
-            newUncontacted: assigned.filter(c => c.contacted !== true && (c.status==='New'||!c.status)).length,
+            newUncontacted: assigned.filter(c => c.contacted !== true && (contactStatusCode(c)==='new'||!c.status)).length,
             overdueFu: assigned.filter(c => c._followUp != null && c._followUp < Date.now()).length,
             stale7: assigned.filter(c => c._daysSince != null && c._daysSince >= 7).length,
             sellersActive: sm.active, sellersStale: sm.stale7,

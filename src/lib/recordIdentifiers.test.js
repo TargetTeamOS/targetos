@@ -72,4 +72,18 @@ describe('record identifier compatibility', () => {
     expect(recordIdentifierFilterValues('deals', 'stage', 'offer_accepted')).toEqual(['Offer Accepted', 'Offer Accapted'])
     expect(recordIdentifierFilterValues('deals', 'stage', 'Offer Accapted')).toEqual(['Offer Accapted'])
   })
+
+  it('keeps secondary dashboards and workflow transitions independent of legacy labels', () => {
+    expect(['Closed', 'Deal Fell Through'].map(value => identifierCodeFor('deals', 'stage', value)))
+      .toEqual(['closed', 'fell_through'])
+    expect(['Hot', 'Warm'].map(value => identifierCodeFor('contacts', 'status', value)))
+      .toEqual(['hot', 'warm'])
+    expect(['AO', 'Accepted', 'Closed'].map(value => identifierCodeFor('offers', 'status', value)))
+      .toEqual(['accepted', 'accepted', 'accepted'])
+    expect(identifierCodeFor('listings', 'status', 'Accepted offer')).toBe('offer_accepted')
+    expect(prepareRecordIdentifierDatabaseWrite('deals', { stage_code: 'offer_accepted' }))
+      .toEqual({ stage: 'Offer Accepted' })
+    expect(prepareRecordIdentifierDatabaseWrite('listings', { status_code: 'offer_accepted' }))
+      .toEqual({ status: 'Accepted Offer' })
+  })
 })
