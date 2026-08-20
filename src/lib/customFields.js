@@ -90,14 +90,28 @@ export function labelToKey(label) {
 }
 
 // ── SELECT OPTION NORMALIZATION (backward compatible) ─────────────
-// Options may be plain strings (legacy) OR { label, value, color } objects.
-// normalizeOption always returns { label, value, color }.
+// Options may be plain strings (legacy) OR { id/code, label, value, color }.
+// Identity is immutable; labels remain freely editable.
+function legacyOptionCode(value) {
+  const slug = String(value ?? '').trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  return `legacy_${slug || 'option'}`
+}
+
+export function createOptionDefinition(label = '', color = null) {
+  const id = globalThis.crypto?.randomUUID?.() || `option_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+  return { id, code: id, label, value: id, color }
+}
+
 export function normalizeOption(opt) {
   if (opt && typeof opt === 'object') {
-    const value = opt.value ?? opt.label ?? ''
-    return { label: opt.label ?? String(value), value, color: opt.color || null }
+    const value = opt.value ?? opt.code ?? opt.id ?? opt.label ?? ''
+    const id = opt.id ?? opt.code ?? legacyOptionCode(value)
+    return { id, code: id, label: opt.label ?? String(value), value, color: opt.color || null }
   }
-  return { label: String(opt), value: String(opt), color: null }
+  const value = String(opt)
+  const id = legacyOptionCode(value)
+  return { id, code: id, label: value, value, color: null }
 }
 export function normalizeOptions(options) {
   return (options || []).map(normalizeOption)

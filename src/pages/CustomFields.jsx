@@ -6,7 +6,7 @@ import { useAuth }  from '../context/AuthContext'
 import { useApp }   from '../context/AppContext'
 import {
   loadFieldDefs, saveFieldDefs, invalidateFieldCache,
-  labelToKey, FIELD_TYPES, ENTITY_LABELS
+  labelToKey, FIELD_TYPES, ENTITY_LABELS, normalizeOption, createOptionDefinition
 } from '../lib/customFields'
 import { PageHeader, Btn, Modal, ModalActions, Field, Input, SectionTitle } from '../components/UI'
 
@@ -271,20 +271,20 @@ export function CustomFields() {
             <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:6 }}>Dropdown Options</div>
             <div style={{ display:'flex', gap:8, marginBottom:8 }}>
               <input value={optionText} onChange={e=>setOptionText(e.target.value)}
-                onKeyDown={e=>{ if(e.key==='Enter'&&optionText.trim()){ set('options',[...(form.options||[]),optionText.trim()]); setOptionText('') } }}
+                onKeyDown={e=>{ if(e.key==='Enter'&&optionText.trim()){ set('options',[...(form.options||[]),createOptionDefinition(optionText.trim())]); setOptionText('') } }}
                 placeholder="Type option, press Enter" style={{...S,flex:1}} />
-              <button onClick={()=>{ if(optionText.trim()){set('options',[...(form.options||[]),optionText.trim()]);setOptionText('')} }}
+              <button onClick={()=>{ if(optionText.trim()){set('options',[...(form.options||[]),createOptionDefinition(optionText.trim())]);setOptionText('')} }}
                 style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:13, cursor:'pointer', fontFamily:ff }}>Add</button>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
               {(form.options||[]).map((opt,i)=>{
-                const o = (opt && typeof opt === 'object') ? opt : { label:String(opt), value:String(opt), color:null }
-                const setOpt = patch => set('options',(form.options||[]).map((x,j)=> j===i ? { label:o.label, value:o.value, color:o.color, ...patch } : x))
+                const o = normalizeOption(opt)
+                const setOpt = patch => set('options',(form.options||[]).map((x,j)=> j===i ? { ...o, ...patch } : x))
                 return (
                   <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 8px', borderRadius:8, background:'var(--dim)', border:'1px solid var(--border)' }}>
                     <input type="color" value={o.color || '#cccccc'} onChange={e=>setOpt({ color:e.target.value })}
                       title="Option color" style={{ width:30, height:26, border:'1px solid var(--border)', borderRadius:6, cursor:'pointer', background:'#fff' }} />
-                    <input value={o.label} onChange={e=>setOpt({ label:e.target.value, value:e.target.value })}
+                    <input value={o.label} onChange={e=>setOpt({ label:e.target.value })}
                       style={{ ...S, flex:1, padding:'5px 8px', fontSize:12 }} />
                     <input value={o.color || ''} onChange={e=>setOpt({ color:e.target.value })} placeholder="#RRGGBB"
                       style={{ ...S, width:96, padding:'5px 8px', fontSize:12 }} />

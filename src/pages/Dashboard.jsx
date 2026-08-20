@@ -21,7 +21,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
-import { BOARD_OPTIONS } from '../lib/boardOptions'
+import { BOARD_OPTIONS, boardStatusCode, boardStatusFilterValues, boardStatusLabels } from '../lib/boardOptions'
 import {
   loadDashPrefs, saveDashPrefs,
   loadAgentGoals, saveAgentGoal,
@@ -277,7 +277,7 @@ function CustomWidgetBuilder({ onSave, onClose, agents }) {
       setLoadingCnt(true)
       try {
         let q = supabase.from(boardDef.table).select('id', { count: 'exact', head: true })
-        if (statuses.length && boardDef.statusField) q = q.in(boardDef.statusField, statuses)
+        if (statuses.length && boardDef.statusField) q = q.in(boardDef.statusField, boardStatusFilterValues(boardDef, statuses))
         const dr = getDateRange(dateRange)
         if (dr && boardDef.dateField) q = q.gte(boardDef.dateField, dr.from).lte(boardDef.dateField, dr.to + 'T23:59:59')
         const { count } = await q
@@ -474,12 +474,15 @@ function CustomWidgetBuilder({ onSave, onClose, agents }) {
                 <div>
                   <span style={SL}>Filter by stage/status (empty = all)</span>
                   <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                    {boardDef.statusOptions.map(function(s) {
+                    {boardDef.statusOptions.map(function(option) {
                       return (
-                        <button key={s} onClick={function(){toggleStatus(s)}}
+                        <button key={option.code} onClick={function(){
+                          const selected = statuses.some(value => boardStatusCode(boardDef, value) === option.code)
+                          setStatuses(selected ? statuses.filter(value => boardStatusCode(boardDef, value) !== option.code) : statuses.concat(option.code))
+                        }}
                           style={{ padding:'4px 10px', borderRadius:99, fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:ff,
-                            border:'1px solid '+(statuses.includes(s)?'var(--brand)':'var(--border)'), background:statuses.includes(s)?'rgba(204,34,0,.08)':'transparent', color:statuses.includes(s)?'var(--brand)':'var(--muted)' }}>
-                          {s}
+                            border:'1px solid '+(statuses.some(value=>boardStatusCode(boardDef,value)===option.code)?'var(--brand)':'var(--border)'), background:statuses.some(value=>boardStatusCode(boardDef,value)===option.code)?'rgba(204,34,0,.08)':'transparent', color:statuses.some(value=>boardStatusCode(boardDef,value)===option.code)?'var(--brand)':'var(--muted)' }}>
+                          {option.label}
                         </button>
                       )
                     })}
@@ -597,7 +600,7 @@ function CustomWidgetContent({ config, agentId, allAgents }) {
 
         // Status filter
         if (config.statuses?.length && boardDef.statusField) {
-          q = q.in(boardDef.statusField, config.statuses)
+          q = q.in(boardDef.statusField, boardStatusFilterValues(boardDef, config.statuses))
         }
 
         // Date range — use the correct date field per board type
@@ -651,7 +654,7 @@ function CustomWidgetContent({ config, agentId, allAgents }) {
           onClick={function(){ setActiveSlice(activeSlice ? null : 'all'); setDrillItems(activeSlice ? null : items) }}>
           <div style={{ fontSize:52, fontWeight:900, color:'var(--text)', lineHeight:1 }}>{count}</div>
           <div style={{ fontSize:12, color:'var(--muted)', marginTop:4 }}>
-            {config.statuses?.length ? config.statuses.join(', ') : 'Total'} {boardDef.label}
+            {config.statuses?.length ? boardStatusLabels(boardDef, config.statuses).join(', ') : 'Total'} {boardDef.label}
           </div>
           {config.dateRange && config.dateRange !== 'all' && (
             <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>({config.dateRange})</div>
@@ -1488,7 +1491,7 @@ function WidgetManager({ widgets, role, onSave, onClose, onAddCustom }) {
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>{def.label}</div>
                   {isCustom && w.customConfig?.statuses?.length > 0 && (
-                    <div style={{ fontSize:'10px', color:'var(--muted)' }}>Filter: {w.customConfig.statuses.join(', ')}</div>
+                    <div style={{ fontSize:'10px', color:'var(--muted)' }}>Filter: {boardStatusLabels(BOARD_OPTIONS.find(b=>b.id===w.customConfig.board), w.customConfig.statuses).join(', ')}</div>
                   )}
                 </div>
                 {/* Size toggle */}

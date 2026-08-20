@@ -18,6 +18,9 @@ migrations do populate newly added identifier columns on existing records.
 9. Run `003_core_record_ids_verify.sql` and resolve every exception.
 10. Run `004_tc_task_ids.sql` only after confirming the TC Board tables exist.
 11. Run `004_tc_task_ids_verify.sql` and resolve every exception.
+12. Review the environment-aware table/column skips in `005_secondary_record_ids.sql`.
+13. Run `005_secondary_record_ids.sql` only after the secondary-workflow census is approved.
+14. Run `005_secondary_record_ids_verify.sql`; investigate every skipped field and exception.
 
 `002_catalog_seed.generated.sql` is produced by `npm run identifiers:generate` and
 must pass `npm run identifiers:check`. Existing definition labels and semantic flags

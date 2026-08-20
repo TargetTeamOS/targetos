@@ -23,7 +23,7 @@ import { decorateRecordIdentifiers, decorateRecordList, identifierCodeFor, prepa
 import { fmt$, fmtFull$, fmtDate, fmtDateShort, parseNum, matchSearch, getDaysUntil } from '../lib/utils'
 import {
   DEAL_STAGES, CTC_STAGES, DEAL_SIDES, SALE_TYPES, PROPERTY_TYPES,
-  BUYER_TYPES, SALES_SOURCES, COMMAND_STATUSES, REFERRAL_AGENTS
+  BUYER_TYPES, SALES_SOURCES, COMMAND_STATUSES, COMMISSION_COLLECTION_STATUSES, REFERRAL_AGENTS
 } from '../lib/constants'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { logRecordChange } from '../lib/recordActivity'
@@ -36,7 +36,7 @@ import ContactPicker from '../components/ContactPicker'
 import { FilterBar } from '../components/FilterBar'
 import { ProductionWidgetEditor } from '../components/ProductionWidgetEditor'
 import { loadSideColors, saveSideColors, SIDE_COLOR_DEFAULTS, ensureCommandFields,
-  normalizeOption, COMMAND_FIELD_KEYS,
+  normalizeOption, createOptionDefinition, COMMAND_FIELD_KEYS,
   STAGE_COLORS_KEY, DEAL_STATUS_COLORS_KEY, CTC_COLORS_KEY, COMMAND_COLORS_KEY,
   loadColorOverrides, saveColorOverrides, saveFieldOptions } from '../lib/customFields'
 import { ImportExport } from '../components/ImportExport'
@@ -1524,9 +1524,7 @@ function DealDrawer({ deal, agents, onSave, onClose, onDelete, saving, isAdmin, 
                       if (v === 'collected' && !form.collected_date) set('collected_date', new Date().toISOString().slice(0,10))
                     }}
                     style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-                    <option value="pending">Pending</option>
-                    <option value="partial">Partially paid</option>
-                    <option value="collected">Collected</option>
+                    {COMMISSION_COLLECTION_STATUSES.map(option => <option key={option.code} value={option.value}>{option.label}</option>)}
                   </select>
                 </Field>
                 <Field label="Collected Amount $"><Inp k="collected_gci" type="number" placeholder={form.gci || '0'} /></Field>
@@ -3076,7 +3074,7 @@ function CustomSelectEditor({ fieldKey, onClose, onSaved }) {
       if (!alive) return
       if (f) {
         setTitle('Edit Labels & Colors — ' + f.label)
-        setRows((f.options || []).map(o => { const n = normalizeOption(o); return { label: n.label, value: n.value, color: n.color || '' } }))
+        setRows((f.options || []).map(o => { const n = normalizeOption(o); return { id:n.id, code:n.code, label:n.label, value:n.value, color:n.color || '' } }))
       } else { setRows([]) }
     }).catch(e => { if (alive) { setErr(e.message || 'Load failed'); setRows([]) } })
     return () => { alive = false }
@@ -3085,16 +3083,14 @@ function CustomSelectEditor({ fieldKey, onClose, onSaved }) {
   function patch(i, p) { setRows(rs => rs.map((r, idx) => idx === i ? { ...r, ...p } : r)) }
   function move(i, dir) { setRows(rs => { const n = [...rs]; const j = i + dir; if (j < 0 || j >= n.length) return n; const t = n[i]; n[i] = n[j]; n[j] = t; return n }) }
   function remove(i) { setRows(rs => rs.filter((_, idx) => idx !== i)) }
-  function add() { setRows(rs => [...(rs || []), { label: '', value: '', color: '', _new: true }]) }
+  function add() { setRows(rs => [...(rs || []), { ...createOptionDefinition(''), color: '', _new: true }]) }
 
-  // Effective value per row: existing rows keep their stored value; new rows
-  // derive it from the trimmed label. This preserves stored deal data when an
-  // admin changes only an option's displayed label.
+  // Every option keeps an immutable value. Labels are presentation only.
   const norm = (rows || []).map(r => {
     const label = (r.label || '').trim()
-    const value = (r._new ? label : (r.value ?? '')).toString().trim()
+    const value = (r.value ?? r.code ?? r.id ?? '').toString().trim()
     const color = (r.color || '').trim()
-    return { label, value, color }
+    return { id: r.id || r.code || value, code: r.code || r.id || value, label, value, color }
   })
   const valueCounts = {}
   norm.forEach(n => { if (n.value) valueCounts[n.value] = (valueCounts[n.value] || 0) + 1 })
@@ -3112,8 +3108,7 @@ function CustomSelectEditor({ fieldKey, onClose, onSaved }) {
     if (anyError) return
     setBusy(true); setErr('')
     try {
-      // Persist as {label,value,color}; color normalized (trim+lowercase) or null.
-      const options = norm.map(n => ({ label: n.label, value: n.value, color: normHex(n.color) }))
+      const options = norm.map(n => ({ id:n.id, code:n.code, label:n.label, value:n.value, color:normHex(n.color) }))
       await saveFieldOptions('deals', fieldKey, options)
       onSaved?.()
     } catch (e) { setErr(e.message || 'Save failed') } finally { setBusy(false) }

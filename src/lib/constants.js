@@ -4,6 +4,8 @@
 // colors, and values as used by the team
 // ═══════════════════════════════════════════════════════════════
 
+import { choiceStorageOptions, workflowStorageOptions } from './identifiers'
+
 // ── DEAL STAGES (Production Sheet → Stage column) ───────────────
 export const DEAL_STAGES = [
   { value: 'Negotiations',      label: 'Negotiations',      hex: '#037f4c' },
@@ -15,17 +17,7 @@ export const DEAL_STAGES = [
 ]
 
 // ── CONTRACT TO CLOSE STAGES ────────────────────────────────────
-export const CTC_STAGES = [
-  { value: 'Inspection scheduled', label: 'Inspection scheduled', hex: '#007eb5' },
-  { value: 'Mortgage process',     label: 'Mortgage process',     hex: '#9d50dd' },
-  { value: 'Appraisal ordered',    label: 'Appraisal ordered',    hex: '#579bfc' },
-  { value: 'Conditional Approval', label: 'Conditional Approval', hex: '#cab641' },
-  { value: 'Clear to close',       label: 'Clear to close',       hex: '#00c875' },
-  { value: 'Closing scheduled',    label: 'Closing scheduled',    hex: '#ffcb00' },
-  { value: 'Closed',               label: 'Closed',               hex: '#037f4c' },
-  { value: 'Issue',                label: 'Issue',                hex: '#fdab3d' },
-  { value: 'Canceled',             label: 'Canceled',             hex: '#df2f4a' },
-]
+export const CTC_STAGES = workflowStorageOptions('deal.ctc')
 
 // ── DEAL SIDES ──────────────────────────────────────────────────
 export const DEAL_SIDES = [
@@ -33,13 +25,7 @@ export const DEAL_SIDES = [
 ]
 
 // ── DEAL STATUS (CTC column) ────────────────────────────────────
-export const DEAL_STATUSES = [
-  { value: 'UC',       label: 'UC',       hex: '#9aadbd' },
-  { value: 'Financing', label: 'Financing', hex: '#00c875' },
-  { value: 'Clear to Close', label: 'Clear to Close', hex: '#ffcb00' },
-  { value: 'Closed',   label: 'Closed',   hex: '#007eb5' },
-  { value: 'AO',       label: 'AO',       hex: '#9d50dd' },
-]
+export const DEAL_STATUSES = workflowStorageOptions('deal.progress')
 
 // ── SALE TYPES ──────────────────────────────────────────────────
 export const SALE_TYPES = ["On Market", "Off Market", 'FSBO']
@@ -63,25 +49,7 @@ export const SALES_SOURCES = [
 ]
 
 // ── COMMAND STATUSES ────────────────────────────────────────────
-export const COMMAND_STATUSES = [
-  { value: '',                          label: '',                          hex: '#c4c4c4' },
-  { value: 'Contact Info needed',       label: 'Contact Info needed',       hex: '#ff5ac4' },
-  { value: 'Working on it',             label: 'Working on it',             hex: '#fdab3d' },
-  { value: 'Waiting for approval',      label: 'Waiting for approval',      hex: '#007eb5' },
-  { value: 'Sent not signd',            label: 'Sent not signd',            hex: '#ff6d3b' },
-  { value: 'Done',                      label: 'Done',                      hex: '#00c875' },
-  { value: 'Sent - Watting for lead',   label: 'Sent - Waiting for lead',   hex: '#ffcb00' },
-  { value: 'Stuck',                     label: 'Stuck',                     hex: '#df2f4a' },
-  { value: 'No command',                label: 'No command',                hex: '#9d50dd' },
-  { value: 'Waiting',                   label: 'Waiting',                   hex: '#bb3354' },
-  { value: 'Doesn\'t Want To Sign',     label: "Doesn't Want To Sign",      hex: '#ff007f' },
-  { value: 'Client has been notified',  label: 'Client notified to sign',   hex: '#784bd1' },
-  { value: 'Not Yet',                   label: 'Not Yet',                   hex: '#cab641' },
-  { value: 'Lazer gets the commission', label: 'Lazer gets commission',     hex: '#9cd326' },
-  { value: 'Reminder to sign 1',        label: 'Reminder to sign 1',       hex: '#7f5347' },
-  { value: 'Reminder to sign 2',        label: 'Reminder to sign 2',       hex: '#563e3e' },
-  { value: 'Reminder to sign 3',        label: 'Reminder to sign 3',       hex: '#333333' },
-]
+export const COMMAND_STATUSES = [{ value: '', label: '', hex: '#c4c4c4' }, ...workflowStorageOptions('command.lifecycle')]
 
 // ── SIGN STATUSES ───────────────────────────────────────────────
 export const SIGN_STATUSES = [
@@ -103,31 +71,16 @@ export const AGENT_COMMISSION_STATUSES = [
   { value: 'Not Yet',       label: 'Not Yet',       hex: '#df2f4a' },
 ]
 
+export const COMMISSION_COLLECTION_STATUSES = workflowStorageOptions('commission.collection')
+
 // ── GIFT STATUSES (UC Gift Sheet) ───────────────────────────────
-export const GIFT_STATUSES = [
-  { value: 'Couldn\'t Deliver', label: "Couldn't Deliver", hex: '#df2f4a' },
-  { value: 'Shipped out',       label: 'Shipped out',      hex: '#563e3e' },
-  { value: 'Please deliver',    label: 'Please deliver',   hex: '#c4c4c4' },
-  { value: 'Under Contract',    label: 'Under Contract',   hex: '#9d50dd' },
-  { value: 'Too Late',          label: 'Too Late',         hex: '#e484bd' },
-  { value: 'Don\'t send',       label: "Don't send",       hex: '#037f4c' },
-  { value: 'Check Note',        label: 'Check Note',       hex: '#579bfc' },
-  { value: 'Delivered',         label: 'Delivered',        hex: '#00c875' },
-]
+export const GIFT_STATUSES = workflowStorageOptions('gift.lifecycle')
 
 // ── GIFT LABELS ─────────────────────────────────────────────────
-export const GIFT_LABELS = [
-  { value: 'Home Owner', label: 'Home Owner', hex: '#9aadbd' },
-  { value: 'Investor',   label: 'Investor',   hex: '#007eb5' },
-  { value: 'Seller',     label: 'Seller',     hex: '#9d99b9' },
-]
+export const GIFT_LABELS = choiceStorageOptions('gift.recipient_type')
 
 // ── CLOSING GIFT STATUSES ────────────────────────────────────────
-export const CLOSING_GIFT_STATUSES = [
-  { value: 'sent',          label: 'Sent',          hex: '#00c875' },
-  { value: 'Order Created', label: 'Order Created', hex: '#fdab3d' },
-  { value: 'Not Sending',   label: 'Not Sending',   hex: '#df2f4a' },
-]
+export const CLOSING_GIFT_STATUSES = workflowStorageOptions('gift.closing')
 
 // ── OFFER SIDES ─────────────────────────────────────────────────
 export const OFFER_SIDES = [

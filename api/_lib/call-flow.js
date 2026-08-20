@@ -10,6 +10,7 @@ const {
 } = require('./phone')
 const { buildDefaultNodes, buildDefaultEdges } = require('./default-flow')
 const { externalEffectsEnabled } = require('./externalEffects')
+const { recordIdentifierValues } = require('./recordIdentifiers')
 
 // Loads the saved call flow, auto-creating and saving the default flow
 // if none exists yet. Moved here (shared) rather than living only in
@@ -317,7 +318,7 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
       const { data: todaysCalls } = await supabase
         .from('calls').select('agent_id')
         .in('agent_id', agentsData.map(a => a.id))
-        .eq('direction', 'Inbound')
+        .in('direction', recordIdentifierValues('calls', 'direction', 'inbound'))
         .gte('called_at', todayStart.toISOString())
       const counts = {}
       agentsData.forEach(a => { counts[a.id] = 0 })

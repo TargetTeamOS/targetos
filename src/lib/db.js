@@ -384,14 +384,15 @@ gifts: {
   async list(filters = {}) {
     let q = supabase.from('gifts').select('*, agents(id,name,color), deals(id,addr)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
-    if (filters.status)   q = q.eq('status', filters.status)
-    return run(q.order('created_at', { ascending: false }))
+    if (filters.status)   q = q.in('status', recordIdentifierFilterValues('gifts', 'status', filters.status))
+    return decorateRecordList('gifts', await run(q.order('created_at', { ascending: false })))
   },
   async get(id) {
-    return run(supabase.from('gifts').select('*, agents(id,name,color)').eq('id', id).single())
+    return decorateRecordIdentifiers('gifts', await run(supabase.from('gifts').select('*, agents(id,name,color)').eq('id', id).single()))
   },
   async create(data) {
-    const result = await run(supabase.from('gifts').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const rawResult = await run(supabase.from('gifts').insert({ ...prepareWrite('gifts', data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())
+    const result = decorateRecordIdentifiers('gifts', rawResult)
     await log(data.agent_id, 'gifts', result.id, 'created', {
       metadata: { description: 'Gift for ' + (result.client_name || '') + ' added', field_label: 'Gift Created' }
     })
@@ -399,7 +400,8 @@ gifts: {
   },
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('gifts').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('gifts').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const rawResult = await run(supabase.from('gifts').update({ ...prepareWrite('gifts', data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('gifts', rawResult)
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'gifts', id, before, result, result.client_name || 'Gift')
     return result
@@ -554,13 +556,14 @@ calls: {
     let q = supabase.from('calls').select('*, agents(id,name,color)')
     if (filters.agent_id)   q = q.eq('agent_id', filters.agent_id)
     if (filters.contact_id) q = q.eq('contact_id', filters.contact_id)
-    return run(q.order('called_at', { ascending: false }))
+    return decorateRecordList('calls', await run(q.order('called_at', { ascending: false })))
   },
   async get(id) {
-    return run(supabase.from('calls').select('*, agents(id,name,color)').eq('id', id).single())
+    return decorateRecordIdentifiers('calls', await run(supabase.from('calls').select('*, agents(id,name,color)').eq('id', id).single()))
   },
   async create(data) {
-    const result = await run(supabase.from('calls').insert({ ...stripVirtual(data), called_at: data.called_at || new Date().toISOString() }).select().single())
+    const rawResult = await run(supabase.from('calls').insert({ ...prepareWrite('calls', data), called_at: data.called_at || new Date().toISOString() }).select().single())
+    const result = decorateRecordIdentifiers('calls', rawResult)
     await log(data.agent_id, 'calls', result.id, 'created', {
       metadata: { description: 'Call to ' + (result.contact_name || result.from_number || '') + ' — ' + (result.outcome || 'logged'), field_label: 'Call Logged' }
     })
@@ -574,7 +577,8 @@ calls: {
   },
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('calls').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('calls').update(data).eq('id', id).select().single())
+    const rawResult = await run(supabase.from('calls').update(prepareWrite('calls', data)).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('calls', rawResult)
     await logDiff(actingAgentId || data.agent_id || before?.agent_id, 'calls', id, before, result, result.contact_name || 'Call')
     return result
   },
@@ -691,13 +695,14 @@ signs: {
   async list(filters = {}) {
     let q = supabase.from('signs').select('*, agents(id,name,color)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
-    return run(q.order('created_at', { ascending: false }))
+    return decorateRecordList('signs', await run(q.order('created_at', { ascending: false })))
   },
   async get(id) {
-    return run(supabase.from('signs').select('*').eq('id', id).single())
+    return decorateRecordIdentifiers('signs', await run(supabase.from('signs').select('*').eq('id', id).single()))
   },
   async create(data) {
-    const result = await run(supabase.from('signs').insert({ ...stripVirtual(data), created_at: new Date().toISOString() }).select().single())
+    const rawResult = await run(supabase.from('signs').insert({ ...prepareWrite('signs', data), created_at: new Date().toISOString() }).select().single())
+    const result = decorateRecordIdentifiers('signs', rawResult)
     await log(data.agent_id, 'signs', result.id, 'created', {
       metadata: { description: 'Sign at ' + (result.addr || ''), field_label: 'Sign Created' }
     })
@@ -705,7 +710,8 @@ signs: {
   },
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('signs').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('signs').update(data).eq('id', id).select().single())
+    const rawResult = await run(supabase.from('signs').update(prepareWrite('signs', data)).eq('id', id).select().single())
+    const result = decorateRecordIdentifiers('signs', rawResult)
     await logDiff(actingAgentId || data.agent_id || before?.agent_id, 'signs', id, before, result, result.addr || 'Sign')
     return result
   },

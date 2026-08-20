@@ -4,7 +4,7 @@ import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
-import { BOARD_OPTIONS } from '../lib/boardOptions'
+import { BOARD_OPTIONS, boardStatusCode } from '../lib/boardOptions'
 import { loadDashPrefs, saveDashPrefs } from '../lib/dashboardPrefs'
 import { WidgetContent } from '../components/SmartWidget'
 import { ViewingProvider } from '../context/ViewingContext'
@@ -34,28 +34,28 @@ const DISPLAYS = [
 function starterWidgets() {
   return [
     // key numbers (top row)
-    { i:'w_gci',     title:'Closed GCI (YTD)',  board:'deals', statuses:['Closed'], dateRange:'ytd', display:'number', metric:'gci', agentScope:'all', color:'#059669', x:0, y:0, w:3, h:2 },
-    { i:'w_pipegci', title:'Pipeline GCI',       board:'deals', statuses:['Negotiations','Offer Accapted','Under Shtar','Under Contract'], dateRange:'all', display:'number', metric:'gci', agentScope:'all', color:'#2563EB', x:3, y:0, w:3, h:2 },
-    { i:'w_closed',  title:'Deals Closed (YTD)', board:'deals', statuses:['Closed'], dateRange:'ytd', display:'number', agentScope:'all', color:'#059669', x:6, y:0, w:2, h:2 },
-    { i:'w_active',  title:'Active Deals',       board:'deals', statuses:['Negotiations','Offer Accapted','Under Shtar','Under Contract'], dateRange:'all', display:'number', agentScope:'all', color:'#2563EB', x:8, y:0, w:2, h:2 },
-    { i:'w_hot',     title:'Hot Leads',          board:'contacts', statuses:['Hot'], dateRange:'all', display:'number', agentScope:'all', color:'#D97706', x:10, y:0, w:2, h:2 },
+    { i:'w_gci',     title:'Closed GCI (YTD)',  board:'deals', statuses:['closed'], dateRange:'ytd', display:'number', metric:'gci', agentScope:'all', color:'#059669', x:0, y:0, w:3, h:2 },
+    { i:'w_pipegci', title:'Pipeline GCI',       board:'deals', statuses:['negotiations','offer_accepted','under_shtar','under_contract'], dateRange:'all', display:'number', metric:'gci', agentScope:'all', color:'#2563EB', x:3, y:0, w:3, h:2 },
+    { i:'w_closed',  title:'Deals Closed (YTD)', board:'deals', statuses:['closed'], dateRange:'ytd', display:'number', agentScope:'all', color:'#059669', x:6, y:0, w:2, h:2 },
+    { i:'w_active',  title:'Active Deals',       board:'deals', statuses:['negotiations','offer_accepted','under_shtar','under_contract'], dateRange:'all', display:'number', agentScope:'all', color:'#2563EB', x:8, y:0, w:2, h:2 },
+    { i:'w_hot',     title:'Hot Leads',          board:'contacts', statuses:['hot'], dateRange:'all', display:'number', agentScope:'all', color:'#D97706', x:10, y:0, w:2, h:2 },
     // second number row
-    { i:'w_listings',title:'Active Listings',    board:'listings', statuses:['Active'], dateRange:'all', display:'number', agentScope:'all', color:'#0891B2', x:0, y:2, w:3, h:2 },
+    { i:'w_listings',title:'Active Listings',    board:'listings', statuses:['active'], dateRange:'all', display:'number', agentScope:'all', color:'#0891B2', x:0, y:2, w:3, h:2 },
     { i:'w_offers',  title:'Open Offers',        board:'offers', statuses:[], dateRange:'all', display:'number', agentScope:'all', color:'#DB2777', x:3, y:2, w:3, h:2 },
-    { i:'w_gifts',   title:'Gifts Pending',      board:'gifts', statuses:['pending'], dateRange:'all', display:'number', agentScope:'all', color:'#DB2777', x:6, y:2, w:2, h:2 },
+    { i:'w_gifts',   title:'Gifts Pending',      board:'gifts', statuses:['under_contract','please_deliver','shipped'], dateRange:'all', display:'number', agentScope:'all', color:'#DB2777', x:6, y:2, w:2, h:2 },
     { i:'w_oh',      title:'Open Houses',        board:'open_houses', statuses:[], dateRange:'all', display:'number', agentScope:'all', color:'#EC4899', x:8, y:2, w:2, h:2 },
     { i:'w_calls',   title:'Calls (30d)',        board:'calls', statuses:[], dateRange:'month', display:'number', agentScope:'mine', color:'#0EA5E9', x:10, y:2, w:2, h:2 },
     // charts
     { i:'w_pipe',    title:'Pipeline by Stage',  board:'deals', statuses:[], dateRange:'all', display:'bar', groupBy:'stage', agentScope:'all', color:'#2563EB', x:0, y:4, w:6, h:3 },
-    { i:'w_leader',  title:'Leaderboard (Closed YTD)', board:'deals', statuses:['Closed'], dateRange:'ytd', display:'bar', groupBy:'agent_id', agentScope:'all', color:'#059669', x:6, y:4, w:6, h:3 },
+    { i:'w_leader',  title:'Leaderboard (Closed YTD)', board:'deals', statuses:['closed'], dateRange:'ytd', display:'bar', groupBy:'agent_id', agentScope:'all', color:'#059669', x:6, y:4, w:6, h:3 },
     // goals + trend
-    { i:'w_gcigoal', title:'My GCI Goal',         board:'deals', statuses:['Closed'], dateRange:'ytd', display:'goal', metric:'gci', target:250000, agentScope:'mine', color:'#059669', x:0, y:7, w:4, h:3 },
-    { i:'w_teamgoal',title:'Team GCI Goal',       board:'deals', statuses:['Closed'], dateRange:'ytd', display:'goal', metric:'gci', target:1000000, agentScope:'all', color:'#2563EB', x:4, y:7, w:4, h:3 },
-    { i:'w_trend',   title:'Monthly GCI (6 mo)',  board:'deals', statuses:['Closed'], dateRange:'all', display:'trend', metric:'gci', months:6, agentScope:'all', color:'#059669', x:8, y:7, w:4, h:3 },
+    { i:'w_gcigoal', title:'My GCI Goal',         board:'deals', statuses:['closed'], dateRange:'ytd', display:'goal', metric:'gci', target:250000, agentScope:'mine', color:'#059669', x:0, y:7, w:4, h:3 },
+    { i:'w_teamgoal',title:'Team GCI Goal',       board:'deals', statuses:['closed'], dateRange:'ytd', display:'goal', metric:'gci', target:1000000, agentScope:'all', color:'#2563EB', x:4, y:7, w:4, h:3 },
+    { i:'w_trend',   title:'Monthly GCI (6 mo)',  board:'deals', statuses:['closed'], dateRange:'all', display:'trend', metric:'gci', months:6, agentScope:'all', color:'#059669', x:8, y:7, w:4, h:3 },
     // working lists (per-agent essentials)
     { i:'w_mytasks', title:'My Open Tasks',      board:'tasks', statuses:['pending','in_progress'], dateRange:'all', display:'list', agentScope:'mine', color:'#DC2626', x:0, y:10, w:4, h:4 },
     { i:'w_appts',   title:'Upcoming Appointments', board:'appointments', statuses:[], dateRange:'all', display:'list', agentScope:'mine', color:'#059669', x:4, y:10, w:4, h:4 },
-    { i:'w_upclose', title:'Closing Soon',       board:'deals', statuses:['Under Contract','Under Shtar'], dateRange:'all', display:'list', agentScope:'all', color:'#D97706', x:8, y:10, w:4, h:4 },
+    { i:'w_upclose', title:'Closing Soon',       board:'deals', statuses:['under_contract','under_shtar'], dateRange:'all', display:'list', agentScope:'all', color:'#D97706', x:8, y:10, w:4, h:4 },
     // detail
     { i:'w_recent',  title:'Recent Contacts',    board:'contacts', statuses:[], dateRange:'month', display:'list', agentScope:'mine', color:'#7C3AED', x:0, y:14, w:4, h:4 },
     { i:'w_dealtable',title:'Deals \u2014 Detail', board:'deals', statuses:[], dateRange:'all', display:'table', columns:['addr','stage','gci','ao_date'], agentScope:'all', color:'#2563EB', x:4, y:14, w:8, h:4 },
@@ -200,7 +200,10 @@ function WidgetBuilder({ initial, onClose, onSave, isAdmin }) {
           <>
             <div style={L}>Filter — {boardDef.statusField} (pick any; empty = all)</div>
             <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-              {boardDef.statusOptions.map(s => <span key={s} onClick={()=>toggleArr('statuses', s)} style={chip(cfg.statuses?.includes(s))}>{s}</span>)}
+              {boardDef.statusOptions.map(option => {
+                const selected = (cfg.statuses || []).some(value => boardStatusCode(boardDef, value) === option.code)
+                return <span key={option.code} onClick={()=>set('statuses', selected ? (cfg.statuses||[]).filter(value=>boardStatusCode(boardDef,value)!==option.code) : [...(cfg.statuses||[]), option.code])} style={chip(selected)}>{option.label}</span>
+              })}
             </div>
           </>
         )}

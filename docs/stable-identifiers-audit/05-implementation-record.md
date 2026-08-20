@@ -218,3 +218,50 @@ mistaken for administrator-renamable business definitions.
 No SQL was run, no Supabase row was created or changed, no communication or webhook
 was sent, no external effect was enabled, and no Production deployment was performed
 for Package 6.
+
+## Final batch — System-wide stable identifier compatibility
+
+Status: **Implemented in code; additive secondary migration prepared but not executed**
+
+This final batch closes the remaining verified business-label identity gaps found by
+the repository census. The canonical catalog now covers deal CTC/progress/Command and
+commission states, signs, gift delivery and recipient types, call outcomes/direction,
+photography, campaigns, connector readiness, and send results. Browser and server
+record adapters resolve legacy aliases to immutable codes and expand database filters
+across every registered alias.
+
+Saved dashboard widgets now persist status/stage codes and resolve those codes to the
+current display label and compatible database values. Existing widgets that contain a
+legacy label remain readable. Automation trigger/action configuration likewise stores
+contact-status and deal-stage codes; the execution adapter converts the code to the
+current compatibility value only at the database boundary.
+
+Administrator-defined custom dropdown options now have immutable generated IDs/codes.
+Changing an option label no longer changes its stored value. Existing string options
+are normalized with deterministic legacy identities, and both custom-field renderers
+display the current label for the stored identity.
+
+Calls, gifts, signs, photography/service readiness, secondary deal workflows, and the
+remaining active-listing/closed-deal queries use the shared identifier adapters rather
+than business display strings. Stable-ID handling was also added to the server adapter
+used by Twilio callbacks; this does not enable Twilio or any external effect.
+
+The old Listings-page Monday sample sync is fail-closed. It cannot insert or match
+records by a partial address or agent display name. Re-enabling Monday sync requires a
+server-side connector that supplies connection, board/item/column/group/person IDs and
+persists them through `external_object_mappings`.
+
+`005_secondary_record_ids.sql` is an environment-aware, additive migration companion.
+It skips absent tables/legacy columns, adds nullable foreign keys only where supported,
+backfills exact registered aliases, records unresolved values, and installs dual-write
+triggers. Its verification query is read-only. Neither file has been executed.
+
+Behavioral tests cover catalog alias resolution, record decoration/writes, old and new
+saved dashboard filters, and custom-option rename safety. Static repository checks
+continue to distinguish administrator-renamable business definitions from protocol
+states, local UI state, provider payload values, and ordinary presentation copy; those
+technical strings are intentionally not moved into the business-label registry.
+
+No SQL was run, no Supabase row was created or changed, no communication or webhook
+was sent, no external effect was enabled, no branch was merged, and no deployment was
+performed in this final batch.

@@ -663,7 +663,7 @@ function FullPictureTab({ agents, deals, offers, listings, calls, contacts, task
         offerConv: aOffers.length ? Math.round(offersAccepted / aOffers.length * 100) : 0,
         listings: aListings.filter(l => listingStatusCode(l) === 'active').length,
         calls: aCalls.length,
-        callsAnswered: aCalls.filter(c => c.outcome === 'Connected').length,
+        callsAnswered: aCalls.filter(c => identifierCodeFor('calls', 'outcome', c) === 'connected').length,
         contacts: aContacts.length,
         hotLeads: aContacts.filter(c => ['hot', 'warm'].includes(contactStatusCode(c))).length,
         tasksDone: aTasks.filter(t => taskStatusCode(t) === 'done').length,

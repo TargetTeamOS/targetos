@@ -92,6 +92,22 @@ export function workflowStateOptions(workflowCode, index = identifierIndex) {
   }))
 }
 
+// Compatibility controls display the editable label while submitting the
+// current legacy storage value. New configuration records should persist the
+// immutable `code`; direct record forms use these options until the additive
+// identifier columns are deployed and made authoritative.
+export function workflowStorageOptions(workflowCode, index = identifierIndex) {
+  const workflow = getWorkflow(workflowCode, index)
+  return (workflow?.states || []).map(state => ({
+    id: state.code,
+    code: state.code,
+    value: state.storageValue || state.legacyValues?.[0] || state.code,
+    label: state.label,
+    color: state.color,
+    hex: state.color,
+  }))
+}
+
 export function legacyWorkflowValue(workflowCode, stateCode, index = identifierIndex) {
   const state = getWorkflowState(workflowCode, stateCode, index)
   return state?.storageValue || state?.legacyValues?.[0] || null
@@ -124,4 +140,32 @@ export function resolveChoiceOptionCode(choiceSetCode, value, index = identifier
 export function legacyChoiceValue(choiceSetCode, optionCode, index = identifierIndex) {
   const option = getChoiceOption(choiceSetCode, optionCode, index)
   return option?.storageValue || option?.legacyValues?.[0] || null
+}
+
+export function choiceOptions(choiceSetCode, index = identifierIndex) {
+  const choiceSet = index.choices.get(choiceSetCode)
+  return (choiceSet?.options || []).map(option => ({
+    id: option.code,
+    code: option.code,
+    value: option.code,
+    label: option.label,
+    color: option.color,
+    hex: option.color,
+  }))
+}
+
+export function choiceStorageOptions(choiceSetCode, index = identifierIndex) {
+  const choiceSet = index.choices.get(choiceSetCode)
+  return (choiceSet?.options || []).map(option => ({
+    id: option.code,
+    code: option.code,
+    value: option.storageValue || option.legacyValues?.[0] || option.code,
+    label: option.label,
+    color: option.color,
+    hex: option.color,
+  }))
+}
+
+export function displayChoiceOption(choiceSetCode, value, index = identifierIndex) {
+  return resolveChoiceOption(choiceSetCode, value, index)?.label || String(value ?? '')
 }

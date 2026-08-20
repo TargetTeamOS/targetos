@@ -3,6 +3,7 @@ const querystring = require('querystring')
 const { getSupabase, checkTwilioSignature, transcribeAudio } = require('./_lib/phone')
 const { notifyAgent } = require('./_lib/notify')
 const { externalEffectsEnabled } = require('./_lib/externalEffects')
+const { recordIdentifierMatches } = require('./_lib/recordIdentifiers')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 const OUTCOME = { completed:'Connected', busy:'No Answer', 'no-answer':'No Answer', failed:'No Answer', canceled:'No Answer' }
 
@@ -138,7 +139,7 @@ module.exports = async function handler(req, res) {
           if (recInsErr) console.error('[status] recording fallback insert failed:', recInsErr.message)
           else console.info('[status] recording arrived with no calls row for', CallSid, '— inserted fallback')
         }
-        if (upd.outcome === 'No Answer' && updatedCall?.agent_id) {
+        if (recordIdentifierMatches('calls', 'outcome', upd.outcome, 'no_answer') && updatedCall?.agent_id) {
           notifyAgent(supabase, updatedCall.agent_id, 'callMissed', {
             title: 'Missed call',
             body: (updatedCall.contact_name || updatedCall.from_number || 'Someone') + ' called and no one answered',

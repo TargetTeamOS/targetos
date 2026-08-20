@@ -16,12 +16,14 @@ import { useFeature } from '../lib/features'
 import { BulkEditBar } from '../components/BulkEditBar'
 import { GIFT_STATUSES, GIFT_LABELS, CLOSING_GIFT_STATUSES } from '../lib/constants'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
+import { identifierCodeFor } from '../lib/recordIdentifiers'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Confirm, StatCard
 } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const giftStatusCode = value => identifierCodeFor('gifts', 'status', value)
 
 const BLANK = {
   type: 'Under Contract', client_name: '', address: '', unit: '', phone: '',
@@ -104,15 +106,15 @@ export function Gifts() {
   }
 
   const filtered = gifts.filter(g => {
-    if (statusF && g.status !== statusF) return false
+    if (statusF && giftStatusCode(g) !== giftStatusCode(statusF)) return false
     if (search  && !matchSearch(g, search, ['client_name','address','tracking_number'])) return false
     return true
   })
 
-  const statusColor = (s) => GIFT_STATUSES.find(x => x.value === s)?.hex || '#c4c4c4'
+  const statusColor = value => GIFT_STATUSES.find(x => x.code === giftStatusCode(value))?.hex || '#c4c4c4'
 
-  const pending   = gifts.filter(g => !['Delivered'].includes(g.status)).length
-  const delivered = gifts.filter(g => g.status === 'Delivered').length
+  const pending   = gifts.filter(g => giftStatusCode(g) !== 'delivered').length
+  const delivered = gifts.filter(g => giftStatusCode(g) === 'delivered').length
 
   return (
     <div style={{ fontFamily: ff }}>
@@ -167,7 +169,7 @@ export function Gifts() {
                   <td style={{ padding: '11px 12px', fontWeight: 600, color: 'var(--text)' }}>{g.client_name}</td>
                   <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{g.address}{g.unit ? " #" + (g.unit) : ''}</td>
                   <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{g.phone || '—'}</td>
-                  <td style={{ padding: '11px 12px' }}><Pill label={g.status} color={statusColor(g.status)} /></td>
+                  <td style={{ padding: '11px 12px' }}><Pill label={g.status_label || g.status} color={statusColor(g)} /></td>
                   <td style={{ padding: '11px 12px' }}>{g.label ? <Pill label={g.label} color="#9d99b9" /> : '—'}</td>
                   <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{fmtDate(g.contract_date)}</td>
                   <td style={{ padding: '11px 12px', color: 'var(--muted)', fontSize: '12px' }}>{fmtDate(g.sending_date)}</td>

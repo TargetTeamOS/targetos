@@ -890,6 +890,1516 @@ join public.workflow_definitions w on w.id = s.workflow_id
 where w.organization_id is null and w.code = 'tc.phase' and s.code = 'closed'
   and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Closed')));
 
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'deal.ctc', 'deal', 'Contract-to-Close Stage'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'deal.ctc');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'inspection_scheduled', 'Inspection Scheduled', 'Inspection scheduled', '#007eb5', 0, 'open',
+  true, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.ctc'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'inspection_scheduled');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Inspection scheduled', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'inspection_scheduled'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Inspection scheduled')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'mortgage_process', 'Mortgage Process', 'Mortgage process', '#9d50dd', 1, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.ctc'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'mortgage_process');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Mortgage process', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'mortgage_process'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Mortgage process')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'appraisal_ordered', 'Appraisal Ordered', 'Appraisal ordered', '#579bfc', 2, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.ctc'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'appraisal_ordered');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Appraisal ordered', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'appraisal_ordered'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Appraisal ordered')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'conditional_approval', 'Conditional Approval', 'Conditional Approval', '#cab641', 3, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.ctc'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'conditional_approval');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Conditional Approval', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'conditional_approval'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Conditional Approval')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'clear_to_close', 'Clear to Close', 'Clear to close', '#00c875', 4, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.ctc'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'clear_to_close');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Clear to close', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'clear_to_close'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Clear to close')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Clear to Close', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'clear_to_close'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Clear to Close')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'closing_scheduled', 'Closing Scheduled', 'Closing scheduled', '#ffcb00', 5, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.ctc'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'closing_scheduled');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Closing scheduled', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'closing_scheduled'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Closing scheduled')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'closed', 'Closed', 'Closed', '#037f4c', 6, 'open',
+  false, true, false, true
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.ctc'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'closed');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Closed', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'closed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Closed')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'issue', 'Issue', 'Issue', '#fdab3d', 7, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.ctc'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'issue');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Issue', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'issue'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Issue')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'cancelled', 'Cancelled', 'Canceled', '#df2f4a', 8, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.ctc'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'cancelled');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Canceled', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'cancelled'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Canceled')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Cancelled', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.ctc' and s.code = 'cancelled'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Cancelled')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'deal.progress', 'deal', 'Deal Progress'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'deal.progress');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'under_contract', 'Under Contract', 'UC', null, 0, 'open',
+  true, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.progress'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'under_contract');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'UC', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.progress' and s.code = 'under_contract'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('UC')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'financing', 'Financing', 'Financing', null, 1, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.progress'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'financing');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Financing', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.progress' and s.code = 'financing'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Financing')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'clear_to_close', 'Clear to Close', 'Clear to Close', null, 2, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.progress'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'clear_to_close');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Clear to Close', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.progress' and s.code = 'clear_to_close'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Clear to Close')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'closed', 'Closed', 'Closed', null, 3, 'open',
+  false, true, false, true
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.progress'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'closed');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Closed', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.progress' and s.code = 'closed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Closed')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'accepted_offer', 'Accepted Offer', 'AO', null, 4, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'deal.progress'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'accepted_offer');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'AO', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'deal.progress' and s.code = 'accepted_offer'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('AO')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'command.lifecycle', 'deal', 'Command Document Status'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'command.lifecycle');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'contact_info_needed', 'Contact Info Needed', 'Contact Info needed', null, 0, 'open',
+  true, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'contact_info_needed');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Contact Info needed', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'contact_info_needed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Contact Info needed')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'working', 'Working On It', 'Working on it', null, 1, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'working');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Working on it', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'working'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Working on it')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'waiting_approval', 'Waiting For Approval', 'Waiting for approval', null, 2, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'waiting_approval');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Waiting for approval', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'waiting_approval'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Waiting for approval')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'sent_not_signed', 'Sent, Not Signed', 'Sent not signd', null, 3, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'sent_not_signed');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Sent not signd', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'sent_not_signed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Sent not signd')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Sent not signed', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'sent_not_signed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Sent not signed')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'done', 'Done', 'Done', null, 4, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'done');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Done', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'done'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Done')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'waiting_for_lead', 'Sent — Waiting For Lead', 'Sent - Watting for lead', null, 5, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'waiting_for_lead');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Sent - Watting for lead', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'waiting_for_lead'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Sent - Watting for lead')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Sent - Waiting for lead', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'waiting_for_lead'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Sent - Waiting for lead')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'stuck', 'Stuck', 'Stuck', null, 6, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'stuck');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Stuck', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'stuck'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Stuck')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'not_configured', 'No Command', 'No command', null, 7, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'not_configured');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'No command', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'not_configured'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('No command')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'waiting', 'Waiting', 'Waiting', null, 8, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'waiting');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Waiting', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'waiting'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Waiting')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'declined', 'Doesn''t Want To Sign', 'Doesn''t Want To Sign', null, 9, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'declined');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Doesn''t Want To Sign', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'declined'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Doesn''t Want To Sign')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Doesn’t Want To Sign', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'declined'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Doesn’t Want To Sign')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'client_notified', 'Client Notified To Sign', 'Client has been notified', null, 10, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'client_notified');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Client has been notified', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'client_notified'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Client has been notified')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'not_yet', 'Not Yet', 'Not Yet', null, 11, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'not_yet');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Not Yet', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'not_yet'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Not Yet')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'office_commission', 'Lazer Gets Commission', 'Lazer gets the commission', null, 12, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'office_commission');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Lazer gets the commission', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'office_commission'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Lazer gets the commission')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'reminder_1', 'Reminder To Sign 1', 'Reminder to sign 1', null, 13, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'reminder_1');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Reminder to sign 1', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'reminder_1'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Reminder to sign 1')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'reminder_2', 'Reminder To Sign 2', 'Reminder to sign 2', null, 14, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'reminder_2');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Reminder to sign 2', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'reminder_2'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Reminder to sign 2')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'reminder_3', 'Reminder To Sign 3', 'Reminder to sign 3', null, 15, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'command.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'reminder_3');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Reminder to sign 3', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'command.lifecycle' and s.code = 'reminder_3'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Reminder to sign 3')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'commission.collection', 'deal', 'Commission Collection Status'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'commission.collection');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'pending', 'Pending', 'pending', null, 0, 'open',
+  true, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'commission.collection'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'pending');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'pending', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'commission.collection' and s.code = 'pending'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('pending')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Pending', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'commission.collection' and s.code = 'pending'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Pending')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'partial', 'Partially Collected', 'partial', null, 1, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'commission.collection'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'partial');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'partial', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'commission.collection' and s.code = 'partial'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('partial')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Partial', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'commission.collection' and s.code = 'partial'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Partial')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'collected', 'Collected', 'collected', null, 2, 'open',
+  false, true, false, true
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'commission.collection'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'collected');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'collected', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'commission.collection' and s.code = 'collected'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('collected')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Collected', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'commission.collection' and s.code = 'collected'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Collected')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'sign.lifecycle', 'sign', 'Sign Order Status'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'sign.lifecycle');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'order_sent', 'Order Sent', 'Order Sent In', null, 0, 'open',
+  true, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'sign.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'order_sent');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Order Sent In', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'sign.lifecycle' and s.code = 'order_sent'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Order Sent In')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'on_property', 'On Property', 'On Property', null, 1, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'sign.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'on_property');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'On Property', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'sign.lifecycle' and s.code = 'on_property'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('On Property')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'missing', 'Missing or Broken', 'Missing - broken', null, 2, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'sign.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'missing');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Missing - broken', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'sign.lifecycle' and s.code = 'missing'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Missing - broken')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'removed', 'Removed', 'Took Away', null, 3, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'sign.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'removed');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Took Away', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'sign.lifecycle' and s.code = 'removed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Took Away')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'removal_ordered', 'Removal Order Sent', 'Removal Order Sent', null, 4, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'sign.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'removal_ordered');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Removal Order Sent', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'sign.lifecycle' and s.code = 'removal_ordered'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Removal Order Sent')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'auto_remove', 'Automatic Removal Ordered', 'Auto Remove Order', null, 5, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'sign.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'auto_remove');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Auto Remove Order', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'sign.lifecycle' and s.code = 'auto_remove'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Auto Remove Order')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'gift.lifecycle', 'gift', 'Gift Delivery Status'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'gift.lifecycle');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'under_contract', 'Under Contract', 'Under Contract', null, 0, 'open',
+  true, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'under_contract');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Under Contract', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.lifecycle' and s.code = 'under_contract'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Under Contract')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'please_deliver', 'Please Deliver', 'Please deliver', null, 1, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'please_deliver');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Please deliver', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.lifecycle' and s.code = 'please_deliver'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Please deliver')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'shipped', 'Shipped', 'Shipped out', null, 2, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'shipped');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Shipped out', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.lifecycle' and s.code = 'shipped'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Shipped out')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'delivered', 'Delivered', 'Delivered', null, 3, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'delivered');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Delivered', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.lifecycle' and s.code = 'delivered'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Delivered')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'delivery_failed', 'Couldn''t Deliver', 'Couldn''t Deliver', null, 4, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'delivery_failed');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Couldn''t Deliver', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.lifecycle' and s.code = 'delivery_failed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Couldn''t Deliver')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'too_late', 'Too Late', 'Too Late', null, 5, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'too_late');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Too Late', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.lifecycle' and s.code = 'too_late'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Too Late')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'do_not_send', 'Don''t Send', 'Don''t send', null, 6, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'do_not_send');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Don''t send', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.lifecycle' and s.code = 'do_not_send'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Don''t send')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'check_note', 'Check Note', 'Check Note', null, 7, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'check_note');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Check Note', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.lifecycle' and s.code = 'check_note'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Check Note')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'gift.closing', 'gift', 'Closing Gift Status'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'gift.closing');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'order_created', 'Order Created', 'Order Created', null, 0, 'open',
+  true, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.closing'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'order_created');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Order Created', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.closing' and s.code = 'order_created'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Order Created')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'sent', 'Sent', 'sent', null, 1, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.closing'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'sent');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'sent', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.closing' and s.code = 'sent'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('sent')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Sent', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.closing' and s.code = 'sent'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Sent')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'not_sending', 'Not Sending', 'Not Sending', null, 2, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'gift.closing'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'not_sending');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Not Sending', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'gift.closing' and s.code = 'not_sending'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Not Sending')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'call.outcome', 'call', 'Call Outcome'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'call.outcome');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'connected', 'Connected', 'Connected', null, 0, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'connected');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Connected', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'connected'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Connected')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Answered', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'connected'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Answered')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'completed', 'Completed', 'Completed', null, 1, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'completed');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Completed', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'completed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Completed')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'no_answer', 'No Answer', 'No Answer', null, 2, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'no_answer');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'No Answer', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'no_answer'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('No Answer')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'voicemail', 'Voicemail', 'Voicemail', null, 3, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'voicemail');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Voicemail', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'voicemail'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Voicemail')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'busy', 'Busy', 'Busy', null, 4, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'busy');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Busy', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'busy'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Busy')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'left_message', 'Left Message', 'Left Message', null, 5, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'left_message');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Left Message', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'left_message'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Left Message')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'callback_requested', 'Callback Requested', 'Callback Requested', null, 6, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'callback_requested');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Callback Requested', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'callback_requested'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Callback Requested')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'hot_lead', 'Hot Lead', 'Hot Lead', null, 7, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'hot_lead');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Hot Lead', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'hot_lead'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Hot Lead')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'appointment_set', 'Appointment Set', 'Appointment Set', null, 8, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'appointment_set');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Appointment Set', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'appointment_set'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Appointment Set')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'not_interested', 'Not Interested', 'Not Interested', null, 9, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'not_interested');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Not Interested', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'not_interested'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Not Interested')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'wrong_number', 'Wrong Number', 'Wrong Number', null, 10, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'wrong_number');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Wrong Number', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'wrong_number'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Wrong Number')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'auto_logged', 'Automatically Logged', 'Auto-logged', null, 11, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'call.outcome'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'auto_logged');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Auto-logged', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'call.outcome' and s.code = 'auto_logged'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Auto-logged')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'photography.lifecycle', 'photography', 'Photography Status'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'photography.lifecycle');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'needs_prep', 'Needs Preparation', 'Needs Prep', null, 0, 'open',
+  true, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'photography.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'needs_prep');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Needs Prep', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'photography.lifecycle' and s.code = 'needs_prep'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Needs Prep')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'ready', 'Ready', 'Ready', null, 1, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'photography.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'ready');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Ready', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'photography.lifecycle' and s.code = 'ready'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Ready')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'scheduled', 'Scheduled', 'Scheduled', null, 2, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'photography.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'scheduled');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Scheduled', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'photography.lifecycle' and s.code = 'scheduled'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Scheduled')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'shot', 'Photographed', 'Shot', null, 3, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'photography.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'shot');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Shot', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'photography.lifecycle' and s.code = 'shot'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Shot')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'received', 'Photos Received', 'Photos Received', null, 4, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'photography.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'received');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Photos Received', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'photography.lifecycle' and s.code = 'received'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Photos Received')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'campaign.lifecycle', 'campaign', 'Campaign Status'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'campaign.lifecycle');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'draft', 'Draft', 'draft', null, 0, 'open',
+  true, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'campaign.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'draft');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'draft', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'campaign.lifecycle' and s.code = 'draft'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('draft')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Draft', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'campaign.lifecycle' and s.code = 'draft'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Draft')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'sending', 'Sending', 'sending', null, 1, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'campaign.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'sending');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'sending', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'campaign.lifecycle' and s.code = 'sending'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('sending')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Sending', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'campaign.lifecycle' and s.code = 'sending'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Sending')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'sent', 'Sent', 'sent', null, 2, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'campaign.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'sent');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'sent', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'campaign.lifecycle' and s.code = 'sent'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('sent')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Sent', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'campaign.lifecycle' and s.code = 'sent'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Sent')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'failed', 'Failed', 'failed', null, 3, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'campaign.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'failed');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'failed', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'campaign.lifecycle' and s.code = 'failed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('failed')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Failed', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'campaign.lifecycle' and s.code = 'failed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Failed')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'connector.lifecycle', 'connector', 'Connector Status'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'connector.lifecycle');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'not_configured', 'Not Configured', 'not_configured', null, 0, 'open',
+  true, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'connector.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'not_configured');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'not_configured', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'connector.lifecycle' and s.code = 'not_configured'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('not_configured')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'needs_connect', 'Connection Required', 'needs_connect', null, 1, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'connector.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'needs_connect');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'needs_connect', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'connector.lifecycle' and s.code = 'needs_connect'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('needs_connect')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'pending', 'Pending', 'pending', null, 2, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'connector.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'pending');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'pending', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'connector.lifecycle' and s.code = 'pending'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('pending')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'connected', 'Connected', 'connected', null, 3, 'open',
+  false, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'connector.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'connected');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'connected', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'connector.lifecycle' and s.code = 'connected'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('connected')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'error', 'Error', 'error', null, 4, 'open',
+  false, false, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'connector.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'error');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'error', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'connector.lifecycle' and s.code = 'error'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('error')));
+
+insert into public.workflow_definitions(code, entity_type_code, label)
+select 'send.lifecycle', 'communication', 'Outbound Send Status'
+where not exists (select 1 from public.workflow_definitions where organization_id is null and code = 'send.lifecycle');
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'queued', 'Queued', 'Queued', null, 0, 'open',
+  true, false, true, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'send.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'queued');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Queued', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'send.lifecycle' and s.code = 'queued'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Queued')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'queued', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'send.lifecycle' and s.code = 'queued'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('queued')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'sent', 'Sent', 'Sent', null, 1, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'send.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'sent');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Sent', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'send.lifecycle' and s.code = 'sent'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Sent')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'sent', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'send.lifecycle' and s.code = 'sent'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('sent')));
+
+insert into public.workflow_states(
+  workflow_id, code, label, legacy_storage_value, color, sort_order, semantic_type,
+  is_initial, is_terminal, counts_as_active, counts_as_won
+)
+select w.id, 'failed', 'Failed', 'Failed', null, 2, 'open',
+  false, true, false, false
+from public.workflow_definitions w
+where w.organization_id is null and w.code = 'send.lifecycle'
+  and not exists (select 1 from public.workflow_states s where s.workflow_id = w.id and s.code = 'failed');
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'Failed', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'send.lifecycle' and s.code = 'failed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Failed')));
+
+insert into public.workflow_state_aliases(workflow_state_id, alias, source_code)
+select s.id, 'failed', 'legacy'
+from public.workflow_states s
+join public.workflow_definitions w on w.id = s.workflow_id
+where w.organization_id is null and w.code = 'send.lifecycle' and s.code = 'failed'
+  and not exists (select 1 from public.workflow_state_aliases a where a.workflow_state_id = s.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('failed')));
+
 insert into public.choice_sets(code, label)
 select 'task.priority', 'Task Priority'
 where not exists (select 1 from public.choice_sets where organization_id is null and code = 'task.priority');
@@ -1125,6 +2635,93 @@ from public.choice_options o
 join public.choice_sets c on c.id = o.choice_set_id
 where c.organization_id is null and c.code = 'contact.interest' and o.code = 'just_looking'
   and not exists (select 1 from public.choice_option_aliases a where a.choice_option_id = o.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Just Looking')));
+
+insert into public.choice_sets(code, label)
+select 'call.direction', 'Call Direction'
+where not exists (select 1 from public.choice_sets where organization_id is null and code = 'call.direction');
+
+insert into public.choice_options(choice_set_id, code, label, legacy_storage_value, color, sort_order)
+select c.id, 'inbound', 'Inbound', 'Inbound', null, 0
+from public.choice_sets c
+where c.organization_id is null and c.code = 'call.direction'
+  and not exists (select 1 from public.choice_options o where o.choice_set_id = c.id and o.code = 'inbound');
+
+insert into public.choice_option_aliases(choice_option_id, alias, source_code)
+select o.id, 'Inbound', 'legacy'
+from public.choice_options o
+join public.choice_sets c on c.id = o.choice_set_id
+where c.organization_id is null and c.code = 'call.direction' and o.code = 'inbound'
+  and not exists (select 1 from public.choice_option_aliases a where a.choice_option_id = o.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Inbound')));
+
+insert into public.choice_option_aliases(choice_option_id, alias, source_code)
+select o.id, 'inbound', 'legacy'
+from public.choice_options o
+join public.choice_sets c on c.id = o.choice_set_id
+where c.organization_id is null and c.code = 'call.direction' and o.code = 'inbound'
+  and not exists (select 1 from public.choice_option_aliases a where a.choice_option_id = o.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('inbound')));
+
+insert into public.choice_options(choice_set_id, code, label, legacy_storage_value, color, sort_order)
+select c.id, 'outbound', 'Outbound', 'Outbound', null, 1
+from public.choice_sets c
+where c.organization_id is null and c.code = 'call.direction'
+  and not exists (select 1 from public.choice_options o where o.choice_set_id = c.id and o.code = 'outbound');
+
+insert into public.choice_option_aliases(choice_option_id, alias, source_code)
+select o.id, 'Outbound', 'legacy'
+from public.choice_options o
+join public.choice_sets c on c.id = o.choice_set_id
+where c.organization_id is null and c.code = 'call.direction' and o.code = 'outbound'
+  and not exists (select 1 from public.choice_option_aliases a where a.choice_option_id = o.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Outbound')));
+
+insert into public.choice_option_aliases(choice_option_id, alias, source_code)
+select o.id, 'outbound', 'legacy'
+from public.choice_options o
+join public.choice_sets c on c.id = o.choice_set_id
+where c.organization_id is null and c.code = 'call.direction' and o.code = 'outbound'
+  and not exists (select 1 from public.choice_option_aliases a where a.choice_option_id = o.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('outbound')));
+
+insert into public.choice_sets(code, label)
+select 'gift.recipient_type', 'Gift Recipient Type'
+where not exists (select 1 from public.choice_sets where organization_id is null and code = 'gift.recipient_type');
+
+insert into public.choice_options(choice_set_id, code, label, legacy_storage_value, color, sort_order)
+select c.id, 'home_owner', 'Home Owner', 'Home Owner', null, 0
+from public.choice_sets c
+where c.organization_id is null and c.code = 'gift.recipient_type'
+  and not exists (select 1 from public.choice_options o where o.choice_set_id = c.id and o.code = 'home_owner');
+
+insert into public.choice_option_aliases(choice_option_id, alias, source_code)
+select o.id, 'Home Owner', 'legacy'
+from public.choice_options o
+join public.choice_sets c on c.id = o.choice_set_id
+where c.organization_id is null and c.code = 'gift.recipient_type' and o.code = 'home_owner'
+  and not exists (select 1 from public.choice_option_aliases a where a.choice_option_id = o.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Home Owner')));
+
+insert into public.choice_options(choice_set_id, code, label, legacy_storage_value, color, sort_order)
+select c.id, 'investor', 'Investor', 'Investor', null, 1
+from public.choice_sets c
+where c.organization_id is null and c.code = 'gift.recipient_type'
+  and not exists (select 1 from public.choice_options o where o.choice_set_id = c.id and o.code = 'investor');
+
+insert into public.choice_option_aliases(choice_option_id, alias, source_code)
+select o.id, 'Investor', 'legacy'
+from public.choice_options o
+join public.choice_sets c on c.id = o.choice_set_id
+where c.organization_id is null and c.code = 'gift.recipient_type' and o.code = 'investor'
+  and not exists (select 1 from public.choice_option_aliases a where a.choice_option_id = o.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Investor')));
+
+insert into public.choice_options(choice_set_id, code, label, legacy_storage_value, color, sort_order)
+select c.id, 'seller', 'Seller', 'Seller', null, 2
+from public.choice_sets c
+where c.organization_id is null and c.code = 'gift.recipient_type'
+  and not exists (select 1 from public.choice_options o where o.choice_set_id = c.id and o.code = 'seller');
+
+insert into public.choice_option_aliases(choice_option_id, alias, source_code)
+select o.id, 'Seller', 'legacy'
+from public.choice_options o
+join public.choice_sets c on c.id = o.choice_set_id
+where c.organization_id is null and c.code = 'gift.recipient_type' and o.code = 'seller'
+  and not exists (select 1 from public.choice_option_aliases a where a.choice_option_id = o.id and a.source_code = 'legacy' and lower(btrim(a.alias)) = lower(btrim('Seller')));
 
 insert into public.role_definitions(code, label)
 select 'admin', 'Administrator'

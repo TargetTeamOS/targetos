@@ -298,8 +298,8 @@ export function Analytics() {
     const closed = deals.filter(d => dealStageCode(d) === 'closed' && inRange(d.close_date || d.created_at, cur))
     const total = closed.reduce((s,d)=>s+parseNum(d.gci),0)
     const collected = closed.reduce((s,d)=>{
-      if (d.commission_status === 'collected') return s + parseNum(d.collected_gci ?? d.gci)
-      if (d.commission_status === 'partial')   return s + parseNum(d.collected_gci ?? 0)
+      if (identifierCodeFor('deals', 'commission_status', d) === 'collected') return s + parseNum(d.collected_gci ?? d.gci)
+      if (identifierCodeFor('deals', 'commission_status', d) === 'partial')   return s + parseNum(d.collected_gci ?? 0)
       return s
     }, 0)
     return { total, collected, outstanding: Math.max(0, total - collected) }

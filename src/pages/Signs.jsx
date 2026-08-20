@@ -19,6 +19,8 @@ import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { ImportExport } from '../components/ImportExport'
 import { useAgents } from '../lib/hooks'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
+import { workflowStorageOptions } from '../lib/identifiers'
+import { decorateRecordList, identifierCodeFor } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -35,14 +37,16 @@ const SIGNS_EXPORT_COLS = [
 // ── CONSTANTS ─────────────────────────────────────────────────────
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
 
-const ORDER_STATUS = [
-  { id: 'On Property',           color: '#10B981', bg: '#F0FDF4', icon: '✅' },
-  { id: 'Order Sent In',         color: '#F5A623', bg: '#FFF7ED', icon: '📤' },
-  { id: 'Missing - broken',      color: '#DC2626', bg: '#FEF2F2', icon: '⚠️' },
-  { id: 'Took Away',             color: '#6366F1', bg: '#EEF2FF', icon: '🏁' },
-  { id: 'Removal Order Sent',    color: '#8B5CF6', bg: '#F5F3FF', icon: '📋' },
-  { id: 'Auto Remove Order',     color: '#14B8A6', bg: '#F0FDFA', icon: '🔄' },
-]
+const ORDER_STATUS_VISUAL = {
+  on_property:     { color: '#10B981', bg: '#F0FDF4', icon: '✅' },
+  order_sent:      { color: '#F5A623', bg: '#FFF7ED', icon: '📤' },
+  missing:         { color: '#DC2626', bg: '#FEF2F2', icon: '⚠️' },
+  removed:         { color: '#6366F1', bg: '#EEF2FF', icon: '🏁' },
+  removal_ordered: { color: '#8B5CF6', bg: '#F5F3FF', icon: '📋' },
+  auto_remove:     { color: '#14B8A6', bg: '#F0FDFA', icon: '🔄' },
+}
+const ORDER_STATUS = workflowStorageOptions('sign.lifecycle').map(option => ({ ...option, ...ORDER_STATUS_VISUAL[option.code] }))
+const signStatusCode = value => identifierCodeFor('signs', 'order_status', value)
 
 const RIDER_STATUS = [
   { id: 'For Sale',       color: '#10B981', icon: '🏡' },
@@ -72,7 +76,7 @@ const BLANK = blankSign()
 
 // ── STATUS BADGE ──────────────────────────────────────────────────
 function StatusBadge({ status, size = 'sm' }) {
-  const def = ORDER_STATUS.find(s => s.id === status) || ORDER_STATUS[1]
+  const def = ORDER_STATUS.find(s => s.code === signStatusCode(status)) || ORDER_STATUS[0]
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -81,7 +85,7 @@ function StatusBadge({ status, size = 'sm' }) {
       color: def.color, fontSize: size === 'lg' ? '12px' : '10px', fontWeight: 700,
       border: "1px solid " + (def.color) + "33",
     }}>
-      {def.icon} {status}
+      {def.icon} {def.label || status}
     </span>
   )
 }
@@ -167,7 +171,7 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
 
     function placePin(sign, pos) {
       const isSelected = selectedIds.includes(sign.id)
-      const statusDef  = ORDER_STATUS.find(s => s.id === sign.order_status) || ORDER_STATUS[1]
+      const statusDef  = ORDER_STATUS.find(s => s.code === signStatusCode(sign)) || ORDER_STATUS[0]
       const marker = new window.google.maps.Marker({
         position: pos,
         map: mapObj.current,
@@ -187,7 +191,7 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
         const content = '<div style="font-family:Inter,sans-serif;padding:4px;max-width:240px">'
           + '<div style="font-weight:700;font-size:13px;color:#1E293B;margin-bottom:6px">' + sign.addr + '</div>'
           + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
-          + '<span style="font-size:11px;padding:2px 7px;border-radius:12px;background:' + statusDef.bg + ';color:' + statusDef.color + ';font-weight:700">' + statusDef.icon + ' ' + (sign.order_status || 'Unknown') + '</span>'
+          + '<span style="font-size:11px;padding:2px 7px;border-radius:12px;background:' + statusDef.bg + ';color:' + statusDef.color + ';font-weight:700">' + statusDef.icon + ' ' + (statusDef.label || 'Unknown') + '</span>'
           + (sign.lower_rider ? '<span style="font-size:11px;padding:2px 7px;border-radius:12px;background:#F0F9FF;color:#0369A1;font-weight:700">' + sign.lower_rider + '</span>' : '')
           + '</div>'
           + (sign.upper_rider ? '<div style="font-size:11px;color:#64748B">Upper rider: ' + sign.upper_rider + '</div>' : '')
@@ -345,7 +349,7 @@ function SignModal({ sign, agents, onSave, onClose, saving }) {
               <Lbl>Order Status</Lbl>
               <select value={f.order_status || ''} onChange={e => set('order_status', e.target.value)}
                 style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff }}>
-                {ORDER_STATUS.map(s => <option key={s.id} value={s.id}>{s.icon} {s.id}</option>)}
+                {ORDER_STATUS.map(s => <option key={s.code} value={s.value}>{s.icon} {s.label}</option>)}
               </select>
             </div>
             <div>
@@ -525,7 +529,7 @@ export function Signs() {
       const { data } = await supabase.from('signs')
         .select('*, agents(id,name,color)')
         .order('created_at', { ascending: false })
-      setSigns(data || [])
+      setSigns(decorateRecordList('signs', data || []))
     } catch(e) { toast('Could not load signs: ' + e.message, '#DC2626') }
     finally { setLoading(false) }
   }
@@ -534,10 +538,10 @@ export function Signs() {
   const filtered = signs.filter(s => {
     if (search && !matchSearch(s, search, ['addr', 'lower_rider', 'upper_rider'])) return false
     if (agentFilter && s.agent_id !== agentFilter) return false
-    if (groupFilter === 'on_property') return s.order_status === 'On Property'
-    if (groupFilter === 'order_sent')  return s.order_status === 'Order Sent In'
-    if (groupFilter === 'missing')     return s.order_status === 'Missing - broken'
-    if (groupFilter === 'removed')     return ['Took Away','Removal Order Sent','Auto Remove Order'].includes(s.order_status)
+    if (groupFilter === 'on_property') return signStatusCode(s) === 'on_property'
+    if (groupFilter === 'order_sent')  return signStatusCode(s) === 'order_sent'
+    if (groupFilter === 'missing')     return signStatusCode(s) === 'missing'
+    if (groupFilter === 'removed')     return ['removed','removal_ordered','auto_remove'].includes(signStatusCode(s))
     return true
   })
 
@@ -577,13 +581,13 @@ export function Signs() {
   }
 
   // Stats
-  const onProperty = signs.filter(s => s.order_status === 'On Property').length
-  const orderSent  = signs.filter(s => s.order_status === 'Order Sent In').length
-  const missing    = signs.filter(s => s.order_status === 'Missing - broken').length
+  const onProperty = signs.filter(s => signStatusCode(s) === 'on_property').length
+  const orderSent  = signs.filter(s => signStatusCode(s) === 'order_sent').length
+  const missing    = signs.filter(s => signStatusCode(s) === 'missing').length
 
   // Map always shows ALL signs that are NOT removed — independent of list filter
-  const REMOVED = ['Took Away', 'Removal Order Sent', 'Auto Remove Order']
-  const mapSigns = signs.filter(s => !REMOVED.includes(s.order_status))
+  const REMOVED = ['removed', 'removal_ordered', 'auto_remove']
+  const mapSigns = signs.filter(s => !REMOVED.includes(signStatusCode(s)))
 
   return (
     <div style={{ fontFamily: ff, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)' }}>
@@ -626,7 +630,7 @@ export function Signs() {
             { label: 'On Property',   value: onProperty,                       color: '#10B981' },
             { label: 'Order Sent',    value: orderSent,                        color: '#F5A623' },
             { label: 'Missing',       value: missing,                          color: '#DC2626' },
-            { label: 'Removed',       value: signs.filter(s => ['Took Away','Removal Order Sent'].includes(s.order_status)).length, color: '#8B5CF6' },
+            { label: 'Removed',       value: signs.filter(s => ['removed','removal_ordered'].includes(signStatusCode(s))).length, color: '#8B5CF6' },
           ].map(s => (
             <div key={s.label} onClick={() => setGroupFilter(s.label.toLowerCase().replace(' ','_').replace('order_sent', 'order_sent'))}
               style={{ background: 'var(--panel)', borderRadius: '8px', border: '1px solid var(--border)', padding: '10px 12px', borderLeft: "3px solid " + (s.color), cursor: 'pointer' }}>

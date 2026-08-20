@@ -13,6 +13,10 @@ export const RECORD_IDENTIFIER_FIELDS = Object.freeze({
   ],
   deals: [
     { kind: 'workflow', definitionCode: 'deal.lifecycle', legacyField: 'stage', idField: 'stage_id' },
+    { kind: 'workflow', definitionCode: 'deal.ctc', legacyField: 'ctc', idField: 'ctc_id' },
+    { kind: 'workflow', definitionCode: 'deal.progress', legacyField: 'deal_status', idField: 'deal_status_id' },
+    { kind: 'workflow', definitionCode: 'command.lifecycle', legacyField: 'command', idField: 'command_status_id', codeField: 'command_code' },
+    { kind: 'workflow', definitionCode: 'commission.collection', legacyField: 'commission_status', idField: 'commission_status_id' },
   ],
   listings: [
     { kind: 'workflow', definitionCode: 'listing.lifecycle', legacyField: 'status', idField: 'status_id' },
@@ -27,6 +31,30 @@ export const RECORD_IDENTIFIER_FIELDS = Object.freeze({
   ],
   offers: [
     { kind: 'workflow', definitionCode: 'offer.lifecycle', legacyField: 'status', idField: 'status_id' },
+  ],
+  gifts: [
+    { kind: 'workflow', definitionCode: 'gift.lifecycle', legacyField: 'status', idField: 'status_id' },
+    { kind: 'workflow', definitionCode: 'gift.closing', legacyField: 'closing_gift_status', idField: 'closing_gift_status_id' },
+    { kind: 'choice', definitionCode: 'gift.recipient_type', legacyField: 'label', idField: 'recipient_type_id', codeField: 'recipient_type_code', labelField: 'recipient_type_label' },
+  ],
+  signs: [
+    { kind: 'workflow', definitionCode: 'sign.lifecycle', legacyField: 'order_status', idField: 'order_status_id' },
+  ],
+  calls: [
+    { kind: 'workflow', definitionCode: 'call.outcome', legacyField: 'outcome', idField: 'outcome_id' },
+    { kind: 'choice', definitionCode: 'call.direction', legacyField: 'direction', idField: 'direction_id' },
+  ],
+  tc_photography: [
+    { kind: 'workflow', definitionCode: 'photography.lifecycle', legacyField: 'status', idField: 'status_id' },
+  ],
+  email_campaigns: [
+    { kind: 'workflow', definitionCode: 'campaign.lifecycle', legacyField: 'status', idField: 'status_id' },
+  ],
+  integrations: [
+    { kind: 'workflow', definitionCode: 'connector.lifecycle', legacyField: 'status', idField: 'status_id' },
+  ],
+  integration_accounts: [
+    { kind: 'workflow', definitionCode: 'connector.lifecycle', legacyField: 'status', idField: 'status_id' },
   ],
   tc_deals: [
     { kind: 'workflow', definitionCode: 'tc.phase', legacyField: 'tc_phase', idField: 'phase_id', codeField: 'phase_code', labelField: 'phase_label' },
@@ -178,7 +206,7 @@ export function legacyRecordIdentifierValue(tableName, fieldName, value) {
 export function recordIdentifierFilterValues(tableName, fieldName, value) {
   const config = (RECORD_IDENTIFIER_FIELDS[tableName] || []).find(item => item.legacyField === fieldName)
   if (!config || value == null || config.passthroughValues?.includes(value)) return [value]
-  const directCode = byCode(config, value)
-  if (!directCode) return [value]
-  return [...new Set([storageValue(config, value), ...(directCode.legacyValues || [])].filter(Boolean))]
+  const definition = resolve(config, value)
+  if (!definition) return [value]
+  return [...new Set([storageValue(config, definition.code), ...(definition.legacyValues || [])].filter(Boolean))]
 }

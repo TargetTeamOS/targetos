@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabase'
 import { invalidateCache } from '../lib/automationDispatcher'
 import { fmtDateTime, fmtDate } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm } from '../components/UI'
+import { displayWorkflowState, resolveWorkflowStateCode, workflowStateOptions } from '../lib/identifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -163,8 +164,10 @@ const ACTION_GROUPS = [
 
 const ACTION_LIST = ACTION_GROUPS.flatMap(g => g.items)
 
-const CONTACT_STATUSES = ['New', 'Hot', 'Warm', 'Cold', 'Active', 'Nurturing', 'Under Contract', 'Closed', 'Unresponsive']
-const DEAL_STAGES      = ['Negotiations', 'Offer Accapted', 'Under Shtar', 'Under Contract', 'Closed', 'Deal Fell Through']
+const CONTACT_STATUSES = workflowStateOptions('contact.lifecycle')
+const DEAL_STAGES      = workflowStateOptions('deal.lifecycle')
+const contactStatusLabel = value => value ? displayWorkflowState('contact.lifecycle', value) : ''
+const dealStageLabel = value => value ? displayWorkflowState('deal.lifecycle', value) : ''
 
 const BLANK = {
   name:           '',
@@ -303,7 +306,7 @@ function SentenceBuilder({ form, onChange, agents }) {
       <SentenceLine prefix="When">
         <span style={{ position: 'relative' }}>
           <Chip
-            label={trigger ? trigger.sentence.replace(/{days}/g, form.trigger_config?.days || 7).replace(/{status}/g, form.trigger_config?.to_status || 'any status') : 'this happens'}
+            label={trigger ? trigger.sentence.replace(/{days}/g, form.trigger_config?.days || 7).replace(/{status}/g, contactStatusLabel(form.trigger_config?.to_status) || 'any status') : 'this happens'}
             dim={!trigger}
             onClick={() => setOpenPicker(openPicker === 'trigger' ? null : 'trigger')}
           />
@@ -342,12 +345,12 @@ function SentenceBuilder({ form, onChange, agents }) {
             <span style={{ color: '#64748B', fontSize: '14px' }}>to</span>
             <span style={{ position: 'relative' }}>
               <Chip
-                label={form.trigger_config?.to_status || 'any status'}
+                label={contactStatusLabel(form.trigger_config?.to_status) || 'any status'}
                 onClick={() => setOpenPicker(openPicker === 'trigger_status' ? null : 'trigger_status')}
               />
               {openPicker === 'trigger_status' && (
                 <Dropdown
-                  options={[{ label: null, items: [{ id: '', label: 'Any status', icon: '🔄' }, ...CONTACT_STATUSES.map(s => ({ id: s, label: s, icon: '🏷' }))] }]}
+                  options={[{ label: null, items: [{ id: '', label: 'Any status', icon: '🔄' }, ...CONTACT_STATUSES.map(s => ({ id: s.code, label: s.label, icon: '🏷' }))] }]}
                   onSelect={s => { onChange({ ...form, trigger_config: { ...form.trigger_config, to_status: s.id } }); setOpenPicker(null) }}
                   onClose={() => setOpenPicker(null)}
                   width={220}
@@ -437,13 +440,13 @@ function SentenceBuilder({ form, onChange, agents }) {
                   <span style={{ color: '#64748B', fontSize: '14px' }}>to</span>
                   <span style={{ position: 'relative' }}>
                     <Chip
-                      label={cfg.status || 'select status'}
+                      label={contactStatusLabel(cfg.status) || 'select status'}
                       dim={!cfg.status}
                       onClick={() => setOpenPicker(openPicker === (pickerKey) + "_status" ? null : (pickerKey) + "_status")}
                     />
                     {openPicker === (pickerKey) + "_status" && (
                       <Dropdown
-                        options={[{ label: null, items: CONTACT_STATUSES.map(s => ({ id: s, label: s, icon: '🏷' })) }]}
+                        options={[{ label: null, items: CONTACT_STATUSES.map(s => ({ id: s.code, label: s.label, icon: '🏷' })) }]}
                         onSelect={s => { updateActionConfig(idx, 'status', s.id); setOpenPicker(null) }}
                         onClose={() => setOpenPicker(null)}
                         width={200}
@@ -458,13 +461,13 @@ function SentenceBuilder({ form, onChange, agents }) {
                   <span style={{ color: '#64748B', fontSize: '14px' }}>to</span>
                   <span style={{ position: 'relative' }}>
                     <Chip
-                      label={cfg.stage || 'select stage'}
+                      label={dealStageLabel(cfg.stage) || 'select stage'}
                       dim={!cfg.stage}
                       onClick={() => setOpenPicker(openPicker === (pickerKey) + "_stage" ? null : (pickerKey) + "_stage")}
                     />
                     {openPicker === (pickerKey) + "_stage" && (
                       <Dropdown
-                        options={[{ label: null, items: DEAL_STAGES.map(s => ({ id: s, label: s, icon: '📊' })) }]}
+                        options={[{ label: null, items: DEAL_STAGES.map(s => ({ id: s.code, label: s.label, icon: '📊' })) }]}
                         onSelect={s => { updateActionConfig(idx, 'stage', s.id); setOpenPicker(null) }}
                         onClose={() => setOpenPicker(null)}
                         width={220}
@@ -704,8 +707,8 @@ function CardBuilder({ form, onChange, agents }) {
                 <div><Lbl>Subject</Lbl><Inp value={cfg.subject} onChange={v => updateAction(idx,'subject',v)} placeholder="New lead: {{contact_name}}" /></div>
                 <div><Lbl>Message</Lbl><textarea value={cfg.body||''} onChange={e => updateAction(idx,'body',e.target.value)} placeholder="Automated email body..." rows={2} style={{ width:'100%', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:'13px', fontFamily:ff, resize:'vertical', boxSizing:'border-box' }} /></div>
               </div>}
-              {action.type === 'update_contact_status' && <div><Lbl>Set Status To</Lbl><Sel value={cfg.status} onChange={v => updateAction(idx,'status',v)} options={CONTACT_STATUSES} placeholder="Select status..." /></div>}
-              {action.type === 'update_deal_stage'    && <div><Lbl>Set Stage To</Lbl><Sel value={cfg.stage} onChange={v => updateAction(idx,'stage',v)} options={DEAL_STAGES} placeholder="Select stage..." /></div>}
+              {action.type === 'update_contact_status' && <div><Lbl>Set Status To</Lbl><Sel value={resolveWorkflowStateCode('contact.lifecycle', cfg.status) || cfg.status} onChange={v => updateAction(idx,'status',v)} options={CONTACT_STATUSES} placeholder="Select status..." /></div>}
+              {action.type === 'update_deal_stage'    && <div><Lbl>Set Stage To</Lbl><Sel value={resolveWorkflowStateCode('deal.lifecycle', cfg.stage) || cfg.stage} onChange={v => updateAction(idx,'stage',v)} options={DEAL_STAGES} placeholder="Select stage..." /></div>}
               {action.type === 'assign_agent'          && <div><Lbl>Assign To Agent</Lbl><Sel value={cfg.agent_id} onChange={v => updateAction(idx,'agent_id',v)} options={agents.map(a => ({ value:a.id, label:a.name }))} placeholder="Select agent..." /></div>}
               {action.type === 'add_tag'               && <div><Lbl>Tag</Lbl><Inp value={cfg.tag} onChange={v => updateAction(idx,'tag',v)} placeholder="e.g. hot-lead" /></div>}
               {action.type === 'remove_tag'            && <div><Lbl>Tag to Remove</Lbl><Inp value={cfg.tag} onChange={v => updateAction(idx,'tag',v)} placeholder="e.g. hot-lead" /></div>}

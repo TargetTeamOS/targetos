@@ -70,7 +70,7 @@ describe('record identifier compatibility', () => {
     expect(identifierCodeFor('offers', 'status', 'AO')).toBe('accepted')
     expect(legacyRecordIdentifierValue('deals', 'stage', 'offer_accepted')).toBe('Offer Accepted')
     expect(recordIdentifierFilterValues('deals', 'stage', 'offer_accepted')).toEqual(['Offer Accepted', 'Offer Accapted'])
-    expect(recordIdentifierFilterValues('deals', 'stage', 'Offer Accapted')).toEqual(['Offer Accapted'])
+    expect(recordIdentifierFilterValues('deals', 'stage', 'Offer Accapted')).toEqual(['Offer Accepted', 'Offer Accapted'])
   })
 
   it('keeps secondary dashboards and workflow transitions independent of legacy labels', () => {
@@ -93,5 +93,22 @@ describe('record identifier compatibility', () => {
       status_code: 'done',
       priority_code: 'high',
     })).toEqual({ status: 'done', priority: 'high' })
+  })
+
+  it('normalizes secondary CRM workflow records and writes', () => {
+    expect(identifierCodeFor('calls', 'outcome', 'Answered')).toBe('connected')
+    expect(identifierCodeFor('calls', 'direction', 'Outbound')).toBe('outbound')
+    expect(identifierCodeFor('signs', 'order_status', 'On Property')).toBe('on_property')
+    expect(identifierCodeFor('gifts', 'status', 'Please deliver')).toBe('please_deliver')
+    expect(identifierCodeFor('tc_photography', 'status', 'needs_prep')).toBe('needs_prep')
+    expect(prepareRecordIdentifierDatabaseWrite('calls', {
+      outcome_code: 'connected', direction_code: 'outbound',
+    })).toEqual({ outcome: 'Connected', direction: 'outbound' })
+  })
+
+  it('normalizes secondary deal workflow fields independently of their labels', () => {
+    expect(identifierCodeFor('deals', 'ctc', 'Clear to Close')).toBe('clear_to_close')
+    expect(identifierCodeFor('deals', 'deal_status', 'AO')).toBe('accepted_offer')
+    expect(identifierCodeFor('deals', 'command', 'Working on it')).toBe('working')
   })
 })

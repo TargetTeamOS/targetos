@@ -10,7 +10,13 @@ const {
 
 const RECORD_IDENTIFIERS = Object.freeze({
   contacts: { status: { kind: 'workflow', definition: 'contact.lifecycle' } },
-  deals: { stage: { kind: 'workflow', definition: 'deal.lifecycle' } },
+  deals: {
+    stage: { kind: 'workflow', definition: 'deal.lifecycle' },
+    ctc: { kind: 'workflow', definition: 'deal.ctc' },
+    deal_status: { kind: 'workflow', definition: 'deal.progress' },
+    command: { kind: 'workflow', definition: 'command.lifecycle' },
+    commission_status: { kind: 'workflow', definition: 'commission.collection' },
+  },
   listings: { status: { kind: 'workflow', definition: 'listing.lifecycle' } },
   offers: { status: { kind: 'workflow', definition: 'offer.lifecycle' } },
   tasks: {
@@ -19,6 +25,20 @@ const RECORD_IDENTIFIERS = Object.freeze({
   },
   tc_tasks: { status: { kind: 'workflow', definition: 'task.lifecycle' } },
   tc_deals: { tc_phase: { kind: 'workflow', definition: 'tc.phase' } },
+  gifts: {
+    status: { kind: 'workflow', definition: 'gift.lifecycle' },
+    closing_gift_status: { kind: 'workflow', definition: 'gift.closing' },
+    label: { kind: 'choice', definition: 'gift.recipient_type' },
+  },
+  signs: { order_status: { kind: 'workflow', definition: 'sign.lifecycle' } },
+  calls: {
+    outcome: { kind: 'workflow', definition: 'call.outcome' },
+    direction: { kind: 'choice', definition: 'call.direction' },
+  },
+  tc_photography: { status: { kind: 'workflow', definition: 'photography.lifecycle' } },
+  email_campaigns: { status: { kind: 'workflow', definition: 'campaign.lifecycle' } },
+  integrations: { status: { kind: 'workflow', definition: 'connector.lifecycle' } },
+  integration_accounts: { status: { kind: 'workflow', definition: 'connector.lifecycle' } },
 })
 
 function definitionFor(table, field) {

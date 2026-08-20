@@ -7,6 +7,7 @@
 import { supabase } from './supabase'
 import { TRIGGERS, CONDITIONS, ACTIONS } from './automationConstants'
 import { automationConditionEquals } from './automationIdentifiers'
+import { legacyRecordIdentifierValue } from './recordIdentifiers'
 
 // ── VARIABLE INTERPOLATION ────────────────────────────────────────
 // Replaces {{variable}} in text with actual values from context
@@ -157,14 +158,14 @@ async function executeAction(action, context, triggerData, agents) {
 
     case 'update_contact_status': {
       if (triggerData.contact_id) {
-        await supabase.from('contacts').update({ status: cfg.status, updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
+        await supabase.from('contacts').update({ status: legacyRecordIdentifierValue('contacts', 'status', cfg.status), updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
       }
       break
     }
 
     case 'update_deal_stage': {
       if (triggerData.deal_id) {
-        await supabase.from('deals').update({ stage: cfg.stage, updated_at: new Date().toISOString() }).eq('id', triggerData.deal_id)
+        await supabase.from('deals').update({ stage: legacyRecordIdentifierValue('deals', 'stage', cfg.stage), updated_at: new Date().toISOString() }).eq('id', triggerData.deal_id)
       }
       break
     }

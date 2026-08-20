@@ -648,6 +648,13 @@ export function Listings() {
 
   // Sync from Monday.com via API
   async function syncFromMonday() {
+    // Fail closed until a server-side connector supplies immutable Monday board,
+    // item, column, group, and person IDs through external_object_mappings.
+    // The historical sample importer below is intentionally unreachable because
+    // names and partial addresses are not safe synchronization identities.
+    toast('Monday.com sync needs the ID-mapped connector before it can run.', '#D97706')
+    return
+    /* c8 ignore start -- retained temporarily as migration reference only */
     setSyncing(true)
     toast('Syncing from Monday.com...')
     try {
@@ -694,6 +701,7 @@ export function Listings() {
       toast(`✅ Synced — ${inserted} new, ${skipped} already existed` + (failed ? `, ${failed} failed` : ''))
     } catch(e) { toast('Sync failed: ' + e.message, '#DC2626') }
     finally { setSyncing(false) }
+    /* c8 ignore stop */
   }
 
   async function saveListing(form) {
