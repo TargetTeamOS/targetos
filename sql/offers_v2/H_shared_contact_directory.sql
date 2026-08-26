@@ -48,8 +48,21 @@
 -- `type` to the client at all), that would need a dedicated RPC
 -- instead of a view -- flagged here as a possible follow-up, not
 -- assumed.
-create or replace view public.contacts_directory
-with (security_invoker = true) as
+--
+-- security_invoker is deliberately OMITTED (defaults to false, the
+-- long-standing Postgres view behavior): this view must run with the
+-- VIEW OWNER's privileges, NOT the querying agent's own row-level
+-- permissions -- otherwise it inherits the tightened contacts_select
+-- policy below and a regular agent querying this "shared directory"
+-- would see only their OWN contacts through it too, identical to
+-- querying the base table directly. That defeats the entire point of
+-- this migration and was a genuine bug in an earlier version of this
+-- file (caught live: agents reported "still not able to see all
+-- contacts" after applying it). The safety boundary here is the fixed,
+-- narrow column list (5 safe columns, enforced structurally -- no
+-- query against this view can ever return more), not row-level
+-- filtering -- that split is intentional, not an oversight.
+create or replace view public.contacts_directory as
 select
   id,
   first_name,
