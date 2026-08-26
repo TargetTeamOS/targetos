@@ -297,6 +297,17 @@ export function Contacts() {
   const [sourceF,     setSourceF]     = useState('')
   const [typeF,       setTypeF]       = useState('')
   const [contactedF,  setContactedF]  = useState('')
+  // "Browse everyone's contacts" — off by default for regular agents
+  // (preserves the existing "my contacts" primary view, which is where
+  // most day-to-day CRM work happens and where the rich filters/sort/
+  // bulk-edit below still fully apply). When on, also pulls in every
+  // OTHER agent's contacts via the safe contacts_directory view
+  // (name/phone/email only, sql/offers_v2/H_shared_contact_directory.sql)
+  // so two agents can find and reference the same shared person.
+  // Admin/canManage already see everyone's full contacts regardless —
+  // this toggle only matters for a regular agent.
+  const [showAllAgents, setShowAllAgents] = useState(false)
+  const [directoryOnly, setDirectoryOnly] = useState([]) // contacts NOT owned by me, safe fields only
 
   // Load contacts with server-side pagination
   async function loadContacts(offset = 0, append = false) {
@@ -320,6 +331,31 @@ export function Contacts() {
       setTotalCount(count || 0)
       setContacts(prev => append ? [...prev, ...(data||[])] : (data||[]))
       setPageOffset(offset)
+
+      // Regular agent with "browse everyone's contacts" on: also pull
+      // in every OTHER agent's contacts via the safe directory view.
+      // Deliberately a SEPARATE fetch/list, not merged into `contacts`
+      // above — those rows have only name/phone/email and must never
+      // be treated as full contact records (no status/tags/notes exist
+      // for them to show, and they must not be bulk-editable or
+      // deletable from here).
+      if (agentFilter && showAllAgents) {
+        let dq = supabase.from('contacts_directory').select('id,first_name,last_name,phone,email,type').limit(500)
+        if (typeF) dq = dq.eq('type', typeF)
+        if (search && search.length >= 2) {
+          dq = dq.or('first_name.ilike.%'+search+'%,last_name.ilike.%'+search+'%,phone.ilike.%'+search+'%,email.ilike.%'+search+'%')
+        }
+        const { data: dirRows, error: dirErr } = await dq
+        if (dirErr) {
+          console.warn('contacts_directory not available yet (run sql/offers_v2/H_shared_contact_directory.sql):', dirErr.message)
+          setDirectoryOnly([])
+        } else {
+          const ownedIds = new Set((data || []).map(c => c.id))
+          setDirectoryOnly((dirRows || []).filter(c => !ownedIds.has(c.id)))
+        }
+      } else {
+        setDirectoryOnly([])
+      }
     } catch(e) { console.error('Load contacts:', e.message) }
     finally { if (offset === 0) setLoading(false) }
   }
@@ -330,7 +366,7 @@ export function Contacts() {
   useEffect(() => {
     const t = setTimeout(() => loadContacts(0), search ? 300 : 0)
     return () => clearTimeout(t)
-  }, [search, statusF, typeF, agentF, agent?.id])
+  }, [search, statusF, typeF, agentF, agent?.id, showAllAgents])
 
   async function add(data)          { const r = await db.contacts.create(data); await refetch(); return r }
   async function update(id, data)   { const r = await db.contacts.update(id, data, agent?.id); await refetch(); return r }
@@ -605,6 +641,15 @@ export function Contacts() {
         totalCount={totalCount} filteredCount={filtered.length}
       />
 
+      {/* "Browse everyone's contacts" toggle — regular agents only;
+          admin/canManage already see every contact in full above. */}
+      {!(isAdmin || canManage) && (
+        <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, fontSize:12.5, color:'var(--muted)', cursor:'pointer' }}>
+          <input type="checkbox" checked={showAllAgents} onChange={e => setShowAllAgents(e.target.checked)} />
+          Also show contacts assigned to other agents (name, phone, and email only)
+        </label>
+      )}
+
       {/* Selection bar */}
       {selectedIds.length > 0 && (
         <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 14px', background:'#1B2B4B', borderRadius:'10px', marginBottom:'10px', flexWrap:'wrap' }}>
@@ -794,6 +839,35 @@ export function Contacts() {
               </React.Fragment>
             )
           })}
+        </div>
+      )}
+
+      {/* Other agents' contacts — shared directory, limited view. A
+          deliberately separate, simple, read-only section, not merged
+          into the rich grid/list above: this data has ONLY name/phone/
+          email (sql/offers_v2/H_shared_contact_directory.sql's view),
+          no status/source/tags/notes exist for it to show, and it must
+          never be selectable for bulk-edit or delete. */}
+      {!loading && showAllAgents && directoryOnly.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+            <div style={{ fontSize:12, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>
+              Other Agents' Contacts — Limited View
+            </div>
+            <div style={{ fontSize:11, color:'var(--muted)' }}>({directoryOnly.length})</div>
+          </div>
+          <div style={{ fontSize:11.5, color:'var(--muted)', marginBottom:10 }}>
+            Name, phone, and email only — notes, status, and activity for these contacts are visible only to the assigned agent, admin, or a permitted secretary.
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(240px, 1fr))', gap:10 }}>
+            {directoryOnly.map(c => (
+              <div key={c.id} style={{ background:'var(--dim)', borderRadius:'var(--radius)', border:'1px dashed var(--border)', padding:'12px 14px' }}>
+                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:4 }}>{c.first_name} {c.last_name}</div>
+                <div style={{ fontSize:12, color:'var(--muted)' }}>{c.phone || '—'}</div>
+                <div style={{ fontSize:12, color:'var(--muted)' }}>{c.email || '—'}</div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
