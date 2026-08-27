@@ -39,7 +39,7 @@ describe('Contacts board — "browse everyone\'s contacts" shared-directory sect
     const block = src.slice(sectionStart, sectionEnd)
     // The directoryOnly.map(...) render body specifically
     const mapStart = block.indexOf('directoryOnly.map')
-    const mapBlock = block.slice(mapStart, mapStart + 500)
+    const mapBlock = block.slice(mapStart, mapStart + 900)
     expect(mapBlock).toMatch(/c\.first_name/)
     expect(mapBlock).toMatch(/c\.phone/)
     expect(mapBlock).toMatch(/c\.email/)
@@ -61,5 +61,36 @@ describe('Contacts board — "browse everyone\'s contacts" shared-directory sect
 
   it('defaults to off — the existing "my contacts" primary view is unchanged unless the agent opts in', () => {
     expect(src).toMatch(/useState\(false\)\s*\/\/ contacts NOT owned by me|const \[showAllAgents, setShowAllAgents\] = useState\(false\)/)
+  })
+})
+
+describe('Contacts board — "Start Working This Lead" claims an independent per-agent branch', () => {
+  it('startWorkingLead creates a NEW contact scoped to the current agent, copying only the safe parent fields (name/phone/email/type), never inventing notes/status history', () => {
+    const marker = 'async function startWorkingLead(dirContact)'
+    const start = src.indexOf(marker)
+    expect(start).toBeGreaterThan(-1)
+    const block = src.slice(start, start + 900)
+    expect(block).toMatch(/agent_id:\s*agent\?\.id/)
+    expect(block).toMatch(/first_name:\s*dirContact\.first_name/)
+    expect(block).toMatch(/status:\s*'New'/)
+  })
+
+  it('if the current agent already has their own branch for this same person, it opens that one instead of creating a confusing duplicate', () => {
+    const marker = 'async function startWorkingLead(dirContact)'
+    const start = src.indexOf(marker)
+    const block = src.slice(start, start + 900)
+    expect(block).toMatch(/e\.existingContact/)
+  })
+
+  it('requires explicit confirmation before claiming a lead — not a single accidental click', () => {
+    const marker = 'open={!!confirmClaim}'
+    expect(src.indexOf(marker)).toBeGreaterThan(-1)
+  })
+
+  it('the claim button lives inside the directory-only (limited view) section, not the main authorized-contacts list', () => {
+    const sectionStart = src.indexOf("Other Agents' Contacts")
+    const sectionEnd = src.indexOf('Detail / Add Panel', sectionStart)
+    const block = src.slice(sectionStart, sectionEnd)
+    expect(block).toMatch(/Start Working This Lead/)
   })
 })

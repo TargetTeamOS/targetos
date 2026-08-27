@@ -380,6 +380,7 @@ export function Contacts() {
   const [saving,      setSaving]      = useState(false)
   const [tab,         setTab]         = useState('info')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmClaim,  setConfirmClaim]  = useState(null) // directory contact pending confirmation
   const [selectedIds,  setSelectedIds]  = useState([])
   const [bulkDel,      setBulkDel]      = useState(false)
   const canBulkEdit = useFeature('bulk_edit', agent)
@@ -413,6 +414,52 @@ export function Contacts() {
     setForm({ ...BLANK, agent_id: agent?.id })
     setShowAdd(true)
     navigate('/contacts/new', { replace: true })
+  }
+
+  const [claiming, setClaiming] = useState(null) // directory contact id currently being claimed
+
+  /**
+   * "Start working this lead" — a directory-only card (someone else's
+   * contact, shown to me as name/phone/email only) has no data of
+   * mine to open, because none exists yet: I've never worked this
+   * person before. This creates MY OWN independent contact record —
+   * same parent identity (name/phone/email), but a completely
+   * separate row, with my own notes/status/tags/timeline from here on,
+   * invisible to the other agent(s) who also work with this same
+   * person. No schema change needed for this: `contacts` already
+   * supports one row per agent relationship via agent_id, and the
+   * existing duplicate-detection in db.contacts.create() already
+   * scopes itself correctly post-migration-H — RLS silently excludes
+   * other agents' full rows from that check, so it naturally finds
+   * only MY OWN prior branch for this same person (if I already
+   * started one) rather than a stranger's, and creates a fresh
+   * independent one otherwise.
+   */
+  async function startWorkingLead(dirContact) {
+    setClaiming(dirContact.id)
+    try {
+      const created = await add({
+        first_name: dirContact.first_name,
+        last_name:  dirContact.last_name || '',
+        phone:      dirContact.phone || null,
+        email:      dirContact.email || null,
+        type:       dirContact.type || 'Client',
+        status:     'New',
+        source:     'Shared Directory',
+        agent_id:   agent?.id,
+      })
+      toast('✅ Now working this lead — your own private notes and timeline start here')
+      navigate('/contacts/' + created.id)
+    } catch(e) {
+      if (e.existingContact) {
+        // I already have my own branch for this same person — open
+        // it rather than creating a confusing duplicate.
+        toast('You already have your own record for this contact — opening it', '#F5A623')
+        navigate('/contacts/' + e.existingContact.id)
+      } else {
+        toast('Could not start working this lead: ' + e.message, '#DC2626')
+      }
+    } finally { setClaiming(null) }
   }
 
   function closePanel() {
@@ -863,8 +910,13 @@ export function Contacts() {
             {directoryOnly.map(c => (
               <div key={c.id} style={{ background:'var(--dim)', borderRadius:'var(--radius)', border:'1px dashed var(--border)', padding:'12px 14px' }}>
                 <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:4 }}>{c.first_name} {c.last_name}</div>
-                <div style={{ fontSize:12, color:'var(--muted)' }}>{c.phone || '—'}</div>
-                <div style={{ fontSize:12, color:'var(--muted)' }}>{c.email || '—'}</div>
+                <div style={{ fontSize:12, color:'var(--muted)', marginBottom:8 }}>{c.phone || '—'}</div>
+                <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>{c.email || '—'}</div>
+                <Btn variant="secondary" style={{ width:'100%', fontSize:11.5 }}
+                  loading={claiming === c.id}
+                  onClick={() => setConfirmClaim(c)}>
+                  Start Working This Lead
+                </Btn>
               </div>
             ))}
           </div>
@@ -994,6 +1046,13 @@ export function Contacts() {
         message={'Delete ' + (selected?.first_name || '') + ' ' + (selected?.last_name || '') + '? This cannot be undone.'}
         onConfirm={deleteContact}
         onCancel={() => setConfirmDelete(false)}
+      />
+
+      <Confirm
+        open={!!confirmClaim}
+        message={confirmClaim ? 'Start working ' + confirmClaim.first_name + ' ' + (confirmClaim.last_name || '') + '? This creates your own separate contact record for this person — your notes, status, and activity are private to you and will not be visible to or affect any other agent already working with them.' : ''}
+        onConfirm={() => { const c = confirmClaim; setConfirmClaim(null); startWorkingLead(c) }}
+        onCancel={() => setConfirmClaim(null)}
       />
     </div>
   )
