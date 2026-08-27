@@ -87,11 +87,22 @@ async function handler(req, res) {
     const subject = String(body.subject || '').trim() || '(no subject)'
     const html = body.html || null
     const text = body.text || ''
+    const parseAddrs = value => (Array.isArray(value) ? value : String(value || '').split(','))
+      .map(address => address.trim()).filter(Boolean)
+    const cc = parseAddrs(body.cc)
+    const bcc = parseAddrs(body.bcc)
+    const attachments = Array.isArray(body.attachments) ? body.attachments.filter(attachment => attachment?.base64) : []
 
-    if (hasHeaderInjection(to) || hasHeaderInjection(subject) || hasHeaderInjection(body.from)) {
+    if (hasHeaderInjection(to) || hasHeaderInjection(subject) || hasHeaderInjection(body.from)
+      || [...cc, ...bcc].some(hasHeaderInjection)
+      || attachments.some(attachment => hasHeaderInjection(attachment.filename) || hasHeaderInjection(attachment.contentType))) {
       return json(res, 400, { error: 'invalid characters in email headers' })
     }
-    if (!isValidEmail(to)) return json(res, 400, { error: 'invalid recipient address' })
+    if (!isValidEmail(to) || [...cc, ...bcc].some(address => !isValidEmail(address))) {
+      return json(res, 400, { error: 'invalid recipient address' })
+    }
+    let providerMessageId = null
+    let providerThreadId = null
 
     const agent = identity.agent
     if (body.contact_id != null && body.contact_id !== '') {
@@ -131,6 +142,14 @@ async function handler(req, res) {
             subject,
             body: { contentType: html ? 'HTML' : 'Text', content: html || text },
             toRecipients: [{ emailAddress: { address: to } }],
+            ...(cc.length ? { ccRecipients: cc.map(a => ({ emailAddress: { address: a } })) } : {}),
+            ...(bcc.length ? { bccRecipients: bcc.map(a => ({ emailAddress: { address: a } })) } : {}),
+            ...(attachments.length ? { attachments: attachments.map(a => ({
+              '@odata.type': '#microsoft.graph.fileAttachment',
+              name: a.filename || 'attachment',
+              contentType: a.contentType || 'application/octet-stream',
+              contentBytes: a.base64,
+            })) } : {}),
           },
           saveToSentItems: true,
         }),
@@ -143,15 +162,51 @@ async function handler(req, res) {
       try { await deps.logEvent('outlook', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: agent.id }, true) }
       catch (error) { console.warn('[connector-send] send-event log failed: ' + sanitize(error.message)) }
     } else {
-      const mime = [
-        'To: ' + to,
-        'Subject: ' + subject,
-        'MIME-Version: 1.0',
-        html ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8',
-        '',
-        html || text,
-      ].join('\r\n')
-      const raw = Buffer.from(mime).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      let raw
+      if (attachments.length) {
+        const boundary = 'targetos_' + Date.now().toString(36)
+        const parts = [
+          'To: ' + to,
+          ...(cc.length ? ['Cc: ' + cc.join(', ')] : []),
+          ...(bcc.length ? ['Bcc: ' + bcc.join(', ')] : []),
+          'Subject: ' + subject,
+          'MIME-Version: 1.0',
+          'Content-Type: multipart/mixed; boundary="' + boundary + '"',
+          '',
+          '--' + boundary,
+          html ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8',
+          '',
+          html || text,
+          '',
+        ]
+        for (const attachment of attachments) {
+          parts.push(
+            '--' + boundary,
+            'Content-Type: ' + (attachment.contentType || 'application/octet-stream'),
+            'Content-Transfer-Encoding: base64',
+            'Content-Disposition: attachment; filename="' + (attachment.filename || 'attachment') + '"',
+            '',
+            attachment.base64,
+            '',
+          )
+        }
+        parts.push('--' + boundary + '--')
+        raw = Buffer.from(parts.join('\r\n')).toString('base64')
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      } else {
+        const mimeLines = [
+          'To: ' + to,
+          ...(cc.length ? ['Cc: ' + cc.join(', ')] : []),
+          ...(bcc.length ? ['Bcc: ' + bcc.join(', ')] : []),
+          'Subject: ' + subject,
+          'MIME-Version: 1.0',
+          html ? 'Content-Type: text/html; charset=UTF-8' : 'Content-Type: text/plain; charset=UTF-8',
+          '',
+          html || text,
+        ]
+        raw = Buffer.from(mimeLines.join('\r\n')).toString('base64')
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      }
       const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -162,14 +217,32 @@ async function handler(req, res) {
         await deps.logEvent('google', 'out', 'email.send', { to, subject, error: detail }, false)
         return json(res, 502, { error: 'Gmail send failed: ' + detail })
       }
-      await deps.logEvent('google', 'out', 'email.send', { to, subject, from: fromAccount, agent_id: agent.id }, true)
+      const sentData = await response.json().catch(() => ({}))
+      providerMessageId = sentData.id || null
+      providerThreadId = sentData.threadId || null
+      try {
+        await deps.logEvent('google', 'out', 'email.send', {
+          to, subject, from: fromAccount, agent_id: agent.id, message_id: providerMessageId,
+        }, true)
+      } catch (error) {
+        console.warn('[connector-send] send-event log failed: ' + sanitize(error.message))
+      }
     }
 
     if (body.contact_id != null && body.contact_id !== '') {
       try { await deps.insertContactTimeline({ contactId: body.contact_id, provider, subject, to, fromAccount }) }
       catch (error) { console.warn('[connector-send] timeline log failed: ' + sanitize(error.message)) }
     }
-    return json(res, 200, { ok: true, provider, from: fromAccount })
+    return json(res, 200, {
+      ok: true,
+      provider,
+      from: fromAccount,
+      cc,
+      bcc,
+      attachments: attachments.map(attachment => attachment.filename),
+      providerMessageId,
+      providerThreadId,
+    })
   } catch (error) {
     console.error('[connector-send] ' + sanitize(error.message))
     return json(res, 500, { error: 'send failed' })

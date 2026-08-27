@@ -118,18 +118,19 @@ function resolveClosingDaysPrintValue(data) {
   return { ok: true, text: qualifier + ' ' + days }
 }
 
+// The template already prints a static "$" (and, on the Mortgage
+// Amount % line, a static "%") immediately before each of these
+// fields — confirmed by rendering an actual sample and visually
+// inspecting it: without this fix, the field printed its OWN "$" too,
+// producing a literal "$$900,000" with the digits touching the
+// preprinted symbol with zero gap. Fixed by never re-printing the
+// symbol the page already has, and adding a small leading space so
+// the number doesn't visually collide with it.
 function fmtMoney(v) {
   if (!v) return ''
   const n = parseFloat(String(v).replace(/[$,%]/g,''))
   if (isNaN(n)) return ''
-  return '$' + n.toLocaleString('en-US', { maximumFractionDigits:0 })
-}
-
-function fmtDeposit(v, type) {
-  if (!v) return ''
-  const n = parseFloat(String(v).replace(/[$,%]/g,''))
-  if (isNaN(n)) return ''
-  return type === 'percent' ? n + '%' : fmtMoney(n)
+  return ' ' + n.toLocaleString('en-US', { maximumFractionDigits:0 })
 }
 
 function datePart(s, p) {
@@ -215,11 +216,11 @@ async function buildOfferPdf(data) {
 
   // ── FINANCIALS ── (server-recomputed values, not raw client input) ──
   set('purchase_price', fmtMoney(financials.values.purchase_price))
-  set('deposit',        fmtDeposit(financials.values.deposit, data.deposit_type))
+  set('deposit',        fmtMoney(financials.values.deposit_dollar_amount))
   set('concession',     fmtMoney(data.sellers_concession))
   set('net_to_seller',  fmtMoney(financials.values.net_to_seller))
   set('mortgage_amt',   fmtMoney(financials.values.mortgage_amount))
-  set('mortgage_pct',   financials.values.mortgage_pct ? String(financials.values.mortgage_pct) + '%' : '')
+  set('mortgage_pct',   financials.values.mortgage_pct ? ' ' + String(financials.values.mortgage_pct) : '')
   set('balance',        fmtMoney(financials.values.balance_at_closing))
   set('closing_days',   closingResolved.text)
 

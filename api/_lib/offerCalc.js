@@ -110,6 +110,14 @@ function computeOfferFinancials(f) {
     values: {
       purchase_price:      priceCents ? centsToDollarString(priceCents) : f.purchase_price,
       deposit:             f.deposit_type === 'percent' ? f.deposit : (depositCents ? centsToDollarString(depositCents) : f.deposit),
+      // Always the real dollar amount regardless of input mode — the
+      // printed PDF's "Deposit upon contract" line only ever has a
+      // static "$", never a "%", so anything printing that line must
+      // use this, not `deposit` above (which deliberately echoes back
+      // the raw percent while the CRM's own input is in percent mode,
+      // for that field's own bidirectional-typing UX — a real, separate
+      // concern from what belongs on the printed page).
+      deposit_dollar_amount: centsToDollarString(depositCents),
       deposit_derived_pct: basisPointsToPercentString(depositBp),
       mortgage_amount:     isCash ? '0' : (f.mortgage_type === 'percent' ? centsToDollarString(mortgageCents) : f.mortgage_amount),
       mortgage_pct:        isCash ? '0' : (f.mortgage_type === 'percent' ? f.mortgage_pct : basisPointsToPercentString(mortgageBp)),

@@ -56,7 +56,7 @@ const BLANK = {
   buyer_phone:'', buyer_email:'', buyer_address:'',
   // Seller
   seller_name:'', co_seller_name:'', seller_contact_id:'', seller_email:'',
-  seller_agent_name:'', seller_agent_company:'', sellers_agent_email:'',
+  seller_agent_name:'', seller_agent_company:'', sellers_agent_email:'', sellers_agent_phone:'',
   // Financials
   purchase_price:'', deposit:'', sellers_concession:'',
   net_to_seller:'', mortgage_amount:'', mortgage_pct:'',
@@ -436,31 +436,39 @@ export function OffersV2() {
   }
 
   // ── OUTSIDE SELLER'S AGENT SELECT (create-or-link, mirrors selectBuyer) ──
-  async function selectSellersAgent(contact) {
+  async function selectSellersAgent(contact, extra) {
     if (!contact) {
       if (!form.sellers_agent_name?.trim()) return
+      const phone = extra?.phone || form.sellers_agent_phone || null
+      const email = extra?.email || form.sellers_agent_email || null
       try {
         const [first, ...rest] = form.sellers_agent_name.trim().split(' ')
         const data = await db.contacts.create({
           first_name: first, last_name: rest.join(' '),
+          phone, email,
           company: form.seller_agent_company || null,
           status: 'Active', source: 'Offer Form', type: 'Agent',
           agent_id: agent?.id || null,
           created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         })
         if (data) {
-          set('sellers_agent_contact_id', data.id)
+          setForm(f => ({ ...f, sellers_agent_contact_id: data.id, sellers_agent_email: email || f.sellers_agent_email }))
           toast('✅ Outside agent saved to Contacts')
         }
       } catch(e) {
         if (e.existingContact) {
           // Existing contact may already carry another valid role (e.g. was
           // previously entered as a Buyer) — link to it without overwriting
-          // that classification, per spec.
+          // that classification, per spec. This is a resolved success
+          // path, not a failure — do not re-throw.
           toast('Already exists as ' + (e.existingContact.first_name||'') + ' ' + (e.existingContact.last_name||'') + ' — linking to that contact', '#F5A623')
           set('sellers_agent_contact_id', e.existingContact.id)
         } else {
+          // Genuine failure — re-throw so the ContactSearch inline
+          // create-form can show the exact error itself ("never
+          // silently fail"), not just a toast that might go unnoticed.
           toast('Failed to save outside agent contact: ' + e.message, '#DC2626')
+          throw e
         }
       }
     } else {
@@ -470,28 +478,30 @@ export function OffersV2() {
         sellers_agent_contact_id: contact.id,
         seller_agent_company:     contact.company || f.seller_agent_company,
         sellers_agent_email:      contact.email || f.sellers_agent_email,
+        sellers_agent_phone:      contact.phone || f.sellers_agent_phone,
       }))
     }
   }
 
   // ── PURCHASER ATTORNEY SELECT ──────────────────────────────────
   // ── PURCHASER ATTORNEY SELECT (create-or-link, same pattern as Buyer) ──
-  async function selectPurchaserAttorney(contact) {
+  async function selectPurchaserAttorney(contact, extra) {
     if (!contact) {
       if (!form.purchaser_attorney_name?.trim()) return
+      const phone = extra?.phone || form.purchaser_attorney_tel   || null
+      const email = extra?.email || form.purchaser_attorney_email || null
       try {
         const [first, ...rest] = form.purchaser_attorney_name.trim().split(' ')
         const data = await db.contacts.create({
           first_name: first, last_name: rest.join(' '),
-          phone: form.purchaser_attorney_tel || null,
-          email: form.purchaser_attorney_email || null,
+          phone, email,
           address: form.purchaser_attorney_address || null,
           status: 'Active', source: 'Offer Form', type: 'Attorney',
           agent_id: (form.buyers_agent_id || form.agent_id || agent?.id) || null,
           created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         })
         if (data) {
-          set('purchaser_attorney_contact_id', data.id)
+          setForm(f => ({ ...f, purchaser_attorney_contact_id: data.id, purchaser_attorney_tel: phone || f.purchaser_attorney_tel, purchaser_attorney_email: email || f.purchaser_attorney_email }))
           toast('✅ Purchaser\u2019s Attorney saved to Contacts')
         }
       } catch(e) {
@@ -500,6 +510,7 @@ export function OffersV2() {
           set('purchaser_attorney_contact_id', e.existingContact.id)
         } else {
           toast('Failed to save attorney contact: ' + e.message, '#DC2626')
+          throw e
         }
       }
     } else {
@@ -515,22 +526,23 @@ export function OffersV2() {
   }
 
   // ── SELLER ATTORNEY SELECT (create-or-link, same pattern as Buyer) ──
-  async function selectSellerAttorney(contact) {
+  async function selectSellerAttorney(contact, extra) {
     if (!contact) {
       if (!form.seller_attorney_name?.trim()) return
+      const phone = extra?.phone || form.seller_attorney_tel   || null
+      const email = extra?.email || form.seller_attorney_email || null
       try {
         const [first, ...rest] = form.seller_attorney_name.trim().split(' ')
         const data = await db.contacts.create({
           first_name: first, last_name: rest.join(' '),
-          phone: form.seller_attorney_tel || null,
-          email: form.seller_attorney_email || null,
+          phone, email,
           address: form.seller_attorney_address || null,
           status: 'Active', source: 'Offer Form', type: 'Attorney',
           agent_id: (form.agent_id || form.buyers_agent_id || agent?.id) || null,
           created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         })
         if (data) {
-          set('seller_attorney_contact_id', data.id)
+          setForm(f => ({ ...f, seller_attorney_contact_id: data.id, seller_attorney_tel: phone || f.seller_attorney_tel, seller_attorney_email: email || f.seller_attorney_email }))
           toast('✅ Seller\u2019s Attorney saved to Contacts')
         }
       } catch(e) {
@@ -539,6 +551,7 @@ export function OffersV2() {
           set('seller_attorney_contact_id', e.existingContact.id)
         } else {
           toast('Failed to save attorney contact: ' + e.message, '#DC2626')
+          throw e
         }
       }
     } else {
@@ -780,6 +793,8 @@ export function OffersV2() {
         side:                'Buyer',
         representing_side:       form.representing_side       || 'Buyer',
         sellers_agent_contact_id: form.sellers_agent_contact_id || null,
+        sellers_agent_email:      form.sellers_agent_email      || null,
+        sellers_agent_phone:      form.sellers_agent_phone      || null,
         buyers_agent_contact_id:  form.buyers_agent_contact_id  || null,
         mortgage_type:            form.mortgage_type            || 'dollar',
         is_cash_deal:             !!form.is_cash_deal,

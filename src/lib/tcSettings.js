@@ -89,6 +89,14 @@ export const DEFAULT_TC_SETTINGS = {
   ],
   task_templates: DEFAULT_PHASE_TASKS,
   commission_rate_percent: 1.5,
+  communication_templates: [
+    { id: 'photo_ready',     name: 'Photography scheduled',    subject: 'Photography scheduled for {addr}',
+      body: 'Hi,\n\nJust confirming photography is scheduled for {addr}. Please make sure the property is ready by then.\n\nThanks!' },
+    { id: 'ao_signed',       name: 'Accepted offer signed',    subject: 'Signed offer — {addr}',
+      body: 'Hi,\n\nAttached is the fully signed accepted offer for {addr}. Please review and let us know if you have any questions.\n\nThanks!' },
+    { id: 'closing_reminder',name: 'Closing reminder',         subject: 'Closing coming up — {addr}',
+      body: 'Hi,\n\nJust a reminder that closing for {addr} is coming up. Please let us know if you need anything before then.\n\nThanks!' },
+  ],
 }
 
 let _cache = null

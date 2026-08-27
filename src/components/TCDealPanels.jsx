@@ -20,6 +20,7 @@ import { decorateRecordIdentifiers, identifierCodeFor, prepareRecordIdentifierDa
 const inp = { width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, background: 'var(--bg)', color: 'var(--text)' }
 const sectionTitle = { fontWeight: 700, fontSize: 13, color: 'var(--text)', margin: '14px 0 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
 const rowStyle = { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }
+const lifecycleBtn = { padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }
 
 // ── PEOPLE ─────────────────────────────────────────────────────────
 export function PeoplePanel({ dealId, agentId, roles = [], toast }) {
@@ -152,13 +153,15 @@ export function DocumentsPanel({ dealId, statuses = [], toast }) {
 const PHOTO_STATUSES = workflowStorageOptions('photography.lifecycle')
 const photoStatusCode = value => identifierCodeFor('tc_photography', 'status', value)
 
-export function PhotographyPanel({ deal, services = [], checklist = [], toast }) {
+export function PhotographyPanel({ deal, services = [], checklist = [], toast, isAdmin = false }) {
   const [order, setOrder]   = useState(null)   // existing tc_photography row or null
   const [loadingP, setLoadingP] = useState(true)
   const [photographer, setPhotographer] = useState(null)
   const [saving, setSaving] = useState(false)
   const [weatherGate, setWeatherGate] = useState(null)   // { forecast, when } when confirming bad weather
   const [checkingWx, setCheckingWx] = useState(false)
+  const [correctionsNote, setCorrectionsNote] = useState('')
+  const [showCorrections, setShowCorrections] = useState(false)
 
   async function load() {
     setLoadingP(true)
@@ -185,7 +188,16 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
     return decorated
   }
 
+  const isLocked = !!order?.locked
+
   async function patch(fields, opts = {}) {
+    // Locked records can only be changed by an admin explicitly
+    // unlocking first (see toggleLock) -- this blocks accidental edits
+    // to a finalized record while still allowing a real correction.
+    if (isLocked && !opts.allowWhileLocked) {
+      toast?.('This record is locked. An admin must unlock it before editing.', '#F5A623')
+      return
+    }
     setSaving(true)
     try {
       const row = await ensureOrder()
@@ -233,6 +245,41 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
     } finally { setSaving(false) }
   }
 
+  async function toggleLock() {
+    if (isLocked && !isAdmin) {
+      toast?.('Only an admin can unlock this record', '#DC2626')
+      return
+    }
+    await patch({ locked: !isLocked }, { allowWhileLocked: true })
+    toast?.(isLocked ? '🔓 Record unlocked' : '🔒 Record locked')
+  }
+
+  async function markShot() {
+    await patch({ status: 'Shot' })
+  }
+
+  async function markMediaReceived() {
+    await patch({ status: 'Media Received', media_received_at: new Date().toISOString() })
+    toast?.('📬 Media received — logged')
+  }
+
+  async function requestCorrections() {
+    if (!correctionsNote.trim()) { toast?.('Add a note explaining what needs correcting', '#F5A623'); return }
+    await patch({
+      status: 'Corrections Requested',
+      corrections_note: correctionsNote.trim(),
+      corrections_requested_at: new Date().toISOString(),
+    })
+    setShowCorrections(false)
+    setCorrectionsNote('')
+    toast?.('🛠 Corrections requested')
+  }
+
+  async function approveMedia() {
+    await patch({ status: 'Approved', approved_at: new Date().toISOString() })
+    toast?.('✅ Final media approved')
+  }
+
   if (loadingP) return <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 14 }}>Loading photography…</div>
 
   const selected = order?.services || []
@@ -274,10 +321,24 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
     <div>
       <div style={sectionTitle}>
         <span>📸 Photography</span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
-          {order?.status_label || order?.status || 'Not started'}{selected.length ? ' · $' + total : ''}
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          {order?.status_label || order?.status || 'Not started'}{selected.length ? ' · est. $' + total : ''}
+          {isLocked && <span style={{ color: '#DC2626' }}>🔒 Locked</span>}
         </span>
       </div>
+
+      {/* Lock control — always visible so it's clear whether editing is allowed */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button onClick={toggleLock} disabled={saving}
+          style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+                   border: '1px solid ' + (isLocked ? '#DC2626' : 'var(--border)'),
+                   background: isLocked ? 'rgba(220,38,38,.08)' : 'var(--bg)',
+                   color: isLocked ? '#DC2626' : 'var(--text-muted)' }}>
+          {isLocked ? '🔓 Unlock record' : '🔒 Lock record'}
+        </button>
+      </div>
+
+      <fieldset disabled={isLocked} style={{ border: 'none', padding: 0, margin: 0, opacity: isLocked ? 0.55 : 1 }}>
 
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', margin: '6px 0 4px' }}>
         Ready for photos? ({readyCount}/{checklist.length})
@@ -285,18 +346,18 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
       <div style={{ display: 'grid', gap: 4, marginBottom: 10 }}>
         {checklist.map(item => (
           <label key={item} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
-            <input type="checkbox" checked={!!readiness[item]} onChange={() => toggleReady(item)} disabled={saving} />
+            <input type="checkbox" checked={!!readiness[item]} onChange={() => toggleReady(item)} disabled={saving || isLocked} />
             <span style={{ color: readiness[item] ? 'var(--text-muted)' : 'var(--text)', textDecoration: readiness[item] ? 'line-through' : 'none' }}>{item}</span>
           </label>
         ))}
       </div>
 
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', margin: '6px 0 4px' }}>Services needed</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', margin: '6px 0 4px' }}>Services included</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
         {services.map(svc => {
           const on = selected.some(s => s.id === svc.id)
           return (
-            <button key={svc.id} onClick={() => toggleService(svc)} disabled={saving}
+            <button key={svc.id} onClick={() => toggleService(svc)} disabled={saving || isLocked}
               style={{ padding: '6px 10px', borderRadius: 999, fontSize: 12, cursor: 'pointer',
                        border: '1px solid ' + (on ? 'var(--brand)' : 'var(--border)'),
                        background: on ? 'var(--brand)' : 'var(--bg)', color: on ? '#fff' : 'var(--text)' }}>
@@ -305,6 +366,14 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
           )
         })}
       </div>
+      {/* Read-only recap of what was actually included — visible even
+          once locked, since this is the permanent record of what was
+          ordered for this shoot. */}
+      {selected.length > 0 && (
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 10 }}>
+          Included: {selected.map(s => s.label).join(', ')} · Estimated ${total}
+        </div>
+      )}
 
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', margin: '6px 0 4px' }}>Photographer (from Contacts)</div>
       {photographer ? (
@@ -316,6 +385,7 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
           {photographer.phone && <ClickToCall phone={photographer.phone} contactName={contactName(photographer)} contactId={photographer.id} />}
           {photographer.email && <a href={'mailto:' + photographer.email} style={{ textDecoration: 'none', fontSize: 15 }}>✉️</a>}
           <button onClick={() => { setPhotographer(null); patch({ photographer_contact_id: null }) }}
+                  disabled={isLocked}
                   style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>✕</button>
         </div>
       ) : (
@@ -328,16 +398,88 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 6, alignItems: 'center' }}>
         <input type="datetime-local" style={inp}
                value={order?.scheduled_at ? String(order.scheduled_at).slice(0, 16) : ''}
+               disabled={isLocked}
                onChange={e => patch({ scheduled_at: e.target.value || null })} />
-        <select style={inp} value={order?.status || PHOTO_STATUSES[0]?.value || ''} onChange={e => patch({ status: e.target.value })}>
-          {PHOTO_STATUSES.map(s => <option key={s.code} value={s.value}>{s.label}</option>)}
+        <select style={inp} value={order?.status || PHOTO_STATUSES[0]?.value || ''} disabled={isLocked} onChange={e => patch({ status: e.target.value })}>
+          {PHOTO_STATUSES.map(status => <option key={status.code} value={status.value}>{status.label}</option>)}
         </select>
         <Btn onClick={() => confirmSchedule()}
-             disabled={saving || checkingWx || !order?.scheduled_at}>
+             disabled={saving || checkingWx || !order?.scheduled_at || isLocked}>
           {checkingWx ? 'Checking weather…' : 'Mark Scheduled ✓'}
         </Btn>
       </div>
       {order?.scheduled_at && <WeatherForecast address={deal.addr} date={order.scheduled_at} />}
+
+      </fieldset>
+
+      {/* ── ACTUAL COST — separate from the estimated total above.
+          Editable independently of the lock's effect on services/date,
+          since a cost correction after the fact is a real, valid need
+          (see toggleLock — admin can unlock if this needs changing
+          after the record was already locked). ── */}
+      <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4 }}>
+          Actual cost spent {order?.actual_cost != null && !isLocked ? '' : ''}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>$</span>
+          <input type="number" step="0.01" style={{ ...inp, width: 140 }}
+                 placeholder={total ? String(total) : '0.00'}
+                 defaultValue={order?.actual_cost ?? ''}
+                 disabled={isLocked && !isAdmin}
+                 onBlur={e => {
+                   const v = e.target.value === '' ? null : Number(e.target.value)
+                   if (v !== order?.actual_cost) patch({ actual_cost: v }, { allowWhileLocked: isLocked && isAdmin })
+                 }} />
+          {order?.actual_cost != null && (
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              (estimate was ${total})
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── LIFECYCLE — what happened after the shoot itself ── */}
+      {order?.status && ['Scheduled', 'Shot', 'Media Received', 'Corrections Requested', 'Approved'].includes(order.status) && (
+        <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>Shoot lifecycle</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+            {order.status === 'Scheduled' && (
+              <button onClick={markShot} disabled={isLocked} style={lifecycleBtn}>📷 Mark Shot Completed</button>
+            )}
+            {(order.status === 'Shot' || order.status === 'Corrections Requested') && (
+              <button onClick={markMediaReceived} disabled={isLocked} style={lifecycleBtn}>📬 Media Received</button>
+            )}
+            {order.status === 'Media Received' && (
+              <>
+                <button onClick={() => setShowCorrections(true)} disabled={isLocked} style={lifecycleBtn}>🛠 Request Corrections</button>
+                <button onClick={approveMedia} disabled={isLocked} style={{ ...lifecycleBtn, borderColor: '#10B981', color: '#10B981' }}>✅ Approve Final Media</button>
+              </>
+            )}
+          </div>
+
+          {order.media_received_at && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>📬 Media received: {new Date(order.media_received_at).toLocaleString()}</div>}
+          {order.corrections_requested_at && (
+            <div style={{ fontSize: 11, color: '#F5A623' }}>
+              🛠 Corrections requested {new Date(order.corrections_requested_at).toLocaleString()}
+              {order.corrections_note && <div style={{ marginTop: 2, fontStyle: 'italic' }}>"{order.corrections_note}"</div>}
+            </div>
+          )}
+          {order.approved_at && <div style={{ fontSize: 11, color: '#10B981', fontWeight: 700 }}>✅ Approved {new Date(order.approved_at).toLocaleString()} — listing-ready</div>}
+
+          {showCorrections && (
+            <div style={{ marginTop: 8, padding: 10, background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
+              <textarea rows={2} style={{ ...inp, width: '100%', resize: 'vertical' }}
+                        placeholder="What needs to be corrected?"
+                        value={correctionsNote} onChange={e => setCorrectionsNote(e.target.value)} />
+              <div style={{ display: 'flex', gap: 6, marginTop: 6, justifyContent: 'flex-end' }}>
+                <button onClick={() => setShowCorrections(false)} style={{ ...lifecycleBtn, borderColor: 'var(--border)', color: 'var(--text-muted)' }}>Cancel</button>
+                <Btn onClick={requestCorrections}>Send</Btn>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Bad-weather confirmation gate */}
       {weatherGate && (
@@ -371,7 +513,7 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast })
         </div>
       )}
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-        “Mark Scheduled” notifies the agent and adds the shoot to their calendar. Booking with the photographer happens outside the system — this tracks it.
+        "Mark Scheduled" notifies the agent and adds the shoot to their calendar. Booking with the photographer happens outside the system — this tracks it.
       </div>
     </div>
   )

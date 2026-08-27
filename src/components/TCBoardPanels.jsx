@@ -10,6 +10,8 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import ContactPicker, { contactName } from './ContactPicker'
 import { ClickToCall } from './ClickToCall'
+import { uploadFile, fmtFileSize, fileIcon } from '../lib/storage'
+import { loadTcSettings } from '../lib/tcSettings'
 
 const ff = 'Inter,system-ui,sans-serif'
 
@@ -150,6 +152,84 @@ export function TCEmailLog({ deal }) {
   const [draft, setDraft] = useState({ subject: '', note: '', direction: 'sent' })
   const [saving, setSaving] = useState(false)
 
+  // ── REAL SEND (added 2026-08-09) ──────────────────────────────────
+  // Sends through the AUTHENTICATED USER'S own connected mailbox via
+  // the existing, already-gated api/connector-send.js (same endpoint
+  // used elsewhere). Respects EXTERNAL_EFFECTS_ENABLED server-side —
+  // if it's off, this logs the attempt as 'blocked' rather than
+  // pretending to send. NOT included in this pass: CC/BCC, attachments,
+  // approved templates, reply-within-thread — those need separate,
+  // larger work (thread/receive sync in particular).
+  const [mode, setMode] = useState('log')   // 'log' | 'compose'
+  const [contacts, setContacts] = useState([])   // linked parties with an email, from tc_participants
+  const [compose, setCompose] = useState({ contact_id: '', to_email: '', subject: '', body: '', cc: '', bcc: '' })
+  const [attachments, setAttachments] = useState([])   // [{ file, path, name, size, uploading }]
+  const [sending, setSending] = useState(false)
+  const [templates, setTemplates] = useState([])
+
+  async function loadTemplates() {
+    try {
+      const cfg = await loadTcSettings()
+      setTemplates(cfg.communication_templates || [])
+    } catch { setTemplates([]) }
+  }
+
+  function applyTemplate(id) {
+    const t = templates.find(x => x.id === id)
+    if (!t) return
+    const addr = deal.addr || 'this property'
+    setCompose(c => ({
+      ...c,
+      subject: t.subject.replace(/\{addr\}/g, addr),
+      body: t.body.replace(/\{addr\}/g, addr),
+    }))
+  }
+
+  // Upload immediately on selection so there's always a stored copy
+  // (audit trail + storage-permission compliance), then base64-encode
+  // for the actual send. Vercel's request-body cap (~4.5MB) means this
+  // isn't suitable for large files — flagged in the UI, not silently
+  // allowed to fail.
+  async function handleFiles(fileList) {
+    const files = Array.from(fileList || [])
+    for (const file of files) {
+      if (file.size > 4 * 1024 * 1024) {
+        alert(file.name + ' is over 4MB — too large to send through this form right now.')
+        continue
+      }
+      const tempId = Math.random().toString(36)
+      setAttachments(prev => [...prev, { tempId, name: file.name, size: file.size, uploading: true }])
+      try {
+        const uploaded = await uploadFile(file, 'tc_correspondence', deal.id)
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result.split(',')[1])
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        })
+        setAttachments(prev => prev.map(a => a.tempId === tempId
+          ? { name: file.name, size: file.size, type: file.type, path: uploaded.path, base64, uploading: false }
+          : a))
+      } catch (e) {
+        setAttachments(prev => prev.filter(a => a.tempId !== tempId))
+        alert('Could not upload ' + file.name + ': ' + e.message)
+      }
+    }
+  }
+  function removeAttachment(name) {
+    setAttachments(prev => prev.filter(a => a.name !== name))
+  }
+
+  async function loadContacts() {
+    try {
+      const { data: rows } = await supabase.from('tc_participants').select('contact_id').eq('tc_deal_id', deal.id)
+      const ids = [...new Set((rows || []).map(r => r.contact_id).filter(Boolean))]
+      if (!ids.length) { setContacts([]); return }
+      const { data: cs } = await supabase.from('contacts').select('id, first_name, last_name, email').in('id', ids)
+      setContacts((cs || []).filter(c => c.email))
+    } catch { setContacts([]) }
+  }
+
   async function load() {
     try {
       const { data } = await supabase.from('tc_correspondence')
@@ -157,7 +237,7 @@ export function TCEmailLog({ deal }) {
       setEntries(data || [])
     } catch { setEntries([]) }
   }
-  useEffect(() => { load() }, [deal.id])
+  useEffect(() => { load(); loadContacts(); loadTemplates() }, [deal.id])
 
   async function addEntry() {
     if (!draft.subject.trim() && !draft.note.trim()) return
@@ -165,7 +245,7 @@ export function TCEmailLog({ deal }) {
     try {
       const { error } = await supabase.from('tc_correspondence').insert({
         tc_deal_id: deal.id, subject: draft.subject, note: draft.note,
-        direction: draft.direction, created_at: new Date().toISOString(),
+        direction: draft.direction, send_status: 'logged', created_at: new Date().toISOString(),
       })
       if (error) throw error
       setDraft({ subject: '', note: '', direction: 'sent' })
@@ -174,38 +254,179 @@ export function TCEmailLog({ deal }) {
     setSaving(false)
   }
 
+  async function sendEmail() {
+    const toEmail = compose.contact_id
+      ? contacts.find(c => c.id === compose.contact_id)?.email
+      : compose.to_email.trim()
+    if (!toEmail) { alert('Pick a linked contact or enter an email address'); return }
+    if (!compose.subject.trim()) { alert('Subject required'); return }
+    if (attachments.some(a => a.uploading)) { alert('Wait for attachments to finish uploading'); return }
+    setSending(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/connector-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}) },
+        // agent_id intentionally omitted — connector-send.js derives the
+        // sender from the SIGNED-IN user's own session, never a
+        // client-supplied identity, so this always sends from whoever
+        // is actually composing it (per handoff: "an agent may not
+        // send from another agent's mailbox").
+        body: JSON.stringify({
+          provider: 'outlook',
+          to: toEmail,
+          cc: compose.cc,
+          bcc: compose.bcc,
+          contact_id: compose.contact_id || null,
+          subject: compose.subject.trim(),
+          html: '<p>' + compose.body.trim().replace(/\n/g, '</p><p>') + '</p>',
+          attachments: attachments.map(a => ({ filename: a.name, contentType: a.type, base64: a.base64 })),
+        }),
+      })
+      const result = await res.json()
+      const blocked = result.blocked
+      const ok = res.ok && !blocked && !result.error
+
+      await supabase.from('tc_correspondence').insert({
+        tc_deal_id: deal.id,
+        direction: 'sent',
+        subject: compose.subject.trim(),
+        note: compose.body.trim(),
+        contact_id: compose.contact_id || null,
+        to_email: toEmail,
+        cc_emails: compose.cc.trim() || null,
+        bcc_emails: compose.bcc.trim() || null,
+        attachments: attachments.length ? attachments.map(a => ({ name: a.name, path: a.path, size: a.size })) : null,
+        provider: ok ? result.provider : null,
+        from_account: ok ? result.from : null,
+        provider_message_id: ok ? result.providerMessageId : null,
+        provider_thread_id: ok ? result.providerThreadId : null,
+        send_status: blocked ? 'blocked' : ok ? 'sent' : 'failed',
+        created_at: new Date().toISOString(),
+      })
+
+      if (blocked) alert('Logged, but not actually sent — external sending is currently disabled (EXTERNAL_EFFECTS_ENABLED is off).')
+      else if (!ok) alert('Send failed: ' + (result.error || 'unknown error') + ' — logged as failed.')
+
+      setCompose({ contact_id: '', to_email: '', subject: '', body: '', cc: '', bcc: '' })
+      setAttachments([])
+      setMode('log')
+      load()
+    } catch (e) {
+      alert('Send failed: ' + e.message)
+    } finally { setSending(false) }
+  }
+
   const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: 12.5, fontFamily: ff, boxSizing: 'border-box' }
 
   return (
     <div style={{ fontFamily: ff }}>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
-        Track every email/call/message about this deal so the whole thread lives in one place.
+        Send real email through your connected mailbox, or log a call/meeting/note — the whole thread lives here.
       </div>
-      {/* Add entry */}
-      <div style={{ background: 'var(--dim)', borderRadius: 10, padding: 12, marginBottom: 12, border: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-          <select value={draft.direction} onChange={e => setDraft(d => ({ ...d, direction: e.target.value }))}
-            style={{ ...inp, width: 120, flexShrink: 0 }}>
-            <option value="sent">📤 Sent</option>
-            <option value="received">📥 Received</option>
-            <option value="call">📞 Call</option>
-            <option value="note">📝 Note</option>
-          </select>
-          <input value={draft.subject} onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))}
-            placeholder="Subject / who / topic" style={inp} />
-        </div>
-        <textarea value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))}
-          placeholder="What was said / summary…" rows={2} style={{ ...inp, resize: 'vertical', marginBottom: 6 }} />
-        <button onClick={addEntry} disabled={saving}
-          style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--brand)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
-          {saving ? 'Saving…' : '+ Log entry'}
+
+      {/* Mode switcher */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+        <button onClick={() => setMode('compose')}
+          style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                   border: '1px solid ' + (mode === 'compose' ? 'var(--brand)' : 'var(--border)'),
+                   background: mode === 'compose' ? 'var(--brand)' : 'var(--bg)',
+                   color: mode === 'compose' ? '#fff' : 'var(--text)' }}>
+          ✉️ Compose Email
+        </button>
+        <button onClick={() => setMode('log')}
+          style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                   border: '1px solid ' + (mode === 'log' ? 'var(--brand)' : 'var(--border)'),
+                   background: mode === 'log' ? 'var(--brand)' : 'var(--bg)',
+                   color: mode === 'log' ? '#fff' : 'var(--text)' }}>
+          📝 Log Call/Note
         </button>
       </div>
+
+      {mode === 'compose' ? (
+        <div style={{ background: 'var(--dim)', borderRadius: 10, padding: 12, marginBottom: 12, border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <select style={{ ...inp, flex: 1 }} value={compose.contact_id}
+              onChange={e => setCompose(c => ({ ...c, contact_id: e.target.value, to_email: '' }))}>
+              <option value="">— Pick a linked party —</option>
+              {contacts.map(c => <option key={c.id} value={c.id}>{[c.first_name, c.last_name].filter(Boolean).join(' ')} · {c.email}</option>)}
+            </select>
+          </div>
+          {!compose.contact_id && (
+            <input style={{ ...inp, marginBottom: 6 }} placeholder="Or enter an email address directly"
+              value={compose.to_email} onChange={e => setCompose(c => ({ ...c, to_email: e.target.value }))} />
+          )}
+          <input style={{ ...inp, marginBottom: 6 }} placeholder="Subject"
+            value={compose.subject} onChange={e => setCompose(c => ({ ...c, subject: e.target.value }))} />
+          {templates.length > 0 && (
+            <select style={{ ...inp, marginBottom: 6, fontSize: 11.5 }} defaultValue=""
+              onChange={e => { if (e.target.value) applyTemplate(e.target.value); e.target.value = '' }}>
+              <option value="">— Use a template —</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <input style={{ ...inp, flex: 1 }} placeholder="CC (comma-separated, optional)"
+              value={compose.cc} onChange={e => setCompose(c => ({ ...c, cc: e.target.value }))} />
+            <input style={{ ...inp, flex: 1 }} placeholder="BCC (comma-separated, optional)"
+              value={compose.bcc} onChange={e => setCompose(c => ({ ...c, bcc: e.target.value }))} />
+          </div>
+          <textarea style={{ ...inp, resize: 'vertical', marginBottom: 6 }} rows={4} placeholder="Message…"
+            value={compose.body} onChange={e => setCompose(c => ({ ...c, body: e.target.value }))} />
+
+          <input type="file" multiple onChange={e => handleFiles(e.target.files)}
+            style={{ fontSize: 11.5, marginBottom: 6 }} />
+          {attachments.length > 0 && (
+            <div style={{ display: 'grid', gap: 4, marginBottom: 6 }}>
+              {attachments.map(a => (
+                <div key={a.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5,
+                                            padding: '4px 8px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--border)' }}>
+                  <span>{a.uploading ? '⏳' : fileIcon(a.name)}</span>
+                  <span style={{ flex: 1 }}>{a.name} · {fmtFileSize(a.size)}{a.uploading ? ' — uploading…' : ''}</span>
+                  {!a.uploading && <button onClick={() => removeAttachment(a.name)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button onClick={sendEmail} disabled={sending}
+            style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--brand)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+            {sending ? 'Sending…' : '✉️ Send'}
+          </button>
+          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6 }}>
+            Sends from your own connected Outlook/Gmail account. Attachments limited to 4MB each.
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: 'var(--dim)', borderRadius: 10, padding: 12, marginBottom: 12, border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <select value={draft.direction} onChange={e => setDraft(d => ({ ...d, direction: e.target.value }))}
+              style={{ ...inp, width: 120, flexShrink: 0 }}>
+              <option value="received">📥 Received</option>
+              <option value="call">📞 Call</option>
+              <option value="note">📝 Note</option>
+            </select>
+            <input value={draft.subject} onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))}
+              placeholder="Subject / who / topic" style={inp} />
+          </div>
+          <textarea value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))}
+            placeholder="What was said / summary…" rows={2} style={{ ...inp, resize: 'vertical', marginBottom: 6 }} />
+          <button onClick={addEntry} disabled={saving}
+            style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--brand)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+            {saving ? 'Saving…' : '+ Log entry'}
+          </button>
+        </div>
+      )}
+
       {/* Log */}
       {entries === null ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Loading…</div>
-        : entries.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 16 }}>No correspondence logged yet.</div>
+        : entries.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 16 }}>No correspondence yet.</div>
         : entries.map(e => {
           const icon = { sent: '📤', received: '📥', call: '📞', note: '📝' }[e.direction] || '•'
+          const statusBadge = e.send_status === 'sent' ? { label: '✓ Sent' + (e.from_account ? ' via ' + e.from_account : ''), color: '#10B981' }
+            : e.send_status === 'blocked' ? { label: '⏸ Blocked (external effects off)', color: '#F5A623' }
+            : e.send_status === 'failed' ? { label: '✕ Send failed', color: '#DC2626' }
+            : null
           return (
             <div key={e.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
@@ -213,7 +434,9 @@ export function TCEmailLog({ deal }) {
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', flex: 1 }}>{e.subject || '(no subject)'}</span>
                 <span style={{ fontSize: 10.5, color: 'var(--muted)', flexShrink: 0 }}>{new Date(e.created_at).toLocaleString()}</span>
               </div>
+              {e.to_email && <div style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 24 }}>To: {e.to_email}</div>}
               {e.note && <div style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 24, marginTop: 2, whiteSpace: 'pre-wrap' }}>{e.note}</div>}
+              {statusBadge && <div style={{ fontSize: 10.5, fontWeight: 700, color: statusBadge.color, marginLeft: 24, marginTop: 2 }}>{statusBadge.label}</div>}
             </div>
           )
         })}
