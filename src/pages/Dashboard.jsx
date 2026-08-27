@@ -488,7 +488,6 @@ function CustomWidgetBuilder({ onSave, onClose, agents }) {
                     })}
                   </div>
                 </div>
-              )}
             </div>
           )}
 

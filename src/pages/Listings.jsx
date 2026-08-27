@@ -650,58 +650,7 @@ export function Listings() {
   async function syncFromMonday() {
     // Fail closed until a server-side connector supplies immutable Monday board,
     // item, column, group, and person IDs through external_object_mappings.
-    // The historical sample importer below is intentionally unreachable because
-    // names and partial addresses are not safe synchronization identities.
     toast('Monday.com sync needs the ID-mapped connector before it can run.', '#D97706')
-    return
-    /* c8 ignore start -- retained temporarily as migration reference only */
-    setSyncing(true)
-    toast('Syncing from Monday.com...')
-    try {
-      // The Monday data we fetched at build time — in production this would be a live API call
-      const mondayListings = [
-        { addr:'17 Union Rd, #208, Spring Valley NY 10977', city:'Spring Valley', status:'Active', list_price:979000, property_type:'Condo', beds:4, baths:'2-1', sqft:'2359', deal_type:'MLS', list_date:'2026-02-20', agent_name:'Eli Hoffman', location:'17 Union Rd #209, Spring Valley, NY 10977, USA' },
-        { addr:'40 Singer Avenue, #201 Spring Valley, NY 10977', city:'Spring Valley', status:'Active', list_price:1539000, property_type:'Condo', beds:8, baths:'6-1', sqft:'4,954', deal_type:'MLS', list_date:'2025-08-31', agent_name:'Mendy Jankovits', mls_link:'https://www.targetreteam.com/search.php?#?q_limit=36&mlsId=280&multi_search=40%20Singer%20Ave%20Unit%20201&multi_cat=Address&status=1%7C3&q_sort=createdAt-&q_offset=0' },
-        { addr:'352 Blauvelt Rd Unit 201, Monsey, NY 10952', city:'Monsey', status:'Active', list_price:1149000, property_type:'New Construction', beds:5, baths:'4', sqft:'2800', list_date:'2025-10-22', agent_name:'Isaac Leibowitz' },
-        { addr:'15 Warren Ct Unit #314, Monsey, NY 10952', city:'Monsey', status:'Active', list_price:739000, property_type:'Condo', beds:3, baths:'2', sqft:'1340', deal_type:'MLS', list_date:'2026-01-07', agent_name:'Mendy Jankovits', notes:'Huge Attic' },
-        { addr:'47 Prairie Ave, Suffern, NY 10901', city:'Suffern', status:'Active', list_price:599000, property_type:'Single Family', beds:4, baths:'2', sqft:'1568', deal_type:'MLS', list_date:'2026-01-15', agent_name:'Avraham Weinberger', mls_link:'https://www.targetreteam.com/homes-for-sale/NY/suffern/10901/47-prairie-ave/bid-38-953280' },
-        { addr:'40 Singer Avenue, #214 Spring Valley, NY 10977', city:'Spring Valley', status:'Active', list_price:1599000, property_type:'Condo', beds:8, baths:'6-1', sqft:'4746', deal_type:'MLS', list_date:'2025-08-31', agent_name:'Mendy Jankovits' },
-        { addr:'12 Sherman Drive, #202 Spring Valley, NY 10977', city:'Spring Valley', status:'Active', list_price:1449000, property_type:'Condo', beds:5, baths:'4', sqft:'4744', deal_type:'MLS', list_date:'2026-02-09', agent_name:'Joel Rottenstein', notes:'3/4 bed accessory', mls_link:'https://www.targetreteam.com/homes-for-sale/NY/spring-valley/10977/12-sherman-dr-unit-202/bid-38-961011' },
-        { addr:'1 Jade Lane, Swan Lake, NY', city:'Swan Lake', status:'Active', list_price:299000, property_type:'Single Family', beds:3, baths:'2', sqft:'1268', deal_type:'MLS', list_date:'2026-04-13', agent_name:'Joel Rottenstein' },
-        { addr:'20 Singer Ave, Spring Valley, NY 10977', city:'Spring Valley', status:'Active', list_price:1649000, property_type:'New Construction', beds:9, baths:'5-1', sqft:'4357', deal_type:'MLS', list_date:'2026-04-17', agent_name:'Mendy Jankovits' },
-        { addr:'5 Mirror Lake Rd #201, Spring Valley, NY 10977', city:'Spring Valley', status:'Active', list_price:1599000, property_type:'Condo', beds:9, baths:'7', sqft:'4777', deal_type:'MLS', list_date:'2026-04-24', agent_name:'Joel Rottenstein' },
-        { addr:'11 Lincoln St #201, Spring Valley, NY', city:'Spring Valley', status:'Active', list_price:1499000, property_type:'Condo', beds:8, baths:'6', sqft:'4632', deal_type:'MLS', list_date:'2026-04-30', agent_name:'Mendy Jankovits' },
-        { addr:'13 Westside, Haverstraw, NY', city:'Haverstraw', status:'Active', list_price:425000, property_type:'Single Family', beds:4, baths:'1', sqft:'1188', deal_type:'MLS', list_date:'2026-05-13', agent_name:'Avraham Weinberger' },
-        { addr:'27 Prince Street, Monticello, NY 12701', city:'Monticello', status:'Active', list_price:349000, property_type:'Single Family', beds:4, baths:'2', sqft:'1535', deal_type:'MLS', list_date:'2026-06-11', agent_name:'Joel Rottenstein' },
-        { addr:'172 Orange Ave Suffern NY 10901', city:'Suffern', status:'Active', list_price:799000, property_type:'3 Family', beds:8, baths:'3', sqft:'3275', deal_type:'MLS', list_date:'2026-06-18', agent_name:'Avraham Weinberger' },
-        { addr:'31 Gladys Drive, Spring Valley, NY 10977', city:'Spring Valley', status:'Active', list_price:549000, property_type:'Duplex', beds:2, baths:'3', sqft:'1417', deal_type:'MLS', list_date:'2026-06-18', agent_name:'Mendy Jankovits' },
-        { addr:'24 Maplewood Blvd, Suffern, NY 10901', city:'Suffern', status:'Active', list_price:649000, property_type:'Single Family', beds:3, baths:'2', sqft:'1516', deal_type:'MLS', list_date:'2026-06-18', agent_name:'Isaac Leibowitz' },
-        { addr:'14 Cannon Blvd, Mountain Dale, NY', city:'Mountain Dale', status:'Active', list_price:399000, property_type:'Single Family', beds:3, baths:'2', sqft:'1,566', deal_type:'MLS', list_date:'2026-06-18', agent_name:'Joel Rottenstein' },
-        { addr:'19 W Maple Avenue, Suffern, New York 10901', city:'Suffern', status:'Active', list_price:599000, property_type:'Single Family', beds:5, baths:'2', sqft:'1643', deal_type:'MLS', list_date:'2026-01-15', agent_name:'Avraham Weinberger' },
-        { addr:'15 North St, Stony Point, NY 10980', city:'Stony Point', status:'Active', list_price:649000, property_type:'Single Family', beds:4, baths:'2', sqft:'2248', deal_type:'MLS', list_date:'2026-06-22', agent_name:'Avraham Weinberger' },
-        { addr:'17 Union Rd, #210 Spring Valley NY 10977', city:'Spring Valley', status:'Active', list_price:979000, property_type:'Condo', beds:4, baths:'2-1', deal_type:'MLS', list_date:'2026-04-13', agent_name:'Eli Hoffman' },
-      ]
-
-      // Name → agent_id map
-      const NAME_MAP = { 'Eli Hoffman':'Eli Hoffman', 'Mendy Jankovits':'Mendy Jankovits', 'Isaac Leibowitz':'Isaac Leibowitz', 'Avraham Weinberger':'Avraham Weinberger', 'Joel Rottenstein':'Joel Rottenstein', 'Lazer Farkas':'Lazer Farkas' }
-
-      let inserted = 0, skipped = 0, failed = 0
-      for (const ml of mondayListings) {
-        const { data: existing } = await supabase.from('listings').select('id').ilike('addr', ml.addr.slice(0,20)+'%').maybeSingle()
-        if (existing) { skipped++; continue }
-        const ag = agents.find(a => a.name.includes(ml.agent_name?.split(' ')[0] || '') || ml.agent_name?.includes(a.name.split(' ')[0] || ''))
-        const { error } = await supabase.from('listings').insert({
-          ...ml, agent_id: ag?.id || null,
-          created_at: new Date().toISOString(), updated_at: new Date().toISOString()
-        })
-        if (error) { failed++; console.warn('Sync insert failed for', ml.addr, error.message); continue }
-        inserted++
-      }
-      await load()
-      toast(`✅ Synced — ${inserted} new, ${skipped} already existed` + (failed ? `, ${failed} failed` : ''))
-    } catch(e) { toast('Sync failed: ' + e.message, '#DC2626') }
-    finally { setSyncing(false) }
-    /* c8 ignore stop */
   }
 
   async function saveListing(form) {
