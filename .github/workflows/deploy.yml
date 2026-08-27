@@ -2,13 +2,18 @@ name: Build Check
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/security-authentication-repair, codex/supabase-config-isolation, codex/phase1-main-integration, codex/phase2-access-integrations, codex/system-stable-identifiers]
   pull_request:
-    branches: [main]
+    branches: [main, codex/verified-crm-audit, codex/security-authentication-repair, codex/prelaunch-safety-lockdown, codex/phase1-main-integration, codex/phase2-access-integrations]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: https://example.supabase.co
+      VITE_SUPABASE_ANON_KEY: test-only-anon-key
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: test-only-service-role-key
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -16,15 +21,40 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci
+
+      - name: Static validation
+        run: node scripts/validate.js
+
+      - name: API syntax checks
+        run: find api -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Stable identifier catalog checks
+        run: npm run identifiers:check
+
+      - name: Unit tests
+        run: npm test
+        env:
+          EXTERNAL_EFFECTS_ENABLED: 'true'
+          OAUTH_STATE_SECRET: test-only-oauth-state-secret-32-bytes
+          CRON_SECRET: test-only-cron-secret-32-bytes-value
+          UNSUB_SECRET: test-only-unsub-secret-32-bytes
+          APP_ORIGINS: https://app.targetreteam.com,https://app.example.test
+          PUBLIC_BASE_URL: https://app.example.test
+          TWILIO_AUTH_TOKEN: test-only-twilio-token-32-bytes
 
       - name: Build
         run: npm run build
         env:
-          VITE_SUPABASE_URL: https://sgrnyvdsyahmypibjarx.supabase.co
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+
+      - name: Smoke checks
+        run: npm run smoke
+
+      - name: Render smoke checks
+        run: npm run render-smoke

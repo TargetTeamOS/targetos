@@ -8,6 +8,7 @@ const {
   checkTwilioSignature,
 } = require('./_lib/phone')
 const { walkFlow, ensureFlow } = require('./_lib/call-flow')
+const { recordIdentifierValues } = require('./_lib/recordIdentifiers')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
@@ -114,7 +115,7 @@ module.exports = async function handler(req, res) {
   // 5. Repeat caller check (non-blocking)
   let isRepeat = false
   sb.from('calls').select('id', { count:'exact', head:true })
-    .eq('from_number', from).eq('direction', 'Inbound')
+    .eq('from_number', from).in('direction', recordIdentifierValues('calls', 'direction', 'inbound'))
     .then(r => { isRepeat = (r.count || 0) > 1 })
     .catch(() => {})
 

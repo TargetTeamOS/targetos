@@ -7,6 +7,7 @@ import { authFetch } from '../lib/apiAuth'
 import { useAuth }  from '../context/AuthContext'
 import { useAgents } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
+import { recordIdentifierFilterValues } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -110,7 +111,7 @@ export function AIAssistant() {
       const [dealsRes, contactsRes, listingsRes] = await Promise.all([
         supabase.from('deals').select('id,addr,stage,agent_id,production,close_date').order('created_at',{ascending:false}).limit(20),
         supabase.from('contacts').select('id,first_name,last_name,status,agent_id').order('created_at',{ascending:false}).limit(20),
-        supabase.from('listings').select('id,addr,status,list_price,beds,baths').eq('status','Active').limit(15),
+        supabase.from('listings').select('id,addr,status,list_price,beds,baths').in('status',recordIdentifierFilterValues('listings','status','active')).limit(15),
       ])
       setContext({
         agents: (agents||[]).map(a => ({ name:a.name, role:a.role, color:a.color })),

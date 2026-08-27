@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 // /api/send-campaign — sends an email blast to a resolved audience
 // through Resend, in batches, skipping anyone on the unsubscribe
-// list. Auth-gated (staged, like the other endpoints). Appends a
+// list. Hard-authenticated and admin-only. Appends a
 // compliant unsubscribe footer + physical-address line to every
 // message. Updates the email_campaigns row with progress.
 //
@@ -11,6 +11,8 @@
 'use strict'
 const { getSupabase } = require('./_lib/phone')
 const { unsubToken } = require('./unsubscribe')
+const { requireExternalEffects } = require('./_lib/externalEffects')
+const { recordIdentifierValues } = require('./_lib/recordIdentifiers')
 
 const BASE = process.env.PUBLIC_BASE_URL || 'https://app.targetreteam.com'
 const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
@@ -36,18 +38,14 @@ function footer(email) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
-  // Staged auth (mirrors AUTH_ENFORCE pattern)
-  const { requireUser } = require('./_lib/auth')
-  const user = await requireUser(req)
-  if (!user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to /api/send-campaign ALLOWED (log-only)')
-  }
+  // Hard-authenticated and admin-only.
+  const { authenticate, sendAuthError } = require('./_lib/auth')
+  const identity = await authenticate(req, { roles: ['admin'] })
+  if (!identity.ok) return sendAuthError(res, identity)
+  if (!requireExternalEffects(res)) return
 
   const RESEND_KEY = process.env.RESEND_API_KEY
-  if (!RESEND_KEY) return res.status(500).end(JSON.stringify({ error: 'Email service not configured' }))
+  if (!RESEND_KEY) return res.status(503).end(JSON.stringify({ error: 'Email service not configured' }))
 
   const { campaignId, subject, bodyHtml, audience } = await readBody(req)
   if (!subject || !bodyHtml || !audience) return res.status(400).end(JSON.stringify({ error: 'Missing subject, body, or audience' }))
@@ -57,7 +55,7 @@ module.exports = async function handler(req, res) {
   try {
     // Resolve audience → contact emails
     let q = supabase.from('contacts').select('email, first_name').not('email', 'is', null)
-    if (audience.type === 'status') q = q.eq('status', audience.value)
+    if (audience.type === 'status') q = q.in('status', recordIdentifierValues('contacts', 'status', audience.value))
     if (audience.type === 'tag')    q = q.contains('tags', [audience.value])
     const { data: contacts, error } = await q.limit(5000)
     if (error) throw error

@@ -1,4 +1,5 @@
 'use strict'
+const { recordIdentifierValues } = require('./_lib/recordIdentifiers')
 // api/send-offer.js — sends the current generated offer PDF from the
 // AUTHENTICATED AGENT'S OWN connected mailbox (Outlook via Microsoft
 // Graph, or Gmail), never the shared system Resend mailbox
@@ -288,7 +289,10 @@ module.exports = async function handler(req, res) {
     await sb.from('offer_revisions').update({ send_status: 'Sent', sent_at: sentAt }).eq('id', revisionId)
     // Business rule from Commit 2: an offer only becomes 'Sent' once an
     // actual send succeeds — never automatically on save.
-    await sb.from('offers').update({ status: 'Sent' }).eq('id', offerId).eq('status', 'Draft')
+    await sb.from('offers')
+      .update({ status: recordIdentifierValues('offers', 'status', 'sent')[0] })
+      .eq('id', offerId)
+      .in('status', recordIdentifierValues('offers', 'status', 'draft'))
 
     // Everything below is best-effort logging AFTER the real send
     // already succeeded — a failure here must never be reported back to

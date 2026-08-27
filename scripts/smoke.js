@@ -44,6 +44,13 @@ function resolveImport(fromFile, spec) {
 const exportCache = {}
 function getExports(file) {
   if (exportCache[file]) return exportCache[file]
+  // Vite exposes JSON modules through a default export. Treating JSON as raw
+  // JavaScript source produces a false "no default export" failure even though
+  // the build and runtime import are valid.
+  if (path.extname(file).toLowerCase() === '.json') {
+    exportCache[file] = { names: new Set(), hasDefault: true }
+    return exportCache[file]
+  }
   const code = fs.readFileSync(file, 'utf8')
   const names = new Set()
   let hasDefault = /export\s+default\b/.test(code)

@@ -11,6 +11,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 const BASE = (typeof process !== 'undefined' && process.env && process.env.PUBLIC_BASE_URL) || 'https://app.targetreteam.com'
+const { recordIdentifierMatches } = require('./recordIdentifiers')
 
 // Resolve a named range to {from,to} ISO date strings (ET-ish, date only)
 function resolveRange(range) {
@@ -64,11 +65,11 @@ async function computeReport(supabase, def) {
     out.blocks.push({ type: 'stat', title: '💼 New Deals', value: deals.length, sub: '$' + gci.toLocaleString() + ' GCI' })
   }
   if (blocks.includes('tasks')) {
-    const done = tasks.filter(t => t.status === 'completed' || t.completed).length
-    const overdue = tasks.filter(t => t.status !== 'completed' && !t.completed && t.due_date && t.due_date < to).length
+    const done = tasks.filter(t => recordIdentifierMatches('tasks', 'status', t, 'done') || t.completed).length
+    const overdue = tasks.filter(t => !recordIdentifierMatches('tasks', 'status', t, 'done') && !t.completed && t.due_date && t.due_date < to).length
     out.blocks.push({ type: 'stat', title: '✅ Tasks', value: done + ' done', sub: overdue + ' overdue' })
     // linked list of overdue tasks
-    const overdueList = tasks.filter(t => t.status !== 'completed' && !t.completed && t.due_date && t.due_date < to).slice(0, 15)
+    const overdueList = tasks.filter(t => !recordIdentifierMatches('tasks', 'status', t, 'done') && !t.completed && t.due_date && t.due_date < to).slice(0, 15)
     if (overdueList.length) out.blocks.push({ type: 'list', title: 'Overdue tasks',
       items: overdueList.map(t => ({ label: t.title || 'Untitled task', meta: agentName(t.agent_id) + ' · due ' + t.due_date, href: BASE + '/tasks/' + t.id })) })
   }
@@ -90,7 +91,7 @@ async function computeReport(supabase, def) {
       name: a.name,
       calls: calls.filter(c => c.agent_id === a.id).length,
       deals: deals.filter(d => d.agent_id === a.id).length,
-      tasksDone: tasks.filter(t => t.agent_id === a.id && (t.status === 'completed' || t.completed)).length,
+      tasksDone: tasks.filter(t => t.agent_id === a.id && (recordIdentifierMatches('tasks', 'status', t, 'done') || t.completed)).length,
       contacts: contacts.filter(c => c.agent_id === a.id).length,
     })).filter(r => r.calls || r.deals || r.tasksDone || r.contacts)
     out.blocks.push({ type: 'table', title: '👥 Per-agent activity',
@@ -119,8 +120,8 @@ async function computeReport(supabase, def) {
       sub: cnt('On Property') + ' on property · ' + cnt('Order Sent In') + ' ordered · ' + cnt('Missing - broken') + ' missing/broken' })
   }
   if (blocks.includes('conversion')) {
-    const accepted = offers.filter(o => /accept/i.test(o.status || '')).length
-    const closed = deals.filter(d => d.stage === 'Closed').length
+    const accepted = offers.filter(o => recordIdentifierMatches('offers', 'status', o, 'accepted')).length
+    const closed = deals.filter(d => recordIdentifierMatches('deals', 'stage', d, 'closed')).length
     const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—'
     out.blocks.push({ type: 'table', title: '📈 Conversion (this period)',
       head: ['Step', 'Count', 'Rate'],

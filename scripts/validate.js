@@ -107,7 +107,7 @@ if (uniqueDupes.length > 0) {
 }
 
 // ── CHECK 8: All pages have exports ────────────────────────────
-jsxFiles.filter(f => f.includes('/pages/') && f.endsWith('.jsx')).forEach(f => {
+jsxFiles.filter(f => f.includes('/pages/') && f.endsWith('.jsx') && f.indexOf('.test.jsx') === -1).forEach(f => {
   const c = fs.readFileSync(f, 'utf8')
   if (!c.includes('export function') && !c.includes('export default') && !c.includes('export const')) {
     failures.push('NO EXPORT in ' + path.basename(f))

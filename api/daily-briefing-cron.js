@@ -17,6 +17,8 @@
 const { getSupabase } = require('./_lib/phone')
 const { getTodaysQuote, buildEmailHTML, isDueToday, isOverdue, getDaysUntil, DEFAULT_PREFS, DEFAULT_STYLE } = require('./_lib/briefing')
 const { notifyAgent } = require('./_lib/notify')
+const { requireExternalEffects } = require('./_lib/externalEffects')
+const { recordIdentifierCode, recordIdentifierMatches, recordIdentifierValues } = require('./_lib/recordIdentifiers')
 
 async function gatherAgentData(supabase, agentId) {
   const today   = new Date().toISOString().slice(0, 10)
@@ -24,25 +26,25 @@ async function gatherAgentData(supabase, agentId) {
   const wkStr   = weekEnd.toISOString().slice(0, 10)
 
   const [tasks, deals, contacts, listings, openHouses, todayEvents] = await Promise.all([
-    supabase.from('tasks').select('*').neq('status','done').eq('agent_id', agentId).then(r => r.data || []),
+    supabase.from('tasks').select('*').eq('agent_id', agentId).then(r => (r.data || []).filter(t => !recordIdentifierMatches('tasks', 'status', t, 'done'))),
     supabase.from('deals').select('*').eq('agent_id', agentId).then(r => r.data || []),
     supabase.from('contacts').select('id,first_name,last_name,status,phone').eq('agent_id', agentId).then(r => r.data || []),
-    supabase.from('listings').select('*').eq('status','Active').eq('agent_id', agentId).then(r => r.data || []),
+    supabase.from('listings').select('*').in('status', recordIdentifierValues('listings', 'status', 'active')).eq('agent_id', agentId).then(r => r.data || []),
     supabase.from('open_houses').select('*').gte('date',today).lte('date',wkStr).eq('agent_id', agentId).then(r => r.data || []),
     supabase.from('calendar_events').select('*').eq('date',today).eq('agent_id', agentId).order('start_time').then(r => r.data || []),
   ])
 
   const todayTasks    = tasks.filter(t => isDueToday(t.due_date) || isOverdue(t.due_date))
   const overdueTasks  = tasks.filter(t => isOverdue(t.due_date))
-  const activeDeals   = deals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
+  const activeDeals   = deals.filter(d => !['closed','fell_through'].includes(recordIdentifierCode('deals', 'stage', d)))
   const upcomingClose = deals.filter(d => {
     const dt = d.expected_close_date || d.close_date
     if (!dt) return false
     const dy = getDaysUntil(dt)
-    return dy !== null && dy >= 0 && dy <= 30 && d.stage !== 'Closed'
+    return dy !== null && dy >= 0 && dy <= 30 && !recordIdentifierMatches('deals', 'stage', d, 'closed')
   }).sort((a,b) => getDaysUntil(a.expected_close_date||a.close_date) - getDaysUntil(b.expected_close_date||b.close_date))
-  const hotLeads   = contacts.filter(c => ['Hot','Warm'].includes(c.status))
-  const closedGCI  = deals.filter(d => d.stage==='Closed' && (d.ao_date||'').startsWith(String(new Date().getFullYear()))).reduce((s,d) => s+(parseFloat(d.gci)||0), 0)
+  const hotLeads   = contacts.filter(c => ['hot','warm'].includes(recordIdentifierCode('contacts', 'status', c)))
+  const closedGCI  = deals.filter(d => recordIdentifierMatches('deals', 'stage', d, 'closed') && (d.ao_date||'').startsWith(String(new Date().getFullYear()))).reduce((s,d) => s+(parseFloat(d.gci)||0), 0)
 
   return { todayTasks, overdueTasks, activeDeals, upcomingClose, hotLeads, listings, openHouses, todayEvents, closedGCI }
 }
@@ -53,11 +55,10 @@ module.exports = async function handler(req, res) {
   // HARDENED (July 2026): the secret is now ENFORCED. Previously a
   // mismatch only logged a warning and the send proceeded anyway,
   // meaning anything that hit this URL triggered a full team send.
-  const CRON_SECRET = process.env.CRON_SECRET
-  if (CRON_SECRET && req.headers['authorization'] !== 'Bearer ' + CRON_SECRET) {
-    console.warn('[daily-briefing-cron] BLOCKED unauthorized invocation')
-    return res.status(401).json({ ok: false, error: 'unauthorized' })
-  }
+  const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
+  const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
+  if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
+  if (!requireExternalEffects(res)) return
 
   const force = /[?&]force=1/.test(req.url || '')
   const supabase = getSupabase()
@@ -162,12 +163,12 @@ module.exports = async function handler(req, res) {
       for (const auto of autos) {
         const days = parseInt(auto.trigger_config?.days) || 7
         const winEnd = new Date(today); winEnd.setDate(winEnd.getDate() + days)
-        const { data: deals } = await supabase.from('deals')
+        const { data: candidateDeals } = await supabase.from('deals')
           .select('*')
-          .not('stage', 'in', '("Closed","Deal Fell Through")')
           .gte('close_date', today.toISOString().slice(0, 10))
           .lte('close_date', winEnd.toISOString().slice(0, 10))
-        for (const deal of (deals || [])) {
+        const deals = (candidateDeals || []).filter(deal => !['closed','fell_through'].includes(recordIdentifierCode('deals', 'stage', deal)))
+        for (const deal of deals) {
           const { data: already } = await supabase.from('automation_fires')
             .select('id').eq('automation_id', auto.id).eq('record_id', deal.id).limit(1)
           if (already?.length) continue

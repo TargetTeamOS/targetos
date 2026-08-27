@@ -7,24 +7,17 @@
 
 const { getSupabase } = require('./_lib/phone')
 const { notifyAgent, loadAgentNotificationPrefs } = require('./_lib/notify')
+const { requireExternalEffects } = require('./_lib/externalEffects')
+const { recordIdentifierCode, recordIdentifierValues } = require('./_lib/recordIdentifiers')
 
 module.exports = async function handler(req, res) {
-  // Vercel automatically sends 'Authorization: Bearer <CRON_SECRET>' when
-  // calling this on its schedule, IF a CRON_SECRET env var is set in
-  // Vercel. Until that's set, this stays open to anyone who finds the
-  // URL (they could trigger unwanted reminder emails to your whole team
-  // repeatedly, using your Resend credits) -- add CRON_SECRET in Vercel
-  // env vars to close this. Logs a warning rather than hard-blocking
-  // until it's configured, so the actual cron schedule doesn't break.
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const authHeader = req.headers['authorization'] || ''
-    if (authHeader !== 'Bearer ' + cronSecret) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
-  } else {
-    console.warn('[task-reminders] CRON_SECRET not set — endpoint is unauthenticated. Add CRON_SECRET to Vercel env vars.')
-  }
+  // Vercel sends 'Authorization: Bearer <CRON_SECRET>' for configured
+  // schedules. Missing configuration returns 503 and a wrong credential
+  // returns 401; reminder delivery never runs without a verified secret.
+  const { verifyBearerSecret, sendSecurityError } = require('./_lib/requestSecurity')
+  const cronAuth = verifyBearerSecret(req, 'CRON_SECRET')
+  if (!cronAuth.ok) return sendSecurityError(res, cronAuth)
+  if (!requireExternalEffects(res)) return
 
   // Allow GET (cron) or POST (manual trigger)
   const sb = getSupabase()
@@ -38,7 +31,7 @@ module.exports = async function handler(req, res) {
     const [tasksRes, earlyReminderRes, tcTasksRes] = await Promise.all([
       sb.from('tasks')
         .select('id, title, due_date, priority, notes, agent_id, contact_id, agents(id, name, email)')
-        .eq('status', 'pending')
+        .in('status', recordIdentifierValues('tasks', 'status', 'pending'))
         .lte('due_date', tomorrow)
         .order('due_date', { ascending: true }),
       (async () => {
@@ -48,7 +41,7 @@ module.exports = async function handler(req, res) {
         try {
           return await sb.from('tasks')
             .select('id, title, due_date, priority, notes, agent_id, contact_id, reminder_days, agents(id, name, email)')
-            .eq('status', 'pending')
+            .in('status', recordIdentifierValues('tasks', 'status', 'pending'))
             .not('reminder_days', 'is', null)
             .gt('due_date', tomorrow)
             .order('due_date', { ascending: true })
@@ -67,7 +60,7 @@ module.exports = async function handler(req, res) {
         try {
           return await sb.from('tc_tasks')
             .select('id, title, due_date, priority, notes, agent_id, reminder_days, tc_deals(addr, tc_phase), agents(id, name, email)')
-            .eq('status', 'pending')
+            .in('status', recordIdentifierValues('tc_tasks', 'status', 'pending'))
             .not('reminder_days', 'is', null)
             .order('due_date', { ascending: true })
         } catch (e) {
@@ -154,7 +147,8 @@ module.exports = async function handler(req, res) {
         const isToday    = t.due_date === today
         const statusText = isOverdue ? '⚠️ Overdue' : isToday ? '📅 Due today' : '🔜 Due tomorrow'
         const statusColor= isOverdue ? '#DC2626'    : isToday ? '#F97316'     : '#6366F1'
-        const priorityIcon = t.priority === 'urgent' ? '🔴' : t.priority === 'high' ? '🟠' : '🔵'
+        const priorityCode = recordIdentifierCode('tasks', 'priority', t)
+        const priorityIcon = priorityCode === 'urgent' ? '🔴' : priorityCode === 'high' ? '🟠' : '🔵'
         return `
           <tr>
             <td style="padding:10px 14px;border-bottom:1px solid #F0F4F8;vertical-align:top;">

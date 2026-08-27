@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { safeErrorMessage } from '../lib/errorMessage'
 
 // Settings → "My Email Accounts": ANY agent connects their own
 // Outlook or Gmail here. Their sends then go out from their own
@@ -18,6 +19,7 @@ export function MyEmailAccounts() {
   const [accounts, setAccounts] = useState(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState('')
+  const [readiness, setReadiness] = useState(null)
 
   async function authHeaders() {
     try {
@@ -35,11 +37,18 @@ export function MyEmailAccounts() {
       const r = await fetch('/api/connectors', {
         method: 'POST',
         headers: Object.assign({ 'Content-Type': 'application/json' }, h),
-        body: JSON.stringify({ action: 'my_accounts', agent_id: agent.id }),
+        body: JSON.stringify({ action: 'my_accounts' }),
       })
       const j = await r.json()
-      if (!r.ok) throw new Error(j.error || 'load failed')
+      if (!r.ok) throw new Error(safeErrorMessage(j.error, 'Account status could not be loaded'))
       setAccounts(j.accounts || [])
+      const rr = await fetch('/api/connectors', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, h),
+        body: JSON.stringify({ action: 'connection_readiness' }),
+      })
+      const rj = await rr.json().catch(() => ({}))
+      setReadiness(rr.ok ? rj : null)
       setErr('')
     } catch (e) { setErr(e.message); setAccounts([]) }
   }
@@ -52,12 +61,26 @@ export function MyEmailAccounts() {
       const r = await fetch('/api/connectors', {
         method: 'POST',
         headers: Object.assign({ 'Content-Type': 'application/json' }, h),
-        body: JSON.stringify({ action: 'disconnect_my_account', agent_id: agent.id, provider }),
+        body: JSON.stringify({ action: 'disconnect_my_account', provider }),
       })
-      if (!r.ok) { const j = await r.json(); throw new Error(j.error || 'disconnect failed') }
+      if (!r.ok) { const j = await r.json(); throw new Error(safeErrorMessage(j.error, 'Disconnect failed')) }
       await load()
     } catch (e) { setErr(e.message) }
     setBusy('')
+  }
+
+  async function connect(provider) {
+    setBusy(provider.id)
+    try {
+      const h = await authHeaders()
+      const r = await fetch(provider.oauth + '?step=start', { method: 'POST', headers: h })
+      const j = await r.json()
+      if (!r.ok || !j.url) throw new Error(safeErrorMessage(j.error, 'Connection could not start'))
+      window.location.assign(j.url)
+    } catch (e) {
+      setErr(e.message)
+      setBusy('')
+    }
   }
 
   if (!agent) return null
@@ -71,24 +94,35 @@ export function MyEmailAccounts() {
       {err && (
         <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '8px 12px', borderRadius: '10px', fontSize: '13px', fontFamily: ff }}>{err}</div>
       )}
+      {readiness && readiness.external_effects_enabled === false && (
+        <div style={{ background:'#FFF7ED', color:'#9A3412', padding:'8px 12px', borderRadius:10, fontSize:12, fontFamily:ff }}>
+          Account connection is available, but sending and external calendar writes are currently disabled by the administrator.
+        </div>
+      )}
       {PROVIDERS.map(p => {
         const acct = (accounts || []).find(a => a.provider === p.id)
         const connected = acct && acct.status === 'connected'
+        const providerReady = readiness?.providers?.[p.id]?.configured !== false
+        const platformReady = readiness?.base_url_configured !== false && readiness?.oauth_state_configured !== false
+        const canConnect = providerReady && platformReady
         return (
           <div key={p.id} style={{ border: '1px solid #E2E8F0', borderRadius: '12px', padding: '12px 14px', background: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '18px' }}>{p.icon}</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: '14px', color: '#0F172A', fontFamily: ff }}>{p.label}</div>
               <div style={{ fontSize: '12px', color: connected ? '#166534' : '#64748B', fontFamily: ff }}>
-                {connected ? 'Connected — ' + (acct.account_email || 'account linked') : (acct && acct.status === 'error' ? 'Error: ' + (acct.last_error || 'reconnect needed') : 'Not connected')}
+                {connected ? 'Connected — ' + (acct.account_email || 'account linked')
+                  : !platformReady ? 'Administrator setup required: OAuth environment configuration is incomplete'
+                  : !providerReady ? 'Administrator setup required: provider credentials are incomplete'
+                  : (acct && acct.status === 'error' ? 'Error: ' + safeErrorMessage(acct.last_error, 'reconnect needed') : 'Not connected')}
               </div>
             </div>
             {connected ? (
               <button onClick={() => disconnect(p.id)} disabled={busy === p.id}
                 style={Object.assign({}, btn, { background: '#F1F5F9', color: '#334155' })}>Disconnect</button>
             ) : (
-              <button onClick={() => { window.location.href = p.oauth + '?step=start&agent_id=' + agent.id }}
-                style={Object.assign({}, btn, { background: '#2563EB', color: '#fff' })}>Connect</button>
+              <button onClick={() => connect(p)} disabled={busy === p.id || !canConnect}
+                style={Object.assign({}, btn, { background: canConnect ? '#2563EB' : '#94A3B8', color: '#fff', cursor:canConnect?'pointer':'not-allowed' })}>Connect</button>
             )}
           </div>
         )

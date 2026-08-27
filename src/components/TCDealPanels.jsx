@@ -14,6 +14,8 @@ import { Btn } from './UI'
 import ContactPicker, { contactName } from './ContactPicker'
 import { WeatherForecast, fetchForecast } from './WeatherForecast'
 import { ClickToCall } from './ClickToCall'
+import { workflowStorageOptions } from '../lib/identifiers'
+import { decorateRecordIdentifiers, identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 
 const inp = { width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, background: 'var(--bg)', color: 'var(--text)' }
 const sectionTitle = { fontWeight: 700, fontSize: 13, color: 'var(--text)', margin: '14px 0 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
@@ -148,7 +150,8 @@ export function DocumentsPanel({ dealId, statuses = [], toast }) {
 }
 
 // ── PHOTOGRAPHY ────────────────────────────────────────────────────
-const PHOTO_STATUSES = ['Needs Prep', 'Ready', 'Scheduled', 'Shot', 'Media Received', 'Corrections Requested', 'Approved']
+const PHOTO_STATUSES = workflowStorageOptions('photography.lifecycle')
+const photoStatusCode = value => identifierCodeFor('tc_photography', 'status', value)
 
 export function PhotographyPanel({ deal, services = [], checklist = [], toast, isAdmin = false }) {
   const [order, setOrder]   = useState(null)   // existing tc_photography row or null
@@ -163,7 +166,7 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast, i
   async function load() {
     setLoadingP(true)
     const { data } = await supabase.from('tc_photography').select('*').eq('tc_deal_id', deal.id).order('created_at', { ascending: false }).limit(1)
-    const row = data?.[0] || null
+    const row = data?.[0] ? decorateRecordIdentifiers('tc_photography', data[0]) : null
     setOrder(row)
     if (row?.photographer_contact_id) {
       const { data: c } = await supabase.from('contacts').select('id, first_name, last_name, email, phone').eq('id', row.photographer_contact_id).maybeSingle()
@@ -175,12 +178,14 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast, i
 
   async function ensureOrder() {
     if (order) return order
+    const insert = prepareRecordIdentifierDatabaseWrite('tc_photography', { tc_deal_id: deal.id, status_code: 'needs_prep', services: [], readiness: {} })
     const { data, error } = await supabase.from('tc_photography')
-      .insert({ tc_deal_id: deal.id, status: 'Needs Prep', services: [], readiness: {} })
+      .insert(insert)
       .select().single()
     if (error) throw error
-    setOrder(data)
-    return data
+    const decorated = decorateRecordIdentifiers('tc_photography', data)
+    setOrder(decorated)
+    return decorated
   }
 
   const isLocked = !!order?.locked
@@ -196,11 +201,12 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast, i
     setSaving(true)
     try {
       const row = await ensureOrder()
+      const write = prepareRecordIdentifierDatabaseWrite('tc_photography', { ...fields, updated_at: new Date().toISOString() })
       const { data, error } = await supabase.from('tc_photography')
-        .update({ ...fields, updated_at: new Date().toISOString() })
+        .update(write)
         .eq('id', row.id).select().single()
       if (error) throw error
-      setOrder(data)
+      setOrder(decorateRecordIdentifiers('tc_photography', data))
 
       // Agent confirmation when a shoot gets scheduled
       if (opts.notifySchedule && deal.agent_id) {
@@ -291,7 +297,7 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast, i
     const next = { ...readiness, [item]: !readiness[item] }
     const fields = { readiness: next }
     const allDone = checklist.every(i => next[i])
-    if (allDone && order?.status === 'Needs Prep') fields.status = 'Ready'
+    if (allDone && photoStatusCode(order) === 'needs_prep') fields.status_code = 'ready'
     patch(fields)
   }
 
@@ -308,7 +314,7 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast, i
       setWeatherGate({ forecast: fc, when: new Date(order.scheduled_at).toLocaleString() })
       return
     }
-    patch({ status: 'Scheduled' }, { notifySchedule: true })
+    patch({ status_code: 'scheduled' }, { notifySchedule: true })
   }
 
   return (
@@ -316,7 +322,7 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast, i
       <div style={sectionTitle}>
         <span>📸 Photography</span>
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-          {order?.status || 'Not started'}{selected.length ? ' · est. $' + total : ''}
+          {order?.status_label || order?.status || 'Not started'}{selected.length ? ' · est. $' + total : ''}
           {isLocked && <span style={{ color: '#DC2626' }}>🔒 Locked</span>}
         </span>
       </div>
@@ -394,8 +400,8 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast, i
                value={order?.scheduled_at ? String(order.scheduled_at).slice(0, 16) : ''}
                disabled={isLocked}
                onChange={e => patch({ scheduled_at: e.target.value || null })} />
-        <select style={inp} value={order?.status || 'Needs Prep'} disabled={isLocked} onChange={e => patch({ status: e.target.value })}>
-          {PHOTO_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        <select style={inp} value={order?.status || PHOTO_STATUSES[0]?.value || ''} disabled={isLocked} onChange={e => patch({ status: e.target.value })}>
+          {PHOTO_STATUSES.map(status => <option key={status.code} value={status.value}>{status.label}</option>)}
         </select>
         <Btn onClick={() => confirmSchedule()}
              disabled={saving || checkingWx || !order?.scheduled_at || isLocked}>
@@ -498,7 +504,7 @@ export function PhotographyPanel({ deal, services = [], checklist = [], toast, i
                 style={{ flex: 1, padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter,system-ui,sans-serif' }}>
                 Pick another day
               </button>
-              <button onClick={() => { setWeatherGate(null); patch({ status: 'Scheduled' }, { notifySchedule: true }) }}
+              <button onClick={() => { setWeatherGate(null); patch({ status_code: 'scheduled' }, { notifySchedule: true }) }}
                 style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: '#DC2626', color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'Inter,system-ui,sans-serif' }}>
                 Schedule anyway
               </button>

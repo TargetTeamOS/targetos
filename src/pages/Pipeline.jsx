@@ -10,9 +10,11 @@ import { useApp } from '../context/AppContext'
 import { useDeals } from '../lib/hooks'
 import { fmt$, parseNum } from '../lib/utils'
 import { DEAL_STAGES } from '../lib/constants'
+import { identifierCodeFor } from '../lib/recordIdentifiers'
 import { PageHeader, Loading, Empty, Avatar, Btn } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const dealStageCode = value => identifierCodeFor('deals', 'stage', value)
 
 export function Pipeline() {
   const navigate  = useNavigate()
@@ -22,7 +24,7 @@ export function Pipeline() {
   const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
   const { deals, loading, update } = useDeals(filters)
 
-  const activeStages = DEAL_STAGES.filter(s => !['Closed','Deal Fell Through'].includes(s.value))
+  const activeStages = DEAL_STAGES.filter(s => !['closed', 'fell_through'].includes(dealStageCode(s.value)))
 
   async function moveDeal(dealId, newStage) {
     try {
@@ -45,7 +47,7 @@ export function Pipeline() {
 
       <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '16px' }}>
         {activeStages.map(stage => {
-          const stageDeals = deals.filter(d => d.stage === stage.value)
+          const stageDeals = deals.filter(d => dealStageCode(d) === dealStageCode(stage.value))
           const stageGCI   = stageDeals.reduce((s, d) => s + parseNum(d.gci), 0)
 
           return (
@@ -82,7 +84,7 @@ export function Pipeline() {
 
                     {/* Move buttons */}
                     <div style={{ display: 'flex', gap: '4px', marginTop: '8px', flexWrap: 'wrap' }}>
-                      {activeStages.filter(s => s.value !== stage.value).map(s => (
+                      {activeStages.filter(s => dealStageCode(s.value) !== dealStageCode(stage.value)).map(s => (
                         <button key={s.value}
                           onClick={(e) => { e.stopPropagation(); moveDeal(deal.id, s.value) }}
                           style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', border: "1px solid " + (s.hex) + "44", background: s.hex + '11', color: s.hex, cursor: 'pointer', fontFamily: ff, fontWeight: 600 }}>

@@ -6,6 +6,8 @@
 
 import { supabase } from './supabase'
 import { TRIGGERS, CONDITIONS, ACTIONS } from './automationConstants'
+import { automationConditionEquals } from './automationIdentifiers'
+import { legacyRecordIdentifierValue } from './recordIdentifiers'
 
 // ── VARIABLE INTERPOLATION ────────────────────────────────────────
 // Replaces {{variable}} in text with actual values from context
@@ -156,14 +158,14 @@ async function executeAction(action, context, triggerData, agents) {
 
     case 'update_contact_status': {
       if (triggerData.contact_id) {
-        await supabase.from('contacts').update({ status: cfg.status, updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
+        await supabase.from('contacts').update({ status: legacyRecordIdentifierValue('contacts', 'status', cfg.status), updated_at: new Date().toISOString() }).eq('id', triggerData.contact_id)
       }
       break
     }
 
     case 'update_deal_stage': {
       if (triggerData.deal_id) {
-        await supabase.from('deals').update({ stage: cfg.stage, updated_at: new Date().toISOString() }).eq('id', triggerData.deal_id)
+        await supabase.from('deals').update({ stage: legacyRecordIdentifierValue('deals', 'stage', cfg.stage), updated_at: new Date().toISOString() }).eq('id', triggerData.deal_id)
       }
       break
     }
@@ -395,15 +397,20 @@ async function executeAction(action, context, triggerData, agents) {
         break
       }
       try {
-        await fetch(hookUrl, {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const authToken = sessionData && sessionData.session ? sessionData.session.access_token : ''
+        await fetch('/api/automation-webhook', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: Object.assign({ 'Content-Type': 'application/json' }, authToken ? { Authorization: 'Bearer ' + authToken } : {}),
           body: JSON.stringify({
-            source: 'TargetOS',
-            event: context.trigger_type || 'automation',
-            message: interpolate(cfg.payload || '', context),
-            data: triggerData,
-            sent_at: new Date().toISOString(),
+            url: hookUrl,
+            payload: {
+              source: 'TargetOS',
+              event: context.trigger_type || 'automation',
+              message: interpolate(cfg.payload || '', context),
+              data: triggerData,
+              sent_at: new Date().toISOString(),
+            },
           }),
         })
         console.log('[AutomationEngine] webhook sent → ' + hookUrl.split('/').slice(0, 3).join('/'))
@@ -487,9 +494,10 @@ export function checkConditions(automation, record) {
   if (!conditions.length) return true
   return conditions.every(cond => {
     const val = record[cond.field]
+    const equal = automationConditionEquals(automation.trigger_type, cond.field, val, cond.value)
     switch (cond.operator) {
-      case 'equals':      return val === cond.value
-      case 'not_equals':  return val !== cond.value
+      case 'equals':      return equal
+      case 'not_equals':  return !equal
       case 'contains':    return String(val || '').toLowerCase().includes(String(cond.value).toLowerCase())
       case 'is_empty':    return !val
       case 'is_not_empty':return !!val

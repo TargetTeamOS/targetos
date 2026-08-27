@@ -11,18 +11,20 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Modal, Btn } from './UI'
 import { contactName } from './ContactPicker'
+import { identifierCodeFor } from '../lib/recordIdentifiers'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const in7   = () => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10) }
 
 const PRIORITY_COLOR = { urgent: '#DC2626', high: '#D97706', normal: '#2563EB', low: '#6B7280' }
+const taskStatusCode = value => identifierCodeFor('tc_tasks', 'status', value)
 
 export default function TCMorningSummary({ tasks = [], deals = [], onCompleteTask }) {
   const [openList, setOpenList] = useState(null)   // 'overdue' | 'today' | 'week' | 'photo' | null
   const [shoots, setShoots]     = useState([])
 
   const t = today(), wk = in7()
-  const open = tasks.filter(x => x.status !== 'done')
+  const open = tasks.filter(x => taskStatusCode(x) !== 'done')
   const overdue  = open.filter(x => x.due_date && x.due_date < t)
   const dueToday = open.filter(x => x.due_date === t)
   const thisWeek = open.filter(x => x.due_date && x.due_date > t && x.due_date <= wk)

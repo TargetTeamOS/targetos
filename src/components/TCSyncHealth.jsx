@@ -10,20 +10,24 @@
 //
 // Checks per tc_deal:
 //   linked deal    → exists? sale_price, ao_date, close_date,
-//                    agent_id, stage vs phaseToStage[tc_phase]
+//                    agent_id, stage identity vs phase mapping
 //   linked listing → exists? list_price, agent_id,
-//                    status vs phaseToStatus[tc_phase]
+//                    status identity vs phase mapping
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { phaseToStage, phaseToStatus } from '../lib/tcPhaseMap'
+import { phaseToDealStageCode, phaseToListingStatusCode } from '../lib/tcPhaseMap'
+import { identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 import { Btn, Modal, ModalActions } from './UI'
 
 // Normalizers so cosmetic differences don't count as drift
 const normDate = v => (v ? String(v).slice(0, 10) : null)
 const normNum  = v => (v === null || v === undefined || v === '' ? null : Number(v))
 const normStr  = v => (v === null || v === undefined || v === '' ? null : String(v))
+const dealStageCode = value => identifierCodeFor('deals', 'stage', value)
+const listingStatusCode = value => identifierCodeFor('listings', 'status', value)
+const tcPhaseCode = value => identifierCodeFor('tc_deals', 'tc_phase', value)
 
 function fmtVal(v) {
   if (v === null || v === undefined || v === '') return '—'
@@ -90,11 +94,12 @@ export default function TCSyncHealth({ agents = [], onFixed }) {
                              fix: { table: 'deals', id: deal.id, patch: { [field]: rawTc ?? null } } })
               }
             }
-            const wantStage = phaseToStage[tc.tc_phase]
-            if (wantStage && normStr(deal.stage) !== wantStage) {
+            const phaseCode = tcPhaseCode(tc)
+            const wantStageCode = phaseToDealStageCode[phaseCode]
+            if (wantStageCode && dealStageCode(deal) !== wantStageCode) {
               found.push({ key: tc.id + ':deal:stage', tcId: tc.id, label, target: 'Production', field: 'stage (from phase)',
-                           tcVal: tc.tc_phase + ' → ' + wantStage, otherVal: fmtVal(deal.stage),
-                           fix: { table: 'deals', id: deal.id, patch: { stage: wantStage } } })
+                           tcVal: phaseCode + ' → ' + wantStageCode, otherVal: fmtVal(deal.stage),
+                           fix: { table: 'deals', id: deal.id, patch: { stage_code: wantStageCode } } })
             }
           }
         }
@@ -118,11 +123,12 @@ export default function TCSyncHealth({ agents = [], onFixed }) {
                            tcVal: agentName(tc.agent_id), otherVal: agentName(listing.agent_id),
                            fix: { table: 'listings', id: listing.id, patch: { agent_id: tc.agent_id ?? null } } })
             }
-            const wantStatus = phaseToStatus[tc.tc_phase]
-            if (wantStatus && normStr(listing.status) !== wantStatus) {
+            const phaseCode = tcPhaseCode(tc)
+            const wantStatusCode = phaseToListingStatusCode[phaseCode]
+            if (wantStatusCode && listingStatusCode(listing) !== wantStatusCode) {
               found.push({ key: tc.id + ':listing:status', tcId: tc.id, label, target: 'Listings', field: 'status (from phase)',
-                           tcVal: tc.tc_phase + ' → ' + wantStatus, otherVal: fmtVal(listing.status),
-                           fix: { table: 'listings', id: listing.id, patch: { status: wantStatus } } })
+                           tcVal: phaseCode + ' → ' + wantStatusCode, otherVal: fmtVal(listing.status),
+                           fix: { table: 'listings', id: listing.id, patch: { status_code: wantStatusCode } } })
             }
           }
         }
@@ -139,9 +145,10 @@ export default function TCSyncHealth({ agents = [], onFixed }) {
   async function applyFix(issue) {
     setFixing(issue.key)
     try {
+      const patch = prepareRecordIdentifierDatabaseWrite(issue.fix.table, issue.fix.patch)
       const { error: e } = await supabase
         .from(issue.fix.table)
-        .update({ ...issue.fix.patch, updated_at: new Date().toISOString() })
+        .update({ ...patch, updated_at: new Date().toISOString() })
         .eq('id', issue.fix.id)
       if (e) throw e
       setIssues(prev => prev.filter(i => i.key !== issue.key))
@@ -160,9 +167,10 @@ export default function TCSyncHealth({ agents = [], onFixed }) {
     const remaining = []
     for (const issue of issues) {
       try {
+        const patch = prepareRecordIdentifierDatabaseWrite(issue.fix.table, issue.fix.patch)
         const { error: e } = await supabase
           .from(issue.fix.table)
-          .update({ ...issue.fix.patch, updated_at: new Date().toISOString() })
+          .update({ ...patch, updated_at: new Date().toISOString() })
           .eq('id', issue.fix.id)
         if (e) remaining.push(issue)
       } catch { remaining.push(issue) }

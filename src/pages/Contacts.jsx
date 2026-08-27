@@ -23,6 +23,8 @@ import { RecordActivityFeed as RecordActivity } from '../components/RecordActivi
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { fmt$, fmtDate, fmtPhone, initials, matchSearch } from '../lib/utils'
 import { CONTACT_TYPES, CONTACT_TYPE_COLORS, CONTACT_STATUSES, CONTACT_SOURCES } from '../lib/constants'
+import { resolveWorkflowState } from '../lib/identifiers'
+import { decorateRecordList, identifierCodeFor, recordIdentifierFilterValues } from '../lib/recordIdentifiers'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Tabs, SectionTitle,
@@ -32,6 +34,14 @@ import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { applySegmentCondition } from '../lib/segments'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const contactStatusCode = value => identifierCodeFor('contacts', 'status', value)
+const contactStatusMatches = (recordOrValue, expectedValue) => {
+  const actualCode = contactStatusCode(recordOrValue)
+  const expectedCode = contactStatusCode(expectedValue)
+  if (actualCode && expectedCode) return actualCode === expectedCode
+  const actualValue = recordOrValue && typeof recordOrValue === 'object' ? recordOrValue.status : recordOrValue
+  return actualValue === expectedValue
+}
 
 const CONTACT_EXPORT_COLS = [
   { key:'first_name', label:'First Name', example:'John' },
@@ -74,6 +84,7 @@ const ALL_POPUP_FIELDS = [
 ]
 
 function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onClose, agents, isAdmin, onFieldsChange }) {
+  const directoryOnly = c.directory_only === true
   const [configMode, setConfigMode] = React.useState(false)
   const [localFields, setLocalFields] = React.useState(fields)
   const ff2 = 'Inter,system-ui,sans-serif'
@@ -82,6 +93,7 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
   const [history, setHistory]   = React.useState(deals.length ? deals.map(d => ({ label: d.addr, sub: d.stage })) : null)
   const [lastSeen, setLastSeen] = React.useState(null)
   React.useEffect(() => {
+    if (directoryOnly) { setHistory([]); setLastSeen(null); return }
     let alive = true
     ;(async () => {
       const items = []
@@ -109,7 +121,7 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
       } catch {}
     })()
     return () => { alive = false }
-  }, [c.id])
+  }, [c.id, directoryOnly])
   const STATUS_COLORS = { Hot:'#DC2626',Warm:'#F5A623',Cold:'#3B82F6',Active:'#10B981',New:'#8B5CF6',Nurturing:'#14B8A6',Closed:'#94A3B8',Unresponsive:'#64748B' }
   const sc = STATUS_COLORS[c.status] || '#CC2200'
   const agent = agents.find(a => a.id === c.agent_id)
@@ -197,6 +209,12 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
           })}
         </div>
 
+        {directoryOnly && (
+          <div style={{ margin:'10px 16px', padding:'9px 11px', borderRadius:8, background:'var(--dim)', color:'var(--muted)', fontSize:11 }}>
+            Shared directory entry — private contact details and activity remain with the assigned agent.
+          </div>
+        )}
+
         {/* Home address + last interaction */}
         <div style={{ padding:'8px 16px 4px', borderTop:'1px solid var(--border)' }}>
           {c.address && (
@@ -214,7 +232,7 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
         </div>
 
         {/* Past deals & offers */}
-        <div style={{ padding:'6px 16px 12px' }}>
+        {!directoryOnly && <div style={{ padding:'6px 16px 12px' }}>
           <div style={{ fontSize:'10px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'6px' }}>Past Deals &amp; Offers</div>
           {history === null ? <div style={{ fontSize:'11px', color:'var(--muted)' }}>Loading…</div>
             : history.length === 0 ? <div style={{ fontSize:'11px', color:'var(--muted)' }}>None on record</div>
@@ -224,7 +242,7 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
                 <span style={{ fontSize:'10.5px', color:'var(--muted)', flexShrink:0, marginLeft:8 }}>{h.sub}{h.date ? ' · ' + new Date(h.date).toLocaleDateString() : ''}</span>
               </div>
             ))}
-        </div>
+        </div>}
 
         {/* Actions */}
         <div style={{ padding:'10px 16px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px' }}>
@@ -239,10 +257,10 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
               💬 WhatsApp
             </a>
           )}
-          <button onClick={() => { onOpenFull(); onClose() }}
+          {!directoryOnly && <button onClick={() => { onOpenFull(); onClose() }}
             style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', background:'#CC2200', color:'#fff', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff2 }}>
             Open →
-          </button>
+          </button>}
         </div>
       </div>
     </div>
@@ -313,10 +331,25 @@ export function Contacts() {
   async function loadContacts(offset = 0, append = false) {
     if (offset === 0) setLoading(true)
     try {
-      const agentFilter = isAdmin || canManage ? null : agent?.id
+      if (!isAdmin && !canManage) {
+        const { data, error } = await supabase.rpc('app_contact_directory', {
+          p_search: search || null,
+          p_status: statusF || null,
+          p_type: typeF || null,
+          p_agent_id: agentF || null,
+          p_limit: PAGE_SIZE,
+          p_offset: offset,
+        })
+        if (error) throw error
+        const rows = decorateRecordList('contacts', Array.isArray(data) ? data : [])
+        setTotalCount(Number(rows[0]?._total_count || rows.length || 0))
+        setContacts(prev => append ? [...prev, ...rows] : rows)
+        setPageOffset(offset)
+        return
+      }
+
       let q = supabase.from('contacts').select('*, agents(id,name,color)', { count: 'exact' })
-      if (agentFilter) q = q.eq('agent_id', agentFilter)
-      if (statusF)     q = q.eq('status', statusF)
+      if (statusF)     q = q.in('status', recordIdentifierFilterValues('contacts', 'status', statusF))
       if (typeF)       q = q.eq('type', typeF)
       if (agentF)      q = q.eq('agent_id', agentF)
       if (search && search.length >= 2) {
@@ -329,7 +362,8 @@ export function Contacts() {
       const { data, count, error } = await q
       if (error) throw error
       setTotalCount(count || 0)
-      setContacts(prev => append ? [...prev, ...(data||[])] : (data||[]))
+      const rows = decorateRecordList('contacts', data || [])
+      setContacts(prev => append ? [...prev, ...rows] : rows)
       setPageOffset(offset)
 
       // Regular agent with "browse everyone's contacts" on: also pull
@@ -401,6 +435,7 @@ export function Contacts() {
   }, [urlId, contacts.length])
 
   function openContact(c) {
+    if (c.directory_only) { setPopupContact(c); return }
     navigate('/contacts/' + c.id, { replace: true })
     setSelected(c)
     setForm({ ...BLANK, ...c })
@@ -511,7 +546,7 @@ export function Contacts() {
   const filtered = React.useMemo(() => {
     let result = contacts.filter(c => {
       if (segmentContactIds && !segmentContactIds.includes(c.id)) return false
-      if (statusF && c.status    !== statusF) return false
+      if (statusF && !contactStatusMatches(c, statusF)) return false
       if (agentF  && c.agent_id  !== agentF)  return false
       if (sourceF && c.source    !== sourceF) return false
       if (typeF   && c.type      !== typeF)   return false
@@ -544,7 +579,7 @@ export function Contacts() {
   const toggleRole = t => setCollapsed(p => ({ ...p, [t || '']: !p[t || ''] }))
   const roleCount  = t => displayList.filter(x => (x.type || '') === (t || '')).length
 
-  const statusColor = (s) => CONTACT_STATUSES.find(x => x.value === s)?.color || '#94A3B8'
+  const statusColor = (s) => resolveWorkflowState('contact.lifecycle', s)?.color || '#94A3B8'
 
   async function bulkDelete() {
     if (!can('contacts.delete')) { toast("You don't have permission to delete contacts", '#DC2626'); return }
@@ -711,16 +746,16 @@ export function Contacts() {
                 style={{ background: isSelected ? 'rgba(204,34,0,.04)' : 'var(--panel)', borderRadius: 'var(--radius)', border: isSelected ? '2px solid #CC220044' : isPopup ? '2px solid var(--brand)' : '1px solid var(--border)', padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow .15s', position: 'relative' }}
                 onMouseEnter={e => { if (!isSelected) e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
                 onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
-                <div onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]) }}
+                {!c.directory_only && <div onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]) }}
                   style={{ position:'absolute', top:10, left:10, width:16, height:16, borderRadius:'4px', border:'2px solid ' + (isSelected ? '#CC2200' : 'var(--border)'), background: isSelected ? '#CC2200' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, transition:'all .12s' }}>
                   {isSelected && <span style={{ color:'#fff', fontSize:'9px', fontWeight:900, lineHeight:1 }}>✓</span>}
-                </div>
+                </div>}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                   <div style={{ width: 38, height: 38, borderRadius: '50%', background: statusColor(c.status), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, flexShrink: 0 }}>
                     {initials(c.first_name + ' ' + (c.last_name || ''))}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail', { state: { ids: contacts.map(x => x.id) } }) }}
+                    <span onClick={e => { if (!c.directory_only) { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail', { state: { ids: contacts.filter(x => !x.directory_only).map(x => x.id) } }) } }}
                       style={{ fontWeight: 700, fontSize: '14px', color: 'var(--brand)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
                       {c.first_name} {c.last_name}
                     </span>
@@ -780,17 +815,17 @@ export function Contacts() {
                 onMouseEnter={e => { if(!isSelected) e.currentTarget.style.background='var(--hov)' }}
                 onMouseLeave={e => e.currentTarget.style.background = isSelected ? 'rgba(204,34,0,.03)' : 'transparent'}>
                 {/* Checkbox */}
-                <div onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(c.id) ? prev.filter(x=>x!==c.id) : [...prev,c.id]) }}
+                {!c.directory_only ? <div onClick={e => { e.stopPropagation(); setSelectedIds(prev => prev.includes(c.id) ? prev.filter(x=>x!==c.id) : [...prev,c.id]) }}
                   style={{ width:16, height:16, borderRadius:'4px', border:'2px solid '+(isSelected?'#CC2200':'var(--border)'), background:isSelected?'#CC2200':'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .12s' }}>
                   {isSelected && <span style={{ color:'#fff', fontSize:'9px', fontWeight:900 }}>✓</span>}
-                </div>
+                </div> : <div />}
                 {/* Name + avatar */}
                 <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'0 6px', minWidth:0 }}>
                   <div style={{ width:30, height:30, borderRadius:'50%', background:sc, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'11px', fontWeight:700, flexShrink:0 }}>
                     {initials(c.first_name + ' ' + (c.last_name || ''))}
                   </div>
                   <div style={{ minWidth:0 }}>
-                    <span onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail', { state: { ids: contacts.map(x => x.id) } }) }}
+                    <span onClick={e => { if (!c.directory_only) { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail', { state: { ids: contacts.filter(x => !x.directory_only).map(x => x.id) } }) } }}
                       style={{ fontWeight:700, fontSize:'13px', color:'var(--brand)', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', cursor:'pointer' }}>
                       {c.first_name} {c.last_name}
                     </span>
@@ -829,10 +864,10 @@ export function Contacts() {
                   {c.phone && (
 <span onClick={e=>e.stopPropagation()}><ClickToCall phone={c.phone} contactName={c.first_name+' '+(c.last_name||'')} contactId={c.id} size="sm" /></span>
                   )}
-                  <button onClick={e => { e.stopPropagation(); openContact(c) }}
+                  {!c.directory_only && <button onClick={e => { e.stopPropagation(); openContact(c) }}
                     style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:26, height:26, borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dim)', color:'var(--muted)', cursor:'pointer', fontSize:12, fontFamily:ff }}>
                     ✏️
-                  </button>
+                  </button>}
                 </div>
               </div>
               )}
@@ -963,7 +998,7 @@ export function Contacts() {
           {selected?.phone && (
             <ClickToCall phone={selected.phone} contactName={(selected.first_name||'') + ' ' + (selected.last_name||'')} contactId={selected.id} size="lg" showLabel />
           )}
-          {selected && (
+          {selected && can('calls.view') && (
             <Btn variant="secondary" onClick={() => {
               closePanel()
               navigate('/calls?contact=' + selected.id + '&name=' + encodeURIComponent((selected.first_name || '') + ' ' + (selected.last_name || '')))
@@ -982,8 +1017,8 @@ export function Contacts() {
           fields={popupFields}
           agents={agents}
           isAdmin={isAdmin || canManage}
-          onEdit={() => { openContact(popupContact); setPopupContact(null) }}
-          onOpenFull={() => navigate('/contacts/' + popupContact.id + '/detail', { state: { ids: contacts.map(x => x.id) } })}
+          onEdit={() => { if (!popupContact.directory_only) { openContact(popupContact); setPopupContact(null) } }}
+          onOpenFull={() => { if (!popupContact.directory_only) navigate('/contacts/' + popupContact.id + '/detail', { state: { ids: contacts.filter(x => !x.directory_only).map(x => x.id) } }) }}
           onClose={() => setPopupContact(null)}
           onFieldsChange={fields => setPopupFields(fields)}
         />

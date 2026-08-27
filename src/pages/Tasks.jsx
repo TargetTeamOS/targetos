@@ -11,6 +11,7 @@ import { useApp } from '../context/AppContext'
 import { useTasks, useAgents } from '../lib/hooks'
 import { fmtDate, today, isOverdue, isDueToday, isDueSoon } from '../lib/utils'
 import { TASK_PRIORITIES, TASK_STATUSES } from '../lib/constants'
+import { identifierCodeFor } from '../lib/recordIdentifiers'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import {
@@ -34,6 +35,9 @@ const BLANK = {
   notes: '', agent_id: '', deal_id: '', contact_id: '',
   recur_interval: '', recur_unit: 'week',  // recurring task fields
 }
+
+const taskStatusCode = task => identifierCodeFor('tasks', 'status', task)
+const taskPriorityCode = task => identifierCodeFor('tasks', 'priority', task)
 
 export function Tasks() {
   const navigate = useNavigate()
@@ -149,8 +153,8 @@ export function Tasks() {
   }
 
   const filtered = tasks.filter(t => {
-    if (statusF && t.status !== statusF) return false
-    if (priorF  && t.priority !== priorF) return false
+    if (statusF && taskStatusCode(t) !== statusF) return false
+    if (priorF  && taskPriorityCode(t) !== priorF) return false
     if (agentF  && t.agent_id !== agentF) return false
     if (search  && !t.title?.toLowerCase().includes(search.toLowerCase())) return false
     return true
@@ -160,14 +164,16 @@ export function Tasks() {
   const statusColor   = (s) => TASK_STATUSES.find(x => x.value === s)?.color || '#94A3B8'
 
   // Group by priority
-  const urgent = filtered.filter(t => t.priority === 'urgent' && t.status !== 'done')
-  const high   = filtered.filter(t => t.priority === 'high'   && t.status !== 'done')
-  const normal = filtered.filter(t => t.priority === 'normal' && t.status !== 'done')
-  const low    = filtered.filter(t => t.priority === 'low'    && t.status !== 'done')
-  const done   = filtered.filter(t => t.status === 'done')
+  const urgent = filtered.filter(t => taskPriorityCode(t) === 'urgent' && taskStatusCode(t) !== 'done')
+  const high   = filtered.filter(t => taskPriorityCode(t) === 'high'   && taskStatusCode(t) !== 'done')
+  const normal = filtered.filter(t => taskPriorityCode(t) === 'normal' && taskStatusCode(t) !== 'done')
+  const low    = filtered.filter(t => taskPriorityCode(t) === 'low'    && taskStatusCode(t) !== 'done')
+  const done   = filtered.filter(t => taskStatusCode(t) === 'done')
 
   function TaskCard({ task }) {
-    const overdue  = task.due_date && isOverdue(task.due_date) && task.status !== 'done'
+    const statusCode = taskStatusCode(task)
+    const priorityCode = taskPriorityCode(task)
+    const overdue  = task.due_date && isOverdue(task.due_date) && statusCode !== 'done'
     const dueToday = task.due_date && isDueToday(task.due_date)
 
     return (
@@ -177,12 +183,12 @@ export function Tasks() {
         onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
         {/* Check button */}
         <button onClick={(e) => markDone(task, e)}
-          style={{ width: 20, height: 20, borderRadius: '50%', border: "2px solid " + (priorityColor(task.priority)), background: task.status === 'done' ? priorityColor(task.priority) : 'transparent', cursor: 'pointer', flexShrink: 0, marginTop: '1px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#fff' }}>
-          {task.status === 'done' ? '✓' : ''}
+          style={{ width: 20, height: 20, borderRadius: '50%', border: "2px solid " + (priorityColor(priorityCode)), background: statusCode === 'done' ? priorityColor(priorityCode) : 'transparent', cursor: 'pointer', flexShrink: 0, marginTop: '1px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#fff' }}>
+          {statusCode === 'done' ? '✓' : ''}
         </button>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: task.status === 'done' ? 'var(--muted)' : 'var(--text)', textDecoration: task.status === 'done' ? 'line-through' : 'none', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display:'flex', alignItems:'center', gap:6 }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: statusCode === 'done' ? 'var(--muted)' : 'var(--text)', textDecoration: statusCode === 'done' ? 'line-through' : 'none', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:6 }}>
             <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{task.title}</span>
             {task.recur_interval && <span style={{ fontSize:9, color:'#3B82F6', fontWeight:800, background:'rgba(59,130,246,.1)', padding:'1px 5px', borderRadius:99, border:'1px solid rgba(59,130,246,.2)', flexShrink:0 }}>🔄 {task.recur_interval}{(task.recur_unit||'w').charAt(0)}</span>}
           </div>
@@ -196,7 +202,7 @@ export function Tasks() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
-          <Pill label={task.priority} color={priorityColor(task.priority)} />
+          <Pill label={task.priority_label || task.priority} color={priorityColor(priorityCode)} />
           {task.agents && <Avatar agent={task.agents} size={20} />}
         </div>
       </div>
@@ -242,7 +248,7 @@ export function Tasks() {
     <div style={{ fontFamily: ff }}>
       <PageHeader
         title="Tasks"
-        sub={filtered.filter(t => t.status !== 'done').length + ' open · ' + done.length + ' done'}
+        sub={filtered.filter(t => taskStatusCode(t) !== 'done').length + ' open · ' + done.length + ' done'}
         actions={<div style={{display:'flex',gap:8,alignItems:'center'}}><LastVisited page="tasks" /><Btn onClick={openAdd}>+ Add Task</Btn></div>}
       />
 
@@ -354,7 +360,7 @@ export function Tasks() {
           {selected && (
             <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>
           )}
-          {selected && selected.status !== 'done' && (
+          {selected && taskStatusCode(selected) !== 'done' && (
             <Btn variant="success" onClick={(e) => { markDone(selected, e); closePanel() }}>Mark Done</Btn>
           )}
           <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>

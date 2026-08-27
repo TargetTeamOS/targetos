@@ -38,7 +38,7 @@ async function callAdminUsers(payload) {
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const ROLES  = ['admin','secretary','agent']
 const COLORS = ['#CC2200','#0EA5E9','#10B981','#F5A623','#8B5CF6','#EC4899','#14B8A6','#E8650A','#6366F1','#84CC16']
-const BLANK  = { name:'', email:'', phone:'', color:'#CC2200', role:'agent', active:true }
+const BLANK  = { name:'', email:'', phone:'', color:'#CC2200', role:'agent', active:true, call_log_access:false }
 
 export function Admin() {
   const { agent: me, isAdmin } = useAuth()
@@ -52,7 +52,7 @@ export function Admin() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [showAdd,   setShowAdd]   = useState(false)
-  const [addForm,   setAddForm]   = useState({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
+  const [addForm,   setAddForm]   = useState({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', sendInvite:true })
   const [adding,    setAdding]    = useState(false)
   const [confirmDel, setConfirmDel] = useState(null)
   const [confirmDelType, setConfirmDelType] = useState('deactivate') // 'deactivate' | 'delete'
@@ -100,7 +100,15 @@ export function Admin() {
 
   function set(k,v)    { setForm(f => ({...f,[k]:v})) }
   function setA(k,v)   { setAddForm(f => ({...f,[k]:v})) }
-  function openAgent(a){ setSelected(a); setForm({...BLANK,...a}) }
+  async function openAgent(a){
+    setSelected(a)
+    setForm({...BLANK,...a, call_log_access:false})
+    try {
+      const { data } = await supabase.from('agent_permission_grants')
+        .select('enabled').eq('agent_id', a.id).eq('permission_id', 'calls.view').maybeSingle()
+      setForm(f => ({ ...f, call_log_access: data?.enabled === true }))
+    } catch { /* migration absent: fail closed */ }
+  }
   function closePanel(){ setSelected(null) }
 
   // ── Upload a headshot on behalf of any agent ────────────────────
@@ -168,10 +176,28 @@ export function Admin() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Save failed (' + res.status + ')')
 
+      const grantRes = await callAdminUsers({
+        action: 'set_permission_grant',
+        agentId: selected.id,
+        permissionId: 'calls.view',
+        enabled: form.role === 'agent' && form.call_log_access === true,
+      })
+      const grantData = await grantRes.json().catch(() => ({}))
+      if (!grantRes.ok) {
+        const grantError = new Error(grantData.error || 'Call Log permission could not be saved')
+        grantError.permissionGrantFailed = true
+        throw grantError
+      }
+
       await refetch()
       toast('✅ ' + form.name + ' saved')
       closePanel()
     } catch(e) {
+      if (e.permissionGrantFailed) {
+        await refetch()
+        toast('Profile saved, but Call Log access was not changed: ' + e.message + '. Apply the Phase 2 access migration first.', '#DC2626')
+        return
+      }
       // Fallback: try direct update (works if RLS allows it)
       try {
         const { error } = await supabase.from('agents').update({
@@ -205,7 +231,6 @@ export function Admin() {
         phone:    addForm.phone || null,
         role:     addForm.role,
         color:    addForm.color,
-        password: addForm.password || 'TargetOS2024!',
       })
       const data = await res.json().catch(() => ({}))
 
@@ -226,7 +251,7 @@ export function Admin() {
           : '✅ ' + addForm.name + ' created')
       toast(msg)
       setShowAdd(false)
-      setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
+      setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', sendInvite:true })
     } catch(e) {
       // Fallback: create agent record without auth
       if (e.message?.toLowerCase().includes('fetch') || e.message?.toLowerCase().includes('network')) {
@@ -252,7 +277,7 @@ export function Admin() {
     await refetch()
     toast('✅ ' + addForm.name + ' added. To set up their login, add SUPABASE_SERVICE_KEY to Vercel.')
     setShowAdd(false)
-    setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', password:'', sendInvite:true })
+    setAddForm({ name:'', email:'', phone:'', role:'agent', color:'#CC2200', sendInvite:true })
   }
 
   // ── Deactivate user ───────────────────────────────────────────
@@ -312,14 +337,13 @@ export function Admin() {
 
   // ── Reset password ────────────────────────────────────────────
   async function resetPassword() {
-    if (!newPwd || newPwd.length < 8) { toast('Password must be at least 8 characters','#DC2626'); return }
     if (!resetPwd?.auth_user_id) { toast('This user has no auth account yet','#DC2626'); return }
     setResetting(true)
     try {
-      const res = await callAdminUsers({ action:'reset_password', userId: resetPwd.auth_user_id, password: newPwd })
+      const res = await callAdminUsers({ action:'reset_password', userId: resetPwd.auth_user_id })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      toast('Password reset for '+resetPwd.name)
+      toast('Secure password reset email sent to '+resetPwd.name)
       setResetPwd(null)
       setNewPwd('')
     } catch(e) { toast('Failed: '+e.message,'#DC2626') }
@@ -716,7 +740,7 @@ export function Admin() {
       {tab==='system' && (
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {[
-            { label:'Database',       status:'✅ Connected',       detail:'Supabase Postgres — sgrnyvdsyahmypibjarx', color:'#10B981' },
+            { label:'Database',       status:'✅ Connected',       detail:'Supabase Postgres — environment configured', color:'#10B981' },
             { label:'Authentication', status:'✅ Active',          detail:'Supabase Auth — per-agent login with RLS', color:'#10B981' },
             { label:'Phone System',   status:'✅ Twilio Active',   detail:'+1 (845) 327-1778 — inbound/outbound calls', color:'#10B981' },
             { label:'Hosting',        status:'✅ Live',            detail:'Vercel — app.targetreteam.com', color:'#10B981' },
@@ -771,7 +795,7 @@ export function Admin() {
             style={{flex:1,padding:'8px',borderRadius:8,border:'1px solid '+(addForm.sendInvite?'#CC2200':'var(--border)'),background:addForm.sendInvite?'rgba(204,34,0,.07)':'var(--dim)',color:addForm.sendInvite?'#CC2200':'var(--muted)',fontWeight:700,cursor:'pointer',fontSize:12,fontFamily:ff}}>
             📧 Send Email Invite
           </button>
-          <button onClick={() => setA('sendInvite', false)}
+          <button onClick={() => setA('sendInvite', true)} disabled
             style={{flex:1,padding:'8px',borderRadius:8,border:'1px solid '+(!addForm.sendInvite?'#CC2200':'var(--border)'),background:!addForm.sendInvite?'rgba(204,34,0,.07)':'var(--dim)',color:!addForm.sendInvite?'#CC2200':'var(--muted)',fontWeight:700,cursor:'pointer',fontSize:12,fontFamily:ff}}>
             🔑 Set Password Manually
           </button>
@@ -782,7 +806,7 @@ export function Admin() {
         </Field>
         <Field label="Phone (optional)"><Input value={addForm.phone} onChange={v=>setA('phone',v)} type="tel" placeholder="(845) 555-1234" /></Field>
         <Field label="Role"><Select value={addForm.role} onChange={v=>setA('role',v)} options={ROLES} /></Field>
-        {!addForm.sendInvite && (
+        {false && (
           <Field label="Temporary Password" hint="User should change this on first login">
             <Input value={addForm.password} onChange={v=>setA('password',v)} type="password" placeholder="Min 8 characters" />
           </Field>
@@ -833,6 +857,11 @@ export function Admin() {
         </Field>
         <Field label="Phone"><Input value={form.phone??''} onChange={v=>set('phone',v)} placeholder="(845) 555-1234" type="tel" /></Field>
         <Field label="Role"><Select value={form.role} onChange={v=>set('role',v)} options={ROLES} /></Field>
+        {form.role === 'agent' && (
+          <Field label="Call Log Access" hint="Individually allow this agent to open the team Call Log. Administrators and secretaries always have access.">
+            <Toggle value={!!form.call_log_access} onChange={v=>set('call_log_access', v)} label={form.call_log_access ? 'Call Log enabled' : 'Call Log restricted'} />
+          </Field>
+        )}
         <Field label="Call Recordings" hint="Can this agent hear call recordings for any contact? (Per-contact access can also be granted from a contact's page.)">
           <Toggle value={!!form.can_hear_recordings} onChange={v=>set('can_hear_recordings', v)} label={form.can_hear_recordings ? 'Can hear all recordings' : 'No recording access'} />
         </Field>
@@ -890,17 +919,17 @@ export function Admin() {
           </div>
         ) : (
           <>
-            <Field label="New Password" hint="Min 8 characters">
+            {false && <Field label="New Password" hint="Min 8 characters">
               <Input value={newPwd} onChange={setNewPwd} type="password" placeholder="New password" />
-            </Field>
+            </Field>}
             <div style={{fontSize:11,color:'var(--muted)',marginBottom:8}}>
-              The user can log in with this password immediately. They should change it after logging in.
+              TargetOS will email the user a secure recovery link. Administrators cannot view or set the password.
             </div>
           </>
         )}
         <ModalActions>
           <Btn variant="secondary" onClick={() => setResetPwd(null)}>Cancel</Btn>
-          {resetPwd?.auth_user_id && <Btn onClick={resetPassword} loading={resetting}>Reset Password</Btn>}
+          {resetPwd?.auth_user_id && <Btn onClick={resetPassword} loading={resetting}>Send Reset Email</Btn>}
         </ModalActions>
       </Modal>
 

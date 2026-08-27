@@ -14,6 +14,7 @@ import { fmt$ } from '../lib/utils'
 import { PageHeader, Btn, Loading, Empty } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import html2canvas from 'html2canvas'
+import { recordIdentifierFilterValues } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const NAVY = '#1B2B4B'
@@ -161,7 +162,7 @@ export function WeeklyAd() {
   const [previewOpen, setPreviewOpen] = useState(false)
 
   useEffect(() => {
-    supabase.from('listings').select('*, agents(id,name)').eq('status', 'Active')
+    supabase.from('listings').select('*, agents(id,name)').in('status', recordIdentifierFilterValues('listings', 'status', 'active'))
       .order('created_at', { ascending: false }).limit(60)
       .then(({ data }) => { setListings(data || []); setLoading(false) })
   }, [])

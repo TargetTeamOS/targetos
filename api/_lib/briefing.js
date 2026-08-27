@@ -8,6 +8,7 @@
 // too, or the automated email and the in-app preview will drift out
 // of sync.
 'use strict'
+const { recordIdentifierMatches } = require('./recordIdentifiers')
 
 function fmt$(n) {
   if (!n && n !== 0) return '—'
@@ -139,7 +140,7 @@ function buildEmailHTML(agentName, data, prefs, quote, customMsg, style) {
   const leadRows = (prefs.showLeads && data.hotLeads && data.hotLeads.length > 0)
     ? data.hotLeads.slice(0, 8).map(c => row(
         (c.first_name || '') + ' ' + (c.last_name || ''),
-        '<span style="background:' + (c.status === 'Hot' ? '#FEE2E2' : '#FFF7ED') + ';color:' + (c.status === 'Hot' ? '#CC0000' : '#C2410C') + ';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold">' + c.status + '</span>',
+        '<span style="background:' + (recordIdentifierMatches('contacts', 'status', c, 'hot') ? '#FEE2E2' : '#FFF7ED') + ';color:' + (recordIdentifierMatches('contacts', 'status', c, 'hot') ? '#CC0000' : '#C2410C') + ';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold">' + c.status + '</span>',
         false
       )).join('')
     : (prefs.showLeads ? row('No hot or warm leads right now.', '', false) : '')

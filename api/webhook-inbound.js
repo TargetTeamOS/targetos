@@ -1,7 +1,7 @@
 'use strict'
 // api/webhook-inbound.js — receives events FROM Zapier / API Nation
 // (Brivity syncs travel through API Nation to here).
-// Security: shared secret in the X-Webhook-Secret header (or ?secret=),
+// Security: shared secret only in the X-Webhook-Secret header,
 // checked against integrations.secrets.webhook_secret. Always enforced —
 // this endpoint is NOT behind AUTH_ENFORCE because callers are machines.
 //
@@ -11,6 +11,7 @@
 // Everything is logged to integration_events either way.
 
 const { sb, getIntegration, logEvent } = require('./_lib/connectors')
+const { constantTimeEqual } = require('./_lib/requestSecurity')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -40,8 +41,8 @@ module.exports = async function handler(req, res) {
     if (!integ) { res.statusCode = 503; return res.end(JSON.stringify({ error: 'run sql/connectors.sql first' })) }
 
     const expected = (integ.secrets || {}).webhook_secret || ''
-    const provided = req.headers['x-webhook-secret'] || url.searchParams.get('secret') || ''
-    if (!expected || provided !== expected) {
+    const provided = req.headers['x-webhook-secret'] || ''
+    if (!expected || !constantTimeEqual(provided, expected)) {
       console.warn('[webhook-inbound] BLOCKED bad secret from ' + source)
       res.statusCode = 401; return res.end(JSON.stringify({ error: 'bad secret' }))
     }

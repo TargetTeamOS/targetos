@@ -7,10 +7,13 @@ import { useApp }  from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { ClickToCall } from './ClickToCall'
 import { Btn } from './UI'
+import { workflowStorageOptions } from '../lib/identifiers'
+import { decorateRecordList, identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-const OUTCOMES = ['Answered', 'Voicemail', 'No Answer', 'Busy', 'Left Message', 'Callback Requested']
+const OUTCOMES = workflowStorageOptions('call.outcome')
+const outcomeCode = value => identifierCodeFor('calls', 'outcome', value)
 
 function fmtDate(iso) {
   if (!iso) return ''
@@ -32,12 +35,12 @@ function fmtDuration(seconds) {
 }
 
 const OUTCOME_COLOR = {
-  'Answered':           '#10B981',
-  'Left Message':       '#3B82F6',
-  'Voicemail':          '#8B5CF6',
-  'Callback Requested': '#F5A623',
-  'No Answer':          '#94A3B8',
-  'Busy':               '#DC2626',
+  connected:          '#10B981',
+  left_message:       '#3B82F6',
+  voicemail:          '#8B5CF6',
+  callback_requested: '#F5A623',
+  no_answer:          '#94A3B8',
+  busy:               '#DC2626',
 }
 
 export function ContactCallsTab({ contact }) {
@@ -48,7 +51,7 @@ export function ContactCallsTab({ contact }) {
   const [showLog,  setShowLog]  = useState(false)
   const [saving,   setSaving]   = useState(false)
   const [form,     setForm]     = useState({
-    outcome:   'Answered',
+    outcome:   'Connected',
     duration:  '',
     notes:     '',
     called_at: new Date().toISOString().slice(0,16),
@@ -64,7 +67,7 @@ export function ContactCallsTab({ contact }) {
         .select('*, agents(id,name,color)')
         .eq('contact_id', contact.id)
         .order('called_at', { ascending: false })
-      setCalls(data || [])
+      setCalls(decorateRecordList('calls', data || []))
     } catch(e) {
       console.warn('loadCalls:', e.message)
     } finally {
@@ -79,12 +82,12 @@ export function ContactCallsTab({ contact }) {
       const clean = (contact.phone || '').replace(/\D/g, '')
       const e164  = clean ? (clean.startsWith('1') ? '+'+clean : '+1'+clean) : null
 
-      await supabase.from('calls').insert({
+      const write = prepareRecordIdentifierDatabaseWrite('calls', {
         contact_id:   contact.id,
         contact_name: (contact.first_name || '') + ' ' + (contact.last_name || ''),
         to_number:    e164,
         from_number:  '+18453271778',
-        direction:    'Outbound',
+        direction_code:'outbound',
         outcome:      form.outcome,
         duration:     form.duration ? parseInt(form.duration, 10) : null,
         notes:        form.notes.trim() || null,
@@ -92,10 +95,11 @@ export function ContactCallsTab({ contact }) {
         agent_id:     agent?.id,
         status:       'completed',
       })
+      await supabase.from('calls').insert(write)
 
       toast('Call logged')
       setShowLog(false)
-      setForm({ outcome:'Answered', duration:'', notes:'', called_at: new Date().toISOString().slice(0,16) })
+      setForm({ outcome:'Connected', duration:'', notes:'', called_at: new Date().toISOString().slice(0,16) })
       loadCalls()
     } catch(e) {
       toast('Failed: ' + e.message, '#DC2626')
@@ -140,7 +144,7 @@ export function ContactCallsTab({ contact }) {
               <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', marginBottom:4, textTransform:'uppercase' }}>Outcome</div>
               <select value={form.outcome} onChange={e => setForm(f => ({...f, outcome:e.target.value}))}
                 style={{ width:'100%', padding:'6px 8px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff }}>
-                {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
+                {OUTCOMES.map(o => <option key={o.code} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             <div>
@@ -189,7 +193,7 @@ export function ContactCallsTab({ contact }) {
       )}
 
       {!loading && calls.map(call => {
-        const outColor = OUTCOME_COLOR[call.outcome] || '#94A3B8'
+        const outColor = OUTCOME_COLOR[outcomeCode(call)] || '#94A3B8'
         const dur      = fmtDuration(call.duration)
         const agentName = call.agents?.name?.split(' ')[0] || 'Agent'
         return (
@@ -206,7 +210,7 @@ export function ContactCallsTab({ contact }) {
                 </span>
                 {call.outcome && (
                   <span style={{ fontSize:10, fontWeight:700, color:outColor, background:outColor+'18', padding:'1px 7px', borderRadius:10 }}>
-                    {call.outcome}
+                    {call.outcome_label || call.outcome}
                   </span>
                 )}
                 {dur && (

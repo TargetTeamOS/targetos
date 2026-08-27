@@ -9,6 +9,8 @@ const {
   loadFlow, logCallEvent, getSupabase,
 } = require('./phone')
 const { buildDefaultNodes, buildDefaultEdges } = require('./default-flow')
+const { externalEffectsEnabled } = require('./externalEffects')
+const { recordIdentifierValues } = require('./recordIdentifiers')
 
 // Loads the saved call flow, auto-creating and saving the default flow
 // if none exists yet. Moved here (shared) rather than living only in
@@ -316,7 +318,7 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
       const { data: todaysCalls } = await supabase
         .from('calls').select('agent_id')
         .in('agent_id', agentsData.map(a => a.id))
-        .eq('direction', 'Inbound')
+        .in('direction', recordIdentifierValues('calls', 'direction', 'inbound'))
         .gte('called_at', todayStart.toISOString())
       const counts = {}
       agentsData.forEach(a => { counts[a.id] = 0 })
@@ -417,7 +419,7 @@ async function walkFlow(nodes, edges, nodeId, callData, supabase, depth) {
     const SID  = process.env.TWILIO_ACCOUNT_SID
     const TOK  = process.env.TWILIO_AUTH_TOKEN
     const FROM = process.env.TWILIO_PHONE_NUMBER || callData.to
-    if (SID && TOK && callData.from) {
+    if (externalEffectsEnabled() && SID && TOK && callData.from) {
       const auth = 'Basic ' + Buffer.from(SID + ':' + TOK).toString('base64')
       fetch('https://api.twilio.com/2010-04-01/Accounts/' + SID + '/Messages.json', {
         method: 'POST',

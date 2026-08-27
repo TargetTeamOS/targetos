@@ -6,12 +6,9 @@
 // Grid credentials aren't configured yet (returns configured:false).
 // Body: { action: 'counts', days } | { action: 'get_areas' } | { action:'save_areas', areas }
 
-const { createClient } = require('@supabase/supabase-js')
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
+const { createServiceClient } = require('./_lib/supabaseConfig')
 function sb() {
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!key) throw new Error('service key missing')
-  return createClient(SUPABASE_URL, key, { auth: { persistSession: false } })
+  return createServiceClient()
 }
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -19,11 +16,9 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user && String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-    res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error:'unauthorized' }))
-  }
+  const { authenticate, sendAuthError, isAdminRole } = require('./_lib/auth')
+  const identity = await authenticate(req)
+  if (!identity.ok) return sendAuthError(res, identity)
   res.setHeader('Content-Type','application/json')
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error:'POST only' })) }
 
@@ -41,6 +36,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (body.action === 'save_areas') {
+      if (!isAdminRole(identity.agent.role)) { res.statusCode = 403; return res.end(JSON.stringify({ error: 'forbidden' })) }
       const areas = {
         cities: Array.isArray(body.areas?.cities) ? body.areas.cities.map(c => String(c).trim()).filter(Boolean).slice(0,20) : [],
         maxprice: body.areas?.maxprice ? Number(body.areas.maxprice) : null,

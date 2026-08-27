@@ -12,6 +12,7 @@ import { useAuth }  from '../context/AuthContext'
 import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { Device }   from '@twilio/voice-sdk'
+import { safeErrorMessage } from '../lib/errorMessage'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -44,8 +45,8 @@ async function ensureDevice(agent) {
   const { data: { session } } = await supabase.auth.getSession()
   const authHeaders = session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}
   const res  = await fetch('/api/twilio-token?agentName='+name, { headers: authHeaders })
-  const data = await res.json()
-  if (!res.ok || !data.token) throw new Error(data.error + (data.hint?' — '+data.hint:''))
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || !data.token) throw new Error(safeErrorMessage(data.error, 'Calling is unavailable') + (data.hint?' — '+safeErrorMessage(data.hint, ''):''))
 
   const device = new Device(data.token, { logLevel:'error', codecPreferences:['opus','pcmu'] })
   await new Promise((resolve, reject) => {
@@ -180,6 +181,9 @@ export function ActiveCallBar() {
   async function startBrowserCall() {
     G.set({ status:'calling' })
     try {
+      // Validate Twilio configuration/external-effects state before writing a
+      // call-log row. A disabled environment must not create fake calls.
+      const device = await ensureDevice(agent)
       const { data:log } = await supabase.from('calls').insert({
         from_number:'+18453271778', to_number:g.phone,
         contact_name:g.name||null, contact_id:g.contactId||null,
@@ -188,7 +192,6 @@ export function ActiveCallBar() {
       }).select().single()
       G.set({ callLogId:log?.id||null })
 
-      const device = await ensureDevice(agent)
       let toNum = g.phone.replace(/[^+0-9]/g,'')
       if (!toNum.startsWith('+')) toNum = '+1'+toNum
 
@@ -206,12 +209,17 @@ export function ActiveCallBar() {
       call.on('disconnect', () => { G.deviceCall=null; closePanel() })
       call.on('cancel',     () => { G.deviceCall=null; closePanel() })
       call.on('error', err => G.set({ status:'error_msg', errorText:err.message }))
-    } catch(e) { G.set({ status:'error_msg', errorText:e.message }) }
+    } catch(e) { G.set({ status:'error_msg', errorText:safeErrorMessage(e, 'Calling is unavailable') }) }
   }
 
   async function startBridgeCall() {
     G.set({ status:'calling' })
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const authHeaders = session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}
+      const readiness = await fetch('/api/twilio-token?agentName=call-readiness', { headers:authHeaders })
+      const readinessData = await readiness.json().catch(() => ({}))
+      if (!readiness.ok || !readinessData.token) throw new Error(safeErrorMessage(readinessData.error, 'Calling is unavailable'))
       const { data:log } = await supabase.from('calls').insert({
         from_number:'+18453271778', to_number:g.phone,
         contact_name:g.name||null, contact_id:g.contactId||null,
@@ -220,7 +228,6 @@ export function ActiveCallBar() {
       }).select().single()
       G.set({ callLogId:log?.id||null })
 
-      const { data: { session } } = await supabase.auth.getSession()
       const res  = await fetch('/api/twilio-outbound', {
         method:'POST', headers:{
           'Content-Type':'application/json',
@@ -228,10 +235,10 @@ export function ActiveCallBar() {
         },
         body:JSON.stringify({ to:g.phone, contactName:g.name, callLogId:log?.id, agentId:agent?.id }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error||'API error '+res.status)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(safeErrorMessage(data.error, 'Calling is unavailable'))
       G.set({ active:true, callSid:data.callSid, status:'ringing', startTime:Date.now(), mode:data.mode })
-    } catch(e) { G.set({ status:'error_msg', errorText:e.message }) }
+    } catch(e) { G.set({ status:'error_msg', errorText:safeErrorMessage(e, 'Calling is unavailable') }) }
   }
 
   function closePanel() {

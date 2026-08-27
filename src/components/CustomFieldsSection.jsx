@@ -6,7 +6,7 @@
 // custom fields previously had nowhere to actually appear despite the
 // admin page implying they'd work everywhere.
 import React, { useState, useEffect } from 'react'
-import { getFieldsForEntity } from '../lib/customFields'
+import { getFieldsForEntity, normalizeOptions } from '../lib/customFields'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const inputStyle = {
@@ -69,7 +69,7 @@ function CustomFieldInput({ field, value, onChange }) {
     return (
       <select value={value || ''} onChange={e => onChange(e.target.value)} style={inputStyle}>
         <option value="">—</option>
-        {(field.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+        {normalizeOptions(field.options).map(o => <option key={o.id} value={o.value}>{o.label}</option>)}
       </select>
     )
   }

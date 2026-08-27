@@ -16,6 +16,7 @@ import {
   ModalActions, Loading, Empty, Confirm, Tabs, Avatar
 } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
+import { safeErrorMessage } from '../lib/errorMessage'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -112,11 +113,16 @@ export function Calendar() {
         headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}),
         body: JSON.stringify(ev),
       })
-      const j = await r.json()
-      if (j && j.ok) toast('📅 Synced to ' + (j.provider === 'google' ? 'Google Calendar' : 'Outlook'))
-      // silently skip when no account is connected
+      const j = await r.json().catch(() => ({}))
+      if (r.ok && j.ok) {
+        toast('📅 Synced to ' + (j.provider === 'google' ? 'Google Calendar' : 'Outlook'))
+      } else if (j.skipped) {
+        toast('Event saved in TargetOS. Connect Google or Outlook to sync it externally.', '#F5A623')
+      } else {
+        toast('Event saved in TargetOS; external calendar sync is unavailable: ' + safeErrorMessage(j.error, 'connection unavailable'), '#F5A623')
+      }
     } catch (e) {
-      console.warn('[calendar] external sync skipped: ' + e.message)
+      toast('Event saved in TargetOS; external calendar sync is unavailable: ' + safeErrorMessage(e, 'connection unavailable'), '#F5A623')
     }
   }
 
@@ -137,7 +143,7 @@ export function Calendar() {
         pushToExternalCalendar({ ...form, agent_id: form.agent_id || agent?.id })
       }
     } catch(e) {
-      toast('Save failed: ' + e.message, '#DC2626')
+      toast('Save failed: ' + safeErrorMessage(e, 'calendar save failed'), '#DC2626')
     } finally { setSaving(false) }
   }
 

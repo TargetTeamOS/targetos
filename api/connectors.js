@@ -1,9 +1,12 @@
 'use strict'
 // api/connectors.js — the ONLY way the app touches the integrations
 // table. GET = list (secrets stripped). POST = save creds/settings,
-// disconnect, or fetch recent events. Auth-hardened (AUTH_ENFORCE).
+// disconnect, or fetch recent events. Authentication is always enforced.
 
 const { sb, getIntegration, patchIntegration, baseUrl } = require('./_lib/connectors')
+const { authenticate, isAdminRole } = require('./_lib/auth')
+const { appOrigins, publicBaseUrl } = require('./_lib/requestSecurity')
+const { requireExternalEffects, externalEffectsEnabled } = require('./_lib/externalEffects')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -15,23 +18,27 @@ async function parseBody(req) {
   })
 }
 
+function connectorPermission(action, role) {
+  if (action === 'my_accounts' || action === 'disconnect_my_account' || action === 'connection_readiness') return true
+  return isAdminRole(role)
+}
+function personalAgentId(identity) {
+  return identity && identity.agent && identity.agent.id
+}
+
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
-      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
-  }
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  const origin = req.headers.origin || ''
+  if (origin && appOrigins().includes(origin)) res.setHeader('Access-Control-Allow-Origin', origin)
+  res.setHeader('Vary', 'Origin')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') { res.status(200).end(); return }
 
   try {
+    const identity = await authenticate(req)
+    if (!identity.ok) { res.status(identity.status).json({ error: identity.error }); return }
     if (req.method === 'GET') {
+      if (!isAdminRole(identity.agent.role)) { res.status(403).json({ error: 'forbidden' }); return }
       const { data, error } = await sb().from('integrations')
         .select('id, name, status, config, last_error, updated_at').order('id')
       if (error) throw new Error(error.message)
@@ -51,6 +58,9 @@ module.exports = async function handler(req, res) {
     const body = await parseBody(req)
     const action = body.action || ''
     const id = body.id || ''
+    if (!connectorPermission(action, identity.agent.role)) {
+      res.status(403).json({ error: 'forbidden' }); return
+    }
 
     if (action === 'save_credentials') {
       // OAuth apps: client_id is config (visible), client_secret is secret
@@ -99,6 +109,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (action === 'teamchat_test') {
+      if (!requireExternalEffects(res)) return
       const { notifyTeamChat } = require('./_lib/connectors')
       const r = await notifyTeamChat('✅ TargetOS is connected — this is a test notification.')
       if (r.skipped) { res.status(400).json({ error: 'webhook URL not saved yet' }); return }
@@ -134,22 +145,36 @@ module.exports = async function handler(req, res) {
     }
 
     if (action === 'my_accounts') {
-      const agentId = body.agent_id
-      if (!agentId) { res.status(400).json({ error: 'agent_id required' }); return }
       const { data, error } = await sb().from('integration_accounts')
         .select('provider, status, account_email, last_error, updated_at')
-        .eq('agent_id', agentId)
+        .eq('agent_id', personalAgentId(identity))
       if (error) throw new Error(error.message)
       res.status(200).json({ accounts: data || [] })
       return
     }
 
+    if (action === 'connection_readiness') {
+      const [google, outlook] = await Promise.all([getIntegration('google'), getIntegration('outlook')])
+      const ready = integration => !!(
+        integration && integration.config && integration.config.client_id
+        && integration.secrets && integration.secrets.client_secret
+      )
+      res.status(200).json({
+        base_url_configured: !!publicBaseUrl(),
+        oauth_state_configured: String(process.env.OAUTH_STATE_SECRET || '').length >= 32,
+        external_effects_enabled: externalEffectsEnabled(),
+        providers: {
+          google: { configured: ready(google) },
+          outlook: { configured: ready(outlook) },
+        },
+      })
+      return
+    }
+
     if (action === 'disconnect_my_account') {
-      const agentId = body.agent_id
       const provider = body.provider === 'google' ? 'google' : 'outlook'
-      if (!agentId) { res.status(400).json({ error: 'agent_id required' }); return }
       const { error } = await sb().from('integration_accounts')
-        .delete().eq('agent_id', agentId).eq('provider', provider)
+        .delete().eq('agent_id', personalAgentId(identity)).eq('provider', provider)
       if (error) throw new Error(error.message)
       res.status(200).json({ ok: true })
       return
@@ -158,6 +183,9 @@ module.exports = async function handler(req, res) {
     res.status(400).json({ error: 'unknown action' })
   } catch (e) {
     console.error('[connectors] ' + e.message)
-    res.status(500).json({ error: e.message })
+    res.status(500).json({ error: 'connector request failed' })
   }
 }
+
+module.exports.connectorPermission = connectorPermission
+module.exports.personalAgentId = personalAgentId

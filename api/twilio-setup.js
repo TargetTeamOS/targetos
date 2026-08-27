@@ -2,6 +2,7 @@
 // GET /api/twilio-setup — creates the TwiML App and returns its SID
 // You only need to run this once, then add the SID to Vercel env vars
 'use strict'
+const { requireExternalEffects } = require('./_lib/externalEffects')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -10,6 +11,7 @@ module.exports = async function handler(req, res) {
   const { requireAdminOrSecretary } = require('./_lib/phone')
   const authCheck = await requireAdminOrSecretary(req)
   if (!authCheck.ok) return res.status(authCheck.status).json({ ok: false, error: authCheck.message })
+  if (!requireExternalEffects(res)) return
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID
   const authToken  = process.env.TWILIO_AUTH_TOKEN

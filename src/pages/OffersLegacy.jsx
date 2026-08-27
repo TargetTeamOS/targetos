@@ -30,6 +30,7 @@ import { db } from '../lib/db'
 import { useOffers, useAgents } from '../lib/hooks'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { OFFER_STATUSES, CONTACT_TYPE_COLORS } from '../lib/constants'
+import { identifierCodeFor, prepareRecordIdentifierDatabaseWrite } from '../lib/recordIdentifiers'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
@@ -37,6 +38,8 @@ import {
 } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const offerStatusCode = value => identifierCodeFor('offers', 'status', value)
+const dealStageCode = value => identifierCodeFor('deals', 'stage', value)
 const S  = { width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, boxSizing:'border-box' }
 const SL = { fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4, marginTop:10, display:'block' }
 
@@ -187,8 +190,8 @@ function FileUploader({ label, fileUrl, onUploaded, folder }) {
 // ── AGENT STATS CARD ──────────────────────────────────────────────
 function AgentStatsCard({ ag, agentOffers, onFilter, isActive }) {
   const total    = agentOffers.length
-  const accepted = agentOffers.filter(o => ['AO','Accepted','Closed'].includes(o.status)).length
-  const pending  = agentOffers.filter(o => o.status === 'Sent').length
+  const accepted = agentOffers.filter(o => offerStatusCode(o) === 'accepted').length
+  const pending  = agentOffers.filter(o => offerStatusCode(o) === 'sent').length
   const convRate = total > 0 ? Math.round(accepted / total * 100) : 0
   // Unique buyers per agent
   const uniqueBuyers = new Set(agentOffers.map(o => o.buyer_contact_id || o.buyer_name).filter(Boolean)).size
@@ -624,31 +627,37 @@ export function OffersLegacy() {
       // on the Production board automatically — no re-typing. Runs on
       // both create and update; guarded against duplicates via
       // offers.deal_id (and a same-address open-deal check as backup).
-      const nowAccepted = ['AO', 'Accepted'].includes(form.status)
-      const wasAccepted = selected && ['AO', 'Accepted', 'Closed'].includes(selected.status)
+      const nowAccepted = offerStatusCode(form.status) === 'accepted'
+      const wasAccepted = selected && offerStatusCode(selected) === 'accepted'
       if (nowAccepted && !wasAccepted && !selected?.deal_id) {
         try {
-          const { data: dupe } = await supabase.from('deals').select('id')
-            .eq('addr', form.listing_addr).not('stage', 'in', '("Closed","Deal Fell Through")').limit(1)
-          if (!dupe?.length) {
-            const { data: newDeal, error: dealErr } = await supabase.from('deals').insert({
+          const { data: possibleDupes } = await supabase.from('deals').select('id,stage')
+            .eq('addr', form.listing_addr)
+          const dupe = (possibleDupes || []).find(deal => !['closed', 'fell_through'].includes(dealStageCode(deal)))
+          if (!dupe) {
+            const dealInsert = prepareRecordIdentifierDatabaseWrite('deals', {
               addr:        form.listing_addr,
               side:        form.inhouse_listing_id ? 'Listing' : 'Buyer',
-              stage:       'Offer Accapted',   // house spelling — matches DEAL_STAGES
+              stage_code:  'offer_accepted',
               production:  form.purchase_price || null,
               client_name: form.inhouse_listing_id ? (form.seller_name || form.buyer_name) : form.buyer_name,
               agent_id:    form.buyers_agent_id || agent?.id || null,
               ao_date:     form.offer_date || new Date().toISOString().slice(0, 10),
               listing_id:  form.inhouse_listing_id || null,
               created_at:  new Date().toISOString(),
-            }).select().single()
+            })
+            const { data: newDeal, error: dealErr } = await supabase.from('deals').insert(dealInsert).select().single()
             if (dealErr) throw dealErr
             // Link back (column may not exist pre-migration — non-fatal)
             const offerId = selected?.id
             if (offerId && newDeal) await supabase.from('offers').update({ deal_id: newDeal.id }).eq('id', offerId).then(() => {}).catch(() => {})
             // In-house listing flips to Accepted Offer everywhere
             if (form.inhouse_listing_id) {
-              await supabase.from('listings').update({ status: 'Accepted offer', updated_at: new Date().toISOString() }).eq('id', form.inhouse_listing_id)
+              const listingUpdate = prepareRecordIdentifierDatabaseWrite('listings', {
+                status_code: 'offer_accepted',
+                updated_at: new Date().toISOString(),
+              })
+              await supabase.from('listings').update(listingUpdate).eq('id', form.inhouse_listing_id)
             }
             toast('🎉 Accepted! Deal created on the Production board' + (form.inhouse_listing_id ? ' · listing marked Accepted Offer' : ''), '#10B981')
           }
@@ -691,7 +700,7 @@ export function OffersLegacy() {
   }, [offers])
 
   const filtered = offers.filter(o => {
-    if (statusF && o.status !== statusF) return false
+    if (statusF && offerStatusCode(o) !== offerStatusCode(statusF)) return false
     if (agentF === 'none' && o.agent_id) return false
     if (agentF && agentF !== 'none' && o.agent_id !== agentF) return false
     if (search && !matchSearch(o, search, ['listing_addr','buyer_name','mls_number','seller_name'])) return false
@@ -700,7 +709,7 @@ export function OffersLegacy() {
 
   const statusColor = s => OFFER_STATUSES.find(x=>x.value===s)?.hex || '#c4c4c4'
   const totalOffers = offers.length
-  const totalAO     = offers.filter(o=>['AO','Accepted','Closed'].includes(o.status)).length
+  const totalAO     = offers.filter(o=>offerStatusCode(o) === 'accepted').length
   const totalVol    = offers.reduce((s,o)=>s+(parseFloat(o.purchase_price||o.production)||0),0)
 
   // ── RENDER ────────────────────────────────────────────────────
