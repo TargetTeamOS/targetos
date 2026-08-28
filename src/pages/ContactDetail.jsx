@@ -1179,11 +1179,32 @@ export function ContactDetail() {
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
 
+  const [otherBranches, setOtherBranches] = useState([]) // admin/secretary only: other agents' separate records for this same person
+
   async function loadContact() {
     setLoading(true)
     try {
       const c = await db.contacts.get(id)
       setContact(c)
+      // Admin/secretary can see every agent's separate working
+      // relationship with this same underlying person (matched by
+      // phone or email) and switch between them -- each agent's own
+      // record stays fully private otherwise (see
+      // sql/offers_v2/H_shared_contact_directory.sql). A regular agent
+      // never sees this: only their own contact and the shared
+      // name/phone/email directory exist for them.
+      if ((isAdmin || canManage) && (c.phone || c.email)) {
+        const orParts = []
+        if (c.phone) orParts.push('phone.eq.' + c.phone)
+        if (c.email) orParts.push('email.eq.' + c.email)
+        const { data: siblings } = await supabase.from('contacts')
+          .select('id,first_name,last_name,agent_id,agents(id,name,color)')
+          .or(orParts.join(','))
+          .neq('id', id)
+        setOtherBranches(siblings || [])
+      } else {
+        setOtherBranches([])
+      }
     } catch(e) {
       toast('Contact not found', '#DC2626')
       navigate('/contacts')
@@ -1524,6 +1545,18 @@ export function ContactDetail() {
               daysSinceContact!==null && (daysSinceContact===0?'Reached today':'Last contact '+daysSinceContact+'d ago')
              ].filter(Boolean).join('  ·  ')}
           </div>
+          {otherBranches.length > 0 && (
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:6, flexWrap:'wrap' }}>
+              <span style={{ fontSize:10.5, color:'var(--muted)' }}>Also working this lead:</span>
+              {otherBranches.map(b => (
+                <button key={b.id} onClick={() => goSibling(b.id)}
+                  style={{ display:'inline-flex', alignItems:'center', gap:5, border:'1px solid var(--border)', background:'var(--dim)', borderRadius:99, padding:'2px 9px', fontSize:10.5, fontWeight:700, color:'var(--text)', cursor:'pointer', fontFamily:ff }}>
+                  <span style={{ width:6, height:6, borderRadius:'50%', background:b.agents?.color||'#94A3B8' }} />
+                  {b.agents?.name || 'Unassigned'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {/* actions, right-aligned */}
         <div style={{ marginLeft:'auto', display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>

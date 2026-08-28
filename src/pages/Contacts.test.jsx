@@ -21,7 +21,7 @@ describe('Contacts board — "browse everyone\'s contacts" shared-directory sect
   })
 
   it('the directory-only section never references selectedIds, bulk-edit, or delete — it must not be selectable or bulk-actionable', () => {
-    const sectionStart = src.indexOf("Other Agents' Contacts")
+    const sectionStart = src.indexOf("showAllAgents && directoryOnly.length > 0")
     expect(sectionStart).toBeGreaterThan(-1)
     // Grab from the section header down to the next major section
     // (the Detail/Add Modal) rather than the whole file, so this is a
@@ -34,7 +34,7 @@ describe('Contacts board — "browse everyone\'s contacts" shared-directory sect
   })
 
   it('the directory-only section renders only name, phone, and email — no status, type, source, tags, or agent fields', () => {
-    const sectionStart = src.indexOf("Other Agents' Contacts")
+    const sectionStart = src.indexOf("showAllAgents && directoryOnly.length > 0")
     const sectionEnd = src.indexOf('Detail / Add Panel', sectionStart)
     const block = src.slice(sectionStart, sectionEnd)
     // The directoryOnly.map(...) render body specifically
@@ -88,7 +88,7 @@ describe('Contacts board — "Start Working This Lead" claims an independent per
   })
 
   it('the claim button lives inside the directory-only (limited view) section, not the main authorized-contacts list', () => {
-    const sectionStart = src.indexOf("Other Agents' Contacts")
+    const sectionStart = src.indexOf("showAllAgents && directoryOnly.length > 0")
     const sectionEnd = src.indexOf('Detail / Add Panel', sectionStart)
     const block = src.slice(sectionStart, sectionEnd)
     expect(block).toMatch(/Start Working This Lead/)

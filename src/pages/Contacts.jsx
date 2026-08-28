@@ -693,7 +693,7 @@ export function Contacts() {
       {!(isAdmin || canManage) && (
         <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, fontSize:12.5, color:'var(--muted)', cursor:'pointer' }}>
           <input type="checkbox" checked={showAllAgents} onChange={e => setShowAllAgents(e.target.checked)} />
-          Also show contacts assigned to other agents (name, phone, and email only)
+          Show all contacts
         </label>
       )}
 
@@ -896,16 +896,7 @@ export function Contacts() {
           no status/source/tags/notes exist for it to show, and it must
           never be selectable for bulk-edit or delete. */}
       {!loading && showAllAgents && directoryOnly.length > 0 && (
-        <div style={{ marginTop: 24 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-            <div style={{ fontSize:12, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>
-              Other Agents' Contacts — Limited View
-            </div>
-            <div style={{ fontSize:11, color:'var(--muted)' }}>({directoryOnly.length})</div>
-          </div>
-          <div style={{ fontSize:11.5, color:'var(--muted)', marginBottom:10 }}>
-            Name, phone, and email only — notes, status, and activity for these contacts are visible only to the assigned agent, admin, or a permitted secretary.
-          </div>
+        <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(240px, 1fr))', gap:10 }}>
             {directoryOnly.map(c => (
               <div key={c.id} style={{ background:'var(--dim)', borderRadius:'var(--radius)', border:'1px dashed var(--border)', padding:'12px 14px' }}>
@@ -1050,7 +1041,7 @@ export function Contacts() {
 
       <Confirm
         open={!!confirmClaim}
-        message={confirmClaim ? 'Start working ' + confirmClaim.first_name + ' ' + (confirmClaim.last_name || '') + '? This creates your own separate contact record for this person — your notes, status, and activity are private to you and will not be visible to or affect any other agent already working with them.' : ''}
+        message={confirmClaim ? 'Start working ' + confirmClaim.first_name + ' ' + (confirmClaim.last_name || '') + '?' : ''}
         onConfirm={() => { const c = confirmClaim; setConfirmClaim(null); startWorkingLead(c) }}
         onCancel={() => setConfirmClaim(null)}
       />

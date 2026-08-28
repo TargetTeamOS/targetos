@@ -227,10 +227,24 @@ contacts: {
   async update(id, data, actingAgentId) {
     // Fetch before state for diff
     const before = await run(supabase.from('contacts').select('*').eq('id', id).single()).catch(() => null)
-    const result = await run(supabase.from('contacts').update({ ...stripVirtual(data),
-      last_activity: new Date().toISOString(),
-      updated_at:    new Date().toISOString(),
-    }).eq('id', id).select().single())
+    let result
+    try {
+      result = await run(supabase.from('contacts').update({ ...stripVirtual(data),
+        last_activity: new Date().toISOString(),
+        updated_at:    new Date().toISOString(),
+      }).eq('id', id).select().single())
+    } catch (e) {
+      // PGRST116 ("no rows returned") from .single() on an UPDATE
+      // almost always means RLS silently matched zero rows -- the
+      // update ran, affected nothing, and Postgres does not treat that
+      // as an error on its own. Surface a real, specific message
+      // instead of that cryptic one, so a permission problem doesn't
+      // read as "nothing happened" with no explanation.
+      if (e?.code === 'PGRST116') {
+        throw new Error('This save was blocked — you may not have permission to edit this contact (it may be assigned to a different agent).')
+      }
+      throw e
+    }
     // Attribute the log entry to whoever ACTUALLY made this edit, not
     // whoever the contact happens to be assigned to -- those are
     // often different people (e.g. a secretary or another agent
