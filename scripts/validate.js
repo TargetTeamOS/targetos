@@ -107,7 +107,9 @@ if (uniqueDupes.length > 0) {
 }
 
 // ── CHECK 8: All pages have exports ────────────────────────────
-jsxFiles.filter(f => f.includes('/pages/') && f.endsWith('.jsx')).forEach(f => {
+// Excludes *.test.jsx — test files legitimately have no export; they were
+// false-flagging here (found during Sept 2 2026 audit, docs/robustness-audit-2026-09-02.md).
+jsxFiles.filter(f => f.includes('/pages/') && f.endsWith('.jsx') && !f.endsWith('.test.jsx')).forEach(f => {
   const c = fs.readFileSync(f, 'utf8')
   if (!c.includes('export function') && !c.includes('export default') && !c.includes('export const')) {
     failures.push('NO EXPORT in ' + path.basename(f))
