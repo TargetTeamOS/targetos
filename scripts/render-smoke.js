@@ -36,6 +36,14 @@ globalThis.window = { location: { origin: 'http://smoke.test', href: 'http://smo
 globalThis.navigator = { userAgent: 'render-smoke', clipboard: {} };
 `
 
+// NOTE (Sept 2 2026 audit, docs/robustness-audit-2026-09-02.md): the entry
+// below now calls process.exit(0) on success. Without it, some
+// provider/module (likely an auth or Supabase client doing work outside a
+// useEffect) leaves a pending handle/timer open under Node, which keeps
+// this process alive indefinitely even after every check has already
+// passed and printed — so `npm run preflight` could hang forever on a
+// fully green run. The explicit exit makes this script terminate the way
+// build/validate/smoke already do.
 const entry = `
 import React from 'react'
 import { renderToString } from 'react-dom/server'
@@ -63,16 +71,24 @@ for (const p of pages) {
 }
 if (failed) { console.log('\\nRENDER SMOKE FAILED \\u2014 ' + failed + ' page(s) would white-screen. Do NOT push.'); process.exit(1) }
 console.log('\\nALL PAGES RENDER \\u2014 no mount crashes.')
+process.exit(0)
 `
 
 const tmpEntry = path.join(process.cwd(), '.render-smoke-entry.jsx')
 const tmpOut = path.join(os.tmpdir(), 'render-smoke.cjs')
 fs.writeFileSync(tmpEntry, entry)
 try {
+  // Use the local esbuild binary directly rather than `npx esbuild` — npx
+  // resolves/verifies the package against the registry first, which has no
+  // timeout here and can hang indefinitely (rather than just failing fast)
+  // if the registry is slow or unreachable. The local binary needs no
+  // network at all. (Found Sept 2 2026 — this step was hanging the entire
+  // preflight with no error; see docs/robustness-audit-2026-09-02.md.)
+  const esbuildBin = path.join(process.cwd(), 'node_modules', '.bin', 'esbuild')
   execSync(
-    `npx esbuild ${tmpEntry} --bundle --platform=node --loader:.js=jsx --loader:.jsx=jsx --loader:.css=empty --jsx=automatic ` +
+    `${esbuildBin} ${tmpEntry} --bundle --platform=node --loader:.js=jsx --loader:.jsx=jsx --loader:.css=empty --jsx=automatic ` +
     `--banner:js="${SHIMS.replace(/\n/g, ' ').replace(/"/g, '\\"')}" --outfile=${tmpOut} --log-level=error`,
-    { stdio: ['ignore', 'inherit', 'inherit'] }
+    { stdio: ['ignore', 'inherit', 'inherit'], timeout: 60000 }
   )
   execSync(`node ${tmpOut}`, { stdio: 'inherit', timeout: 60000 })
 } catch (e) {

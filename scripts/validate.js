@@ -74,8 +74,7 @@ jsxFiles.filter(f => f.endsWith('.jsx')).forEach(f => {
 })
 if (!failures.some(f => f.includes('custom'))) passes.push('✓ No undefined custom variable')
 
-// ── CHECK 5: useLocation present where location is used ────────
-jsxFiles.filter(f => f.endsWith('.jsx')).forEach(f => {
+// ── CHECK 5: useLocation present where location is used ────────njsxFiles.filter(f => f.endsWith('.jsx')).forEach(f => {
   const c = fs.readFileSync(f, 'utf8')
   if ((c.includes('location.search') || c.includes('location.pathname')) && !c.includes('= useLocation()')) {
     failures.push('MISSING useLocation() in ' + path.basename(f))
@@ -107,7 +106,9 @@ if (uniqueDupes.length > 0) {
 }
 
 // ── CHECK 8: All pages have exports ────────────────────────────
-jsxFiles.filter(f => f.includes('/pages/') && f.endsWith('.jsx')).forEach(f => {
+// Excludes *.test.jsx — test files legitimately have no export; they were
+// false-flagging here (found during Sept 2 2026 audit, docs/robustness-audit-2026-09-02.md).
+jsxFiles.filter(f => f.includes('/pages/') && f.endsWith('.jsx') && !f.endsWith('.test.jsx')).forEach(f => {
   const c = fs.readFileSync(f, 'utf8')
   if (!c.includes('export function') && !c.includes('export default') && !c.includes('export const')) {
     failures.push('NO EXPORT in ' + path.basename(f))
