@@ -35,7 +35,7 @@ function mlsFullAddr(l) {
   return [mlsAddr(l), a.city, a.state, a.postalCode].filter(Boolean).join(', ')
 }
 
-// ── LISTING CARD ──────────────────────────────────────────────────
+// ── LISTING CARD ───────────────────────────────────────────────────────
 function MLSCard({ listing, saved, onSave, onUnsave, onImport, importing, flood, onFloodLookup }) {
   const [expanded, setExpanded] = useState(false)
   const photos = listing.photos || []
@@ -138,7 +138,7 @@ function MLSCard({ listing, saved, onSave, onUnsave, onImport, importing, flood,
   )
 }
 
-// ── SHORTLIST PANEL ───────────────────────────────────────────────
+// ── SHORTLIST PANEL ──────────────────────────────────────────────────
 function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId }) {
   const [clientId,   setClientId]   = useState('')
   const [clientNote, setClientNote] = useState('')
@@ -146,18 +146,28 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
   const [showRoute,  setShowRoute]  = useState(false)
   const printRef = useRef(null)
 
+  // FIX (Sept 2026 audit, finding H1): these four hooks used to live
+  // AFTER the early return below, which violates React's Rules of
+  // Hooks the moment shortlist.length crosses 0<->1 while this panel
+  // stays mounted (saving the first item, or removing the last one) —
+  // the hook count changes mid-life and React throws "Rendered more
+  // hooks than during the previous render." All hooks must run
+  // unconditionally on every render, so they're hoisted above the
+  // early return, same as clientId/clientNote/saving/showRoute above.
+  //
+  // Google Maps route URL (traffic-aware directions) — uses the
+  // optimized stop order once the optimizer has run.
+  const [route, setRoute] = useState(null)   // {order:[idx], legs:[{addr,mins,trafficMins}], totalMins, trafficTotalMins}
+  const [optimizing, setOptimizing] = useState(false)
+  const [startAddr, setStartAddr] = useState('')
+  const [sharing, setSharing] = useState(false)
+
   if (shortlist.length === 0) return (
     <div style={{ padding:'32px 16px', textAlign:'center', color:'var(--muted)', fontSize:13 }}>
       <div style={{ fontSize:32, marginBottom:8 }}>☆</div>
       No saved listings yet. Click the star on any result to add it here.
     </div>
   )
-
-  // Google Maps route URL (traffic-aware directions) — uses the
-  // optimized stop order once the optimizer has run.
-  const [route, setRoute] = useState(null)   // {order:[idx], legs:[{addr,mins,trafficMins}], totalMins, trafficTotalMins}
-  const [optimizing, setOptimizing] = useState(false)
-  const [startAddr, setStartAddr] = useState('')
 
   function orderedList() {
     return route ? route.order.map(i => shortlist[i]).filter(Boolean) : shortlist
@@ -208,7 +218,7 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
     })
   }
 
-  // ── SHARE with the client + LOG on their page ───────────────────
+  // ── SHARE with the client + LOG on their page ───────────────
   async function logClientActivity(action, metadata = {}) {
     if (!clientId) return
     try {
@@ -228,7 +238,6 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
       '\n\nDriving route: ' + routeUrl() + '\n— ' + 'Target Team · KW Valley Realty'
   }
 
-  const [sharing, setSharing] = useState(false)
   async function shareSms() {
     const c = clientOf()
     if (!c?.phone) { toast('Selected client has no phone number', '#F5A623'); return }
@@ -440,7 +449,7 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
   )
 }
 
-// ── MAIN COMPONENT ────────────────────────────────────────────────
+// ── MAIN COMPONENT ──────────────────────────────────────────────────
 export function MLSSearch({ agents, onImported }) {
   const { agent }  = useAuth()
   const { toast }  = useApp()
@@ -458,7 +467,7 @@ export function MLSSearch({ agents, onImported }) {
   const [minYear,  setMinYear]  = useState('')
   const [maxDom,   setMaxDom]   = useState('')
 
-  // ── MAP + DRAW-AN-AREA (July 2026) ─────────────────────────────
+  // ── MAP + DRAW-AN-AREA (July 2026) ───────────────────
   const [showMap, setShowMap]   = useState(false)
   const mapDivRef  = useRef(null)
   const mapRef     = useRef(null)
