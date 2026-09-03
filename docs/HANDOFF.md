@@ -112,6 +112,20 @@ Through rev3 all were run. THIS SESSION added (confirm Moshe ran them):
 sql/email_campaigns.sql, sql/report_builder.sql, sql/notes.sql. (notes.sql is
 required for Notepad AND for mic audio recordings, since both use the notes table.)
 
+**NOT YET RUN (Sept 2026 audit, finding C4):** `sql/C4_scope_open_rls_policies.sql`.
+`agent_goals`, `system_settings`, `briefing_prefs`, `briefing_sends`,
+`contact_automations`, `contact_showings`, `listing_showings`, and
+`website_content`/`tv_playlist` writes were all `using(true) with check(true)`
+— "RLS on" but the policy did nothing, same bug class as the `contacts`
+fix in `private_contacts_rls.sql`. The file scopes each to the real
+ownership/visibility model already used elsewhere in the app (see the
+per-table comments in the file for the reasoning and the judgment calls
+made). Verified against a local Postgres with the real helper functions
+and representative rows before being written — not run against production.
+**Test on v2 as a regular agent AND as admin/secretary before promoting to
+main** — the file has a POST-CHECK list and a full rollback block at the
+bottom.
+
 ## Outstanding
 
 1. Moshe: repo → PRIVATE; rotate VITE_GOOGLE_MAPS_KEY; set CRON_SECRET; ensure
