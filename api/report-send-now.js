@@ -4,7 +4,7 @@
 // an inline { def, recipients }.
 // ═══════════════════════════════════════════════════════════════
 'use strict'
-const { getSupabase } = require('./_lib/phone')
+const { getSupabase, requireAnyAgent } = require('./_lib/phone')
 const { computeReport, renderReportHtml } = require('./_lib/reportEngine')
 const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
 
@@ -18,6 +18,14 @@ module.exports = async function handler(req, res) {
   const user = await requireUser(req)
   if (!user && String(process.env.AUTH_ENFORCE||'').toLowerCase()==='true') return res.status(401).end(JSON.stringify({ error:'unauthorized' }))
   if (!user) console.warn('[AUTH] unauthenticated call to /api/report-send-now ALLOWED (log-only)')
+
+  // SECURITY (Sept 2026 audit, finding C2): the AUTH_ENFORCE check above
+  // is staged/log-only, so this endpoint had NO real auth yet. Without
+  // this, an anonymous caller could supply an arbitrary report
+  // definition and recipient list -- computed with the service-role
+  // client below, which bypasses RLS -- and have it emailed anywhere.
+  const authCheck = await requireAnyAgent(req)
+  if (!authCheck.ok) return res.status(authCheck.status).end(JSON.stringify({ error: authCheck.message }))
 
   const RESEND_KEY = process.env.RESEND_API_KEY
   if (!RESEND_KEY) return res.status(500).end(JSON.stringify({ error:'Email service not configured' }))
