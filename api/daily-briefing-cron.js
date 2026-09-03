@@ -50,11 +50,20 @@ async function gatherAgentData(supabase, agentId) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
-  // HARDENED (July 2026): the secret is now ENFORCED. Previously a
-  // mismatch only logged a warning and the send proceeded anyway,
-  // meaning anything that hit this URL triggered a full team send.
+  // HARDENED (July 2026): the secret is now ENFORCED on a mismatch.
+  // HARDENED AGAIN (Sept 2026 audit, finding C3): a mismatch was
+  // blocked, but an UNSET CRON_SECRET skipped this check entirely
+  // (`CRON_SECRET && ...`) -- fail open, not closed. Combined with the
+  // ?force=1 param below, anyone who found this URL could trigger an
+  // immediate resend to the whole team. Now refuses to run at all until
+  // CRON_SECRET is actually configured in Vercel (which also protects
+  // the force=1 path, since nothing reaches it without the secret).
   const CRON_SECRET = process.env.CRON_SECRET
-  if (CRON_SECRET && req.headers['authorization'] !== 'Bearer ' + CRON_SECRET) {
+  if (!CRON_SECRET) {
+    console.error('[daily-briefing-cron] CRON_SECRET is not set — refusing to run rather than allow unauthenticated invocations')
+    return res.status(503).json({ ok: false, error: 'CRON_SECRET not configured' })
+  }
+  if (req.headers['authorization'] !== 'Bearer ' + CRON_SECRET) {
     console.warn('[daily-briefing-cron] BLOCKED unauthorized invocation')
     return res.status(401).json({ ok: false, error: 'unauthorized' })
   }
