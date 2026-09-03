@@ -35,7 +35,7 @@ function mlsFullAddr(l) {
   return [mlsAddr(l), a.city, a.state, a.postalCode].filter(Boolean).join(', ')
 }
 
-// ── LISTING CARD ───────────────────────────────────────────────────────
+// ── LISTING CARD ──────────────────────────────────────────────────
 function MLSCard({ listing, saved, onSave, onUnsave, onImport, importing, flood, onFloodLookup }) {
   const [expanded, setExpanded] = useState(false)
   const photos = listing.photos || []
@@ -138,7 +138,7 @@ function MLSCard({ listing, saved, onSave, onUnsave, onImport, importing, flood,
   )
 }
 
-// ── SHORTLIST PANEL ──────────────────────────────────────────────────
+// ── SHORTLIST PANEL ───────────────────────────────────────────────
 function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId }) {
   const [clientId,   setClientId]   = useState('')
   const [clientNote, setClientNote] = useState('')
@@ -218,7 +218,7 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
     })
   }
 
-  // ── SHARE with the client + LOG on their page ───────────────
+  // ── SHARE with the client + LOG on their page ───────────────────
   async function logClientActivity(action, metadata = {}) {
     if (!clientId) return
     try {
@@ -449,7 +449,7 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
   )
 }
 
-// ── MAIN COMPONENT ──────────────────────────────────────────────────
+// ── MAIN COMPONENT ────────────────────────────────────────────────
 export function MLSSearch({ agents, onImported }) {
   const { agent }  = useAuth()
   const { toast }  = useApp()
@@ -467,7 +467,7 @@ export function MLSSearch({ agents, onImported }) {
   const [minYear,  setMinYear]  = useState('')
   const [maxDom,   setMaxDom]   = useState('')
 
-  // ── MAP + DRAW-AN-AREA (July 2026) ───────────────────
+  // ── MAP + DRAW-AN-AREA (July 2026) ─────────────────────────────
   const [showMap, setShowMap]   = useState(false)
   const mapDivRef  = useRef(null)
   const mapRef     = useRef(null)
