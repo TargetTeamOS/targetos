@@ -18,6 +18,7 @@ import { ActiveCallBar } from './components/ClickToCall'
 import { Dashboard as DashboardOld } from './pages/Dashboard'
 import { Dashboard } from './pages/DashboardV2'
 import { DashboardSmart } from './pages/DashboardSmart'
+import { DashboardCommandCenter } from './pages/DashboardCommandCenter'
 import { Contacts }      from './pages/Contacts'
 import { ContactDetail } from './pages/ContactDetail'
 import { Production }    from './pages/Production'
@@ -34,6 +35,7 @@ import { Calls }         from './pages/Calls'
 import { OpenHouse }     from './pages/OpenHouse'
 import { SocialCards } from './pages/SocialCards'
 import { AgentPerformance } from './pages/AgentPerformance'
+import { Analytics } from './pages/Analytics'
 import { AgentActivity } from './pages/AgentActivity'
 import { Signs }         from './pages/Signs'
 import { Announcements } from './pages/Announcements'
@@ -62,7 +64,7 @@ import { ReportBuilder }  from './pages/ReportBuilder'
 import { Notepad }        from './pages/Notepad'
 import { TVBoard } from './pages/TVBoard'
 
-// ── ERROR BOUNDARY ───────────────────────────────────────────────
+// ── ERROR BOUNDARY ──────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null } }
   static getDerivedStateFromError(e) { return { error: e } }
@@ -95,13 +97,18 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// ── PER-PAGE ERROR BOUNDARY ──────────────────────────────────────
-// Wraps each route so a single page crash doesn't break navigation
-function SafePage({ children }) {
-  return <ErrorBoundary key={window.location.pathname}>{children}</ErrorBoundary>
+// ── PER-PAGE ERROR BOUNDARY ──────────────────────────────────────────────
+// Wraps the whole route tree so a single page crash doesn't break
+// in-app navigation. `path` must come from useLocation() in the
+// caller, not read directly here — this component itself has no
+// reason to re-render on navigation, so a `key={window.location.
+// pathname}` read at this level would (see finding H4) stay stale
+// until something else happened to re-render it.
+function SafePage({ children, path }) {
+  return <ErrorBoundary key={path}>{children}</ErrorBoundary>
 }
 
-// ── LOADING SCREEN ───────────────────────────────────────────────
+// ── LOADING SCREEN ────────────────────────────────────────────────────────────────
 function AppLoader() {
   return (
     <div style={{ minHeight: '100vh', background: '#0F1A2E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,system-ui,sans-serif' }}>
@@ -113,7 +120,7 @@ function AppLoader() {
   )
 }
 
-// ── TOAST ────────────────────────────────────────────────────────
+// ── TOAST ───────────────────────────────────────────────────────────────────────────
 function Toast() {
   const { state } = useApp()
   if (!state.toast) return null
@@ -124,21 +131,29 @@ function Toast() {
   )
 }
 
-// ── MAIN APP SHELL ───────────────────────────────────────────────
+// ── MAIN APP SHELL ─────────────────────────────────────────────────────────────────
 function AppShell() {
   const { user, agent, loading } = useAuth()
+  // FIX (Sept 2026 audit, finding H4): SafePage's key must change on
+  // navigation for a per-page error boundary to actually reset after a
+  // crash. That requires AppShell itself to re-render on route changes,
+  // which it never did before -- useLocation() was imported at the top
+  // of this file but nothing here actually called it.
+  const location = useLocation()
   if (loading) return <AppLoader />
   if (!user || !agent) return <Login />
 
   return (
     <>
       <Layout>
-        <ErrorBoundary>
+        <SafePage path={location.pathname}>
         <Routes>
           {/* Core pages with :id routing */}
-          <Route path="/" element={<DashboardSmart />} />
+          <Route path="/" element={<DashboardCommandCenter />} />
+          <Route path="/dashboard-smart" element={<DashboardSmart />} />
           <Route path="/dashboard-classic" element={<DashboardOld />} />
           <Route path="/dashboard-new" element={<Dashboard />} />
+          <Route path="/dashboard/command-center" element={<DashboardCommandCenter />} />
           <Route path="/contacts"            element={<Contacts />} />
           <Route path="/contacts/:id"        element={<Contacts />} />
           <Route path="/contacts/:id/detail" element={<ContactDetail />} />
@@ -162,8 +177,9 @@ function AppShell() {
           <Route path="/openhouse"           element={<OpenHouse />} />
           <Route path="/openhouse/:id"       element={<OpenHouse />} />
           <Route path="/social-cards" element={<SocialCards />} />
-          <Route path="/performance" element={<AgentPerformance />} />
-          <Route path="/agent-activity" element={<AgentActivity />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/performance" element={<Analytics />} />
+          <Route path="/agent-activity" element={<Analytics />} />
           <Route path="/signs"               element={<Signs />} />
           <Route path="/signs/:id"           element={<Signs />} />
           <Route path="/announcements"       element={<Announcements />} />
@@ -192,13 +208,13 @@ function AppShell() {
           <Route path="/tc"                 element={<TransactionCoordinator />} />
           <Route path="/tc-settings"        element={<RequirePermission perm="admin.customize"><TCSettings /></RequirePermission>} />
           <Route path="/my-listings"          element={<MyListings />} />
-          <Route path="/reports"            element={<RequirePermission perm="reports.view"><Reports /></RequirePermission>} />
-          <Route path="/reportbuilder"      element={<ReportBuilder />} />
+          <Route path="/reports"            element={<RequirePermission perm="reports.view"><Analytics /></RequirePermission>} />
+          <Route path="/reportbuilder"      element={<Analytics />} />
           <Route path="/notepad"            element={<Notepad />} />
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />
         </Routes>
-        </ErrorBoundary>
+        </SafePage>
       </Layout>
       <Toast />
       <ActiveCallBar />
@@ -208,7 +224,7 @@ function AppShell() {
   )
 }
 
-// ── PERMISSION ROUTE GUARD ───────────────────────────────────────
+// ── PERMISSION ROUTE GUARD ──────────────────────────────────────────────
 // Wraps a route element; redirects home if the current agent's role
 // (or an admin override from Admin → Permissions) denies the permission.
 function RequirePermission({ perm, children }) {
@@ -218,7 +234,7 @@ function RequirePermission({ perm, children }) {
   return children
 }
 
-// ── COMMAND PALETTE ──────────────────────────────────────────────
+// ── COMMAND PALETTE ────────────────────────────────────────────────────────────────
 function CommandPaletteWrapper() {
   const [open, setOpen] = useCommandPalette()
   return <CommandPalette open={open} onClose={() => setOpen(false)} />
@@ -238,7 +254,7 @@ function LocationAwareTools() {
   )
 }
 
-// ── ROOT ROUTER — public + private ──────────────────────────────
+// ── ROOT ROUTER — public + private ─────────────────────────────
 function RootRouter() {
   const { pathname } = useLocation()
   // Public routes skip auth entirely

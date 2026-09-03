@@ -5,7 +5,7 @@
 // the recording back later if the transcript was inaccurate.
 // ═══════════════════════════════════════════════════════════════
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 
 export function useAudioNote() {
   const [recording, setRecording] = useState(false)
@@ -16,6 +16,19 @@ export function useAudioNote() {
   const chunks = useRef([])
   const speechRec = useRef(null)
   const streamRef = useRef(null)
+
+  // FIX (Sept 2026 audit, finding H3): this hook had no cleanup at
+  // all -- unlike VoiceCapture.jsx, not even an auto-stop timer.
+  // A note recording started and then abandoned via navigation (the
+  // component using this hook unmounts) left the mic open
+  // indefinitely, since nothing here ever called stop(). Release the
+  // mic and stop speech recognition directly on unmount.
+  useEffect(() => {
+    return () => {
+      try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
+      try { speechRec.current?.stop() } catch {}
+    }
+  }, [])
 
   async function start() {
     setError(''); setTranscript(''); setAudioBlob(null); chunks.current = []
