@@ -141,7 +141,7 @@ Database:  Supabase (PostgreSQL + Realtime + Auth)
 Styling:   CSS variables in src/styles.css — NO Tailwind, NO CSS modules
 Icons:     Inline SVG or emoji only — NO icon libraries
 API:       /api/*.js — Vercel serverless, CommonJS only
-Deploy:    git push origin v2:main --force → Vercel auto-deploys
+Deploy:    git push origin v2:main → Vercel auto-deploys (NO --force — ever)
 Live URL:  https://app.targetreteam.com
 ```
 
