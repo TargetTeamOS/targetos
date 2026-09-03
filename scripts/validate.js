@@ -31,12 +31,23 @@ function getAllFiles(dir, exts) {
 const jsxFiles = getAllFiles('src', ['.jsx', '.js'])
 
 // ── CHECK 1: No backticks in JSX render paths ──────────────────
+// FIX (Sept 2026 audit, finding M1): the old regex required the backtick
+// to sit immediately after =/{/> (mod whitespace), which missed
+// CLAUDE.md's own canonical crash example --
+// `<div style={{ border: \`1px solid ${color}\` }}>` -- because the
+// backtick there is preceded by "border: ", not one of those three
+// characters. A backtick anywhere inside a JSX attribute's `attr={...}`
+// expression is just as dangerous, so also flag any `word={` opener
+// followed later on the same line by a backtick, in addition to the
+// original self-closing/closing-tag heuristic.
 jsxFiles.filter(f => f.endsWith('.jsx')).forEach(f => {
   const lines = fs.readFileSync(f, 'utf8').split('\n')
   let count = 0
   lines.forEach(l => {
     if (!l.includes('`') || l.trim().startsWith('//') || l.trim().startsWith('*')) return
-    if (/[={>]\s*`/.test(l) && (l.includes('/>') || l.includes('</') || /\w+=\s*\{`/.test(l))) count++
+    const looksLikeJsxAttrExpr = /\w+=\{[^}]*`/.test(l)
+    const looksLikeTagContext  = (l.includes('/>') || l.includes('</')) && /[={>]\s*`/.test(l)
+    if (looksLikeJsxAttrExpr || looksLikeTagContext) count++
   })
   if (count > 0) failures.push('JSX BACKTICK [' + count + '] in ' + path.basename(f))
 })
@@ -74,7 +85,8 @@ jsxFiles.filter(f => f.endsWith('.jsx')).forEach(f => {
 })
 if (!failures.some(f => f.includes('custom'))) passes.push('✓ No undefined custom variable')
 
-// ── CHECK 5: useLocation present where location is used ────────njsxFiles.filter(f => f.endsWith('.jsx')).forEach(f => {
+// ── CHECK 5: useLocation present where location is used ────────
+jsxFiles.filter(f => f.endsWith('.jsx')).forEach(f => {
   const c = fs.readFileSync(f, 'utf8')
   if ((c.includes('location.search') || c.includes('location.pathname')) && !c.includes('= useLocation()')) {
     failures.push('MISSING useLocation() in ' + path.basename(f))
@@ -93,11 +105,52 @@ try {
 } catch(e) { failures.push('vercel.json: cannot parse — ' + e.message) }
 
 // ── CHECK 7: No duplicate Supabase channel names ───────────────
-const allSrc   = jsxFiles.map(f => fs.readFileSync(f, 'utf8')).join('\n')
+// FIX (Sept 2026 audit, finding M2): the old regex only matched
+// supabase.channel(...) when the argument was a bare string literal with
+// nothing else inside the parens -- every concatenated name in the app
+// ('rt_'+tableName+'_'+instanceId in hooks.js, 'activity_'+recordId in
+// RecordActivityFeed.jsx, 'sms_'+contactId in SMSInbox.jsx,
+// 'notifs_'+agent.id in NotificationBell.jsx) was invisible to it. A
+// future file computing that exact same concatenation would sail through
+// undetected -- the exact class of bug that caused the postgres_changes
+// production crash CLAUDE.md documents. Extract the FULL argument
+// expression (balanced-paren scan, so nested calls don't truncate it)
+// instead of requiring a bare string literal, and compare call sites by
+// that normalized expression text so an identical concatenation used
+// twice is still caught.
+const allSrc = jsxFiles.map(f => fs.readFileSync(f, 'utf8')).join('\n')
 const subSrc = allSrc.split('\n').filter(l => !l.includes('removeChannel')).join('\n')
-const chMatches = subSrc.match(/supabase\.channel\(['"`]([^'"`\$]+)['"`]\)/g) || []
-const chNames   = chMatches.map(c => c.match(/['"`]([^'"`]+)['"`]/)?.[1]).filter(Boolean)
-const dupes     = chNames.filter((n, i) => chNames.indexOf(n) !== i)
+function extractChannelArgs(src) {
+  const args = []
+  const marker = 'supabase.channel('
+  let idx = 0
+  while (true) {
+    const start = src.indexOf(marker, idx)
+    if (start === -1) break
+    let i = start + marker.length
+    let depth = 1
+    const argStart = i
+    while (i < src.length && depth > 0) {
+      if (src[i] === '(') depth++
+      else if (src[i] === ')') depth--
+      i++
+    }
+    args.push(src.slice(argStart, i - 1).trim().replace(/\s+/g, ' '))
+    idx = i
+  }
+  return args
+}
+// A bare variable reference (e.g. `chName`, `ch`) carries no static
+// evidence either way -- the same generic local name is reused across
+// unrelated files/functions for entirely different runtime channel names
+// (confirmed: NotificationBell.jsx, RecordActivityFeed.jsx and
+// hooks.js each have their own unrelated local `chName`/`ch`), so
+// comparing bare identifiers by source text alone is pure noise. Only
+// compare expressions that contain a string-literal fragment -- that's
+// what makes a match like 'notifs_'+agent.id meaningful in the first
+// place, and it's exactly the shape of every real example M2 called out.
+const chNames     = extractChannelArgs(subSrc).filter(n => /['"`]/.test(n))
+const dupes       = chNames.filter((n, i) => chNames.indexOf(n) !== i)
 const uniqueDupes = [...new Set(dupes)]
 if (uniqueDupes.length > 0) {
   failures.push('DUPLICATE SUPABASE CHANNELS (causes the postgres_changes crash): ' + uniqueDupes.join(', '))
@@ -121,33 +174,53 @@ if (!failures.some(f => f.startsWith('NO EXPORT'))) passes.push('✓ All pages e
 //            the entire app. (Restored from the old script's dead-end
 //            `else` branch, where it ran but could never actually fail
 //            the build.) ────────────────────────────────────────────
+// FIX (Sept 2026 audit, finding M3): this used to scan only 4 of the 56
+// files in src/pages/, and would not have caught H1 (MLSSearch.jsx,
+// a component not even in src/pages/) or H2 (TransactionCoordinator.jsx,
+// which WAS in src/pages/ but outside this 4-file allowlist). Scan every
+// .jsx file in the whole tree (components included) rather than a
+// hand-picked list, so a new page or component isn't silently unchecked.
+// FIX (Sept 2026 audit, finding M3 follow-up): a flat single baseline
+// broke the moment this check covered real files -- Analytics.jsx defines
+// `HealthTable` (a legitimate component, invoked as <HealthTable .../>
+// JSX further down) INSIDE another component's render body. Its useState
+// call sits at the top of HealthTable's own body, but measured against
+// the OUTER component's braceStart that looked "deep" and false-flagged
+// a call that isn't a Rules-of-Hooks violation at all. Track a stack of
+// baselines, one per nested component definition (function or capitalized
+// arrow-const), so a hook is only flagged when it's actually inside an
+// if/for/etc. block WITHIN its own component -- not merely nested inside
+// another component's render.
 let hookInConditional = 0
-const hookFiles = [
-  'src/pages/Dashboard.jsx', 'src/pages/Contacts.jsx',
-  'src/pages/Tasks.jsx', 'src/pages/ContactDetail.jsx',
-]
+const hookFiles = jsxFiles.filter(f => f.endsWith('.jsx') && !f.endsWith('.test.jsx'))
 hookFiles.forEach(f => {
   try {
     const lines = fs.readFileSync(f, 'utf8').split('\n')
     let braceDepth = 0
-    let inComponent = false
-    let componentBraceStart = 0
+    let componentStack = []
     lines.forEach((line, i) => {
+      const trimmed = line.trim()
       const opens  = (line.match(/\{/g)||[]).length
       const closes = (line.match(/\}/g)||[]).length
-      if (/^(export )?function [A-Z]/.test(line.trim())) {
-        inComponent = true
-        componentBraceStart = braceDepth
-      }
+      const isComponentStart =
+        /^(export )?(default )?function [A-Z]/.test(trimmed) ||
+        /^(export )?(const|let) [A-Z]\w*\s*=\s*(\(.*\)|\w+)\s*=>\s*\{/.test(trimmed) ||
+        /^(export )?(const|let) [A-Z]\w*\s*=\s*function\b/.test(trimmed)
+      if (isComponentStart) componentStack.push(braceDepth)
       braceDepth += opens - closes
-      if (inComponent && braceDepth > componentBraceStart + 2) {
-        if (/\buseState\(|\buseEffect\(|\buseRef\(|\buseMemo\(|\buseCallback\(/.test(line) &&
-            !line.trim().startsWith('//')) {
-          hookInConditional++
-          failures.push('HOOK IN DEEP BLOCK (React error #310 risk): ' + f + ':' + (i+1))
+      if (componentStack.length) {
+        const baseline = componentStack[componentStack.length - 1]
+        if (braceDepth > baseline + 2) {
+          if (/\buseState\(|\buseEffect\(|\buseRef\(|\buseMemo\(|\buseCallback\(/.test(line) &&
+              !trimmed.startsWith('//')) {
+            hookInConditional++
+            failures.push('HOOK IN DEEP BLOCK (React error #310 risk): ' + f + ':' + (i+1))
+          }
+        }
+        while (componentStack.length && braceDepth <= componentStack[componentStack.length - 1]) {
+          componentStack.pop()
         }
       }
-      if (inComponent && braceDepth <= componentBraceStart) inComponent = false
     })
   } catch {}
 })
@@ -155,16 +228,48 @@ if (hookInConditional === 0) passes.push('✓ No hooks inside deep blocks (React
 
 // ── CHECK 10: All components used in JSX are imported ──────────
 // (Restored from the old script's dead-end `else` branch — same fix.)
+// FIX (Sept 2026 audit, finding M3): same fix as CHECK 9 above -- this
+// used to scan only 2 hardcoded files out of 56 pages. Scan every .jsx
+// file in the tree instead.
+// Extracts every local binding name an `import ...` statement introduces
+// -- default, named (with `as` aliases), and `* as namespace` -- since
+// widening this check to every file (below) hits default-imported
+// components (`import ContactPicker from '../components/ContactPicker'`,
+// `import GridLayout from 'react-grid-layout'`, `import App from
+// './App'`) that the old brace-only regex silently treated as "not
+// imported," which would have made this check unusable the moment it
+// covered real files.
+function getImportedNames(c) {
+  const names = new Set()
+  const stmts = c.match(/^import\s[\s\S]*?from\s*['"][^'"]+['"]/gm) || []
+  stmts.forEach(stmt => {
+    const body = stmt.replace(/^import\s+/, '').replace(/\s+from\s*['"][^'"]+['"]$/, '')
+    const braceMatch = body.match(/\{([^}]*)\}/)
+    if (braceMatch) {
+      braceMatch[1].split(',').map(s => s.trim()).filter(Boolean).forEach(s => {
+        const asMatch = s.match(/\bas\s+(\w+)/)
+        names.add(asMatch ? asMatch[1] : s)
+      })
+    }
+    const nsMatch = body.match(/\*\s*as\s+(\w+)/)
+    if (nsMatch) names.add(nsMatch[1])
+    const beforeBrace = body.split('{')[0].replace(/\*.*$/, '')
+    const defaultMatch = beforeBrace.match(/^\s*(\w+)/)
+    if (defaultMatch) names.add(defaultMatch[1])
+  })
+  return names
+}
+
 let missingImports = 0
-const criticalFiles = ['src/pages/ContactDetail.jsx', 'src/pages/Dashboard.jsx']
+const criticalFiles = jsxFiles.filter(f => f.endsWith('.jsx') && !f.endsWith('.test.jsx'))
 criticalFiles.forEach(f => {
   try {
     const c = fs.readFileSync(f, 'utf8')
     const used = [...new Set((c.match(/<([A-Z][a-zA-Z]+)[\s/>]/g)||[]).map(m=>m.slice(1).replace(/[\s/>].*/,'')))]
-    const imported = (c.match(/import\s*\{([^}]+)\}/g)||[]).flatMap(m=>m.replace(/import\s*\{/,'').replace(/\}/,'').split(',').map(s=>s.trim()))
+    const imported = getImportedNames(c)
     const builtins = ['React','Fragment']
     const locallyDefined = (c.match(/(?:const|function|class)\s+([A-Z][a-zA-Z]+)/g)||[]).map(m=>m.split(/\s+/)[1])
-    const missing = used.filter(u => !imported.includes(u) && !builtins.includes(u) && !locallyDefined.includes(u))
+    const missing = used.filter(u => !imported.has(u) && !builtins.includes(u) && !locallyDefined.includes(u))
     if (missing.length) {
       failures.push('MISSING IMPORTS in ' + f + ': ' + missing.join(', '))
       missingImports += missing.length
