@@ -64,7 +64,7 @@ import { ReportBuilder }  from './pages/ReportBuilder'
 import { Notepad }        from './pages/Notepad'
 import { TVBoard } from './pages/TVBoard'
 
-// ── ERROR BOUNDARY ──────────────────────────────────────────────────────
+// ── ERROR BOUNDARY ───────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null } }
   static getDerivedStateFromError(e) { return { error: e } }
@@ -97,7 +97,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// ── PER-PAGE ERROR BOUNDARY ──────────────────────────────────────────────
+// ── PER-PAGE ERROR BOUNDARY ──────────────────────────────────────
 // Wraps the whole route tree so a single page crash doesn't break
 // in-app navigation. `path` must come from useLocation() in the
 // caller, not read directly here — this component itself has no
@@ -108,7 +108,7 @@ function SafePage({ children, path }) {
   return <ErrorBoundary key={path}>{children}</ErrorBoundary>
 }
 
-// ── LOADING SCREEN ────────────────────────────────────────────────────────────────
+// ── LOADING SCREEN ───────────────────────────────────────────────
 function AppLoader() {
   return (
     <div style={{ minHeight: '100vh', background: '#0F1A2E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,system-ui,sans-serif' }}>
@@ -120,7 +120,7 @@ function AppLoader() {
   )
 }
 
-// ── TOAST ───────────────────────────────────────────────────────────────────────────
+// ── TOAST ────────────────────────────────────────────────────────
 function Toast() {
   const { state } = useApp()
   if (!state.toast) return null
@@ -131,7 +131,7 @@ function Toast() {
   )
 }
 
-// ── MAIN APP SHELL ─────────────────────────────────────────────────────────────────
+// ── MAIN APP SHELL ───────────────────────────────────────────────
 function AppShell() {
   const { user, agent, loading } = useAuth()
   // FIX (Sept 2026 audit, finding H4): SafePage's key must change on
@@ -224,7 +224,7 @@ function AppShell() {
   )
 }
 
-// ── PERMISSION ROUTE GUARD ──────────────────────────────────────────────
+// ── PERMISSION ROUTE GUARD ───────────────────────────────────────
 // Wraps a route element; redirects home if the current agent's role
 // (or an admin override from Admin → Permissions) denies the permission.
 function RequirePermission({ perm, children }) {
@@ -234,7 +234,7 @@ function RequirePermission({ perm, children }) {
   return children
 }
 
-// ── COMMAND PALETTE ────────────────────────────────────────────────────────────────
+// ── COMMAND PALETTE ──────────────────────────────────────────────
 function CommandPaletteWrapper() {
   const [open, setOpen] = useCommandPalette()
   return <CommandPalette open={open} onClose={() => setOpen(false)} />
@@ -254,7 +254,7 @@ function LocationAwareTools() {
   )
 }
 
-// ── ROOT ROUTER — public + private ─────────────────────────────
+// ── ROOT ROUTER — public + private ──────────────────────────────
 function RootRouter() {
   const { pathname } = useLocation()
   // Public routes skip auth entirely
