@@ -10,6 +10,7 @@
 // Returns: { text, language }
 // ═══════════════════════════════════════════════════════════════
 'use strict'
+const { requireAnyAgent } = require('./_lib/phone')
 
 async function parseBody(req) {
   return new Promise((resolve) => {
@@ -32,6 +33,15 @@ module.exports = async function handler(req, res) {
     }
     console.warn('[AUTH] unauthenticated call to /api/transcribe ALLOWED (log-only)')
   }
+
+  // SECURITY (Sept 2026 audit, finding C2): the AUTH_ENFORCE check above
+  // is staged/log-only, so on its own this endpoint has NO real auth
+  // yet. Every other AUTH_ENFORCE-listed endpoint also has a second,
+  // unconditional role check that blocks unauthenticated callers
+  // regardless of the flag -- this one didn't. Without it, anyone can
+  // spend OpenAI Whisper credits on arbitrary uploaded audio.
+  const authCheck = await requireAnyAgent(req)
+  if (!authCheck.ok) return res.status(authCheck.status).end(JSON.stringify({ error: authCheck.message }))
 
   const openaiKey = process.env.OPENAI_API_KEY
   if (!openaiKey) {
