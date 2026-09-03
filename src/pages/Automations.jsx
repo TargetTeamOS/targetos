@@ -374,11 +374,20 @@ function SentenceBuilder({ form, onChange, agents }) {
           const chosen = [{ id: 'trigger_agent', label: 'the assigned agent', icon: '👤' }, ...agents.map(a => ({ id: a.id, label: a.name, icon: '👤' }))].find(a => a.id === cfg[configKey])
           return (
             <span style={{ position: 'relative' }}>
+              {/* FIX (Sept 2026 audit, finding M1 follow-up): this was a
+                  malformed template literal -- the intended ternary
+                  (openPicker === X ? null : X) had gotten mangled into a
+                  single backtick string containing the literal text
+                  '" ? null : "', so this button never actually closed the
+                  picker; it always called setOpenPicker with that garbled
+                  string. Rewritten as plain concatenation, both to fix the
+                  logic and because backticks in a JSX render path are the
+                  exact pattern CLAUDE.md documents as crashing at runtime. */}
               <Chip
                 label={chosen?.label || 'the assigned agent'}
-                onClick={() => setOpenPicker(openPicker === `${pickerKey}_${configKey}" ? null : "${pickerKey}_${configKey}`)}
+                onClick={() => setOpenPicker(openPicker === pickerKey + '_' + configKey ? null : pickerKey + '_' + configKey)}
               />
-              {openPicker === `${pickerKey}_${configKey}` && (
+              {openPicker === pickerKey + '_' + configKey && (
                 <Dropdown
                   options={[{ label: null, items: agentOptions }]}
                   onSelect={a => { updateActionConfig(idx, configKey, a.id); setOpenPicker(null) }}
