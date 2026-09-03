@@ -3,8 +3,24 @@ const RESEND_KEY = Deno.env.get('RESEND_API_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 const APP_URL = 'https://app.targetreteam.com'
+// SECURITY (Sept 2026 audit, finding C5): this function had zero inbound
+// auth -- anyone holding the public anon key (shipped in the client
+// bundle) could invoke it directly and trigger a real email send. Set
+// this secret with `supabase secrets set EDGE_FUNCTIONS_SECRET=...` and
+// have whatever schedules this function (pg_cron / a webhook) send it as
+// `Authorization: Bearer <secret>`. See EDGE_FUNCTIONS_SETUP.md.
+const EDGE_FUNCTIONS_SECRET = Deno.env.get('EDGE_FUNCTIONS_SECRET')
 
-Deno.serve(async () => {
+Deno.serve(async (req: Request) => {
+  if (!EDGE_FUNCTIONS_SECRET) {
+    console.error('[task-overdue-check] EDGE_FUNCTIONS_SECRET not set — refusing to run')
+    return new Response(JSON.stringify({ error: 'EDGE_FUNCTIONS_SECRET not configured' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+  }
+  if (req.headers.get('authorization') !== `Bearer ${EDGE_FUNCTIONS_SECRET}`) {
+    console.warn('[task-overdue-check] BLOCKED unauthorized invocation')
+    return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
   const today = new Date().toISOString().split('T')[0]
   const { data: tasks } = await supabase.from('tasks').select('*').eq('status','pending').lt('due_date',today).not('due_date','is',null)
