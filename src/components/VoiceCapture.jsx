@@ -4,7 +4,7 @@
 // Records speech, parses it, and saves as contact/task/note.
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
@@ -36,6 +36,30 @@ export function VoiceCapture() {
   const dragging = useRef(false)
   const dragStart = useRef(null)
   const lastTouch = useRef(0)
+  // Mirrors of startRecord()'s local audioCtx/levelTimer/capTimer, kept
+  // so the unmount cleanup below can reach them (see finding H3).
+  const audioCtxRef = useRef(null)
+  const levelTimerRef = useRef(null)
+  const capTimerRef = useRef(null)
+
+  // FIX (Sept 2026 audit, finding H3): this component previously had
+  // zero cleanup on unmount -- the MediaRecorder, AudioContext, mic
+  // stream, and timers were only ever torn down in mr.onstop. Navigating
+  // away mid-recording (App.jsx only mounts this on some routes) unmounted
+  // the component without that ever firing, leaving the mic physically
+  // open and letting the 2-minute hard-cap timer later fire network calls
+  // against an unmounted component. Stop everything directly here instead
+  // of calling mr.stop() (which would trigger the async onstop handler --
+  // transcription, setState -- after this component is already gone).
+  useEffect(() => {
+    return () => {
+      try { clearInterval(levelTimerRef.current) } catch {}
+      try { clearTimeout(capTimerRef.current) } catch {}
+      try { audioCtxRef.current && audioCtxRef.current.close() } catch {}
+      try { audioStream.current?.getTracks().forEach(t => t.stop()) } catch {}
+      try { recRef.current?.stop?.() } catch {}
+    }
+  }, [])
 
   // ── DRAG (mouse + touch) ──────────────────────────────────────
   function getPoint(e) {
@@ -132,6 +156,7 @@ export function VoiceCapture() {
       try {
         const AC = window.AudioContext || window.webkitAudioContext
         audioCtx = new AC()
+        audioCtxRef.current = audioCtx
         const src = audioCtx.createMediaStreamSource(stream)
         const analyser = audioCtx.createAnalyser()
         analyser.fftSize = 512
@@ -150,14 +175,19 @@ export function VoiceCapture() {
             try { mr.stop() } catch {}
           }
         }, 200)
+        levelTimerRef.current = levelTimer
       } catch { /* no AudioContext → user taps ⏹ manually; 2-min cap below */ }
       // Fallback hard cap even without AudioContext
       const capTimer = setTimeout(() => { try { if (mr.state !== 'inactive') mr.stop() } catch {} }, MAX_RECORD_MS)
+      capTimerRef.current = capTimer
 
       mr.onstop = async () => {
         clearTimeout(capTimer)
+        capTimerRef.current = null
         if (levelTimer) clearInterval(levelTimer)
+        levelTimerRef.current = null
         try { audioCtx && audioCtx.close() } catch {}
+        audioCtxRef.current = null
         audioStream.current?.getTracks().forEach(t => t.stop())
         const blob = audioChunks.current.length ? new Blob(audioChunks.current, { type: 'audio/webm' }) : null
         if (blob) setAudioBlob(blob)
