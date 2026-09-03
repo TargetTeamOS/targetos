@@ -98,9 +98,14 @@ class ErrorBoundary extends React.Component {
 }
 
 // ── PER-PAGE ERROR BOUNDARY ──────────────────────────────────────
-// Wraps each route so a single page crash doesn't break navigation
-function SafePage({ children }) {
-  return <ErrorBoundary key={window.location.pathname}>{children}</ErrorBoundary>
+// Wraps the whole route tree so a single page crash doesn't break
+// in-app navigation. `path` must come from useLocation() in the
+// caller, not read directly here — this component itself has no
+// reason to re-render on navigation, so a `key={window.location.
+// pathname}` read at this level would (see finding H4) stay stale
+// until something else happened to re-render it.
+function SafePage({ children, path }) {
+  return <ErrorBoundary key={path}>{children}</ErrorBoundary>
 }
 
 // ── LOADING SCREEN ───────────────────────────────────────────────
@@ -129,13 +134,19 @@ function Toast() {
 // ── MAIN APP SHELL ───────────────────────────────────────────────
 function AppShell() {
   const { user, agent, loading } = useAuth()
+  // FIX (Sept 2026 audit, finding H4): SafePage's key must change on
+  // navigation for a per-page error boundary to actually reset after a
+  // crash. That requires AppShell itself to re-render on route changes,
+  // which it never did before -- useLocation() was imported at the top
+  // of this file but nothing here actually called it.
+  const location = useLocation()
   if (loading) return <AppLoader />
   if (!user || !agent) return <Login />
 
   return (
     <>
       <Layout>
-        <ErrorBoundary>
+        <SafePage path={location.pathname}>
         <Routes>
           {/* Core pages with :id routing */}
           <Route path="/" element={<DashboardCommandCenter />} />
@@ -203,7 +214,7 @@ function AppShell() {
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />
         </Routes>
-        </ErrorBoundary>
+        </SafePage>
       </Layout>
       <Toast />
       <ActiveCallBar />
