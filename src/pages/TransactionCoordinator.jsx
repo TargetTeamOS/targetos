@@ -725,19 +725,15 @@ export function TransactionCoordinator() {
 
   useEffect(() => { if (canManage) loadAll() }, [canManage])
 
-  // TC Board is Secretary + Admin only — agents get zero access.
-  // Placed after every hook call (useState/useEffect above) so this
-  // conditional return never violates the rules of hooks.
-  if (!canManage) return (
-    <div>
-      <PageHeader title="TC Board" />
-      <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:40,textAlign:'center'}}>
-        <div style={{fontSize:32,marginBottom:12}}>🔒</div>
-        <div style={{fontWeight:700,fontSize:16,color:'var(--text)'}}>Secretary or Admin Access Only</div>
-      </div>
-    </div>
-  )
-
+  // FIX (Sept 2026 audit, finding H2): these six hooks used to live
+  // AFTER the conditional return below, behind a comment claiming that
+  // was safe. It wasn't — a comment doesn't change what React sees.
+  // Any agent-record refresh that changes `role` while the TC Board is
+  // open (a permission change, onAuthStateChange firing) flips the
+  // hook count mid-life and crashes with the exact React error #310
+  // this project has already been bitten by once (see CLAUDE.md). All
+  // hooks must run unconditionally on every render, so they're hoisted
+  // above the `!canManage` return, same as dealForm/taskForm above.
   const location = useLocation()
   const [deepLinked, setDeepLinked] = useState(false)
   useEffect(() => {
@@ -756,6 +752,18 @@ export function TransactionCoordinator() {
   const [tcCfg, setTcCfg] = useState(null)   // merged TC settings (templates, services, statuses…)
   const [showBill, setShowBill] = useState(false)
   const [billPeople, setBillPeople] = useState({ rows: [], contacts: {} })
+
+  // TC Board is Secretary + Admin only — agents get zero access. Every
+  // hook this component uses is declared above this line, unconditionally.
+  if (!canManage) return (
+    <div>
+      <PageHeader title="TC Board" />
+      <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:40,textAlign:'center'}}>
+        <div style={{fontSize:32,marginBottom:12}}>🔒</div>
+        <div style={{fontWeight:700,fontSize:16,color:'var(--text)'}}>Secretary or Admin Access Only</div>
+      </div>
+    </div>
+  )
 
   async function openCommissionBill() {
     try {
@@ -906,29 +914,6 @@ export function TransactionCoordinator() {
 
   // Contract-to-close service: weekly check-in tasks from now (or AO
   // date) until close date, capped at 12 weeks. Fired once when the
-
-  // ── #task-ID deep links (July 2026) ─────────────────────────────
-  // Emails link each task as /tc#task-<id>: expand its deal, scroll
-  // to the row, and flash it.
-  useEffect(() => {
-    const h = window.location.hash
-    if (!h.startsWith('#task-') || !tasks.length) return
-    const taskId = h.slice(6)
-    const t = tasks.find(x => String(x.id) === taskId)
-    if (!t) return
-    setExpanded(prev => ({ ...prev, [t.tc_deal_id]: true }))
-    setTimeout(() => {
-      const el = document.getElementById('task-' + taskId)
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        el.style.transition = 'background .4s'
-        el.style.background = 'rgba(204,34,0,.14)'
-        setTimeout(() => { el.style.background = '' }, 2600)
-      }
-    }, 350)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks.length])
-
   // toggle flips on; tasks are normal tc_tasks (editable/deletable).
   async function generateC2CTasks(deal) {
     try {
@@ -941,7 +926,7 @@ export function TransactionCoordinator() {
       while (d <= end && rows.length < 12) {
         rows.push({
           deal_id: deal.id,
-          title: '📞 C2C week ' + week + ': mortgage broker check-in + update seller, buyer\u2019s agent & attorneys',
+          title: '📞 C2C week ' + week + ': mortgage broker check-in + update seller, buyer’s agent & attorneys',
           priority: 'high', due_date: d.toISOString().slice(0,10),
           status: 'pending', agent_id: deal.agent_id,
           needs_calendar: false, phase: 'under_contract',
