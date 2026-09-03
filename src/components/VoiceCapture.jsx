@@ -61,7 +61,7 @@ export function VoiceCapture() {
     }
   }, [])
 
-  // ── DRAG (mouse + touch) ────────────────────────────────────────────
+  // ── DRAG (mouse + touch) ──────────────────────────────────────
   function getPoint(e) {
     if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY }
     if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY }
@@ -116,7 +116,7 @@ export function VoiceCapture() {
     setOpen(true)
   }
 
-  // ── RECORD ───────────────────────────────────────────────────────────
+  // ── RECORD ────────────────────────────────────────────────────
   function blobToBase64(blob) {
     return new Promise((resolve, reject) => {
       const r = new FileReader()
@@ -143,7 +143,7 @@ export function VoiceCapture() {
       const mr = new MediaRecorder(stream)
       mr.ondataavailable = e => { if (e.data.size) audioChunks.current.push(e.data) }
 
-      // ── REAL silence detection on the actual mic signal ──────────────
+      // ── REAL silence detection on the actual mic signal ──────────
       // The browser speech engine is unreliable (esp. Android Chrome) so
       // the recorder must NOT depend on it. We watch actual audio levels:
       // stop after SILENCE_STOP_MS of quiet, hard cap at MAX_RECORD_MS.
@@ -260,7 +260,7 @@ export function VoiceCapture() {
     } catch (e) { toast('Audio upload failed: ' + e.message, '#DC2626'); return {} }
   }
 
-  // ── SAVE AS CONTACT ────────────────────────────────────────────────
+  // ── SAVE AS CONTACT ───────────────────────────────────────────
   async function saveAsContact() {
     if (!parsed) return
     if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
@@ -338,7 +338,7 @@ export function VoiceCapture() {
     } finally { setSaving(false) }
   }
 
-  // ── SAVE AS TASK ─────────────────────────────────────────────────
+  // ── SAVE AS TASK ──────────────────────────────────────────────
   async function saveAsTask() {
     if (!parsed) return
     if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
@@ -396,7 +396,7 @@ export function VoiceCapture() {
     } finally { setSaving(false) }
   }
 
-  // ── SAVE AS CALENDAR EVENT ─────────────────────────────────────
+  // ── SAVE AS CALENDAR EVENT ────────────────────────────────────
   async function saveAsEvent() {
     if (!parsed) return
     if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
