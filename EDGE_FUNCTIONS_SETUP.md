@@ -20,7 +20,10 @@ supabase link --project-ref sgrnyvdsyahmypibjarx
 
 ## Step 3 — Set secrets
 ```bash
-supabase secrets set RESEND_API_KEY=re_ShsDysNB_2MDVrReA864LkDRGCgbadc93
+supabase secrets set RESEND_API_KEY=<your Resend API key from resend.com/api-keys>
+# NOTE: a real key was committed here until Sept 2 2026 (see
+# docs/code-quality-audit-2026-09-02.md, finding U1) — this repo is public,
+# so that key must be rotated in Resend's dashboard if it hasn't been already.
 supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<your service role key from Supabase Settings>
 ```
 
