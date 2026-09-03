@@ -143,7 +143,12 @@ export function WidgetContent({ config, agentId, isAdmin }) {
     const grad = segs.map(s=>`${s.c} ${s.start}deg ${s.end}deg`).join(', ')
     return (
       <><div onClick={openDrill} style={{ display:'flex', alignItems:'center', gap:14, height:'100%', fontFamily:ff, cursor:'pointer' }}>
-        <div style={{ width:96, height:96, borderRadius:'50%', flexShrink:0, background:`conic-gradient(${grad})`, position:'relative' }}>
+        {/* FIX (Sept 2026 audit, finding M1 follow-up): this was a template
+            literal inside a JSX style attribute -- exactly the pattern
+            CLAUDE.md documents as crashing at runtime (esbuild silently
+            misparses template literals inside JSX). Converted to string
+            concatenation. */}
+        <div style={{ width:96, height:96, borderRadius:'50%', flexShrink:0, background:'conic-gradient(' + grad + ')', position:'relative' }}>
           <div style={{ position:'absolute', inset:14, background:'var(--panel)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:800, color:'var(--text)' }}>{total}</div>
         </div>
         <div style={{ flex:1, overflowY:'auto', maxHeight:'100%' }}>
@@ -171,7 +176,9 @@ export function WidgetContent({ config, agentId, isAdmin }) {
     return (
       <>
         <div onClick={openDrill} style={{ display:'flex', alignItems:'center', gap:16, height:'100%', cursor:'pointer', fontFamily:ff }}>
-          <div style={{ width:104, height:104, borderRadius:'50%', flexShrink:0, background:`conic-gradient(${color} ${deg}deg, var(--dim) ${deg}deg)`, position:'relative' }}>
+          {/* FIX (Sept 2026 audit, finding M1 follow-up): same template-
+              literal-in-JSX-style crash pattern as the donut widget above. */}
+          <div style={{ width:104, height:104, borderRadius:'50%', flexShrink:0, background:'conic-gradient(' + color + ' ' + deg + 'deg, var(--dim) ' + deg + 'deg)', position:'relative' }}>
             <div style={{ position:'absolute', inset:12, background:'var(--panel)', borderRadius:'50%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
               <div style={{ fontSize:22, fontWeight:800, color }}>{pct}%</div>
             </div>
