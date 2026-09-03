@@ -11,7 +11,7 @@
 // the access control added July 2026.
 'use strict'
 
-const { requireAnyAgent, getSupabase } = require('./_lib/phone')
+const { requireAnyAgent, getSupabase, isTwilioRecordingUrl } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
   // HARDENED (July 2026): caller authentication with staged rollout,
@@ -66,6 +66,19 @@ module.exports = async function handler(req, res) {
     if (error || !vm) return res.status(404).json({ error: 'Voicemail not found' })
     recordingUrl = vm.recording_url
     if (!recordingUrl) return res.status(404).json({ error: 'No recording for this voicemail' })
+  }
+
+  // SECURITY (Sept 2026 audit, finding C1): recordingUrl is whatever was
+  // stored in the calls/voicemails table, which is populated straight
+  // from the Twilio webhook's RecordingUrl field with no signature
+  // enforcement yet (TWILIO_SIG_ENFORCE is log-only). A forged webhook
+  // could have pointed it at an attacker-controlled host -- fetching
+  // that here would hand it the real Twilio Basic Auth credential the
+  // moment any agent plays back this recording. Refuse anything that
+  // isn't actually a Twilio URL before attaching real credentials to it.
+  if (!isTwilioRecordingUrl(recordingUrl)) {
+    console.warn('[twilio-recording-proxy] refusing to fetch non-Twilio recordingUrl:', recordingUrl)
+    return res.status(502).json({ error: 'Recording URL is invalid' })
   }
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID
