@@ -14,8 +14,18 @@ const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
+  // SECURITY (Sept 2026 audit, finding C3): previously `CRON_SECRET &&
+  // ...` meant an unset secret skipped this check entirely -- fail
+  // OPEN, not closed. Vercel Cron only ever sends the Authorization
+  // header once CRON_SECRET is configured on the project, so requiring
+  // it here matches Vercel's own intended setup; it does mean this
+  // cron won't run until CRON_SECRET is actually set in Vercel.
   const CRON_SECRET = process.env.CRON_SECRET
-  if (CRON_SECRET && req.headers['authorization'] !== 'Bearer ' + CRON_SECRET) {
+  if (!CRON_SECRET) {
+    console.error('[report-cron] CRON_SECRET is not set — refusing to run rather than allow unauthenticated invocations')
+    return res.status(503).end(JSON.stringify({ error: 'CRON_SECRET not configured' }))
+  }
+  if (req.headers['authorization'] !== 'Bearer ' + CRON_SECRET) {
     console.warn('[report-cron] BLOCKED unauthorized invocation')
     return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
   }
