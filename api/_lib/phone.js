@@ -315,6 +315,22 @@ const HOLD_MUSIC = {
   silence:   'https://demo.twilio.com/docs/silence.mp3',
 }
 
+// ── URL VALIDATION (Sept 2026 audit, finding C1) ─────────────────────
+// RecordingUrl (and everything derived from it -- fullRecordingUrl,
+// stored recording_url/voicemail_url columns) comes straight from a
+// Twilio webhook body that isn't authenticated by default
+// (TWILIO_SIG_ENFORCE is log-only). Anywhere that value gets fetched
+// with the real TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN in a Basic Auth
+// header MUST check this first -- otherwise a forged webhook can point
+// it at an attacker-controlled host and hand that host the live Twilio
+// credential the moment anything fetches it (immediately, in
+// transcribeAudio below and the voicemail-email attachment fetch; or
+// later, in twilio-recording-proxy.js, any time an agent plays back the
+// tainted recording).
+function isTwilioRecordingUrl(url) {
+  return /^https:\/\/api\.twilio\.com\//.test(String(url || ''))
+}
+
 // ── TRANSCRIPTION (OpenAI Whisper) ──────────────────────────────────
 // Transcribes a Twilio recording URL for calls AND voicemails, in
 // English, Yiddish, or Spanish (auto-detected -- Whisper doesn't
@@ -336,6 +352,14 @@ async function transcribeAudio(recordingUrl) {
   }
   if (!accountSid || !authToken) {
     console.warn('[transcribeAudio] Twilio credentials not set — cannot fetch recording audio')
+    return null
+  }
+
+  // Defense in depth alongside TWILIO_SIG_ENFORCE (which must also be set
+  // to 'true' in Vercel; that's a config change, not something fixable
+  // in code) -- see isTwilioRecordingUrl above.
+  if (!isTwilioRecordingUrl(recordingUrl)) {
+    console.warn('[transcribeAudio] refusing to fetch non-Twilio recordingUrl:', recordingUrl)
     return null
   }
 
@@ -436,7 +460,7 @@ module.exports = {
   // HTTP
   parseBody, parseQS,
   // Security
-  validateTwilioSignature, logTwilioValidation, checkTwilioSignature, requireAdminOrSecretary, requireAdmin, requireAnyAgent,
+  validateTwilioSignature, logTwilioValidation, checkTwilioSignature, requireAdminOrSecretary, requireAdmin, requireAnyAgent, isTwilioRecordingUrl,
   // Phone
   normalizePhone, formatPhone, phoneVariants,
   // Business logic
