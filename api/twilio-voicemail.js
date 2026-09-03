@@ -1,6 +1,6 @@
 'use strict'
 const querystring = require('querystring')
-const { getSupabase, checkTwilioSignature, transcribeAudio } = require('./_lib/phone')
+const { getSupabase, checkTwilioSignature, transcribeAudio, isTwilioRecordingUrl } = require('./_lib/phone')
 const { notifyAgent } = require('./_lib/notify')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 module.exports = async function handler(req, res) {
@@ -81,7 +81,11 @@ module.exports = async function handler(req, res) {
         const cfg = auto.action_nodes?.[0]?.config || {}
         const to  = cfg.to_email || 'yanky@targetreteam.com'
         let attachment = null
-        if (fullRecordingUrl && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+        // SECURITY (Sept 2026 audit, finding C1): fullRecordingUrl comes
+        // straight from the RecordingUrl webhook field with no signature
+        // enforcement yet -- must not be fetched with the real Twilio
+        // Basic Auth credential unless it actually points at Twilio.
+        if (fullRecordingUrl && isTwilioRecordingUrl(fullRecordingUrl) && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
           try {
             const rec = await fetch(fullRecordingUrl, { headers: { 'Authorization': 'Basic ' + Buffer.from(process.env.TWILIO_ACCOUNT_SID + ':' + process.env.TWILIO_AUTH_TOKEN).toString('base64') } })
             if (rec.ok) {
