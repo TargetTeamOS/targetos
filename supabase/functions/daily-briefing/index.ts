@@ -11,6 +11,10 @@ const RESEND_KEY = Deno.env.get('RESEND_API_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 const APP_URL = 'https://app.targetreteam.com'
+// SECURITY (Sept 2026 audit, finding C5): see task-overdue-check for why
+// this gate is needed. Same secret, set once with
+// `supabase secrets set EDGE_FUNCTIONS_SECRET=...`.
+const EDGE_FUNCTIONS_SECRET = Deno.env.get('EDGE_FUNCTIONS_SECRET')
 
 const AGENT_EMAILS: Record<string, string> = {
   'Lazer Farkas':      'lazer@targetreteam.com',
@@ -205,6 +209,14 @@ async function sendEmail(to: string, subject: string, html: string) {
 }
 
 Deno.serve(async (req) => {
+  if (!EDGE_FUNCTIONS_SECRET) {
+    console.error('[daily-briefing] EDGE_FUNCTIONS_SECRET not set — refusing to run')
+    return new Response(JSON.stringify({ error: 'EDGE_FUNCTIONS_SECRET not configured' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+  }
+  if (req.headers.get('authorization') !== `Bearer ${EDGE_FUNCTIONS_SECRET}`) {
+    console.warn('[daily-briefing] BLOCKED unauthorized invocation')
+    return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+  }
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
     const today = new Date().toISOString().split('T')[0]
