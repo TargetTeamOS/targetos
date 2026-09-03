@@ -949,7 +949,7 @@ export function TransactionCoordinator() {
       while (d <= end && rows.length < 12) {
         rows.push({
           deal_id: deal.id,
-          title: '📞 C2C week ' + week + ': mortgage broker check-in + update seller, buyer’s agent & attorneys',
+          title: '📞 C2C week ' + week + ': mortgage broker check-in + update seller, buyer\\u2019s agent & attorneys',
           priority: 'high', due_date: d.toISOString().slice(0,10),
           status: 'pending', agent_id: deal.agent_id,
           needs_calendar: false, phase: 'under_contract',
