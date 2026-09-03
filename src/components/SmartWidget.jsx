@@ -35,11 +35,24 @@ export function dateRangeToBounds(id) {
   return null
 }
 
+// Exact detail route for one record, so a drill-down row opens THAT item.
+function detailRoute(board, id) {
+  return {
+    contacts: '/contacts/' + id + '/detail',
+    deals:    '/production/' + id,
+    listings: '/listings/' + id,
+    tasks:    '/tasks/' + id,
+    offers:   '/offers/' + id,
+    gifts:    '/gifts/' + id,
+  }[board] || null
+}
+
 export function WidgetContent({ config, agentId, isAdmin }) {
   const navigate = useNavigate()
   const [rows, setRows] = useState([])
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [drill, setDrill] = useState(false)   // show the exact records behind the number
   const boardDef = BOARD_OPTIONS.find(b => b.id === config.board)
 
   useEffect(() => {
@@ -73,7 +86,13 @@ export function WidgetContent({ config, agentId, isAdmin }) {
   if (loading) return <div style={{ fontSize:12, color:'var(--muted)', fontFamily:ff, padding:8 }}>Loading…</div>
 
   const color = config.color || '#2563EB'
-  const goTo = () => navigate({ contacts:'/contacts', deals:'/production', listings:'/my-listings', tasks:'/tasks', offers:'/production', calls:'/calls', gifts:'/gifts' }[config.board] || '/')
+  // Clicking a widget opens the exact records behind it (not the whole board).
+  const openDrill = () => setDrill(true)
+
+  const drillModal = drill ? (
+    <DrillPopup title={config.title} board={config.board} boardDef={boardDef} rows={rows}
+      navigate={navigate} color={color} onClose={() => setDrill(false)} />
+  ) : null
 
   // NUMBER — count or numeric aggregate
   if (!config.display || config.display === 'number') {
@@ -83,10 +102,13 @@ export function WidgetContent({ config, agentId, isAdmin }) {
       value = fmtMoney(sum); label = (boardDef.numericFields.find(n=>n.field===config.metric)?.label) || config.metric
     }
     return (
-      <div onClick={goTo} style={{ height:'100%', display:'flex', flexDirection:'column', justifyContent:'center', cursor:'pointer' }}>
-        <div style={{ fontSize:40, fontWeight:800, color, lineHeight:1, fontFamily:ff }}>{value}</div>
-        <div style={{ fontSize:12, color:'var(--muted)', marginTop:6, fontFamily:ff }}>{label}</div>
-      </div>
+      <>
+        <div onClick={openDrill} style={{ height:'100%', display:'flex', flexDirection:'column', justifyContent:'center', cursor:'pointer' }}>
+          <div style={{ fontSize:40, fontWeight:800, color, lineHeight:1, fontFamily:ff }}>{value}</div>
+          <div style={{ fontSize:12, color:'var(--muted)', marginTop:6, fontFamily:ff }}>{label} · <span style={{ color }}>view {count} →</span></div>
+        </div>
+        {drillModal}
+      </>
     )
   }
 
@@ -100,7 +122,7 @@ export function WidgetContent({ config, agentId, isAdmin }) {
     const palette = ['#2563EB','#059669','#D97706','#DC2626','#7C3AED','#0891B2','#DB2777','#65A30D']
     if (config.display === 'bar') {
       return (
-        <div style={{ display:'flex', flexDirection:'column', gap:6, fontFamily:ff, overflowY:'auto', height:'100%' }}>
+        <><div onClick={openDrill} style={{ display:'flex', flexDirection:'column', gap:6, fontFamily:ff, overflowY:'auto', height:'100%', cursor:'pointer' }}>
           {entries.map(([k,v],i) => (
             <div key={k} style={{ display:'flex', alignItems:'center', gap:8 }}>
               <span style={{ fontSize:11, color:'var(--muted)', width:90, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{k}</span>
@@ -111,7 +133,7 @@ export function WidgetContent({ config, agentId, isAdmin }) {
             </div>
           ))}
           {!entries.length && <Empty text="No data" />}
-        </div>
+        </div>{drillModal}</>
       )
     }
     // donut
@@ -120,8 +142,13 @@ export function WidgetContent({ config, agentId, isAdmin }) {
     const segs = entries.map(([k,v],i) => { const start=acc/total*360; acc+=v; return { k, v, start, end:acc/total*360, c:palette[i%palette.length] } })
     const grad = segs.map(s=>`${s.c} ${s.start}deg ${s.end}deg`).join(', ')
     return (
-      <div style={{ display:'flex', alignItems:'center', gap:14, height:'100%', fontFamily:ff }}>
-        <div style={{ width:96, height:96, borderRadius:'50%', flexShrink:0, background:`conic-gradient(${grad})`, position:'relative' }}>
+      <><div onClick={openDrill} style={{ display:'flex', alignItems:'center', gap:14, height:'100%', fontFamily:ff, cursor:'pointer' }}>
+        {/* FIX (Sept 2026 audit, finding M1 follow-up): this was a template
+            literal inside a JSX style attribute -- exactly the pattern
+            CLAUDE.md documents as crashing at runtime (esbuild silently
+            misparses template literals inside JSX). Converted to string
+            concatenation. */}
+        <div style={{ width:96, height:96, borderRadius:'50%', flexShrink:0, background:'conic-gradient(' + grad + ')', position:'relative' }}>
           <div style={{ position:'absolute', inset:14, background:'var(--panel)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:800, color:'var(--text)' }}>{total}</div>
         </div>
         <div style={{ flex:1, overflowY:'auto', maxHeight:'100%' }}>
@@ -133,22 +160,82 @@ export function WidgetContent({ config, agentId, isAdmin }) {
             </div>
           ))}
         </div>
-      </div>
+      </div>{drillModal}</>
+    )
+  }
+
+  // GOAL RING — measure vs a target you set
+  if (config.display === 'goal') {
+    const val = (config.metric && config.metric !== 'count')
+      ? rows.reduce((s,r)=>s+parseNum(r[config.metric]),0) : count
+    const target = parseNum(config.target) || 0
+    const pct = target > 0 ? Math.min(100, Math.round(val/target*100)) : 0
+    const deg = pct/100*360
+    const disp = (config.metric && config.metric !== 'count') ? fmtMoney(val) : val
+    const tdisp = (config.metric && config.metric !== 'count') ? fmtMoney(target) : target
+    return (
+      <>
+        <div onClick={openDrill} style={{ display:'flex', alignItems:'center', gap:16, height:'100%', cursor:'pointer', fontFamily:ff }}>
+          {/* FIX (Sept 2026 audit, finding M1 follow-up): same template-
+              literal-in-JSX-style crash pattern as the donut widget above. */}
+          <div style={{ width:104, height:104, borderRadius:'50%', flexShrink:0, background:'conic-gradient(' + color + ' ' + deg + 'deg, var(--dim) ' + deg + 'deg)', position:'relative' }}>
+            <div style={{ position:'absolute', inset:12, background:'var(--panel)', borderRadius:'50%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+              <div style={{ fontSize:22, fontWeight:800, color }}>{pct}%</div>
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize:22, fontWeight:800, color:'var(--text)' }}>{disp}</div>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>of {tdisp} goal</div>
+            <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>view {count} →</div>
+          </div>
+        </div>
+        {drillModal}
+      </>
+    )
+  }
+
+  // MONTHLY TREND — metric or count grouped by month
+  if (config.display === 'trend') {
+    const months = config.months || 6
+    const df = BOARD_DATE_FIELD(config.board)
+    const buckets = {}
+    const now = new Date()
+    for (let i = months - 1; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth()-i, 1); buckets[d.toISOString().slice(0,7)] = 0 }
+    for (const r of rows) {
+      const k = String(r[df] || '').slice(0,7)
+      if (k in buckets) buckets[k] += (config.metric && config.metric !== 'count') ? parseNum(r[config.metric]) : 1
+    }
+    const entries = Object.entries(buckets)
+    const max = Math.max(1, ...entries.map(e=>e[1]))
+    const isMoney = config.metric && config.metric !== 'count'
+    return (
+      <>
+        <div onClick={openDrill} style={{ display:'flex', alignItems:'flex-end', gap:6, height:'100%', cursor:'pointer', fontFamily:ff, paddingTop:8 }}>
+          {entries.map(([k,v]) => (
+            <div key={k} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height:'100%', gap:4 }}>
+              <span style={{ fontSize:9, fontWeight:700, color:'var(--muted)' }}>{isMoney ? (v>=1000?'$'+Math.round(v/1000)+'K':'$'+Math.round(v)) : v}</span>
+              <div style={{ width:'70%', background:color, borderRadius:'3px 3px 0 0', height:Math.max(3, v/max*100)+'%', minHeight:3 }} />
+              <span style={{ fontSize:9, color:'var(--muted)' }}>{new Date(k+'-02').toLocaleDateString('en-US',{month:'short'})}</span>
+            </div>
+          ))}
+        </div>
+        {drillModal}
+      </>
     )
   }
 
   // LIST
   if (config.display === 'list') {
     return (
-      <div style={{ overflowY:'auto', height:'100%', fontFamily:ff }}>
+      <><div style={{ overflowY:'auto', height:'100%', fontFamily:ff }}>
         {rows.slice(0, config.limitRows || 50).map(r => (
-          <div key={r.id} onClick={goTo} style={{ padding:'6px 0', borderBottom:'1px solid var(--border)', cursor:'pointer', display:'flex', justifyContent:'space-between', gap:8 }}>
+          <div key={r.id} onClick={() => { const rt = detailRoute(config.board, r.id); rt ? navigate(rt) : setDrill(true) }} style={{ padding:'6px 0', borderBottom:'1px solid var(--border)', cursor:'pointer', display:'flex', justifyContent:'space-between', gap:8 }}>
             <span style={{ fontSize:12, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r[boardDef.nameField] || '—'}</span>
             <span style={{ fontSize:11, color:'var(--muted)', flexShrink:0 }}>{fmtVal(r[boardDef.statusField], boardDef.statusField)}</span>
           </div>
         ))}
         {!rows.length && <Empty text="No records" />}
-      </div>
+      </div>{drillModal}</>
     )
   }
 
@@ -156,22 +243,63 @@ export function WidgetContent({ config, agentId, isAdmin }) {
   if (config.display === 'table') {
     const cols = (config.columns?.length ? config.columns : boardDef.displayCols.slice(0,4).map(c=>c.field))
     return (
-      <div style={{ overflow:'auto', height:'100%', fontFamily:ff }}>
+      <><div style={{ overflow:'auto', height:'100%', fontFamily:ff }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
           <thead><tr>{cols.map(c => <th key={c} style={{ textAlign:'left', padding:'4px 8px', color:'var(--muted)', fontWeight:700, borderBottom:'1px solid var(--border)', whiteSpace:'nowrap' }}>{boardDef.displayCols.find(dc=>dc.field===c)?.label || c}</th>)}</tr></thead>
           <tbody>
             {rows.slice(0, config.limitRows || 50).map(r => (
-              <tr key={r.id} onClick={goTo} style={{ cursor:'pointer' }}>
+              <tr key={r.id} onClick={() => { const rt = detailRoute(config.board, r.id); rt ? navigate(rt) : setDrill(true) }} style={{ cursor:'pointer' }}>
                 {cols.map(c => <td key={c} style={{ padding:'4px 8px', color:'var(--text)', borderBottom:'1px solid var(--border)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:160 }}>{fmtVal(r[c], c)}</td>)}
               </tr>
             ))}
           </tbody>
         </table>
         {!rows.length && <Empty text="No records" />}
-      </div>
+      </div>{drillModal}</>
     )
   }
   return null
+}
+
+// Drill-down: the exact records that made the total. Each row opens
+// that exact item; footer opens the whole filtered set on its board.
+function DrillPopup({ title, board, boardDef, rows, navigate, color, onClose }) {
+  const nameField = boardDef?.nameField || 'id'
+  const subField = boardDef?.subField
+  const statusField = boardDef?.statusField
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'var(--panel)', borderRadius:16, width:'100%', maxWidth:560, maxHeight:'85vh', display:'flex', flexDirection:'column', fontFamily:ff, overflow:'hidden' }}>
+        <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <div style={{ fontSize:15, fontWeight:800, color:'var(--text)' }}>{title}</div>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>{rows.length} record{rows.length===1?'':'s'} behind this total</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:20, color:'var(--muted)', cursor:'pointer' }}>×</button>
+        </div>
+        <div style={{ overflowY:'auto', padding:'6px 8px' }}>
+          {rows.map(r => {
+            const rt = detailRoute(board, r.id)
+            return (
+              <div key={r.id} onClick={() => rt && navigate(rt)}
+                style={{ padding:'10px 12px', borderRadius:8, cursor: rt?'pointer':'default', display:'flex', justifyContent:'space-between', gap:10, alignItems:'center' }}
+                onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'} onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{fmtVal(r[nameField], nameField)}</div>
+                  {subField && r[subField] != null && <div style={{ fontSize:11, color:'var(--muted)' }}>{fmtVal(r[subField], subField)}</div>}
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                  {statusField && r[statusField] != null && <span style={{ fontSize:11, color:color, fontWeight:600 }}>{fmtVal(r[statusField], statusField)}</span>}
+                  {rt && <span style={{ fontSize:13, color:'var(--muted)' }}>→</span>}
+                </div>
+              </div>
+            )
+          })}
+          {!rows.length && <Empty text="No records" />}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function Empty({ text }) {

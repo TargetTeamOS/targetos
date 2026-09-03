@@ -4,7 +4,7 @@
 // Records speech, parses it, and saves as contact/task/note.
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
@@ -36,8 +36,32 @@ export function VoiceCapture() {
   const dragging = useRef(false)
   const dragStart = useRef(null)
   const lastTouch = useRef(0)
+  // Mirrors of startRecord()'s local audioCtx/levelTimer/capTimer, kept
+  // so the unmount cleanup below can reach them (see finding H3).
+  const audioCtxRef = useRef(null)
+  const levelTimerRef = useRef(null)
+  const capTimerRef = useRef(null)
 
-  // ── DRAG (mouse + touch) ──────────────────────────────────────
+  // FIX (Sept 2026 audit, finding H3): this component previously had
+  // zero cleanup on unmount -- the MediaRecorder, AudioContext, mic
+  // stream, and timers were only ever torn down in mr.onstop. Navigating
+  // away mid-recording (App.jsx only mounts this on some routes) unmounted
+  // the component without that ever firing, leaving the mic physically
+  // open and letting the 2-minute hard-cap timer later fire network calls
+  // against an unmounted component. Stop everything directly here instead
+  // of calling mr.stop() (which would trigger the async onstop handler --
+  // transcription, setState -- after this component is already gone).
+  useEffect(() => {
+    return () => {
+      try { clearInterval(levelTimerRef.current) } catch {}
+      try { clearTimeout(capTimerRef.current) } catch {}
+      try { audioCtxRef.current && audioCtxRef.current.close() } catch {}
+      try { audioStream.current?.getTracks().forEach(t => t.stop()) } catch {}
+      try { recRef.current?.stop?.() } catch {}
+    }
+  }, [])
+
+  // ── DRAG (mouse + touch) ────────────────────────────────────────────
   function getPoint(e) {
     if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY }
     if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY }
@@ -92,7 +116,7 @@ export function VoiceCapture() {
     setOpen(true)
   }
 
-  // ── RECORD ────────────────────────────────────────────────────
+  // ── RECORD ───────────────────────────────────────────────────────────
   function blobToBase64(blob) {
     return new Promise((resolve, reject) => {
       const r = new FileReader()
@@ -119,7 +143,7 @@ export function VoiceCapture() {
       const mr = new MediaRecorder(stream)
       mr.ondataavailable = e => { if (e.data.size) audioChunks.current.push(e.data) }
 
-      // ── REAL silence detection on the actual mic signal ──────────
+      // ── REAL silence detection on the actual mic signal ──────────────
       // The browser speech engine is unreliable (esp. Android Chrome) so
       // the recorder must NOT depend on it. We watch actual audio levels:
       // stop after SILENCE_STOP_MS of quiet, hard cap at MAX_RECORD_MS.
@@ -132,6 +156,7 @@ export function VoiceCapture() {
       try {
         const AC = window.AudioContext || window.webkitAudioContext
         audioCtx = new AC()
+        audioCtxRef.current = audioCtx
         const src = audioCtx.createMediaStreamSource(stream)
         const analyser = audioCtx.createAnalyser()
         analyser.fftSize = 512
@@ -150,14 +175,19 @@ export function VoiceCapture() {
             try { mr.stop() } catch {}
           }
         }, 200)
+        levelTimerRef.current = levelTimer
       } catch { /* no AudioContext → user taps ⏹ manually; 2-min cap below */ }
       // Fallback hard cap even without AudioContext
       const capTimer = setTimeout(() => { try { if (mr.state !== 'inactive') mr.stop() } catch {} }, MAX_RECORD_MS)
+      capTimerRef.current = capTimer
 
       mr.onstop = async () => {
         clearTimeout(capTimer)
+        capTimerRef.current = null
         if (levelTimer) clearInterval(levelTimer)
+        levelTimerRef.current = null
         try { audioCtx && audioCtx.close() } catch {}
+        audioCtxRef.current = null
         audioStream.current?.getTracks().forEach(t => t.stop())
         const blob = audioChunks.current.length ? new Blob(audioChunks.current, { type: 'audio/webm' }) : null
         if (blob) setAudioBlob(blob)
@@ -227,10 +257,10 @@ export function VoiceCapture() {
       const file = new File([audioBlob], recordType + '-' + recordId + '.webm', { type: 'audio/webm' })
       const up = await uploadFile(file, recordType, recordId)
       return { audio_url: up.url, audio_path: up.path }
-    } catch (e) { console.warn('audio upload:', e.message); return {} }
+    } catch (e) { toast('Audio upload failed: ' + e.message, '#DC2626'); return {} }
   }
 
-  // ── SAVE AS CONTACT ───────────────────────────────────────────
+  // ── SAVE AS CONTACT ────────────────────────────────────────────────
   async function saveAsContact() {
     if (!parsed) return
     if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
@@ -259,15 +289,16 @@ export function VoiceCapture() {
       try {
         const au = await uploadAudioFor('contact', contactId)
         if (au.audio_url || parsed.rawText) {
-          await supabase.from('notes').insert({
+          const { error: noteErr } = await supabase.from('notes').insert({
             agent_id: agent.id, title: '🎤 Voice capture — ' + leadName,
             body: parsed.aiParsed ? parsed.notes : parsed.rawText,
             transcript: parsed.rawText || null,
             audio_url: au.audio_url || null, audio_path: au.audio_path || null,
             linked_type: 'contact', linked_id: contactId,
           })
+          if (noteErr) toast('Lead saved, but the recording/note did not save: ' + noteErr.message, '#DC2626')
         }
-      } catch (e) { console.warn('voice note attach:', e.message) }
+      } catch (e) { toast('Recording save failed: ' + e.message, '#DC2626') }
 
       // Follow-up task LINKED to the contact (clicking it opens the contact)
       try {
@@ -307,7 +338,7 @@ export function VoiceCapture() {
     } finally { setSaving(false) }
   }
 
-  // ── SAVE AS TASK ──────────────────────────────────────────────
+  // ── SAVE AS TASK ─────────────────────────────────────────────────
   async function saveAsTask() {
     if (!parsed) return
     if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
@@ -365,7 +396,7 @@ export function VoiceCapture() {
     } finally { setSaving(false) }
   }
 
-  // ── SAVE AS CALENDAR EVENT ────────────────────────────────────
+  // ── SAVE AS CALENDAR EVENT ─────────────────────────────────────
   async function saveAsEvent() {
     if (!parsed) return
     if (!agent?.id) { toast('Not logged in as an agent', '#DC2626'); return }
