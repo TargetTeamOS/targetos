@@ -1,7 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const RESEND_KEY = Deno.env.get('RESEND_API_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
+// FIX (env-var naming mismatch, found in a follow-up pass): this project's
+// edge functions were split on which name the service-role key is read
+// from -- most read SERVICE_ROLE_KEY, automation-scheduler read
+// SUPABASE_SERVICE_ROLE_KEY (which is also what EDGE_FUNCTIONS_SETUP.md's
+// setup steps tell you to set), so whichever one wasn't actually
+// configured left that function silently broken. All five now accept
+// either name -- see EDGE_FUNCTIONS_SETUP.md for the current guidance.
+const SUPABASE_KEY = (Deno.env.get('SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!
 const APP_URL = 'https://app.targetreteam.com'
 // SECURITY (Sept 2026 audit, finding C5): this function had zero inbound
 // auth -- anyone holding the public anon key (shipped in the client

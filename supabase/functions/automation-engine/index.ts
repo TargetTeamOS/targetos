@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const RESEND_KEY = Deno.env.get('RESEND_API_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
+const SUPABASE_KEY = (Deno.env.get('SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!
 const APP = 'https://app.targetreteam.com'
 
 // ── EXTERNAL EFFECTS GATE ──────────────────────────────────────────────────

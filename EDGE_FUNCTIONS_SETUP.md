@@ -25,6 +25,14 @@ supabase secrets set RESEND_API_KEY=<your Resend API key from resend.com/api-key
 # docs/code-quality-audit-2026-09-02.md, finding U1) — this repo is public,
 # so that key must be rotated in Resend's dashboard if it hasn't been already.
 supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<your service role key from Supabase Settings>
+# FIX (env-var naming mismatch, found in a follow-up pass): the functions
+# used to be split on which name they read the service-role key from —
+# some read SERVICE_ROLE_KEY, others read SUPABASE_SERVICE_ROLE_KEY (the
+# name used above), so whichever one wasn't actually set left that
+# function silently broken. All five functions now accept EITHER name, so
+# setting just the one above (as shown) is enough — but if you ever see
+# `SERVICE_ROLE_KEY` referenced elsewhere, know it's the same accepted
+# fallback, not a second key you need to generate.
 
 # NEW (Sept 2026 audit, finding C5): daily-briefing, no-activity-check,
 # and task-overdue-check used to have NO caller auth at all — anyone

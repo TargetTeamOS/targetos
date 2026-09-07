@@ -10,9 +10,16 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+// FIX (env-var naming mismatch, found during a follow-up pass after the
+// Sept 2026 audit): every OTHER edge function in this project reads
+// SERVICE_ROLE_KEY, only this one read SUPABASE_SERVICE_ROLE_KEY (which
+// is also what EDGE_FUNCTIONS_SETUP.md's setup instructions name) --
+// whichever secret name isn't actually set in Supabase would leave that
+// function silently broken. Accept either name everywhere instead of
+// assuming which one is configured.
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  (Deno.env.get('SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!
 )
 
 Deno.serve(async (req) => {
