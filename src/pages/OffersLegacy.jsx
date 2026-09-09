@@ -784,7 +784,7 @@ export function OffersLegacy() {
                   <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:10 }}>
                     {agentF ? agents.find(a=>a.id===agentF)?.name+"'s Offers" : 'All Offers'} ({filtered.length})
                   </div>
-                  <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} />
+                  <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} onBulkIdsChange={setBulkIds} onBulkDone={refetch} />
                 </div>
               )}
             </div>
@@ -793,7 +793,7 @@ export function OffersLegacy() {
           {(view === 'table' || !(isAdmin||canManage)) && (
             filtered.length === 0
               ? <Empty icon="📝" title="No offers" sub="Track submitted offers here." action={<Btn onClick={openAdd}>+ New Offer</Btn>} />
-              : <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} />
+              : <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} onBulkIdsChange={setBulkIds} onBulkDone={refetch} />
           )}
         </>
       )}
@@ -1194,7 +1194,7 @@ export function OffersLegacy() {
 }
 
 // ── OFFER TABLE ───────────────────────────────────────────────────
-function OfferTable({ offers, agents, onOpen, statusColor, canBulkEdit, bulkIds = [], onToggleBulk }) {
+function OfferTable({ offers, agents, onOpen, statusColor, canBulkEdit, bulkIds = [], onToggleBulk, onBulkIdsChange, onBulkDone }) {
   return (
     <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', overflow:'hidden' }}>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
@@ -1249,13 +1249,21 @@ function OfferTable({ offers, agents, onOpen, statusColor, canBulkEdit, bulkIds 
           })}</tbody>
       </table>
       {canBulkEdit && (
+        // FIX (ESLint no-undef, Sept 2026 audit follow-up): this block
+        // referenced `filtered`, `setBulkIds` and `refetch`, none of which
+        // exist in OfferTable's own scope -- those all belong to the
+        // parent component. `offers` (this component's own prop) is the
+        // exact same list the parent calls `filtered`, so it's used
+        // directly here; the setter and refetch are threaded down as new
+        // callback props instead. Previously this crashed OfferTable's
+        // render outright for any agent with bulk-edit permission.
         <BulkEditBar selectedIds={bulkIds} table="offers" agents={agents}
-          allIds={filtered.map(o => o.id)} onSelectAll={ids => setBulkIds(ids)}
+          allIds={offers.map(o => o.id)} onSelectAll={ids => onBulkIdsChange?.(ids)}
           fields={[
             { key:'status',          label:'Status', type:'select', options:(OFFER_STATUSES||[]).map(x=>({value:x.value||x,label:x.label||x})) },
             { key:'buyers_agent_id', label:'Buyer\'s Agent', type:'agent' },
           ]}
-          onDone={() => { setBulkIds([]); refetch && refetch() }} onClear={() => setBulkIds([])} />
+          onDone={() => { onBulkIdsChange?.([]); onBulkDone?.() }} onClear={() => onBulkIdsChange?.([])} />
       )}
     </div>
   )
