@@ -749,21 +749,39 @@ export function TransactionCoordinator() {
     setDeepLinked(true)
   }, [deals.length, location.search])
 
+  // ── #task-ID deep links (July 2026) ─────────────────────────────
+  // Emails link each task as /tc#task-<id>: expand its deal, scroll
+  // to the row, and flash it.
+  // FIX (Sept 2026 audit follow-up, react-hooks/rules-of-hooks): this used
+  // to live right before `generateC2CTasks`, well after the `!canManage`
+  // early return below -- meaning it (and six useMemo calls further down)
+  // were skipped whenever canManage was false. If canManage ever flips true
+  // during a mount (e.g. permissions load async), React would then see a
+  // different number of hooks between renders and crash. Hoisted up here
+  // with the rest of the unconditional hooks, same as the `?open=` deep
+  // link right above it.
+  useEffect(() => {
+    const h = window.location.hash
+    if (!h.startsWith('#task-') || !tasks.length) return
+    const taskId = h.slice(6)
+    const t = tasks.find(x => String(x.id) === taskId)
+    if (!t) return
+    setExpanded(prev => ({ ...prev, [t.tc_deal_id]: true }))
+    setTimeout(() => {
+      const el = document.getElementById('task-' + taskId)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.style.transition = 'background .4s'
+        el.style.background = 'rgba(204,34,0,.14)'
+        setTimeout(() => { el.style.background = '' }, 2600)
+      }
+    }, 350)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks.length])
+
   const [tcCfg, setTcCfg] = useState(null)   // merged TC settings (templates, services, statuses…)
   const [showBill, setShowBill] = useState(false)
   const [billPeople, setBillPeople] = useState({ rows: [], contacts: {} })
-
-  // TC Board is Secretary + Admin only — agents get zero access. Every
-  // hook this component uses is declared above this line, unconditionally.
-  if (!canManage) return (
-    <div>
-      <PageHeader title="TC Board" />
-      <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:40,textAlign:'center'}}>
-        <div style={{fontSize:32,marginBottom:12}}>🔒</div>
-        <div style={{fontWeight:700,fontSize:16,color:'var(--text)'}}>Secretary or Admin Access Only</div>
-      </div>
-    </div>
-  )
 
   async function openCommissionBill() {
     try {
@@ -896,7 +914,6 @@ export function TransactionCoordinator() {
         updated_at: new Date().toISOString(),
       }).select().single()
       if (error) throw error
-
       await generatePhaseTasks(newDeal, dealForm.tc_phase)
 
       const taskCount = templatesFor(dealForm.tc_phase).length
@@ -914,29 +931,6 @@ export function TransactionCoordinator() {
 
   // Contract-to-close service: weekly check-in tasks from now (or AO
   // date) until close date, capped at 12 weeks. Fired once when the
-
-  // ── #task-ID deep links (July 2026) ─────────────────────────────
-  // Emails link each task as /tc#task-<id>: expand its deal, scroll
-  // to the row, and flash it.
-  useEffect(() => {
-    const h = window.location.hash
-    if (!h.startsWith('#task-') || !tasks.length) return
-    const taskId = h.slice(6)
-    const t = tasks.find(x => String(x.id) === taskId)
-    if (!t) return
-    setExpanded(prev => ({ ...prev, [t.tc_deal_id]: true }))
-    setTimeout(() => {
-      const el = document.getElementById('task-' + taskId)
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        el.style.transition = 'background .4s'
-        el.style.background = 'rgba(204,34,0,.14)'
-        setTimeout(() => { el.style.background = '' }, 2600)
-      }
-    }, 350)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks.length])
-
   // toggle flips on; tasks are normal tc_tasks (editable/deletable).
   async function generateC2CTasks(deal) {
     try {
@@ -1286,6 +1280,21 @@ export function TransactionCoordinator() {
 
   const S  = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, boxSizing:'border-box' }
   const SL = { fontSize:10, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4, marginTop:10, display:'block' }
+
+  // TC Board is Secretary + Admin only — agents get zero access. Every
+  // hook this component uses is declared above this line, unconditionally
+  // (moved here from higher up in the file -- Sept 2026 audit follow-up,
+  // react-hooks/rules-of-hooks -- see the #task-ID deep-link useEffect and
+  // the useMemo block just above for why that matters).
+  if (!canManage) return (
+    <div>
+      <PageHeader title="TC Board" />
+      <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:40,textAlign:'center'}}>
+        <div style={{fontSize:32,marginBottom:12}}>🔒</div>
+        <div style={{fontWeight:700,fontSize:16,color:'var(--text)'}}>Secretary or Admin Access Only</div>
+      </div>
+    </div>
+  )
 
   if (loading) return <div style={{padding:48,textAlign:'center'}}><Loading /></div>
 
