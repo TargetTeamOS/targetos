@@ -16,7 +16,7 @@ const SECTIONS = [
   { id:'hero',         label:'🦸 Hero Section',      desc:'Headline, subheadline, search bar, CTA button' },
   { id:'about',        label:'ℹ️ About Section',      desc:'Story, stats, team photo' },
   { id:'testimonials', label:'⭐ Testimonials',       desc:'Client reviews and ratings' },
-  { id:'contact',      label:'📬 Contact Info',       desc:'Contact page title and details' },
+  { id:'contact',      label:'📫 Contact Info',       desc:'Contact page title and details' },
 ]
 
 const DEFAULTS = {
@@ -31,6 +31,11 @@ const DEFAULTS = {
 function ImageUploader({ value, onChange, label }) {
   const ref = useRef(null)
   const [uploading, setUploading] = useState(false)
+  // FIX (ESLint no-undef, Sept 2026 audit follow-up): this component calls
+  // toast() on upload failure but never had its own reference to it --
+  // it only worked by accident when nothing failed. Pull it from the same
+  // app context every other component uses.
+  const { toast } = useApp()
 
   async function upload(e) {
     const file = e.target.files[0]; if (!file) return

@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
 // TargetOS V2 — Automation Engine
 // Runs automations client-side when triggered.
 // Logs every execution to automation_runs table.
@@ -7,7 +7,7 @@
 import { supabase } from './supabase'
 import { TRIGGERS, CONDITIONS, ACTIONS } from './automationConstants'
 
-// ── VARIABLE INTERPOLATION ────────────────────────────────────────
+// ── VARIABLE INTERPOLATION ───────────────────────────────
 // Replaces {{variable}} in text with actual values from context
 export function interpolate(text, context) {
   if (!text) return text
@@ -16,7 +16,7 @@ export function interpolate(text, context) {
   })
 }
 
-// ── RUN AN AUTOMATION ─────────────────────────────────────────────
+// ── RUN AN AUTOMATION ─────────────────────────────────────
 export async function runAutomation(automation, triggerData, agents) {
   const context = buildContext(triggerData)
   const affected = []
@@ -63,7 +63,7 @@ export async function runAutomation(automation, triggerData, agents) {
   }
 }
 
-// ── BUILD CONTEXT FROM TRIGGER DATA ──────────────────────────────
+// ── BUILD CONTEXT FROM TRIGGER DATA ───────────────────────────
 function buildContext(data) {
   return {
     contact_name:  [data.first_name, data.last_name].filter(Boolean).join(' ') || data.contact_name || '',
@@ -77,7 +77,7 @@ function buildContext(data) {
   }
 }
 
-// ── EXECUTE A SINGLE ACTION ───────────────────────────────────────
+// ── EXECUTE A SINGLE ACTION ──────────────────────────────────────
 async function executeAction(action, context, triggerData, agents) {
   const cfg = action.config || {}
 
@@ -290,20 +290,14 @@ async function executeAction(action, context, triggerData, agents) {
       break
     }
 
-    case 'create_gift': {
-      if (triggerData.agent_id) {
-        const agentId = resolveAgent(cfg.assign_to, triggerData, agents)
-        await supabase.from('gifts').insert({
-          agent_id:    agentId,
-          client_name: context.contact_name || '',
-          description: interpolate(cfg.description || 'Closing gift', context),
-          status:      'Pending',
-          created_at:  new Date().toISOString(),
-          updated_at:  new Date().toISOString(),
-        })
-      }
-      break
-    }
+    // FIX (ESLint no-duplicate-case, Sept 2026 audit follow-up): a second,
+    // simpler 'create_gift' case used to live here (agentId via
+    // resolveAgent, a bare 'description' field, no address lookup). JS
+    // switch statements always match the FIRST case with an equal value,
+    // so it was 100% dead code -- the richer implementation earlier in
+    // this switch (address/client-type lookup from Contacts) is the one
+    // that has actually been running. Removed rather than kept as a
+    // silent no-op.
 
     case 'schedule_event': {
       if (triggerData.agent_id) {
@@ -467,7 +461,7 @@ async function executeAction(action, context, triggerData, agents) {
   }
 }
 
-// ── RESOLVE AGENT ID ──────────────────────────────────────────────
+// ── RESOLVE AGENT ID ────────────────────────────────────────
 function resolveAgent(value, triggerData, agents) {
   if (!value || value === 'trigger_agent') return triggerData.agent_id
   if (value === 'all_agents') return null
@@ -481,7 +475,7 @@ function resolveAgent(value, triggerData, agents) {
   return triggerData.agent_id
 }
 
-// ── CHECK CONDITIONS ──────────────────────────────────────────────
+// ── CHECK CONDITIONS ────────────────────────────────────────────
 export function checkConditions(automation, record) {
   const conditions = automation.conditions || []
   if (!conditions.length) return true
