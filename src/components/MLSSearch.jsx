@@ -35,7 +35,7 @@ function mlsFullAddr(l) {
   return [mlsAddr(l), a.city, a.state, a.postalCode].filter(Boolean).join(', ')
 }
 
-// ── LISTING CARD ───────────────────────────────────────────────
+// ── LISTING CARD ──────────────────────────────────────────────────
 function MLSCard({ listing, saved, onSave, onUnsave, onImport, importing, flood, onFloodLookup }) {
   const [expanded, setExpanded] = useState(false)
   const photos = listing.photos || []
@@ -138,7 +138,7 @@ function MLSCard({ listing, saved, onSave, onUnsave, onImport, importing, flood,
   )
 }
 
-// ── SHORTLIST PANEL ──────────────────────────────────────────
+// ── SHORTLIST PANEL ───────────────────────────────────────────────
 function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId }) {
   const [clientId,   setClientId]   = useState('')
   const [clientNote, setClientNote] = useState('')
@@ -218,7 +218,7 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
     })
   }
 
-  // ── SHARE with the client + LOG on their page ─────────────
+  // ── SHARE with the client + LOG on their page ───────────────────
   async function logClientActivity(action, metadata = {}) {
     if (!clientId) return
     try {
@@ -449,7 +449,8 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
   )
 }
 
-// ── MAIN COMPONENT ──────────────────────────────────────export function MLSSearch({ agents, onImported }) {
+// ── MAIN COMPONENT ────────────────────────────────────────────────
+export function MLSSearch({ agents, onImported }) {
   const { agent }  = useAuth()
   const { toast }  = useApp()
 
@@ -466,7 +467,7 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
   const [minYear,  setMinYear]  = useState('')
   const [maxDom,   setMaxDom]   = useState('')
 
-  // ── MAP + DRAW-AN-AREA (July 2026) ─────────────────
+  // ── MAP + DRAW-AN-AREA (July 2026) ─────────────────────────────
   const [showMap, setShowMap]   = useState(false)
   const mapDivRef  = useRef(null)
   const mapRef     = useRef(null)
@@ -842,7 +843,8 @@ function ShortlistPanel({ shortlist, onRemove, contacts, onClose, toast, agentId
   )
 }
 
-// ── DEMO DATA ────────────────────────────────────────────────────const DEMO_LISTINGS = [
+// ── DEMO DATA ─────────────────────────────────────────────────────
+const DEMO_LISTINGS = [
   { mlsId:'800001', listPrice:749000, listDate:'2026-06-01T00:00:00Z', remarks:'Beautiful single family home in Monsey. Renovated kitchen, 2-car garage, large yard.', photos:[], mls:{status:'Active'}, address:{streetNumber:'15',streetName:'Oak Lane',city:'Monsey',state:'NY',postalCode:'10952',county:'Rockland'}, property:{bedrooms:4,bathsFull:2,area:2100,type:'Single Family',yearBuilt:1985,garageSpaces:2}, agent:{firstName:'Mendy',lastName:'Jankovits'}, office:{name:'KW Valley Realty'}, geo:{lat:41.12,lng:-74.07} },
   { mlsId:'800002', listPrice:1299000, listDate:'2026-05-15T00:00:00Z', remarks:'Stunning new construction condo. 8 beds, 6.5 baths. Top finishes throughout.', photos:[], mls:{status:'Active'}, address:{streetNumber:'40',streetName:'Singer Ave',unit:'205',city:'Spring Valley',state:'NY',postalCode:'10977'}, property:{bedrooms:8,bathsFull:6,area:4200,type:'Condominium',yearBuilt:2026}, agent:{firstName:'Eli',lastName:'Hoffman'}, office:{name:'KW Valley Realty'} },
   { mlsId:'800003', listPrice:549000, listDate:'2026-06-10T00:00:00Z', remarks:'Charming cape cod on quiet street. Updated bathrooms, new roof 2024.', photos:[], mls:{status:'Active'}, address:{streetNumber:'84',streetName:'Tennyson Dr',city:'Nanuet',state:'NY',postalCode:'10954'}, property:{bedrooms:3,bathsFull:2,area:1650,type:'Single Family',yearBuilt:1965}, agent:{firstName:'Avraham',lastName:'Weinberger'}, office:{name:'KW Valley Realty'} },
