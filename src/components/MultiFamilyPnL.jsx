@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
 // MULTI-FAMILY P&L (July 2026) — Toolbox tab
 // The team's investment-property proforma, productized: agents pick
 // unit count, fill rents (current + optional potential), check off
@@ -15,7 +15,7 @@ import { AddressAutocomplete } from './AddressAutocomplete'
 const ff = 'Inter,system-ui,sans-serif'
 const $ = n => (n == null || isNaN(n)) ? '—' : '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 })
 const pct = n => (n == null || isNaN(n) || !isFinite(n)) ? '—' : n.toFixed(2) + '%'
-const num = v => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n }
+const num = v => { const n = parseFloat(String(v).replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n }
 
 const EXPENSE_PRESETS = [
   { key: 'taxes',      label: 'Taxes' },
@@ -113,7 +113,7 @@ export function MultiFamilyPnL() {
     return { monthlyCur, monthlyPot, annualCur, annualPot, hasPotential, expLines, totalExp, totalExpPot, noi, noiPot, cap, capPot, fin, ask }
   }, [units, expenses, customExp, asking, financeOn, downPct, closing, rate, termYrs])
 
-  // ── BRANDED REPORT: only filled-in sections make it in ──────────
+  // ── BRANDED REPORT: only filled-in sections make it in ────────────
   function generateReport() {
     const c = calc
     const P = c.hasPotential
@@ -178,7 +178,7 @@ export function MultiFamilyPnL() {
     w.document.write(html); w.document.close()
   }
 
-  // ── JPEG for WhatsApp status / social (July 2026) ────────────────
+  // ── JPEG for WhatsApp status / social (July 2026) ────────────
   // Draws the full analysis to a 1080-wide canvas (dynamic height) and
   // downloads a JPEG — everything that's filled in, nothing that isn't.
   function generateJpeg() {
