@@ -1,4 +1,4 @@
-// ══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // TargetOS V2 — Automation Engine
 // Runs automations client-side when triggered.
 // Logs every execution to automation_runs table.
@@ -7,7 +7,7 @@
 import { supabase } from './supabase'
 import { TRIGGERS, CONDITIONS, ACTIONS } from './automationConstants'
 
-// ── VARIABLE INTERPOLATION ───────────────────────────────
+// ── VARIABLE INTERPOLATION ──────────────────────────────────────
 // Replaces {{variable}} in text with actual values from context
 export function interpolate(text, context) {
   if (!text) return text
@@ -16,7 +16,7 @@ export function interpolate(text, context) {
   })
 }
 
-// ── RUN AN AUTOMATION ─────────────────────────────────────
+// ── RUN AN AUTOMATION ─────────────────────────────────────────────────
 export async function runAutomation(automation, triggerData, agents) {
   const context = buildContext(triggerData)
   const affected = []
@@ -63,7 +63,7 @@ export async function runAutomation(automation, triggerData, agents) {
   }
 }
 
-// ── BUILD CONTEXT FROM TRIGGER DATA ───────────────────────────
+// ── BUILD CONTEXT FROM TRIGGER DATA ─────────────────────────
 function buildContext(data) {
   return {
     contact_name:  [data.first_name, data.last_name].filter(Boolean).join(' ') || data.contact_name || '',
@@ -77,7 +77,7 @@ function buildContext(data) {
   }
 }
 
-// ── EXECUTE A SINGLE ACTION ──────────────────────────────────────
+// ── EXECUTE A SINGLE ACTION ────────────────────────────────────────────
 async function executeAction(action, context, triggerData, agents) {
   const cfg = action.config || {}
 
@@ -461,7 +461,7 @@ async function executeAction(action, context, triggerData, agents) {
   }
 }
 
-// ── RESOLVE AGENT ID ────────────────────────────────────────
+// ── RESOLVE AGENT ID ─────────────────────────────────────────────────────
 function resolveAgent(value, triggerData, agents) {
   if (!value || value === 'trigger_agent') return triggerData.agent_id
   if (value === 'all_agents') return null
@@ -475,7 +475,7 @@ function resolveAgent(value, triggerData, agents) {
   return triggerData.agent_id
 }
 
-// ── CHECK CONDITIONS ────────────────────────────────────────────
+// ── CHECK CONDITIONS ────────────────────────────────────────────────────────
 export function checkConditions(automation, record) {
   const conditions = automation.conditions || []
   if (!conditions.length) return true

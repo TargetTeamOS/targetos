@@ -16,7 +16,7 @@ const SECTIONS = [
   { id:'hero',         label:'🦸 Hero Section',      desc:'Headline, subheadline, search bar, CTA button' },
   { id:'about',        label:'ℹ️ About Section',      desc:'Story, stats, team photo' },
   { id:'testimonials', label:'⭐ Testimonials',       desc:'Client reviews and ratings' },
-  { id:'contact',      label:'📫 Contact Info',       desc:'Contact page title and details' },
+  { id:'contact',      label:'📬 Contact Info',       desc:'Contact page title and details' },
 ]
 
 const DEFAULTS = {

@@ -1,4 +1,4 @@
-// ══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // MULTI-FAMILY P&L (July 2026) — Toolbox tab
 // The team's investment-property proforma, productized: agents pick
 // unit count, fill rents (current + optional potential), check off
@@ -6,7 +6,7 @@
 // add financing — and generate a branded report that includes ONLY
 // what was filled in. Modeled on the office spreadsheet
 // (50 Westside Ave / Route 9W examples).
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
 import React, { useState, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
@@ -178,7 +178,7 @@ export function MultiFamilyPnL() {
     w.document.write(html); w.document.close()
   }
 
-  // ── JPEG for WhatsApp status / social (July 2026) ────────────
+  // ── JPEG for WhatsApp status / social (July 2026) ──────────────────
   // Draws the full analysis to a 1080-wide canvas (dynamic height) and
   // downloads a JPEG — everything that's filled in, nothing that isn't.
   function generateJpeg() {
