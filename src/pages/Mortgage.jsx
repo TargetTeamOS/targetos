@@ -947,6 +947,172 @@ function InvestmentCalc() {
   // Color helpers
   function metricColor(v, good, ok) { return v >= good ? '#10B981' : v >= ok ? '#F5A623' : '#DC2626' }
 
+  // FIX (ESLint no-undef, Sept 2026 audit follow-up): the Share Card
+  // section below (canvas + Share/Download buttons) had never actually
+  // been wired up -- shareInvCard/downloadInvCard didn't exist anywhere in
+  // this file, so clicking either button threw ReferenceError and the
+  // canvas stayed permanently blank. This mirrors MortgageCalc's own
+  // drawCard/downloadCard/shareCard above (same branding, same 1080×1080
+  // JPEG share-card pattern), swapped to the investment metrics this
+  // component actually computes.
+  function roundRectInv(ctx, x, y, w, h, r) {
+    ctx.beginPath()
+    ctx.moveTo(x+r, y)
+    ctx.lineTo(x+w-r, y)
+    ctx.arcTo(x+w, y, x+w, y+r, r)
+    ctx.lineTo(x+w, y+h-r)
+    ctx.arcTo(x+w, y+h, x+w-r, y+h, r)
+    ctx.lineTo(x+r, y+h)
+    ctx.arcTo(x, y+h, x, y+h-r, r)
+    ctx.lineTo(x, y+r)
+    ctx.arcTo(x, y, x+r, y, r)
+    ctx.closePath()
+  }
+
+  function drawInvCard() {
+    const cv = invCanvasRef.current
+    if (!cv) return
+    const ctx = cv.getContext('2d')
+    const W = 1080, H = 1080
+    cv.width = W; cv.height = H
+
+    ctx.fillStyle = '#0F1A2E'
+    ctx.fillRect(0, 0, W, H)
+
+    ctx.strokeStyle = 'rgba(255,255,255,.04)'
+    ctx.lineWidth = 1
+    for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke() }
+    for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke() }
+
+    ctx.fillStyle = '#CC2200'
+    ctx.fillRect(0, 0, W, 8)
+
+    ctx.font = '900 52px Arial'
+    ctx.fillStyle = '#ffffff'
+    ctx.textAlign = 'right'
+    ctx.textBaseline = 'top'
+    ctx.fillText('TARGET TEAM', W - 48, 36)
+    ctx.font = '500 22px Arial'
+    ctx.fillStyle = 'rgba(255,255,255,.4)'
+    ctx.fillText('Of Keller Williams Valley Realty', W - 48, 98)
+
+    // Cap Rate — BIG CENTER (the single headline number for an investment
+    // property, same role "monthly payment" plays on the mortgage card)
+    ctx.font = '900 140px Arial'
+    ctx.fillStyle = metricColor(c.capRate, 6, 4)
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(c.capRate.toFixed(2) + '%', W/2, 340)
+
+    ctx.font = '700 32px Arial'
+    ctx.fillStyle = 'rgba(255,255,255,.5)'
+    ctx.fillText('CAP RATE', W/2, 460)
+
+    ctx.strokeStyle = 'rgba(204,34,0,.4)'
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(80, 520); ctx.lineTo(W-80, 520); ctx.stroke()
+
+    const cols = [
+      { label: 'Purchase Price', value: fmt$(c.p) },
+      { label: 'Monthly Cash Flow', value: fmt$(Math.round(c.monthlyCF)) },
+      { label: 'Cash-on-Cash', value: c.cocReturn.toFixed(2) + '%' },
+    ]
+    cols.forEach(function(col, i) {
+      const x = 180 + i * 360
+      ctx.font = '900 44px Arial'
+      ctx.fillStyle = '#ffffff'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(col.value, x, 560)
+      ctx.font = '600 20px Arial'
+      ctx.fillStyle = 'rgba(255,255,255,.4)'
+      ctx.fillText(col.label.toUpperCase(), x, 616)
+    })
+
+    const row2 = [
+      { label: 'Units', value: units },
+      { label: 'NOI (Annual)', value: fmt$(Math.round(c.noi)) },
+      { label: 'GRM', value: c.grm.toFixed(1) + 'x' },
+    ]
+    row2.forEach(function(col, i) {
+      const x = 180 + i * 360
+      ctx.font = '900 44px Arial'
+      ctx.fillStyle = '#10B981'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(col.value, x, 700)
+      ctx.font = '600 20px Arial'
+      ctx.fillStyle = 'rgba(255,255,255,.4)'
+      ctx.fillText(col.label.toUpperCase(), x, 756)
+    })
+
+    ctx.fillStyle = 'rgba(255,255,255,.06)'
+    roundRectInv(ctx, 60, 820, W-120, 120, 16)
+    ctx.fill()
+
+    const items = [
+      { l: 'Down Payment', v: fmt$(Math.round(c.dp)), c: '#ffffff' },
+      { l: 'Loan Amount',  v: fmt$(Math.round(c.loan)), c: 'rgba(255,255,255,.7)' },
+      { l: 'DSCR',         v: c.dscr.toFixed(2) + 'x', c: metricColor(c.dscr, 1.25, 1.0) },
+    ]
+    const colW = (W - 120) / items.length
+    items.forEach(function(item, i) {
+      const x = 60 + colW * i + colW/2
+      ctx.font = '800 34px Arial'
+      ctx.fillStyle = item.c
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(item.v, x, 840)
+      ctx.font = '500 18px Arial'
+      ctx.fillStyle = 'rgba(255,255,255,.35)'
+      ctx.fillText(item.l, x, 886)
+    })
+
+    if (propName) {
+      ctx.font = '700 26px Arial'
+      ctx.fillStyle = 'rgba(255,255,255,.55)'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'bottom'
+      ctx.fillText(propName, W/2, 970)
+    }
+
+    ctx.font = '600 22px Arial'
+    ctx.fillStyle = 'rgba(255,255,255,.25)'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText('845.424.1014  ·  @thetargetteam  ·  targetreteam.com', W/2, 1058)
+
+    ctx.fillStyle = '#CC2200'
+    ctx.fillRect(0, H-8, W, 8)
+  }
+
+  function downloadInvCard() {
+    drawInvCard()
+    setTimeout(function() {
+      const url = invCanvasRef.current.toDataURL('image/jpeg', 0.95)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'Investment_' + (propName || fmt$(c.p)).replace(/[^a-zA-Z0-9]/g,'_').slice(0,30) + '.jpg'
+      a.click()
+    }, 60)
+  }
+
+  function shareInvCard() {
+    drawInvCard()
+    setTimeout(function() {
+      invCanvasRef.current.toBlob(function(blob) {
+        if (navigator.share && blob) {
+          const file = new File([blob], 'investment.jpg', { type:'image/jpeg' })
+          navigator.share({ files:[file], title:'Investment Analysis', text:'Investment property analysis from Target Team' }).catch(function(){})
+        } else {
+          downloadInvCard()
+        }
+      }, 'image/jpeg', 0.95)
+    }, 60)
+  }
+
+  React.useEffect(function() { drawInvCard() }, [c, units, propName])
+
   function buildReport() {
     const rows = [
       ['INCOME',                    ''],
