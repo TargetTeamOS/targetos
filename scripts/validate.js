@@ -57,9 +57,9 @@ if (!failures.some(f => f.startsWith('JSX'))) passes.push('✓ No JSX-context ba
 jsxFiles.forEach(f => {
   const dir  = path.dirname(f)
   const c    = fs.readFileSync(f, 'utf8')
-  const imps = c.match(/^import .+ from ['\"](\.\.?\/.+)['\"]$/gm) || []
+  const imps = c.match(/^import .+ from ['"](\.\.?\/.+)['"]$/gm) || []
   imps.forEach(line => {
-    const m = line.match(/from ['\"](\.\.?\/.+)['\"]$/)
+    const m = line.match(/from ['"](\.\.?\/.+)['"]$/)
     if (!m) return
     const res = path.resolve(dir, m[1])
     const ok  = [res, res+'.js', res+'.jsx', res+'/index.js', res+'/index.jsx'].some(p => fs.existsSync(p))

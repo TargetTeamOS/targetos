@@ -112,7 +112,7 @@ function detectDate(text) {
     }
   }
 
-  const dateRe = /(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/
+  const dateRe = /(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/
   const dm = t.match(dateRe)
   if (dm) {
     const month = parseInt(dm[1]) - 1

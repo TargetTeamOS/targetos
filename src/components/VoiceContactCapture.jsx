@@ -38,6 +38,12 @@ function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase(
 // ── COMPONENT ──────────────────────────────────────────────────
 export function VoiceContactCapture({ onSaved, onClose, compact=false }) {
   const { state, toast } = useApp()
+  // FIX (ESLint no-undef, Sept 2026 audit follow-up): useAuth was imported
+  // but never called, so every `agent?.id`/`agent?.name` reference in
+  // saveContact() below threw ReferenceError (optional chaining guards
+  // against a null/undefined VALUE, not an undeclared variable) --
+  // meaning voice-captured contacts could never actually be saved.
+  const { agent } = useAuth()
   const [stage, setStage] = useState('idle') // idle | recording | processing | review | saving | done
   const [transcript, setTranscript] = useState('')
   const [interimText, setInterimText] = useState('')

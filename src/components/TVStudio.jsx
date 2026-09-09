@@ -105,7 +105,7 @@ export function TVStudio() {
     if (!file) return
     setUploading(true)
     try {
-      const path = Date.now() + '-' + file.name.replace(/[^\w.\-]/g, '_')
+      const path = Date.now() + '-' + file.name.replace(/[^\w.-]/g, '_')
       const { error } = await supabase.storage.from('tv-media').upload(path, file, { upsert: false })
       if (error) throw error
       const { data } = supabase.storage.from('tv-media').getPublicUrl(path)

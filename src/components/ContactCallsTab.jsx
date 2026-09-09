@@ -214,7 +214,7 @@ export function ContactCallsTab({ contact }) {
                 )}
               </div>
               {call.notes && (
-                <div style={{ fontSize:11, color:'var(--text)', marginTop:3, lineHeight:1.5, background:'var(--dim)', padding:'5px 8px', borderRadius:6, marginTop:5 }}>
+                <div style={{ fontSize:11, color:'var(--text)', lineHeight:1.5, background:'var(--dim)', padding:'5px 8px', borderRadius:6, marginTop:5 }}>
                   {call.notes}
                 </div>
               )}

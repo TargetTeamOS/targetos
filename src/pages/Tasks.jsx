@@ -221,6 +221,14 @@ export function Tasks() {
     if (!window.confirm('Delete ' + selectedIds.length + ' task' + (selectedIds.length !== 1 ? 's' : '') + '?')) return
     setBulkDel(true)
     try {
+      // FIX (ESLint no-undef, Sept 2026 audit follow-up): `supabase` was
+      // never imported anywhere in this file (this page always went
+      // through the hooks in lib/hooks.js instead) -- both bulk actions
+      // threw "supabase is not defined" the moment anyone used them.
+      // Dynamic-imported to match the pattern already used above (line
+      // ~108) rather than adding a static import that changes this file's
+      // bundle-splitting.
+      const { supabase } = await import('../lib/supabase')
       await supabase.from('tasks').delete().in('id', selectedIds)
       setSelectedIds([])
       toast('✅ Deleted ' + selectedIds.length + ' task' + (selectedIds.length !== 1 ? 's' : ''))
@@ -231,6 +239,7 @@ export function Tasks() {
   async function bulkComplete() {
     if (!selectedIds.length) return
     try {
+      const { supabase } = await import('../lib/supabase')
       const { error } = await supabase.from('tasks').update({ status: 'done', updated_at: new Date().toISOString() }).in('id', selectedIds)
       if (error) throw error
       setSelectedIds([])
