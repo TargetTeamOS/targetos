@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
 // TargetOS V2 — Database Layer
 // Every create/update/delete automatically logs to audit_log.
 // Who, what, when, on which record — always.
@@ -15,13 +15,13 @@ async function fireTrigger(name, ...args) {
   } catch { /* automation errors must never crash the app */ }
 }
 
-// ── HELPER ───────────────────────────────────────────────────────
+// ── HELPER ────────────────────────────────────────────
 async function run(promise) {
   const { data, error } = await promise
   if (error) throw error
   return data
 }
-// ── STRIP VIRTUAL FIELDS ──────────────────────────────────────────
+// ── STRIP VIRTUAL FIELDS ──────────────────────────────
 // Removes client-side joins and computed fields before any DB write.
 // Called on every update/insert to prevent "column not found" errors.
 const VIRTUAL_FIELDS = new Set([
@@ -42,7 +42,7 @@ function stripVirtual(data) {
 
 
 
-// ── FIELD LABELS ─────────────────────────────────────────────────
+// ── FIELD LABELS ───────────────────────────────────────────────
 const FIELD_LABELS = {
   first_name:'First Name', last_name:'Last Name', phone:'Phone', email:'Email',
   address:'Address', city:'City', state:'State', zip:'Zip',
@@ -63,7 +63,7 @@ function fieldLabel(key) {
   return FIELD_LABELS[key] || key.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
-// ── AUDIT LOGGER ─────────────────────────────────────────────────
+// ── AUDIT LOGGER ──────────────────────────────────────
 // agentId is optional — logs even without it (system actions, imports, etc.)
 async function log(agentId, tableName, recordId, action, extra = {}) {
   try {
@@ -79,7 +79,7 @@ async function log(agentId, tableName, recordId, action, extra = {}) {
   } catch { /* never crash on audit failure */ }
 }
 
-// ── FIELD-LEVEL DIFF LOGGER ──────────────────────────────────────
+// ── FIELD-LEVEL DIFF LOGGER ────────────────────────────
 // Compares before/after and logs each changed field individually
 // Skip fields that are internal/timestamps
 const SKIP_FIELDS = new Set(['updated_at','created_at','last_activity','id','agents',
@@ -127,7 +127,7 @@ async function logDiff(agentId, tableName, recordId, before, after, recordLabel)
 
 export const db = {
 
-// ── AGENTS ───────────────────────────────────────────────────────
+// ── AGENTS ──────────────────────────────────────────
 agents: {
   async list() {
     return run(supabase.from('agents').select('*').eq('active', true).order('name'))
@@ -149,7 +149,7 @@ agents: {
   },
 },
 
-// ── CONTACTS ─────────────────────────────────────────────────────
+// ── CONTACTS ─────────────────────────────────────────
 contacts: {
   async list(filters = {}) {
     let q = supabase.from('contacts').select('*, agents(id,name,color)')
@@ -241,7 +241,11 @@ contacts: {
       // instead of that cryptic one, so a permission problem doesn't
       // read as "nothing happened" with no explanation.
       if (e?.code === 'PGRST116') {
-        throw new Error('This save was blocked — you may not have permission to edit this contact (it may be assigned to a different agent).')
+        // FIX (ESLint preserve-caught-error, Sept 2026 audit follow-up):
+        // chain the original PGRST116 error as `cause` instead of
+        // discarding it, so anyone debugging this in prod still has the
+        // real Postgres/PostgREST error, not just the friendly message.
+        throw new Error('This save was blocked — you may not have permission to edit this contact (it may be assigned to a different agent).', { cause: e })
       }
       throw e
     }
@@ -269,7 +273,7 @@ contacts: {
   },
 },
 
-// ── DEALS ────────────────────────────────────────────────────────
+// ── DEALS ──────────────────────────────────────────
 deals: {
   async list(filters = {}) {
     let q = supabase.from('deals').select('*, agents(id,name,color)')
@@ -324,7 +328,7 @@ deals: {
   },
 },
 
-// ── LISTINGS ─────────────────────────────────────────────────────
+// ── LISTINGS ──────────────────────────────────────
 listings: {
   async list(filters = {}) {
     let q = supabase.from('listings').select('*, agents(id,name,color)')
@@ -345,7 +349,7 @@ listings: {
   async update(id, data, actingAgentId) {
     const before = await run(supabase.from('listings').select('*').eq('id', id).single()).catch(() => null)
     const result = await run(supabase.from('listings').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
-    // ── LIFECYCLE PROPAGATION (July 2026) ─────────────────────────
+    // ── LIFECYCLE PROPAGATION (July 2026) ───────────────────
     // The listing is the source of truth: address and price changes
     // flow to the linked Production deal and TC deal automatically,
     // so an update here reflects everywhere the listing appears.
@@ -374,7 +378,7 @@ listings: {
   },
 },
 
-// ── GIFTS ────────────────────────────────────────────────────────
+// ── GIFTS ──────────────────────────────────────────
 gifts: {
   async list(filters = {}) {
     let q = supabase.from('gifts').select('*, agents(id,name,color), deals(id,addr)')
@@ -405,7 +409,7 @@ gifts: {
   },
 },
 
-// ── OFFERS ───────────────────────────────────────────────────────
+// ── OFFERS ──────────────────────────────────────────
 offers: {
   async list(filters = {}) {
     let q = supabase.from('offers').select('*, agents(id,name,color)')
@@ -438,7 +442,7 @@ offers: {
   },
 },
 
-// ── TRANSACTIONS ─────────────────────────────────────────────────
+// ── TRANSACTIONS ───────────────────────────────────
 transactions: {
   async list(filters = {}) {
     let q = supabase.from('transactions').select('*, agents(id,name,color)')
@@ -468,7 +472,7 @@ transactions: {
   },
 },
 
-// ── TASKS ────────────────────────────────────────────────────────
+// ── TASKS ──────────────────────────────────────────
 tasks: {
   async list(filters = {}) {
     let q = supabase.from('tasks').select('*, agents(id,name,color)')
@@ -538,7 +542,7 @@ tasks: {
   },
 },
 
-// ── CALLS ────────────────────────────────────────────────────────
+// ── CALLS ──────────────────────────────────────────
 calls: {
   async list(filters = {}) {
     let q = supabase.from('calls').select('*, agents(id,name,color)')
@@ -574,7 +578,7 @@ calls: {
   },
 },
 
-// ── CALENDAR ─────────────────────────────────────────────────────
+// ── CALENDAR ─────────────────────────────────────────
 calendar: {
   async list(filters = {}) {
     let q = supabase.from('calendar_events').select('*, agents(id,name,color)')
@@ -605,8 +609,7 @@ calendar: {
   },
 },
 
-// ── OPEN HOUSES ──────────────────────────────────────────────────
-openHouses: {
+// ── OPEN HOUSES ──────────────────────────────────────openHouses: {
   async list(filters = {}) {
     let q = supabase.from('open_houses').select('*, agents(id,name,color), listings(id,addr)')
     if (filters.agent_id)          q = q.eq('agent_id', filters.agent_id)
@@ -636,8 +639,7 @@ openHouses: {
   },
 },
 
-// ── OPEN HOUSE VISITORS ──────────────────────────────────────────
-visitors: {
+// ── OPEN HOUSE VISITORS ────────────────────────────────visitors: {
   async list(openHouseId) {
     return run(supabase.from('oh_visitors').select('*').eq('open_house_id', openHouseId).order('visited_at', { ascending: false }))
   },
@@ -652,8 +654,7 @@ visitors: {
   },
 },
 
-// ── ANNOUNCEMENTS ────────────────────────────────────────────────
-announcements: {
+// ── ANNOUNCEMENTS ──────────────────────────────────announcements: {
   async list() {
     return run(supabase.from('announcements').select('*, agents(id,name,color)').order('pinned', { ascending: false }).order('created_at', { ascending: false }))
   },
@@ -676,7 +677,7 @@ announcements: {
   },
 },
 
-// ── SIGNS ────────────────────────────────────────────────────────
+// ── SIGNS ──────────────────────────────────────────
 signs: {
   async list(filters = {}) {
     let q = supabase.from('signs').select('*, agents(id,name,color)')
@@ -705,8 +706,7 @@ signs: {
   },
 },
 
-// ── LISTING PREP ─────────────────────────────────────────────────
-listingPrep: {
+// ── LISTING PREP ───────────────────────────────────listingPrep: {
   async list(filters = {}) {
     let q = supabase.from('listing_prep').select('*, agents(id,name,color), listings(id,addr)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
@@ -734,8 +734,7 @@ listingPrep: {
   },
 },
 
-// ── EMAIL TEMPLATES ──────────────────────────────────────────────
-emailTemplates: {
+// ── EMAIL TEMPLATES ────────────────────────────────emailTemplates: {
   async list() {
     return run(supabase.from('email_templates').select('*').order('created_at', { ascending: false }))
   },
@@ -753,8 +752,7 @@ emailTemplates: {
   },
 },
 
-// ── AUTOMATIONS ──────────────────────────────────────────────────
-automations: {
+// ── AUTOMATIONS ──────────────────────────────────automations: {
   async list() {
     return run(supabase.from('automations').select('*, agents(id,name)').order('name'))
   },
@@ -772,8 +770,7 @@ automations: {
   },
 },
 
-// ── AUDIT LOG ────────────────────────────────────────────────────
-auditLog: {
+// ── AUDIT LOG ──────────────────────────────────────────auditLog: {
   async list(filters = {}) {
     let q = supabase.from('audit_log').select('*, agents(id,name,color)')
     if (filters.agent_id)   q = q.eq('agent_id', filters.agent_id)
@@ -786,8 +783,7 @@ auditLog: {
   },
 },
 
-// ── BRIEFING PREFS ───────────────────────────────────────────────
-briefingPrefs: {
+// ── BRIEFING PREFS ─────────────────────────────────briefingPrefs: {
   async get(agentId) {
     const { data } = await supabase.from('briefing_prefs').select('*').eq('agent_id', agentId).single()
     return data
@@ -799,8 +795,7 @@ briefingPrefs: {
 
 } // end db
 
-// ── NAMED EXPORTS (backward compat) ─────────────────────────────
-export const createContact    = (d) => db.contacts.create(d)
+// ── NAMED EXPORTS (backward compat) ─────────────────────export const createContact    = (d) => db.contacts.create(d)
 export const getContacts      = (f) => db.contacts.list(f)
 export const updateContact    = (id, d) => db.contacts.update(id, d)
 export const deleteContact    = (id, agentId) => db.contacts.delete(id, agentId)
