@@ -100,7 +100,12 @@ module.exports = async function handler(req, res) {
     } catch(e) { console.warn('voicemail lookup:', e.message) }
   }
 
-  var twiml = say('PIN accepted. Welcome.', voice)
+  // FIX (ESLint no-redeclare, Sept 2026 audit follow-up): `twiml` is
+  // already `var`-declared (function-scoped) in the incorrect-PIN branch
+  // above, which always `return`s before reaching here -- harmless in
+  // practice, but redeclaring the same var twice in one function is
+  // needless confusion, so this just assigns to it instead.
+  twiml = say('PIN accepted. Welcome.', voice)
 
   if (hasMessages) {
     twiml += say('You have ' + messages.length + ' new voicemail' + (messages.length > 1 ? 's' : '') + '.', voice)

@@ -27,14 +27,20 @@
     "build": "vite build",
     "preview": "vite preview",
     "smoke": "node scripts/smoke.js",
-    "preflight": "npm run build && node scripts/validate.js && node scripts/smoke.js && node scripts/render-smoke.js",
+    "lint": "eslint src api scripts",
+    "preflight": "npm run build && npm run lint && node scripts/validate.js && node scripts/smoke.js && node scripts/render-smoke.js",
     "render-smoke": "node scripts/render-smoke.js"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@vitejs/plugin-react": "^4.3.0",
+    "eslint": "^10.10.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.6",
+    "globals": "^17.12.0",
     "jsdom": "^30.0.1",
     "vite": "^5.4.0",
     "vitest": "^4.1.10"
