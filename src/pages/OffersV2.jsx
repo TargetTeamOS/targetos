@@ -498,7 +498,7 @@ export function OffersV2() {
         })
         if (data) {
           setForm(f => ({ ...f, purchaser_attorney_contact_id: data.id, purchaser_attorney_tel: phone || f.purchaser_attorney_tel, purchaser_attorney_email: email || f.purchaser_attorney_email }))
-          toast('✅ Purchaser\u2019s Attorney saved to Contacts')
+          toast('✅ Purchaser’s Attorney saved to Contacts')
         }
       } catch(e) {
         if (e.existingContact) {
@@ -539,7 +539,7 @@ export function OffersV2() {
         })
         if (data) {
           setForm(f => ({ ...f, seller_attorney_contact_id: data.id, seller_attorney_tel: phone || f.seller_attorney_tel, seller_attorney_email: email || f.seller_attorney_email }))
-          toast('✅ Seller\u2019s Attorney saved to Contacts')
+          toast('✅ Seller’s Attorney saved to Contacts')
         }
       } catch(e) {
         if (e.existingContact) {
@@ -1067,7 +1067,7 @@ export function OffersV2() {
                   <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:10 }}>
                     {agentF ? agents.find(a=>a.id===agentF)?.name+"'s Offers" : 'All Offers'} ({filtered.length})
                   </div>
-                  <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} />
+                  <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} onBulkIdsChange={setBulkIds} onBulkDone={refetch} />
                 </div>
               )}
             </div>
@@ -1076,7 +1076,7 @@ export function OffersV2() {
           {(view === 'table' || !(isAdmin||canManage)) && (
             filtered.length === 0
               ? <Empty icon="📝" title="No offers" sub="Track submitted offers here." action={<Btn onClick={openAdd}>+ New Offer</Btn>} />
-              : <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} />
+              : <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} onBulkIdsChange={setBulkIds} onBulkDone={refetch} />
           )}
         </>
       )}
@@ -1666,7 +1666,7 @@ export function OffersV2() {
 }
 
 // ── OFFER TABLE ───────────────────────────────────────────────────
-function OfferTable({ offers, agents, onOpen, statusColor, canBulkEdit, bulkIds = [], onToggleBulk }) {
+function OfferTable({ offers, agents, onOpen, statusColor, canBulkEdit, bulkIds = [], onToggleBulk, onBulkIdsChange, onBulkDone }) {
   return (
     <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', overflow:'hidden' }}>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
@@ -1721,13 +1721,19 @@ function OfferTable({ offers, agents, onOpen, statusColor, canBulkEdit, bulkIds 
           })}</tbody>
       </table>
       {canBulkEdit && (
+        // FIX (ESLint no-undef, Sept 2026 audit follow-up): same bug as
+        // OffersLegacy.jsx's OfferTable -- filtered/setBulkIds/refetch all
+        // belong to the parent, not this component. `offers` is the same
+        // list the parent calls `filtered`; the setter/refetch are now
+        // threaded down as callback props. Previously crashed this
+        // table's render for any agent with bulk-edit permission.
         <BulkEditBar selectedIds={bulkIds} table="offers" agents={agents}
-          allIds={filtered.map(o => o.id)} onSelectAll={ids => setBulkIds(ids)}
+          allIds={offers.map(o => o.id)} onSelectAll={ids => onBulkIdsChange?.(ids)}
           fields={[
             { key:'status',          label:'Status', type:'select', options:(OFFER_STATUSES||[]).map(x=>({value:x.value||x,label:x.label||x})) },
             { key:'buyers_agent_id', label:'Buyer\'s Agent', type:'agent' },
           ]}
-          onDone={() => { setBulkIds([]); refetch && refetch() }} onClear={() => setBulkIds([])} />
+          onDone={() => { onBulkIdsChange?.([]); onBulkDone?.() }} onClear={() => onBulkIdsChange?.([])} />
       )}
     </div>
   )
