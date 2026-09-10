@@ -273,6 +273,86 @@ contacts: {
   },
 },
 
+// ── CONTACT ENGAGEMENTS ──────────────────────────────────────────
+// One row per (contact, agent): an agent's own private working
+// relationship -- status/source/tags/notes/custom_fields -- with a
+// contact whose identity (name/email/phone/address) is shared on the
+// `contacts` row itself. Multiple agents can each have their own
+// engagement on the same contact_id; RLS scopes every read/write here
+// to "my own rows, or admin" (see sql/contact_engagements.sql).
+// See CONTACT_ENGAGEMENT_MODEL_PROPOSAL.md for the full design.
+// Requires sql/contact_engagements.sql to have been run against the
+// database -- this table does not exist until that migration is applied.
+engagements: {
+  async list(filters = {}) {
+    let q = supabase.from('contact_engagements').select('*, contacts(id,first_name,last_name,phone,email,type,address)')
+    if (filters.contact_id) q = q.eq('contact_id', filters.contact_id)
+    if (filters.agent_id)   q = q.eq('agent_id', filters.agent_id)
+    if (filters.status)     q = q.eq('status', filters.status)
+    return run(q.order('updated_at', { ascending: false }))
+  },
+  // The signed-in agent's own engagement on a contact, or null if
+  // they've never worked this contact -- RLS already scopes this to
+  // "my own rows or admin", and .maybeSingle() means "no engagement
+  // yet" comes back as a normal null, not a thrown error.
+  async mine(contactId, agentId) {
+    if (!contactId || !agentId) return null
+    return run(supabase.from('contact_engagements').select('*').eq('contact_id', contactId).eq('agent_id', agentId).maybeSingle())
+  },
+  async get(id) {
+    return run(supabase.from('contact_engagements').select('*, contacts(id,first_name,last_name,phone,email,type,address)').eq('id', id).single())
+  },
+  async create(data) {
+    const result = await run(supabase.from('contact_engagements').insert({ ...stripVirtual(data) }).select().single())
+    await log(data.agent_id, 'contact_engagements', result.id, 'created', {
+      metadata: { description: 'Started working contact', field_label: 'Engagement Created' }
+    })
+    return result
+  },
+  async update(id, data, actingAgentId) {
+    const before = await run(supabase.from('contact_engagements').select('*').eq('id', id).single()).catch(() => null)
+    let result
+    try {
+      result = await run(supabase.from('contact_engagements').update({ ...stripVirtual(data) }).eq('id', id).select().single())
+    } catch (e) {
+      // Same PGRST116-from-RLS reasoning as contacts.update() above --
+      // an update matching zero rows under RLS isn't a Postgres error
+      // on its own, so surface what actually happened instead of the
+      // cryptic "no rows returned" message.
+      if (e?.code === 'PGRST116') {
+        throw new Error('This save was blocked — this engagement belongs to a different agent.', { cause: e })
+      }
+      throw e
+    }
+    const agentId = actingAgentId || before?.agent_id || null
+    await logDiff(agentId, 'contact_engagements', id, before, result, 'Engagement')
+    return result
+  },
+  async delete(id, agentId) {
+    await log(agentId, 'contact_engagements', id, 'deleted', { metadata: { description: 'Engagement removed' } })
+    return run(supabase.from('contact_engagements').delete().eq('id', id))
+  },
+  // "Start working this lead" for an EXISTING shared contact: returns
+  // the agent's own engagement if they already have one (never
+  // silently creates a second one), otherwise creates a fresh one.
+  // This is the shared-parent replacement for the old
+  // duplicate-contacts-row version of this flow in Contacts.jsx.
+  async startWorking(contactId, agentId, seed = {}) {
+    const existing = await this.mine(contactId, agentId)
+    if (existing) return { engagement: existing, created: false }
+    const engagement = await this.create({
+      contact_id:    contactId,
+      agent_id:      agentId,
+      status:        seed.status || 'New',
+      source:        seed.source || null,
+      tags:          seed.tags || null,
+      notes:         seed.notes || null,
+      custom_fields: seed.custom_fields || {},
+    })
+    return { engagement, created: true }
+  },
+},
+
 // ── DEALS ────────────────────────────────────────────────────────
 deals: {
   async list(filters = {}) {
@@ -808,6 +888,10 @@ export const createContact    = (d) => db.contacts.create(d)
 export const getContacts      = (f) => db.contacts.list(f)
 export const updateContact    = (id, d) => db.contacts.update(id, d)
 export const deleteContact    = (id, agentId) => db.contacts.delete(id, agentId)
+
+export const getMyEngagement      = (contactId, agentId) => db.engagements.mine(contactId, agentId)
+export const startWorkingContact  = (contactId, agentId, seed) => db.engagements.startWorking(contactId, agentId, seed)
+export const updateEngagement     = (id, d, actingAgentId) => db.engagements.update(id, d, actingAgentId)
 
 export const createDeal       = (d) => db.deals.create(d)
 export const getDeals         = (f) => db.deals.list(f)
