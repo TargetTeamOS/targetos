@@ -14,22 +14,38 @@
 --
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
--- CORRECTED (post-diagnostic-query review): this originally called
--- public.current_agent_id()/public.current_agent_is_admin(), assuming
--- sql/private_contacts_rls.sql's helper functions were live. Running
--- the read-only RLS diagnostic query from CONTACT_ENGAGEMENT_MODEL_
--- PROPOSAL.md against the real database showed the LIVE `contacts`
--- policy actually uses app_current_agent_role()/app_current_agent_id()
--- -- functions this repo can't find defined anywhere (they were
--- evidently created directly against the database, outside git). The
--- functions this repo CAN confirm are live are
--- public.app_current_agent_id() / public.app_is_admin() /
--- public.app_is_secretary(), from sql/phase1/A_safe_foundation.sql --
--- the same ones sql/C4_scope_open_rls_policies.sql already uses
--- successfully elsewhere. This migration was rewritten to use those
--- instead, since current_agent_id()/current_agent_is_admin() were
--- never confirmed to exist and would likely make every policy below
--- fail with "function does not exist" if run as originally written.
+-- CORRECTED TWICE (post-diagnostic-query review):
+--
+-- 1st correction: this originally called public.current_agent_id()/
+-- public.current_agent_is_admin(), assuming sql/private_contacts_rls.sql's
+-- helper functions were live. The read-only RLS diagnostic query from
+-- CONTACT_ENGAGEMENT_MODEL_PROPOSAL.md showed the LIVE `contacts` policy
+-- actually uses app_current_agent_role()/app_current_agent_id() instead,
+-- so this was rewritten to call public.app_current_agent_id() /
+-- public.app_is_admin() / public.app_is_secretary() -- the functions
+-- sql/phase1/A_safe_foundation.sql defines and sql/C4_scope_open_rls_
+-- policies.sql appears to call.
+--
+-- 2nd correction: running that version against production failed with
+-- "function public.app_is_secretary() does not exist". A direct query
+-- of pg_proc (select proname, pg_get_function_identity_arguments(oid)
+-- from pg_proc where pronamespace = 'public'::regnamespace and proname
+-- like 'app\_%') confirmed only app_current_agent_id(), app_is_admin(),
+-- and app_current_agent_role() exist from that family -- app_is_
+-- secretary() and app_is_agent() were never actually created live,
+-- despite being defined in sql/phase1/A_safe_foundation.sql and called
+-- by sql/C4_scope_open_rls_policies.sql (whether that migration fully
+-- succeeded is now an open question, outside this file's scope). The
+-- failed run left no partial state (select to_regclass('public.
+-- contact_engagements') returned null -- a multi-statement script in
+-- the Supabase SQL editor runs as one implicit transaction, so the
+-- error rolled back everything in this file, cleanly).
+--
+-- This version instead copies the exact live shape of the `contacts`
+-- policy: agent_id = public.app_current_agent_id() or
+-- public.app_current_agent_role() = any(array['admin','secretary']).
+-- Both app_current_agent_id() and app_current_agent_role() are
+-- confirmed live via the pg_proc query above.
 -- ══════════════════════════════════════════════════════════════════
 
 -- ── TABLE ──────────────────────────────────────────────────────────
@@ -101,31 +117,31 @@ where c.agent_id is not null
 -- ── RLS ────────────────────────────────────────────────────────────
 -- An engagement is visible/editable only to the agent who owns it, or
 -- an admin/secretary (matches the exact shape of the live `contacts`
--- policy: owner OR admin/secretary, secretary included because the
--- app's own canManage check treats secretary as a manager role too --
--- see AuthContext.jsx). This is the actual privacy boundary for
+-- policy: owner OR role in admin/secretary, secretary included because
+-- the app's own canManage check treats secretary as a manager role too
+-- -- see AuthContext.jsx). This is the actual privacy boundary for
 -- status/source/tags/notes/custom_fields going forward.
 alter table contact_engagements enable row level security;
 
 drop policy if exists engagements_select on contact_engagements;
 create policy engagements_select on contact_engagements
 for select to authenticated
-using (agent_id = public.app_current_agent_id() or public.app_is_admin() or public.app_is_secretary());
+using (agent_id = public.app_current_agent_id() or public.app_current_agent_role() = any(array['admin','secretary']));
 
 drop policy if exists engagements_insert on contact_engagements;
 create policy engagements_insert on contact_engagements
 for insert to authenticated
-with check (agent_id = public.app_current_agent_id() or public.app_is_admin() or public.app_is_secretary());
+with check (agent_id = public.app_current_agent_id() or public.app_current_agent_role() = any(array['admin','secretary']));
 
 drop policy if exists engagements_update on contact_engagements;
 create policy engagements_update on contact_engagements
 for update to authenticated
-using (agent_id = public.app_current_agent_id() or public.app_is_admin() or public.app_is_secretary());
+using (agent_id = public.app_current_agent_id() or public.app_current_agent_role() = any(array['admin','secretary']));
 
 drop policy if exists engagements_delete on contact_engagements;
 create policy engagements_delete on contact_engagements
 for delete to authenticated
-using (agent_id = public.app_current_agent_id() or public.app_is_admin() or public.app_is_secretary());
+using (agent_id = public.app_current_agent_id() or public.app_current_agent_role() = any(array['admin','secretary']));
 
 -- ══════════════════════════════════════════════════════════════════
 -- VERIFICATION
