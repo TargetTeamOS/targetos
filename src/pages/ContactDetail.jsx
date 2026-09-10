@@ -58,7 +58,7 @@ const FOLLOWUP_TEMPLATES = [
   { value: 'market_update',label: '📊 Market update' },
 ]
 
-// ── INLINE EDIT FIELD ─────────────────────────────────────────────────
+// ── INLINE EDIT FIELD ─────────────────────────────────────────────
 function InlineField({ label, value, onChange, type = 'text', options = null, placeholder = '—', multiline = false, prefix = null }) {
   const [editing, setEditing]   = useState(false)
   const [draft,   setDraft]     = useState(value)
@@ -116,7 +116,7 @@ function InlineField({ label, value, onChange, type = 'text', options = null, pl
   )
 }
 
-// ── MULTI-TAG INPUT ──────────────────────────────────────────────────
+// ── MULTI-TAG INPUT ───────────────────────────────────────────────
 function TagInput({ label, values = [], options, onChange }) {
   const [input, setInput] = useState('')
 
@@ -157,7 +157,7 @@ function TagInput({ label, values = [], options, onChange }) {
   )
 }
 
-// ── SECTION HEADER ─────────────────────────────────────────────────
+// ── SECTION HEADER ────────────────────────────────────────────────
 function Section({ title, icon, children, collapsible = true, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
@@ -177,7 +177,7 @@ function Section({ title, icon, children, collapsible = true, defaultOpen = true
   )
 }
 
-// ── TIMELINE ITEM ──────────────────────────────────────────────────
+// ── TIMELINE ITEM ─────────────────────────────────────────────────
 const TL_TYPES = {
   call:         { icon: '📞', color: '#10B981', label: 'Call' },
   call_inbound: { icon: '📲', color: '#10B981', label: 'Inbound Call' },
@@ -247,7 +247,7 @@ function TimelineItem({ item }) {
         {/* Call recording player */}
         {item.recording_url && (
           <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--panel)', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>💼 Call Recording</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>📼 Call Recording</div>
             {recState.status === 'ready'
               ? <audio controls autoPlay style={{ width: '100%', height: 32 }} src={recState.url} />
               : (
@@ -380,11 +380,11 @@ function AddToTimeline({ contactId, agentId, onAdded }) {
   )
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // AGREEMENTS SECTION — Upload real documents per agreement type
 // Stores in Supabase Storage under contacts/{id}/agreements/
 // Logs every upload to the activity timeline
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 const AGREEMENT_TYPES = [
   { id: 'buyer',    label: 'Buyer Agreement',    icon: '🏠', color: '#10B981' },
   { id: 'seller',   label: 'Listing Agreement',  icon: '🏡', color: '#F5A623' },
@@ -607,10 +607,10 @@ function AgreementsSection({ contactId, agentId, onActivityLog }) {
 }
 
 
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // RIGHT PANEL — Full featured client service panel
 // Matches and exceeds Brivity's right panel functionality
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 
 // Section-visibility: admins can hide panels + reorder via a layout
 // settings object. hideKey identifies the panel. In arrange mode
@@ -1087,15 +1087,15 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
   )
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // MAIN CONTACT DETAIL PAGE
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 export function ContactDetail() {
   const { id }    = useParams()
   const navigate  = useNavigate()
   const location  = useLocation()
 
-  // ── PREV / NEXT CONTACT (July 2026) ─────────────────────────
+  // ── PREV / NEXT CONTACT (July 2026) ─────────────────────────────
   // Walks the same list the user came from: the Contacts page passes
   // its visible row order via navigation state; when the page is
   // opened directly (deep link, refresh), fall back to the default
@@ -1406,7 +1406,7 @@ export function ContactDetail() {
     } catch (e) { console.warn('loadRelated:', e.message) }
   }
 
-  // ── AUTOSAVE FIELD ──────────────────────────────────────────────
+  // ── AUTOSAVE FIELD ────────────────────────────────────────────
   async function saveField(field, value) {
     if (!contact) return
     try {
@@ -1528,12 +1528,12 @@ export function ContactDetail() {
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
   }
 
-  // ── STATUS QUICK UPDATE ─────────────────────────────────
+  // ── STATUS QUICK UPDATE ───────────────────────────────────────
   async function quickStatus(s) {
     await saveEngagementField('status', s, { toastOk: '✅ Status → ' + s })
   }
 
-  // ── SAVE AUTOMATION ────────────────────────────────────
+  // ── SAVE AUTOMATION ───────────────────────────────────────────
   async function saveAutomation(fields) {
     setSavingAuto(true)
     try {
@@ -1706,9 +1706,9 @@ export function ContactDetail() {
       {/* ── THREE PANEL LAYOUT — GHL/HubSpot style ── */}
       <div className={cols3On ? "contact-3col" : ""} style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '12px', alignItems: 'stretch' }}>
 
-        {/* ════════════════════════════════════════════════════
+        {/* ══════════════════════════════════════════════════════
             LEFT PANEL
-        ════════════════════════════════════════════════════ */}
+        ══════════════════════════════════════════════════════ */}
         <div className="contact-col" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
           {/* CONTACT INFO */}
@@ -1920,9 +1920,9 @@ export function ContactDetail() {
           </div>
         </div>
 
-        {/* ════════════════════════════════════════════════════
+        {/* ══════════════════════════════════════════════════════
             CENTER — CONVERSATION TIMELINE
-        ════════════════════════════════════════════════════ */}
+        ══════════════════════════════════════════════════════ */}
         <div className="contact-col">
           <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2020,9 +2020,9 @@ export function ContactDetail() {
           </div>
         </div>
 
-        {/* ════════════════════════════════════════════════════
+        {/* ══════════════════════════════════════════════════════
             RIGHT — ACTIONS + DEALS + TASKS + FILES
-        ════════════════════════════════════════════════════ */}
+        ══════════════════════════════════════════════════════ */}
         <div className="contact-col">
           <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relListings={relListings} relOffers={relOffers} relTasks={relTasks} agents={agents} agent={agent} voiceNotes={voiceNotes} onRefreshTimeline={loadTimeline} layout={contactLayout} editLayout={editLayout} setLayout={setContactLayout} toast={toast} />
         </div>
