@@ -328,8 +328,74 @@ export function Contacts() {
 
       const { data, count, error } = await q
       if (error) throw error
-      setTotalCount(count || 0)
-      setContacts(prev => append ? [...prev, ...(data||[])] : (data||[]))
+      let rows = data || []
+      let extraCount = 0
+
+      // ── ENGAGEMENT-AWARE MERGE (Sept 2026, closes the board-grid gap
+      // documented on startWorkingLead() below) ──────────────────────
+      // Regular agents only — admin/canManage already see every contact
+      // above regardless of owner. Once sql/contact_engagements.sql has
+      // been run, ContactDetail.jsx stops writing status/source/tags/
+      // notes to `contacts` and writes them to the agent's own
+      // `contact_engagements` row instead. That breaks the query above
+      // in two ways this block fixes:
+      //   1. A lead claimed via "Start working this lead" gets its own
+      //      engagement, but `contacts.agent_id` still belongs to
+      //      whoever originally created it — so it never matched the
+      //      agentFilter above and silently never appeared here.
+      //   2. Even a contact this agent legitimately owns
+      //      (`contacts.agent_id === me`) shows increasingly stale
+      //      status/source/tags/notes after any edit made through
+      //      ContactDetail, since those 4 fields stop being written to
+      //      `contacts` the moment an engagement exists for it.
+      // Fetching this agent's full engagement set unconditionally (not
+      // pre-filtered by statusF/typeF) and merging it in — rather than
+      // trying to make the query above join/filter against
+      // contact_engagements directly — means the existing client-side
+      // `filtered` memo below, which already re-applies every active
+      // filter using each contact's live (possibly just-overridden)
+      // fields, is what actually decides what's shown. That self-heals
+      // the case where the server-side statusF/typeF pre-filter above
+      // excluded (or wrongly included) a row based on `contacts`'
+      // now-stale columns.
+      // Degrades silently to the legacy contacts-only list if the
+      // migration hasn't been run yet (table doesn't exist) — same
+      // fallback pattern used in ContactDetail.jsx and startWorkingLead.
+      // Known limits: capped at 500 of this agent's own engagements
+      // (plenty for this team's contact volume; raise if that changes),
+      // and re-fetched on every "load more" page rather than cached —
+      // a minor inefficiency, not a correctness issue, since dedupe
+      // against `prev` below prevents it from re-adding duplicates.
+      if (agentFilter) {
+        try {
+          const { data: engRows, error: engErr } = await supabase
+            .from('contact_engagements')
+            .select('contact_id, status, source, tags, notes, contacts(*, agents(id,name,color))')
+            .eq('agent_id', agentFilter)
+            .limit(500)
+          if (engErr) throw engErr
+          const byId = new Map(rows.map(c => [c.id, c]))
+          for (const row of (engRows || [])) {
+            if (!row.contacts) continue // orphaned engagement (parent contact deleted) — skip
+            const overrides = { status: row.status, source: row.source, tags: row.tags, notes: row.notes }
+            const existing = byId.get(row.contact_id)
+            if (existing) {
+              Object.assign(existing, overrides) // legacy-owned too — refresh from the authoritative engagement
+            } else {
+              byId.set(row.contact_id, { ...row.contacts, ...overrides }) // claimed via engagement only
+              extraCount++
+            }
+          }
+          rows = Array.from(byId.values())
+        } catch (e) {
+          if (!(e?.code === '42P01' || String(e?.message||'').includes('contact_engagements'))) {
+            console.warn('Engagement merge skipped:', e.message)
+          }
+        }
+      }
+
+      setTotalCount((count || 0) + extraCount)
+      setContacts(prev => append ? [...prev, ...rows.filter(r => !prev.some(p => p.id === r.id))] : rows)
       setPageOffset(offset)
 
       // Regular agent with "browse everyone's contacts" on: also pull
@@ -350,7 +416,11 @@ export function Contacts() {
           console.warn('contacts_directory not available yet (run sql/offers_v2/H_shared_contact_directory.sql):', dirErr.message)
           setDirectoryOnly([])
         } else {
-          const ownedIds = new Set((data || []).map(c => c.id))
+          // Use `rows` (post-merge), not the raw primary-query `data` —
+          // otherwise a contact already claimed via engagement (but not
+          // legacy-owned) would incorrectly still show up as an
+          // unclaimed "Start working this lead" directory card.
+          const ownedIds = new Set(rows.map(c => c.id))
           setDirectoryOnly((dirRows || []).filter(c => !ownedIds.has(c.id)))
         }
       } else {
@@ -441,13 +511,13 @@ export function Contacts() {
    * degrades gracefully when H_shared_contact_directory.sql isn't
    * applied yet.
    *
-   * KNOWN FOLLOW-UP, NOT YET DONE: the main contacts grid above still
-   * filters by `contacts.agent_id` (the original creating agent), not
-   * by engagement -- so a lead claimed here via engagement won't show
-   * up in "my contacts" until the board's own list query is made
-   * engagement-aware. This function still opens the contact directly
-   * via navigate() below, so the claim itself works; only the grid
-   * listing is the open gap.
+   * RESOLVED (Sept 2026): the main contacts grid used to filter only
+   * by `contacts.agent_id` (the original creating agent), so a lead
+   * claimed here via engagement wouldn't show up in "my contacts"
+   * until the board's own list query was made engagement-aware. See
+   * the "ENGAGEMENT-AWARE MERGE" block in loadContacts() above, which
+   * now folds in every contact this agent has an engagement on,
+   * regardless of who originally created it.
    */
   async function startWorkingLead(dirContact) {
     setClaiming(dirContact.id)
