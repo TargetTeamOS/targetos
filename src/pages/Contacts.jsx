@@ -297,16 +297,22 @@ export function Contacts() {
   const [sourceF,     setSourceF]     = useState('')
   const [typeF,       setTypeF]       = useState('')
   const [contactedF,  setContactedF]  = useState('')
-  // "Browse everyone's contacts" — off by default for regular agents
-  // (preserves the existing "my contacts" primary view, which is where
-  // most day-to-day CRM work happens and where the rich filters/sort/
-  // bulk-edit below still fully apply). When on, also pulls in every
-  // OTHER agent's contacts via the safe contacts_directory view
-  // (name/phone/email only, sql/offers_v2/H_shared_contact_directory.sql)
-  // so two agents can find and reference the same shared person.
-  // Admin/canManage already see everyone's full contacts regardless —
-  // this toggle only matters for a regular agent.
-  const [showAllAgents, setShowAllAgents] = useState(false)
+  // "Browse everyone's contacts" — ON by default for regular agents
+  // (Sept 2026: per explicit product decision, every agent should see
+  // every contact, not just their own — this toggle is now an opt-OUT
+  // back to the old "my contacts only" view, not an opt-in). Pulls in
+  // every OTHER agent's contacts via the safe contacts_directory view
+  // (name/phone/email/type/custom fields/past-deals-summary only, see
+  // sql/offers_v2/H_shared_contact_directory.sql and
+  // sql/offers_v2/I_contacts_directory_deals_and_custom_fields.sql)
+  // so any agent can find and reference the same shared person, see
+  // their custom fields, and see what deals they've done before —
+  // without seeing that other agent's private status/source/tags/
+  // notes, which stay on the full `contacts` row (or that agent's own
+  // contact_engagements row) and are never exposed by the directory
+  // view. Admin/canManage already see everyone's full contacts
+  // regardless — this toggle only matters for a regular agent.
+  const [showAllAgents, setShowAllAgents] = useState(true)
   const [directoryOnly, setDirectoryOnly] = useState([]) // contacts NOT owned by me, safe fields only
 
   // Load contacts with server-side pagination
@@ -412,7 +418,7 @@ export function Contacts() {
       // for them to show, and they must not be bulk-editable or
       // deletable from here).
       if (agentFilter && showAllAgents) {
-        let dq = supabase.from('contacts_directory').select('id,first_name,last_name,phone,email,type').limit(500)
+        let dq = supabase.from('contacts_directory').select('id,first_name,last_name,phone,email,type,custom_data,deals').limit(500)
         if (typeF) dq = dq.eq('type', typeF)
         if (search && search.length >= 2) {
           dq = dq.or('first_name.ilike.%'+search+'%,last_name.ilike.%'+search+'%,phone.ilike.%'+search+'%,email.ilike.%'+search+'%')
@@ -976,24 +982,51 @@ export function Contacts() {
       {/* Other agents' contacts — shared directory, limited view. A
           deliberately separate, simple, read-only section, not merged
           into the rich grid/list above: this data has ONLY name/phone/
-          email (sql/offers_v2/H_shared_contact_directory.sql's view),
-          no status/source/tags/notes exist for it to show, and it must
-          never be selectable for bulk-edit or delete. */}
+          email/type/custom fields/a safe past-deals summary (see
+          sql/offers_v2/H_shared_contact_directory.sql and
+          sql/offers_v2/I_contacts_directory_deals_and_custom_fields.sql)
+          — no status/source/tags/notes exist for it to show, no sale
+          price or commission on any deal, and it must never be
+          selectable for bulk-edit or delete, or link to the full
+          ContactDetail page (that page only loads for the owning
+          agent, an admin, or a secretary with permission — a non-
+          owner clicking through would just see "Contact not found"). */}
       {!loading && showAllAgents && directoryOnly.length > 0 && (
         <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(240px, 1fr))', gap:10 }}>
-            {directoryOnly.map(c => (
+            {directoryOnly.map(c => {
+              const customEntries = Object.entries(c.custom_data || {}).filter(([, v]) => v !== null && v !== '' && v !== undefined)
+              const pastDeals = Array.isArray(c.deals) ? c.deals : []
+              return (
               <div key={c.id} style={{ background:'var(--dim)', borderRadius:'var(--radius)', border:'1px dashed var(--border)', padding:'12px 14px' }}>
                 <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:4 }}>{c.first_name} {c.last_name}</div>
-                <div style={{ fontSize:12, color:'var(--muted)', marginBottom:8 }}>{c.phone || '—'}</div>
-                <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>{c.email || '—'}</div>
+                <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>{c.phone || '—'}</div>
+                <div style={{ fontSize:12, color:'var(--muted)', marginBottom:8 }}>{c.email || '—'}</div>
+                {pastDeals.length > 0 && (
+                  <div style={{ marginBottom:8 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:3 }}>Past Deals</div>
+                    {pastDeals.slice(0,3).map((d,i) => (
+                      <div key={d.id || i} style={{ fontSize:11.5, color:'var(--text)' }}>{d.addr || '(no address)'}{d.stage ? ' · ' + d.stage : ''}</div>
+                    ))}
+                    {pastDeals.length > 3 && <div style={{ fontSize:11, color:'var(--muted)' }}>+{pastDeals.length - 3} more</div>}
+                  </div>
+                )}
+                {customEntries.length > 0 && (
+                  <div style={{ marginBottom:10 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:3 }}>Custom Fields</div>
+                    {customEntries.map(([k,v]) => (
+                      <div key={k} style={{ fontSize:11.5, color:'var(--text)' }}><span style={{ color:'var(--muted)' }}>{k}:</span> {String(v)}</div>
+                    ))}
+                  </div>
+                )}
                 <Btn variant="secondary" style={{ width:'100%', fontSize:11.5 }}
                   loading={claiming === c.id}
                   onClick={() => setConfirmClaim(c)}>
                   Start Working This Lead
                 </Btn>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
