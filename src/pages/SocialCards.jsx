@@ -1245,7 +1245,12 @@ function CustomEditor({ listings }) {
       <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
         <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em' }}>Preview — drag text to reposition</div>
         <div style={{ boxShadow:'0 8px 40px rgba(0,0,0,.22)', borderRadius:12, overflow:'hidden', cursor:dragging?'grabbing':'grab' }}>
-          <canvas ref={canvasRef} width={CS} height={CH} style={{ display:'block', width:DS, height:DS }}
+          {/* FIX (ESLint no-undef, Sept 2026 audit follow-up): height was
+              `CH`, a leftover copy-paste from SmartCards' variable-height
+              canvas -- this component (CustomEditor) never declares CH and
+              always draws a square CSxCS canvas, so referencing it threw
+              ReferenceError on every render. */}
+          <canvas ref={canvasRef} width={CS} height={CS} style={{ display:'block', width:DS, height:DS }}
             onMouseDown={onCanvasMouseDown} onMouseMove={onCanvasMouseMove} onMouseUp={onCanvasMouseUp} onMouseLeave={onCanvasMouseUp} />
         </div>
       </div>
@@ -1416,7 +1421,11 @@ function TemplatesTab({ listings, deals }) {
 
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
               <div style={{ boxShadow:'0 8px 40px rgba(0,0,0,.22)', borderRadius:12, overflow:'hidden' }}>
-                <canvas ref={canvasRef} width={CS} height={CH} style={{ display:'block', width:DS, height:DS }} />
+                {/* FIX (ESLint no-undef, Sept 2026 audit follow-up): same
+                    CH-vs-CS copy-paste bug as CustomEditor above -- this
+                    component (TemplatesTab) has no CH, always draws a
+                    square CSxCS canvas. */}
+                <canvas ref={canvasRef} width={CS} height={CS} style={{ display:'block', width:DS, height:DS }} />
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, width:'100%', maxWidth:DS }}>
                 <button onClick={exportJPEG} style={{ padding:'12px', borderRadius:9, background:'#CC2200', color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:ff }}>⬇ JPEG HD</button>
