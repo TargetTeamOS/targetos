@@ -1,6 +1,6 @@
 import { ClickToCall } from '../components/ClickToCall'
 import { authFetch } from '../lib/apiAuth'
-// ════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // TargetOS V2 — Contact Detail Page (Full Rebuild)
 //
 // LEFT PANEL:   Rich buyer/seller profile — all fields inline
@@ -8,7 +8,7 @@ import { authFetch } from '../lib/apiAuth'
 //               full date history
 // CENTER PANEL: Conversation timeline
 // RIGHT PANEL:  Quick actions, deals, tasks, files
-// ════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
@@ -58,7 +58,7 @@ const FOLLOWUP_TEMPLATES = [
   { value: 'market_update',label: '📊 Market update' },
 ]
 
-// ── INLINE EDIT FIELD ─────────────────────────────────────────────────────
+// ── INLINE EDIT FIELD ─────────────────────────────────────────────
 function InlineField({ label, value, onChange, type = 'text', options = null, placeholder = '—', multiline = false, prefix = null }) {
   const [editing, setEditing]   = useState(false)
   const [draft,   setDraft]     = useState(value)
@@ -116,7 +116,7 @@ function InlineField({ label, value, onChange, type = 'text', options = null, pl
   )
 }
 
-// ── MULTI-TAG INPUT ──────────────────────────────────────────────────
+// ── MULTI-TAG INPUT ───────────────────────────────────────────────
 function TagInput({ label, values = [], options, onChange }) {
   const [input, setInput] = useState('')
 
@@ -157,7 +157,7 @@ function TagInput({ label, values = [], options, onChange }) {
   )
 }
 
-// ── SECTION HEADER ─────────────────────────────────────────────────
+// ── SECTION HEADER ────────────────────────────────────────────────
 function Section({ title, icon, children, collapsible = true, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
@@ -177,7 +177,7 @@ function Section({ title, icon, children, collapsible = true, defaultOpen = true
   )
 }
 
-// ── TIMELINE ITEM ───────────────────────────────────────────────────────
+// ── TIMELINE ITEM ─────────────────────────────────────────────────
 const TL_TYPES = {
   call:         { icon: '📞', color: '#10B981', label: 'Call' },
   call_inbound: { icon: '📲', color: '#10B981', label: 'Inbound Call' },
@@ -247,7 +247,7 @@ function TimelineItem({ item }) {
         {/* Call recording player */}
         {item.recording_url && (
           <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--panel)', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>💼 Call Recording</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>📼 Call Recording</div>
             {recState.status === 'ready'
               ? <audio controls autoPlay style={{ width: '100%', height: 32 }} src={recState.url} />
               : (
@@ -308,7 +308,7 @@ function TimelineItem({ item }) {
   )
 }
 
-// ── ADD TO TIMELINE ──────────────────────────────────────────────────
+// ── ADD TO TIMELINE ───────────────────────────────────────────────
 function AddToTimeline({ contactId, agentId, onAdded }) {
   const [type, setType] = useState('note')
   const [body, setBody] = useState('')
@@ -380,11 +380,11 @@ function AddToTimeline({ contactId, agentId, onAdded }) {
   )
 }
 
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // AGREEMENTS SECTION — Upload real documents per agreement type
 // Stores in Supabase Storage under contacts/{id}/agreements/
 // Logs every upload to the activity timeline
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 const AGREEMENT_TYPES = [
   { id: 'buyer',    label: 'Buyer Agreement',    icon: '🏠', color: '#10B981' },
   { id: 'seller',   label: 'Listing Agreement',  icon: '🏡', color: '#F5A623' },
@@ -607,10 +607,10 @@ function AgreementsSection({ contactId, agentId, onActivityLog }) {
 }
 
 
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // RIGHT PANEL — Full featured client service panel
 // Matches and exceeds Brivity's right panel functionality
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 
 // Section-visibility: admins can hide panels + reorder via a layout
 // settings object. hideKey identifies the panel. In arrange mode
@@ -635,7 +635,7 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
     <div {...dragProps} style={{ background: 'var(--panel)', borderRadius: '10px', border: editLayout ? '1px dashed var(--brand)' : '1px solid var(--border)', overflow: 'hidden', marginBottom: '8px', order: ord, opacity: isHidden ? 0.5 : 1 }}>
       <div onClick={() => !editLayout && setOpen(o => !o)}
         style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: editLayout ? 'grab' : 'pointer', userSelect: 'none', background: 'var(--dim)' }}>
-        {editLayout && hideKey && <span style={{ fontSize: '14px', color: 'var(--muted)', cursor: 'grab' }} title="Drag to reorder">⠠⠿</span>}
+        {editLayout && hideKey && <span style={{ fontSize: '14px', color: 'var(--muted)', cursor: 'grab' }} title="Drag to reorder">⠿</span>}
         <span style={{ fontSize: '14px' }}>{icon}</span>
         <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{title}</span>
         {editLayout && hideKey ? (
@@ -1087,15 +1087,15 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
   )
 }
 
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // MAIN CONTACT DETAIL PAGE
-// ═══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 export function ContactDetail() {
   const { id }    = useParams()
   const navigate  = useNavigate()
   const location  = useLocation()
 
-  // ── PREV / NEXT CONTACT (July 2026) ────────────────────────────
+  // ── PREV / NEXT CONTACT (July 2026) ─────────────────────────────
   // Walks the same list the user came from: the Contacts page passes
   // its visible row order via navigation state; when the page is
   // opened directly (deep link, refresh), fall back to the default
@@ -1193,6 +1193,26 @@ export function ContactDetail() {
   }
 
   const [otherBranches, setOtherBranches] = useState([]) // admin/secretary only: other agents' separate records for this same person
+
+  // ── MY OWN ENGAGEMENT (Sept 2026, contact-engagement-model) ──────
+  // status/source/tags/notes are per-agent now, not shared on
+  // `contacts` -- see CONTACT_ENGAGEMENT_MODEL_PROPOSAL.md and
+  // saveEngagementField below. This loads (or confirms the absence
+  // of) MY OWN contact_engagements row for this contact, separately
+  // from loadContact()/the main loading spinner so a slow or
+  // pre-migration engagement lookup never blocks the rest of the
+  // page. Re-runs if the viewer's own agent identity changes.
+  const [engagement, setEngagement] = useState(null)
+  useEffect(() => {
+    if (!id || !agent?.id) { setEngagement(null); return }
+    let alive = true
+    db.engagements.mine(id, agent.id)
+      .then(eng => { if (alive) setEngagement(eng) })
+      .catch(() => { if (alive) setEngagement(null) }) // pre-migration: table doesn't exist yet
+    return () => { alive = false }
+  }, [id, agent?.id])
+  const [notesDraft, setNotesDraft] = useState(null) // live textarea value while typing, pre-blur
+  useEffect(() => { setNotesDraft(null) }, [id])
 
   async function loadContact() {
     setLoading(true)
@@ -1386,7 +1406,7 @@ export function ContactDetail() {
     } catch (e) { console.warn('loadRelated:', e.message) }
   }
 
-  // ── AUTOSAVE FIELD ────────────────────────────
+  // ── AUTOSAVE FIELD ────────────────────────────────────────────
   async function saveField(field, value) {
     if (!contact) return
     try {
@@ -1394,6 +1414,62 @@ export function ContactDetail() {
       setContact(c => ({ ...c, [field]: value, ...updated }))
       loadTimeline()
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
+  }
+
+  // ── AUTOSAVE ENGAGEMENT FIELD (Sept 2026, contact-engagement-model) ──
+  // status/source/tags/notes are now the current agent's OWN private
+  // relationship with this shared contact, not shared contact-level
+  // fields (see CONTACT_ENGAGEMENT_MODEL_PROPOSAL.md) -- each agent
+  // who works this same person gets their own contact_engagements row
+  // for these four fields, invisible to any other agent. Everything
+  // else on this page (name/phone/email/address/buyer-criteria/custom
+  // fields/dates/automation settings/etc.) is unchanged and still
+  // lives on the shared `contacts` row via saveField/saveFields above.
+  //
+  // Lazily creates my own engagement row on first edit if I don't
+  // have one yet (db.engagements.startWorking), seeded from whatever
+  // is currently on screen so nothing appears to reset. Falls back to
+  // the old direct contacts-table write if sql/contact_engagements.sql
+  // hasn't been run yet on this database ("relation
+  // contact_engagements does not exist"), so this page keeps working
+  // exactly as it did before this feature until that migration runs.
+  //
+  // KNOWN GAP, not solved here: an admin/secretary viewing a contact
+  // they don't personally own has no engagement of their own either
+  // -- editing status/source/tags/notes here creates THEIR OWN
+  // private engagement rather than updating the owning agent's.
+  // That's the strictly-correct privacy behavior, but may surprise an
+  // admin who expects to edit "the" status on someone else's lead.
+  // Left as a follow-up rather than guessed at.
+  async function saveEngagementField(field, value, opts = {}) {
+    if (!contact) return
+    if (!agent?.id) { toast('No agent identity — cannot save', '#DC2626'); return }
+    try {
+      let eng = engagement
+      if (!eng) {
+        const { engagement: created } = await db.engagements.startWorking(id, agent.id, {
+          status: f.status, source: f.source, tags: f.tags, notes: f.notes,
+        })
+        eng = created
+      }
+      const updated = await db.engagements.update(eng.id, { [field]: value }, agent.id)
+      setEngagement(prev => ({ ...(prev || eng), [field]: value, ...updated }))
+      loadTimeline()
+      if (opts.toastOk) toast(opts.toastOk)
+    } catch(e) {
+      if (e?.code === '42P01' || String(e?.message || '').includes('contact_engagements')) {
+        // Pre-migration fallback: behave exactly as this page did
+        // before the engagement model existed.
+        try {
+          const updated = await db.contacts.update(id, { [field]: value }, agent?.id)
+          setContact(c => ({ ...c, [field]: value, ...updated }))
+          loadTimeline()
+          if (opts.toastOk) toast(opts.toastOk)
+        } catch(e2) { toast('Save failed: ' + e2.message, '#DC2626') }
+      } else {
+        toast('Save failed: ' + e.message, '#DC2626')
+      }
+    }
   }
 
   // Mark this lead as contacted (manual button + used by note-logging).
@@ -1441,17 +1517,12 @@ export function ContactDetail() {
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
   }
 
-  // ── STATUS QUICK UPDATE ───────────────────────────
+  // ── STATUS QUICK UPDATE ───────────────────────────────────────
   async function quickStatus(s) {
-    try {
-      const updated = await db.contacts.update(id, { status: s }, agent?.id)
-      setContact(prev => ({ ...prev, status: s }))
-      toast("✅ Status → " + (s))
-      loadTimeline()
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
+    await saveEngagementField('status', s, { toastOk: '✅ Status → ' + s })
   }
 
-  // ── SAVE AUTOMATION ────────────────────────────
+  // ── SAVE AUTOMATION ───────────────────────────────────────────
   async function saveAutomation(fields) {
     setSavingAuto(true)
     try {
@@ -1488,8 +1559,16 @@ export function ContactDetail() {
   if (loading) return <div style={{ fontFamily: ff, padding: '28px' }}><Loading /></div>
   if (!contact) return null
 
-  const statusColor = STATUS_COLORS[contact.status] || '#94A3B8'
-  const f = contact // shorthand for all field reads
+  // status/source/tags/notes: MY OWN private engagement row wins once
+  // it exists (see saveEngagementField above); everything else on `f`
+  // still reads straight off the shared contacts row. Pre-migration,
+  // or before I've ever touched this contact, engagement is null and
+  // these four just fall back to the legacy shared contacts.* values,
+  // same as this page behaved before the feature existed.
+  const f = engagement
+    ? { ...contact, status: engagement.status, source: engagement.source, tags: engagement.tags, notes: engagement.notes }
+    : contact
+  const statusColor = STATUS_COLORS[f.status] || '#94A3B8'
   const daysSinceContact = (f.last_contact_at || f.last_reached) ? getDaysAgo(f.last_contact_at || f.last_reached) : null
   const daysToFollowup   = f.next_followup ? getDaysUntil(f.next_followup) : null
 
@@ -1515,7 +1594,7 @@ export function ContactDetail() {
         <div style={{ minWidth:0, flex:'0 1 auto' }}>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <h1 style={{ fontSize:17, fontWeight:800, color:'var(--text)', margin:0, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{f.first_name} {f.last_name}</h1>
-            <select value={f.status||'New'} onChange={e=>saveField('status',e.target.value)}
+            <select value={f.status||'New'} onChange={e=>saveEngagementField('status',e.target.value)}
               style={{ padding:'4px 26px 4px 12px', borderRadius:99, border:'none', width:'auto',
                 background:(STATUS_COLORS[f.status]||'#8B5CF6')+'22', color:STATUS_COLORS[f.status]||'#8B5CF6',
                 fontSize:11, fontWeight:800, fontFamily:ff, cursor:'pointer', appearance:'none', flexShrink:0,
@@ -1605,7 +1684,7 @@ export function ContactDetail() {
       {editLayout && isAdmin && (
         <div style={{ background:'rgba(204,34,0,.06)', border:'1px solid var(--brand)', borderRadius:10, padding:'10px 14px', marginBottom:12, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
           <span style={{ fontSize:13, fontWeight:700, color:'var(--brand)' }}>⚙ Arrange mode</span>
-          <span style={{ fontSize:12, color:'var(--muted)', flex:1 }}>Drag the ⠠⠿ handle on any panel to reorder. Click ✕ on a panel to hide it. Changes save for everyone.</span>
+          <span style={{ fontSize:12, color:'var(--muted)', flex:1 }}>Drag the ⠿ handle on any panel to reorder. Click ✕ on a panel to hide it. Changes save for everyone.</span>
           <button onClick={saveLayoutNow}
             style={{ padding:'6px 14px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>Save for everyone</button>
           <button onClick={()=>{ loadContactLayout(true).then(setContactLayout); setEditLayout(false) }}
@@ -1616,9 +1695,9 @@ export function ContactDetail() {
       {/* ── THREE PANEL LAYOUT — GHL/HubSpot style ── */}
       <div className={cols3On ? "contact-3col" : ""} style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '12px', alignItems: 'stretch' }}>
 
-        {/* ══════════════════════════════════
+        {/* ══════════════════════════════════════════════════════
             LEFT PANEL
-        ══════════════════════════════════ */}
+        ══════════════════════════════════════════════════════ */}
         <div className="contact-col" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
           {/* CONTACT INFO */}
@@ -1646,8 +1725,8 @@ export function ContactDetail() {
 
           {/* STATUS & SOURCE */}
           <Section title="Status & Source" icon="🏷">
-            <InlineField label="Status" value={f.status} onChange={v => { saveField('status', v); loadTimeline() }} options={CONTACT_STATUSES} />
-            <InlineField label="Source" value={f.source} onChange={v => saveField('source', v)} options={CONTACT_SOURCES} placeholder="How did they find you?" />
+            <InlineField label="Status" value={f.status} onChange={v => saveEngagementField('status', v)} options={CONTACT_STATUSES} />
+            <InlineField label="Source" value={f.source} onChange={v => saveEngagementField('source', v)} options={CONTACT_SOURCES} placeholder="How did they find you?" />
             <InlineField label="Assigned Agent" value={f.agent_id} onChange={v => saveField('agent_id', v)}
               options={agents.map(a => ({ value: a.id, label: a.name }))} placeholder="Assign to agent" />
 
@@ -1810,8 +1889,8 @@ export function ContactDetail() {
 
           {/* NOTES */}
           <Section title="Notes" icon="📝">
-            <textarea value={f.notes || ''} onChange={e => setContact(c => ({ ...c, notes: e.target.value }))}
-              onBlur={e => saveField('notes', e.target.value)}
+            <textarea value={notesDraft !== null ? notesDraft : (f.notes || '')} onChange={e => setNotesDraft(e.target.value)}
+              onBlur={e => { saveEngagementField('notes', e.target.value); setNotesDraft(null) }}
               placeholder="Notes about this contact..."
               rows={5}
               style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
@@ -1819,7 +1898,7 @@ export function ContactDetail() {
 
           {/* TAGS */}
           <Section title="Tags" icon="🏷">
-            <TagInput label="" values={f.tags || []} onChange={v => saveField('tags', v)} />
+            <TagInput label="" values={f.tags || []} onChange={v => saveEngagementField('tags', v)} />
           </Section>
 
           <CustomFieldsSection entity="contacts" customData={f.custom_data} onChange={saveCustomField} />
@@ -1830,9 +1909,9 @@ export function ContactDetail() {
           </div>
         </div>
 
-        {/* ══════════════════════════════════
+        {/* ══════════════════════════════════════════════════════
             CENTER — CONVERSATION TIMELINE
-        ══════════════════════════════════ */}
+        ══════════════════════════════════════════════════════ */}
         <div className="contact-col">
           <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1930,9 +2009,9 @@ export function ContactDetail() {
           </div>
         </div>
 
-        {/* ══════════════════════════════════
+        {/* ══════════════════════════════════════════════════════
             RIGHT — ACTIONS + DEALS + TASKS + FILES
-        ══════════════════════════════════ */}
+        ══════════════════════════════════════════════════════ */}
         <div className="contact-col">
           <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relListings={relListings} relOffers={relOffers} relTasks={relTasks} agents={agents} agent={agent} voiceNotes={voiceNotes} onRefreshTimeline={loadTimeline} layout={contactLayout} editLayout={editLayout} setLayout={setContactLayout} toast={toast} />
         </div>
