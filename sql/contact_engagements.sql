@@ -12,9 +12,24 @@
 -- Tightening `contacts` itself to identity-only-and-shared is a
 -- deliberate follow-up migration, not part of this file.
 --
--- Requires sql/private_contacts_rls.sql to already be applied (reuses
--- its current_agent_id()/current_agent_is_admin() helper functions).
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
+--
+-- CORRECTED (post-diagnostic-query review): this originally called
+-- public.current_agent_id()/public.current_agent_is_admin(), assuming
+-- sql/private_contacts_rls.sql's helper functions were live. Running
+-- the read-only RLS diagnostic query from CONTACT_ENGAGEMENT_MODEL_
+-- PROPOSAL.md against the real database showed the LIVE `contacts`
+-- policy actually uses app_current_agent_role()/app_current_agent_id()
+-- -- functions this repo can't find defined anywhere (they were
+-- evidently created directly against the database, outside git). The
+-- functions this repo CAN confirm are live are
+-- public.app_current_agent_id() / public.app_is_admin() /
+-- public.app_is_secretary(), from sql/phase1/A_safe_foundation.sql --
+-- the same ones sql/C4_scope_open_rls_policies.sql already uses
+-- successfully elsewhere. This migration was rewritten to use those
+-- instead, since current_agent_id()/current_agent_is_admin() were
+-- never confirmed to exist and would likely make every policy below
+-- fail with "function does not exist" if run as originally written.
 -- ══════════════════════════════════════════════════════════════════
 
 -- ── TABLE ──────────────────────────────────────────────────────────
@@ -84,30 +99,33 @@ where c.agent_id is not null
   );
 
 -- ── RLS ────────────────────────────────────────────────────────────
--- An engagement is visible/editable only to the agent who owns it,
--- or an admin. This is the actual privacy boundary for status/
--- source/tags/notes/custom_fields going forward.
+-- An engagement is visible/editable only to the agent who owns it, or
+-- an admin/secretary (matches the exact shape of the live `contacts`
+-- policy: owner OR admin/secretary, secretary included because the
+-- app's own canManage check treats secretary as a manager role too --
+-- see AuthContext.jsx). This is the actual privacy boundary for
+-- status/source/tags/notes/custom_fields going forward.
 alter table contact_engagements enable row level security;
 
 drop policy if exists engagements_select on contact_engagements;
 create policy engagements_select on contact_engagements
 for select to authenticated
-using (agent_id = public.current_agent_id() or public.current_agent_is_admin());
+using (agent_id = public.app_current_agent_id() or public.app_is_admin() or public.app_is_secretary());
 
 drop policy if exists engagements_insert on contact_engagements;
 create policy engagements_insert on contact_engagements
 for insert to authenticated
-with check (agent_id = public.current_agent_id() or public.current_agent_is_admin());
+with check (agent_id = public.app_current_agent_id() or public.app_is_admin() or public.app_is_secretary());
 
 drop policy if exists engagements_update on contact_engagements;
 create policy engagements_update on contact_engagements
 for update to authenticated
-using (agent_id = public.current_agent_id() or public.current_agent_is_admin());
+using (agent_id = public.app_current_agent_id() or public.app_is_admin() or public.app_is_secretary());
 
 drop policy if exists engagements_delete on contact_engagements;
 create policy engagements_delete on contact_engagements
 for delete to authenticated
-using (agent_id = public.current_agent_id() or public.current_agent_is_admin());
+using (agent_id = public.app_current_agent_id() or public.app_is_admin() or public.app_is_secretary());
 
 -- ══════════════════════════════════════════════════════════════════
 -- VERIFICATION
