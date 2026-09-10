@@ -1,6 +1,6 @@
 import { ClickToCall } from '../components/ClickToCall'
 import { authFetch } from '../lib/apiAuth'
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 // TargetOS V2 — Contact Detail Page (Full Rebuild)
 //
 // LEFT PANEL:   Rich buyer/seller profile — all fields inline
@@ -8,7 +8,7 @@ import { authFetch } from '../lib/apiAuth'
 //               full date history
 // CENTER PANEL: Conversation timeline
 // RIGHT PANEL:  Quick actions, deals, tasks, files
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
@@ -58,7 +58,7 @@ const FOLLOWUP_TEMPLATES = [
   { value: 'market_update',label: '📊 Market update' },
 ]
 
-// ── INLINE EDIT FIELD ─────────────────────────────────────────────
+// ── INLINE EDIT FIELD ─────────────────────────────────────────────────────
 function InlineField({ label, value, onChange, type = 'text', options = null, placeholder = '—', multiline = false, prefix = null }) {
   const [editing, setEditing]   = useState(false)
   const [draft,   setDraft]     = useState(value)
@@ -116,7 +116,7 @@ function InlineField({ label, value, onChange, type = 'text', options = null, pl
   )
 }
 
-// ── MULTI-TAG INPUT ───────────────────────────────────────────────
+// ── MULTI-TAG INPUT ──────────────────────────────────────────────────
 function TagInput({ label, values = [], options, onChange }) {
   const [input, setInput] = useState('')
 
@@ -157,7 +157,7 @@ function TagInput({ label, values = [], options, onChange }) {
   )
 }
 
-// ── SECTION HEADER ────────────────────────────────────────────────
+// ── SECTION HEADER ─────────────────────────────────────────────────
 function Section({ title, icon, children, collapsible = true, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
@@ -177,7 +177,7 @@ function Section({ title, icon, children, collapsible = true, defaultOpen = true
   )
 }
 
-// ── TIMELINE ITEM ─────────────────────────────────────────────────
+// ── TIMELINE ITEM ───────────────────────────────────────────────────────
 const TL_TYPES = {
   call:         { icon: '📞', color: '#10B981', label: 'Call' },
   call_inbound: { icon: '📲', color: '#10B981', label: 'Inbound Call' },
@@ -247,7 +247,7 @@ function TimelineItem({ item }) {
         {/* Call recording player */}
         {item.recording_url && (
           <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--panel)', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>📼 Call Recording</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>💼 Call Recording</div>
             {recState.status === 'ready'
               ? <audio controls autoPlay style={{ width: '100%', height: 32 }} src={recState.url} />
               : (
@@ -308,7 +308,7 @@ function TimelineItem({ item }) {
   )
 }
 
-// ── ADD TO TIMELINE ───────────────────────────────────────────────
+// ── ADD TO TIMELINE ──────────────────────────────────────────────────
 function AddToTimeline({ contactId, agentId, onAdded }) {
   const [type, setType] = useState('note')
   const [body, setBody] = useState('')
@@ -335,6 +335,12 @@ function AddToTimeline({ contactId, agentId, onAdded }) {
           direction: 'Outbound', called_at: new Date().toISOString(),
         })
       } else {
+        // FIX (ESLint no-undef, Sept 2026 audit follow-up): this component
+        // only receives an `agentId` prop (see the destructure above), not
+        // an `agent` object -- `agent?.id` threw ReferenceError here, which
+        // the outer try/catch swallowed into a misleading "Failed" toast
+        // even though the audit-log insert never actually contained an
+        // agent_id.
         await supabase.from('audit_log').insert({
           agent_id: agentId, table_name: 'contacts', record_id: contactId,
           action: 'note', field_name: type, new_value: body,
@@ -374,11 +380,11 @@ function AddToTimeline({ contactId, agentId, onAdded }) {
   )
 }
 
-// ════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 // AGREEMENTS SECTION — Upload real documents per agreement type
 // Stores in Supabase Storage under contacts/{id}/agreements/
 // Logs every upload to the activity timeline
-// ════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 const AGREEMENT_TYPES = [
   { id: 'buyer',    label: 'Buyer Agreement',    icon: '🏠', color: '#10B981' },
   { id: 'seller',   label: 'Listing Agreement',  icon: '🏡', color: '#F5A623' },
@@ -601,10 +607,10 @@ function AgreementsSection({ contactId, agentId, onActivityLog }) {
 }
 
 
-// ════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 // RIGHT PANEL — Full featured client service panel
 // Matches and exceeds Brivity's right panel functionality
-// ════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 
 // Section-visibility: admins can hide panels + reorder via a layout
 // settings object. hideKey identifies the panel. In arrange mode
@@ -629,7 +635,7 @@ function RightSection({ title, icon, color = 'var(--brand)', children, action = 
     <div {...dragProps} style={{ background: 'var(--panel)', borderRadius: '10px', border: editLayout ? '1px dashed var(--brand)' : '1px solid var(--border)', overflow: 'hidden', marginBottom: '8px', order: ord, opacity: isHidden ? 0.5 : 1 }}>
       <div onClick={() => !editLayout && setOpen(o => !o)}
         style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: editLayout ? 'grab' : 'pointer', userSelect: 'none', background: 'var(--dim)' }}>
-        {editLayout && hideKey && <span style={{ fontSize: '14px', color: 'var(--muted)', cursor: 'grab' }} title="Drag to reorder">⠿</span>}
+        {editLayout && hideKey && <span style={{ fontSize: '14px', color: 'var(--muted)', cursor: 'grab' }} title="Drag to reorder">⠠⠿</span>}
         <span style={{ fontSize: '14px' }}>{icon}</span>
         <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{title}</span>
         {editLayout && hideKey ? (
@@ -730,7 +736,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
       toast('✅ Task created')
       // Activity lock: log task creation
       await supabase.from('audit_log').insert({
-        agent_id: agentId, table_name: 'contacts', record_id: contactId,
+        agent_id: agent?.id, table_name: 'contacts', record_id: contactId,
         action: 'task', field_name: 'task',
         new_value: newTask.title,
         metadata: { description: 'Task created: ' + newTask.title, type: 'task' },
@@ -760,7 +766,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
       toast('✅ Appointment created')
       // Activity lock: log appointment
       await supabase.from('audit_log').insert({
-        agent_id: agentId, table_name: 'contacts', record_id: contactId,
+        agent_id: agent?.id, table_name: 'contacts', record_id: contactId,
         action: 'note', field_name: 'appointment',
         new_value: newAppt.title + (newAppt.date ? ' on ' + newAppt.date : ''),
         metadata: { description: 'Appointment: ' + newAppt.title, type: 'appointment' },
@@ -1081,15 +1087,15 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
   )
 }
 
-// ════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 // MAIN CONTACT DETAIL PAGE
-// ════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 export function ContactDetail() {
   const { id }    = useParams()
   const navigate  = useNavigate()
   const location  = useLocation()
 
-  // ── PREV / NEXT CONTACT (July 2026) ─────────────────────────────
+  // ── PREV / NEXT CONTACT (July 2026) ────────────────────────────
   // Walks the same list the user came from: the Contacts page passes
   // its visible row order via navigation state; when the page is
   // opened directly (deep link, refresh), fall back to the default
@@ -1116,6 +1122,13 @@ export function ContactDetail() {
 
   const [contact,   setContact]   = useState(null)
   const [logOpen,   setLogOpen]   = useState(false)
+  // FIX (ESLint no-undef, Sept 2026 audit follow-up): the header's Email
+  // and Text quick-action buttons called setComposeOpen/setSmsOpen, but
+  // only RightPanel (a different component further up this file) ever
+  // declared that state -- clicking either button here threw
+  // ReferenceError instead of opening a compose modal.
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [smsOpen,      setSmsOpen]     = useState(false)
   const [loading,   setLoading]   = useState(true)
   const [timeline,  setTimeline]  = useState([])
   const [tlLoading, setTlLoading] = useState(true)
@@ -1296,7 +1309,8 @@ export function ContactDetail() {
           title = 'Status: ' + (a.old_value || '—') + ' → ' + a.new_value
         } else if (a.action === 'updated' && a.field_name) {
           const fieldLabel = a.field_name.replace(/_/g, ' ')
-          if (a.old_value && a.new_value) title = `${fieldLabel}: "${a.old_value}" → "${a.new_value}""\n          else if (a.new_value)           title = "${fieldLabel} set to "${a.new_value}"`
+          if (a.old_value && a.new_value) title = `${fieldLabel}: "${a.old_value}" → "${a.new_value}"`
+          else if (a.new_value)           title = `${fieldLabel} set to "${a.new_value}"`
           else                            title = (fieldLabel) + " cleared"
         } else if (a.action === 'note') {
           body = a.new_value || ''
@@ -1372,7 +1386,7 @@ export function ContactDetail() {
     } catch (e) { console.warn('loadRelated:', e.message) }
   }
 
-  // ── AUTOSAVE FIELD ────────────────────────────────────────────
+  // ── AUTOSAVE FIELD ────────────────────────────
   async function saveField(field, value) {
     if (!contact) return
     try {
@@ -1427,7 +1441,7 @@ export function ContactDetail() {
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
   }
 
-  // ── STATUS QUICK UPDATE ───────────────────────────────────────
+  // ── STATUS QUICK UPDATE ───────────────────────────
   async function quickStatus(s) {
     try {
       const updated = await db.contacts.update(id, { status: s }, agent?.id)
@@ -1437,7 +1451,7 @@ export function ContactDetail() {
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
   }
 
-  // ── SAVE AUTOMATION ───────────────────────────────────────────
+  // ── SAVE AUTOMATION ────────────────────────────
   async function saveAutomation(fields) {
     setSavingAuto(true)
     try {
@@ -1591,7 +1605,7 @@ export function ContactDetail() {
       {editLayout && isAdmin && (
         <div style={{ background:'rgba(204,34,0,.06)', border:'1px solid var(--brand)', borderRadius:10, padding:'10px 14px', marginBottom:12, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
           <span style={{ fontSize:13, fontWeight:700, color:'var(--brand)' }}>⚙ Arrange mode</span>
-          <span style={{ fontSize:12, color:'var(--muted)', flex:1 }}>Drag the ⠿ handle on any panel to reorder. Click ✕ on a panel to hide it. Changes save for everyone.</span>
+          <span style={{ fontSize:12, color:'var(--muted)', flex:1 }}>Drag the ⠠⠿ handle on any panel to reorder. Click ✕ on a panel to hide it. Changes save for everyone.</span>
           <button onClick={saveLayoutNow}
             style={{ padding:'6px 14px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>Save for everyone</button>
           <button onClick={()=>{ loadContactLayout(true).then(setContactLayout); setEditLayout(false) }}
@@ -1602,9 +1616,9 @@ export function ContactDetail() {
       {/* ── THREE PANEL LAYOUT — GHL/HubSpot style ── */}
       <div className={cols3On ? "contact-3col" : ""} style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: '12px', alignItems: 'stretch' }}>
 
-        {/* ══════════════════════════════════════════════════════
+        {/* ══════════════════════════════════
             LEFT PANEL
-        ══════════════════════════════════════════════════════ */}
+        ══════════════════════════════════ */}
         <div className="contact-col" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
           {/* CONTACT INFO */}
@@ -1773,7 +1787,11 @@ export function ContactDetail() {
                     agent_id:   f.agent_id || agent?.id,
                     created_by: agent?.id,
                     contact_id: id,
-                    title:      `Follow up with ${f.first_name} ${f.last_name || ''}",\n                    due_date:   f.next_followup,\n                    priority:   f.status === 'Hot' ? 'urgent' : f.status === 'Warm' ? 'high' : 'normal',\n                    status:     'pending',\n                    notes:      "Follow-up for ${f.first_name} — ${f.motivation || ''} ${f.timeline || ''}`.trim(),
+                    title:      `Follow up with ${f.first_name} ${f.last_name || ''}`,
+                    due_date:   f.next_followup,
+                    priority:   f.status === 'Hot' ? 'urgent' : f.status === 'Warm' ? 'high' : 'normal',
+                    status:     'pending',
+                    notes:      `Follow-up for ${f.first_name} — ${f.motivation || ''} ${f.timeline || ''}`.trim(),
                   })
                   toast('✅ Follow-up task created')
                 } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
@@ -1812,9 +1830,9 @@ export function ContactDetail() {
           </div>
         </div>
 
-        {/* ══════════════════════════════════════════════════════
+        {/* ══════════════════════════════════
             CENTER — CONVERSATION TIMELINE
-        ══════════════════════════════════════════════════════ */}
+        ══════════════════════════════════ */}
         <div className="contact-col">
           <div style={{ background: 'var(--panel)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1912,9 +1930,9 @@ export function ContactDetail() {
           </div>
         </div>
 
-        {/* ══════════════════════════════════════════════════════
+        {/* ══════════════════════════════════
             RIGHT — ACTIONS + DEALS + TASKS + FILES
-        ══════════════════════════════════════════════════════ */}
+        ══════════════════════════════════ */}
         <div className="contact-col">
           <RightPanel contact={f} contactId={id} navigate={navigate} relDeals={relDeals} relListings={relListings} relOffers={relOffers} relTasks={relTasks} agents={agents} agent={agent} voiceNotes={voiceNotes} onRefreshTimeline={loadTimeline} layout={contactLayout} editLayout={editLayout} setLayout={setContactLayout} toast={toast} />
         </div>
@@ -1923,6 +1941,8 @@ export function ContactDetail() {
       <Confirm open={confirmDel} message={'Delete ' + f.first_name + ' ' + (f.last_name || '') + '? Cannot be undone.'} onConfirm={deleteContact} onCancel={() => setConfirmDel(false)} />
       <LogInteractionModal open={logOpen} onClose={() => setLogOpen(false)} contact={f} agent={agent} toast={toast}
         onLogged={() => { setContact(prev => ({ ...prev, contacted: true, last_contact_at: new Date().toISOString(), first_contact_at: prev.first_contact_at || new Date().toISOString() })); loadTimeline() }} />
+      <EmailComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} contact={f} agent={agent} toast={toast} />
+      <SmsComposeModal open={smsOpen} onClose={() => setSmsOpen(false)} contact={f} agent={agent} toast={toast} onSent={loadTimeline} />
     </div>
   )
 }
