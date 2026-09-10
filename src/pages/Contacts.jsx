@@ -388,7 +388,13 @@ export function Contacts() {
           }
           rows = Array.from(byId.values())
         } catch (e) {
-          if (!(e?.code === '42P01' || String(e?.message||'').includes('contact_engagements'))) {
+          // Narrowed to the precise "relation does not exist" signal
+          // (post-launch review, Sept 2026) -- a bare substring match
+          // on "contact_engagements" would also swallow a genuine
+          // permission/FK error with zero visibility into why the
+          // grid silently lost contacts, matching the same fix
+          // applied to ContactDetail.jsx's saveEngagementField.
+          if (!(e?.code === '42P01' || String(e?.message||'').includes('relation "contact_engagements" does not exist'))) {
             console.warn('Engagement merge skipped:', e.message)
           }
         }
