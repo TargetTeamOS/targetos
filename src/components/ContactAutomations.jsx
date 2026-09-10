@@ -2,9 +2,21 @@ import { useState, useEffect } from 'react'
 import { authFetch } from '../lib/apiAuth'
 
 // Real contact-scoped automations: lists what's ACTIVE on this contact
-// with a green "Running" badge, lets admin/secretary apply any enabled
+// with a green "Running" badge, lets an agent apply any enabled
 // automation or stop a running one. Replaces the old hardcoded fake
 // "Apply" buttons that just navigated away.
+//
+// UPDATED (Sept 2026, contact-engagement-model follow-up): applying
+// and stopping used to be gated to admin/secretary (`canManage`)
+// only. Now any signed-in agent can apply their own automation to a
+// contact they work -- the server scopes it to that agent, so two
+// agents independently running the same automation on a shared
+// contact (see CONTACT_ENGAGEMENT_MODEL_PROPOSAL.md) don't collide.
+// `canManage` still gets you admin/secretary oversight: you can see
+// AND stop every agent's running automation on the contact, not just
+// your own (each item's `mine` flag, set server-side, tells you which
+// is which). A regular agent only ever sees their own scoped rows
+// plus any legacy pre-migration rows that predate per-agent scoping.
 const ff = 'Inter, system-ui, sans-serif'
 
 export function ContactAutomations({ contactId, canManage, toast, onRefreshTimeline }) {
@@ -53,7 +65,11 @@ export function ContactAutomations({ contactId, canManage, toast, onRefreshTimel
     setBusy('')
   }
 
-  const activeIds = new Set(active.map(a => a.automation_id))
+  // Only MY OWN active automations (plus legacy unscoped ones, which
+  // `mine` is set true for server-side) block re-applying -- another
+  // agent already running this automation on a shared contact doesn't
+  // stop me from starting my own independent instance of it.
+  const activeIds = new Set(active.filter(a => a.mine).map(a => a.automation_id))
   const appliable = available.filter(a => !activeIds.has(a.id))
 
   if (loading) return <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: ff }}>Loading automations…</div>
@@ -71,12 +87,13 @@ export function ContactAutomations({ contactId, canManage, toast, onRefreshTimel
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#00c875', flexShrink: 0, animation: 'pulse 1.6s infinite' }} />
               {a.automations ? a.automations.name : 'Automation'}
+              {!a.mine && <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 4px' }}>OTHER AGENT</span>}
             </div>
             <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
               Running · applied {a.applied_at ? new Date(a.applied_at).toLocaleDateString() : ''}
             </div>
           </div>
-          {canManage && (
+          {(a.mine || canManage) && (
             <button onClick={() => stop(a.automation_id)} disabled={busy === a.automation_id}
               style={{ padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: ff, flexShrink: 0 }}>
               Stop
@@ -85,7 +102,11 @@ export function ContactAutomations({ contactId, canManage, toast, onRefreshTimel
         </div>
       ))}
 
-      {canManage && (
+      {/* Apply is open to any signed-in agent now -- the server scopes
+          whatever they apply to their own agent_id, so this can't
+          start or stop anyone else's campaign (canManage above is
+          only for admin/secretary to see & stop OTHER agents' rows). */}
+      {(
         picking ? (
           <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, fontFamily: ff }}>Apply an automation:</div>

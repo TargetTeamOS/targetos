@@ -422,40 +422,48 @@ export function Contacts() {
    * "Start working this lead" — a directory-only card (someone else's
    * contact, shown to me as name/phone/email only) has no data of
    * mine to open, because none exists yet: I've never worked this
-   * person before. This creates MY OWN independent contact record —
-   * same parent identity (name/phone/email), but a completely
-   * separate row, with my own notes/status/tags/timeline from here on,
+   * person before.
+   *
+   * UPDATED (Sept 2026 audit follow-up, see CONTACT_ENGAGEMENT_MODEL_
+   * PROPOSAL.md): this used to create a completely separate `contacts`
+   * row per agent for the same person -- a duplicate copy of their
+   * name/phone/email that could drift out of sync with the original.
+   * It now creates a `contact_engagements` row instead: the SAME
+   * shared contact_id (dirContact.id, the parent identity), with my
+   * own private status/source/tags/notes/timeline from here on,
    * invisible to the other agent(s) who also work with this same
-   * person. No schema change needed for this: `contacts` already
-   * supports one row per agent relationship via agent_id, and the
-   * existing duplicate-detection in db.contacts.create() already
-   * scopes itself correctly post-migration-H — RLS silently excludes
-   * other agents' full rows from that check, so it naturally finds
-   * only MY OWN prior branch for this same person (if I already
-   * started one) rather than a stranger's, and creates a fresh
-   * independent one otherwise.
+   * person -- see db.engagements.startWorking(). No new contact row,
+   * no duplicated identity to fall out of sync.
+   *
+   * Requires sql/contact_engagements.sql to have been run -- if that
+   * table doesn't exist yet, this fails with a clear message instead
+   * of a cryptic Postgres error, same as the directoryOnly load above
+   * degrades gracefully when H_shared_contact_directory.sql isn't
+   * applied yet.
+   *
+   * KNOWN FOLLOW-UP, NOT YET DONE: the main contacts grid above still
+   * filters by `contacts.agent_id` (the original creating agent), not
+   * by engagement -- so a lead claimed here via engagement won't show
+   * up in "my contacts" until the board's own list query is made
+   * engagement-aware. This function still opens the contact directly
+   * via navigate() below, so the claim itself works; only the grid
+   * listing is the open gap.
    */
   async function startWorkingLead(dirContact) {
     setClaiming(dirContact.id)
     try {
-      const created = await add({
-        first_name: dirContact.first_name,
-        last_name:  dirContact.last_name || '',
-        phone:      dirContact.phone || null,
-        email:      dirContact.email || null,
-        type:       dirContact.type || 'Client',
-        status:     'New',
-        source:     'Shared Directory',
-        agent_id:   agent?.id,
+      const { engagement, created } = await db.engagements.startWorking(dirContact.id, agent?.id, {
+        status: 'New',
+        source: 'Shared Directory',
       })
-      toast('✅ Now working this lead — your own private notes and timeline start here')
-      navigate('/contacts/' + created.id)
+      toast(created
+        ? '✅ Now working this lead — your own private notes and timeline start here'
+        : 'You already have your own record for this contact — opening it', created ? undefined : '#F5A623')
+      navigate('/contacts/' + dirContact.id)
+      void engagement // reserved for the engagement-aware ContactDetail follow-up
     } catch(e) {
-      if (e.existingContact) {
-        // I already have my own branch for this same person — open
-        // it rather than creating a confusing duplicate.
-        toast('You already have your own record for this contact — opening it', '#F5A623')
-        navigate('/contacts/' + e.existingContact.id)
+      if (String(e?.message || '').includes('relation "contact_engagements" does not exist') || e?.code === '42P01') {
+        toast('This feature needs a database migration first (sql/contact_engagements.sql) — ask an admin to run it', '#DC2626')
       } else {
         toast('Could not start working this lead: ' + e.message, '#DC2626')
       }
