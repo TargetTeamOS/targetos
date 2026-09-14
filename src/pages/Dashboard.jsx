@@ -39,5 +39,3 @@ import { usePageView } from '../components/PageViewTracking'
 import { getFieldCatalog } from '../lib/fieldCatalog'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
-
-PLACEHOLDER_MARKER_DO_NOT_PUSH
