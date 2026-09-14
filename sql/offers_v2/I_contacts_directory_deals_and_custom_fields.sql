@@ -35,7 +35,7 @@
 -- the 6 existing columns), so this is safe to run even if the
 -- original narrower view is already live and already in use by the
 -- app.
--- ══════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
 
 create or replace view public.contacts_directory as
 select
@@ -47,14 +47,29 @@ select
   c.type,
   c.custom_data,
   -- Past deals, address + stage only, from both this team's own
-  -- production deals (`deals.contact_id`) and any Transaction
-  -- Coordinator deal this contact participates in (via
-  -- tc_participants -> tc_deals). No financial figures included.
+  -- production deals and any Transaction Coordinator deal this
+  -- contact participates in. No financial figures included.
+  --
+  -- CORRECTED: `deals` has no `contact_id` column at all (confirmed
+  -- live -- the first version of this migration assumed one and
+  -- failed with 42703 the moment it was run). A production deal is
+  -- linked to a contact through the `deal_contacts` join table
+  -- (deal_id, contact_id, role) instead -- see its usage throughout
+  -- src/pages/Production.jsx. ContactDetail.jsx's own "past deals"
+  -- query (loadRelated(), line ~1374) has this exact same bug --
+  -- `.eq('contact_id', id)` against `deals` -- but silently returns
+  -- an empty list instead of erroring, because it reads only
+  -- `r.data || []` from the response without ever checking
+  -- `r.error`. That's a separate, pre-existing bug in the app (not
+  -- introduced here, and not fixed by this migration) worth a
+  -- follow-up: production deals have likely never actually shown up
+  -- in any contact's "Past Deals" section.
   coalesce(
     (
       select jsonb_agg(jsonb_build_object('id', d.id, 'addr', d.addr, 'stage', d.stage) order by d.id)
-      from public.deals d
-      where d.contact_id = c.id
+      from public.deal_contacts dc
+      join public.deals d on d.id = dc.deal_id
+      where dc.contact_id = c.id
     ),
     '[]'::jsonb
   )
@@ -80,9 +95,9 @@ from public.contacts c;
 
 grant select on public.contacts_directory to authenticated;
 
--- ══════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
 -- VERIFICATION
--- ══════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
 -- Confirm the view now exposes the new columns:
 -- select column_name from information_schema.columns
 --   where table_schema = 'public' and table_name = 'contacts_directory'
@@ -98,9 +113,9 @@ grant select on public.contacts_directory to authenticated;
 --   -- expect: 1 row, with custom_data populated and deals showing
 --   -- addr/stage but no gci or sale_price anywhere in the JSON.
 
--- ══════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
 -- ROLLBACK
--- ══════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
 -- Restores the narrower column list from H_shared_contact_directory.sql:
 -- create or replace view public.contacts_directory as
 -- select id, first_name, last_name, phone, email, type
