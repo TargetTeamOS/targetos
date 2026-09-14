@@ -35,7 +35,7 @@
 -- the 6 existing columns), so this is safe to run even if the
 -- original narrower view is already live and already in use by the
 -- app.
--- ═══════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════════
 
 create or replace view public.contacts_directory as
 select
@@ -95,9 +95,9 @@ from public.contacts c;
 
 grant select on public.contacts_directory to authenticated;
 
--- ═══════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════════
 -- VERIFICATION
--- ═══════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════════
 -- Confirm the view now exposes the new columns:
 -- select column_name from information_schema.columns
 --   where table_schema = 'public' and table_name = 'contacts_directory'
@@ -113,9 +113,9 @@ grant select on public.contacts_directory to authenticated;
 --   -- expect: 1 row, with custom_data populated and deals showing
 --   -- addr/stage but no gci or sale_price anywhere in the JSON.
 
--- ═══════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════════
 -- ROLLBACK
--- ═══════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════════
 -- Restores the narrower column list from H_shared_contact_directory.sql:
 -- create or replace view public.contacts_directory as
 -- select id, first_name, last_name, phone, email, type
