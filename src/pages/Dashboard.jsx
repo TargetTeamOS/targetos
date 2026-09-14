@@ -233,3 +233,333 @@ function getDateRange(rangeId) {
   }
   return null
 }
+
+// ── CUSTOM WIDGET BUILDER ────────────────────────────────────────
+function CustomWidgetBuilder({ onSave, onClose, agents }) {
+  // ── ALL STATE AT TOP — never inside conditionals ──────────────
+  const [step,        setStep]       = useState(1)
+  const [availYears,  setAvailYears] = useState(DATE_RANGES)
+  const [board,       setBoard]      = useState(null)
+  const [chartType,   setChartType]  = useState('donut')
+  const [groupBy,     setGroupBy]    = useState('')
+  const [statuses,    setStatuses]   = useState([])
+  const [display,     setDisplay]    = useState('donut')
+  const [label,       setLabel]      = useState('')
+  const [color,       setColor]      = useState('#3B82F6')
+  const [dateRange,   setDateRange]  = useState('all')
+  const [agentScope,  setAgentScope] = useState('mine')
+  const [columns,     setColumns]    = useState([])
+  const [sortBy,      setSortBy]     = useState('created_at')
+  const [limitRows,   setLimitRows]  = useState(10)
+  const [numericField,setNumericField]=useState('')
+  const [liveCount,   setLiveCount]  = useState(null)
+  const [loadingCnt,  setLoadingCnt] = useState(false)
+  const [showCols,    setShowCols]   = useState(false)
+
+  const STEPS = ['Board', 'Chart', 'Filters', 'Display']
+
+  React.useEffect(() => {
+    loadAvailableYears(supabase).then(() => setAvailYears([...DATE_RANGES])).catch(() => setAvailYears([...DATE_RANGES]))
+  }, [])
+
+  const boardDef = BOARD_OPTIONS.find(b => b.id === board)
+
+  React.useEffect(function() {
+    if (!board || !boardDef) return
+    let cancelled = false
+    async function countIt() {
+      setLoadingCnt(true)
+      try {
+        let q = supabase.from(boardDef.table).select('id', { count: 'exact', head: true })
+        if (statuses.length && boardDef.statusField) q = q.in(boardDef.statusField, statuses)
+        const dr = getDateRange(dateRange)
+        if (dr && boardDef.dateField) q = q.gte(boardDef.dateField, dr.from).lte(boardDef.dateField, dr.to + 'T23:59:59')
+        const { count } = await q
+        if (!cancelled) setLiveCount(count || 0)
+      } catch { if (!cancelled) setLiveCount(null) }
+      finally { if (!cancelled) setLoadingCnt(false) }
+    }
+    countIt()
+    return () => { cancelled = true }
+  }, [board, statuses.join(','), dateRange, agentScope])
+
+  React.useEffect(function() {
+    if (!boardDef) return
+    setGroupBy(boardDef.statusField || '')
+    setNumericField(boardDef.numericFields && boardDef.numericFields[0] ? boardDef.numericFields[0].field : '')
+    setColumns(boardDef.displayCols.slice(0, 4).map(function(c){ return c.field }))
+    setSortBy(boardDef.sortOptions && boardDef.sortOptions[0] ? boardDef.sortOptions[0].field : 'created_at')
+    if (!label) setLabel(boardDef.label)
+  }, [board])
+
+  const CHART_TYPES = [
+    { id:'donut',   label:'Donut',   icon:'🍩', desc:'Group by status' },
+    { id:'bar',     label:'Bar',     icon:'📊', desc:'Compare groups' },
+    { id:'number',  label:'Number',  icon:'🔢', desc:'Single KPI' },
+    { id:'battery', label:'Battery', icon:'🔋', desc:'Progress to goal' },
+    { id:'list',    label:'List',    icon:'📋', desc:'Record list' },
+    { id:'table',   label:'Table',   icon:'⬜', desc:'Multi-column' },
+    { id:'column',  label:'Column',  icon:'📉', desc:'Over time' },
+    { id:'line',    label:'Line',    icon:'📈', desc:'Trend line' },
+  ]
+  const COLOR_OPTS = ['#3B82F6','#10B981','#CC2200','#F5A623','#8B5CF6','#EC4899','#14B8A6','#84CC16','#1B2B4B','#F97316']
+
+  function toggleStatus(s) { setStatuses(function(p){ return p.includes(s) ? p.filter(function(x){return x!==s}) : [...p, s] }) }
+  function toggleCol(f)    { setColumns(function(p){ return p.includes(f) ? p.filter(function(x){return x!==f}) : [...p, f] }) }
+
+  function save() {
+    if (!board) return
+    const displayMode = ['list','table'].includes(chartType) ? chartType : chartType === 'number' || chartType === 'battery' ? 'count' : 'donut'
+    const cfg = {
+      id: 'custom_' + Date.now(),
+      visible: true, size: 'md', color,
+      customConfig: {
+        board, label: label || boardDef.label, icon: boardDef.icon || '🔲',
+        chartType, display: displayMode,
+        groupBy: groupBy || boardDef.statusField,
+        statuses, dateRange, agentScope,
+        sortBy, limitRows,
+        columns: columns.length ? columns : boardDef.displayCols.slice(0,4).map(function(c){return c.field}),
+        numericField,
+      }
+    }
+    onSave(cfg)
+  }
+
+  const S = { width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }
+  const SL = { fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:5, marginTop:12, display:'block' }
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:3000, background:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+      onClick={onClose}>
+      <div onClick={function(e){e.stopPropagation()}}
+        style={{ background:'var(--panel)', borderRadius:16, width:'100%', maxWidth:680, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 20px 60px rgba(0,0,0,.3)', overflow:'hidden' }}>
+
+        <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <div style={{ fontSize:16, fontWeight:800, color:'var(--text)' }}>Add Widget</div>
+            <div style={{ display:'flex', gap:6, marginTop:6 }}>
+              {STEPS.map(function(s,i) {
+                return (
+                  <button key={s} onClick={function(){if(i<step-1)setStep(i+1)}}
+                    style={{ padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:700, cursor:i<step-1?'pointer':'default', fontFamily:ff,
+                      background: step===i+1 ? 'var(--brand)' : i<step-1 ? 'var(--dim)' : 'transparent',
+                      color: step===i+1 ? '#fff' : i<step-1 ? 'var(--text)' : 'var(--muted)',
+                      border: '1px solid ' + (step===i+1 ? 'var(--brand)' : 'var(--border)') }}>
+                    {i+1}. {s}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          {liveCount !== null && (
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:28, fontWeight:900, color:color }}>{loadingCnt ? '...' : liveCount}</div>
+              <div style={{ fontSize:10, color:'var(--muted)' }}>matching records</div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
+
+          {step === 1 && (
+            <div>
+              <div style={{ fontSize:13, color:'var(--muted)', marginBottom:12 }}>What data should this widget show?</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
+                {BOARD_OPTIONS.map(function(b) {
+                  return (
+                    <div key={b.id} onClick={function(){setBoard(b.id);setStep(2)}}
+                      style={{ padding:'12px 14px', borderRadius:10, border:'2px solid '+(board===b.id?'var(--brand)':'var(--border)'),
+                        background: board===b.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', transition:'all .12s' }}>
+                      <div style={{ fontSize:20, marginBottom:4 }}>{b.icon}</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{b.label}</div>
+                      <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>{b.displayCols.length} fields</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {step === 2 && boardDef && (
+            <div>
+              <div style={{ fontSize:13, color:'var(--muted)', marginBottom:12 }}>Choose visualization type</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
+                {CHART_TYPES.map(function(ct) {
+                  return (
+                    <div key={ct.id} onClick={function(){setChartType(ct.id);setDisplay(ct.id==='list'?'list':ct.id==='table'?'table':ct.id==='number'?'count':'donut')}}
+                      style={{ padding:'10px 8px', borderRadius:10, border:'2px solid '+(chartType===ct.id?'var(--brand)':'var(--border)'),
+                        background: chartType===ct.id ? 'rgba(204,34,0,.06)' : 'var(--dim)', cursor:'pointer', textAlign:'center', transition:'all .12s' }}>
+                      <div style={{ fontSize:22, marginBottom:4 }}>{ct.icon}</div>
+                      <div style={{ fontSize:11, fontWeight:700, color:'var(--text)' }}>{ct.label}</div>
+                      <div style={{ fontSize:9, color:'var(--muted)', marginTop:2, lineHeight:1.3 }}>{ct.desc}</div>
+                    </div>
+                  )
+                })}
+              </div>
+              {['donut','bar','column','line'].includes(chartType) && boardDef.chartFields && boardDef.chartFields.length > 0 && (
+                <div>
+                  <span style={SL}>Group / Segment by</span>
+                  <select value={groupBy} onChange={function(e){setGroupBy(e.target.value)}} style={S}>
+                    {boardDef.chartFields.map(function(f){ return <option key={f.field} value={f.field}>{f.label}</option> })}
+                  </select>
+                </div>
+              )}
+              {['number','battery','bar','column','line'].includes(chartType) && boardDef.numericFields && boardDef.numericFields.length > 0 && (
+                <div>
+                  <span style={SL}>Value to measure</span>
+                  <select value={numericField} onChange={function(e){setNumericField(e.target.value)}} style={S}>
+                    <option value="">Count of records</option>
+                    {boardDef.numericFields.map(function(f){ return <option key={f.field} value={f.field}>{f.label}</option> })}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 3 && boardDef && (
+            <div>
+              <span style={SL}>Widget label</span>
+              <input value={label} onChange={function(e){setLabel(e.target.value)}} placeholder={boardDef.label} style={S} />
+
+              <span style={SL}>Show data for</span>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
+                {[{id:'all',label:'All agents'},{id:'mine',label:'My records'},...agents.filter(function(a){return a.active}).map(function(a){return{id:a.id,label:a.name.split(' ')[0],color:a.color}})].map(function(opt) {
+                  const active = agentScope === opt.id
+                  const c = opt.color || 'var(--brand)'
+                  return (
+                    <button key={opt.id} onClick={function(){setAgentScope(opt.id)}}
+                      style={{ padding:'5px 12px', borderRadius:99, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:ff,
+                        border:'1px solid '+(active?c:'var(--border)'), background:active?c+'18':'transparent', color:active?c:'var(--muted)' }}>
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <span style={SL}>Date range</span>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
+                {availYears.map(function(dr) {
+                  return (
+                    <button key={dr.id} onClick={function(){setDateRange(dr.id)}}
+                      style={{ padding:'4px 10px', borderRadius:99, fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:ff,
+                        border:'1px solid '+(dateRange===dr.id?'var(--brand)':'var(--border)'), background:dateRange===dr.id?'rgba(204,34,0,.08)':'transparent', color:dateRange===dr.id?'var(--brand)':'var(--muted)' }}>
+                      {dr.label}
+                    </button>
+                  )
+                })}
+                <button onClick={function(){ if(!String(dateRange).startsWith('custom:')) setDateRange('custom::') }}
+                  style={{ padding:'4px 10px', borderRadius:99, fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:ff,
+                    border:'1px solid '+(String(dateRange).startsWith('custom:')?'var(--brand)':'var(--border)'), background:String(dateRange).startsWith('custom:')?'rgba(204,34,0,.08)':'transparent', color:String(dateRange).startsWith('custom:')?'var(--brand)':'var(--muted)' }}>
+                  Custom…
+                </button>
+              </div>
+              {String(dateRange).startsWith('custom:') && (
+                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:12, flexWrap:'wrap' }}>
+                  <input type="date" value={dateRange.split(':')[1]||''}
+                    onChange={e=>{ const p=dateRange.split(':'); setDateRange('custom:'+e.target.value+':'+(p[2]||'')) }}
+                    style={{ padding:'6px 10px', borderRadius:8, border:'1px solid var(--border)', fontSize:12, background:'var(--panel)', color:'var(--text)', fontFamily:ff }} />
+                  <span style={{ fontSize:12, color:'var(--muted)' }}>to</span>
+                  <input type="date" value={dateRange.split(':')[2]||''}
+                    onChange={e=>{ const p=dateRange.split(':'); setDateRange('custom:'+(p[1]||'')+':'+e.target.value) }}
+                    style={{ padding:'6px 10px', borderRadius:8, border:'1px solid var(--border)', fontSize:12, background:'var(--panel)', color:'var(--text)', fontFamily:ff }} />
+                </div>
+              )}
+                <div>
+                  <span style={SL}>Filter by stage/status (empty = all)</span>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                    {boardDef.statusOptions.map(function(s) {
+                      return (
+                        <button key={s} onClick={function(){toggleStatus(s)}}
+                          style={{ padding:'4px 10px', borderRadius:99, fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:ff,
+                            border:'1px solid '+(statuses.includes(s)?'var(--brand)':'var(--border)'), background:statuses.includes(s)?'rgba(204,34,0,.08)':'transparent', color:statuses.includes(s)?'var(--brand)':'var(--muted)' }}>
+                          {s}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 4 && boardDef && (
+            <div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <div>
+                  <span style={SL}>Sort by</span>
+                  <select value={sortBy} onChange={function(e){setSortBy(e.target.value)}} style={S}>
+                    {boardDef.sortOptions.map(function(s){ return <option key={s.field} value={s.field}>{s.label}</option> })}
+                  </select>
+                </div>
+                <div>
+                  <span style={SL}>Max rows</span>
+                  <select value={limitRows} onChange={function(e){setLimitRows(Number(e.target.value))}} style={S}>
+                    {[5,10,15,20,25,50].map(function(n){ return <option key={n} value={n}>{n} rows</option> })}
+                  </select>
+                </div>
+              </div>
+
+              <span style={SL}>Widget accent color</span>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+                {COLOR_OPTS.map(function(c) {
+                  return (
+                    <div key={c} onClick={function(){setColor(c)}}
+                      style={{ width:28, height:28, borderRadius:'50%', background:c, cursor:'pointer',
+                        border: color===c ? '3px solid var(--text)' : '2px solid transparent', transition:'border .1s' }} />
+                  )
+                })}
+              </div>
+
+              {['list','table'].includes(chartType) && (
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:4, marginBottom:8 }}>
+                    <span style={{...SL, marginTop:0, marginBottom:0}}>Choose columns to show</span>
+                    <button onClick={function(){setShowCols(function(p){return !p})}}
+                      style={{ fontSize:11, color:'var(--brand)', background:'none', border:'none', cursor:'pointer', fontFamily:ff, fontWeight:700 }}>
+                      {showCols ? 'Hide' : 'Edit (' + columns.length + ' selected)'}
+                    </button>
+                  </div>
+                  {showCols && (
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4, padding:10, background:'var(--dim)', borderRadius:8 }}>
+                      {boardDef.displayCols.map(function(col) {
+                        return (
+                          <label key={col.field} style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', padding:'3px 6px', borderRadius:6, fontSize:12, color:'var(--text)' }}>
+                            <input type="checkbox" checked={columns.includes(col.field)} onChange={function(){toggleCol(col.field)}}
+                              style={{ width:14, height:14, accentColor:'var(--brand)', cursor:'pointer' }} />
+                            {col.label}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding:'12px 20px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <button onClick={step>1?function(){setStep(function(p){return p-1})}:onClose}
+            style={{ padding:'8px 18px', borderRadius:8, border:'1px solid var(--border)', background:'transparent', color:'var(--text)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:ff }}>
+            {step>1 ? '← Back' : 'Cancel'}
+          </button>
+          <div style={{ display:'flex', gap:8 }}>
+            {step < 4 ? (
+              <button onClick={function(){if(step===1&&!board)return;setStep(function(p){return p+1})}}
+                disabled={step===1&&!board}
+                style={{ padding:'8px 20px', borderRadius:8, border:'none', background:step===1&&!board?'var(--dim)':'var(--brand)', color:'#fff', fontSize:13, fontWeight:700, cursor:step===1&&!board?'not-allowed':'pointer', fontFamily:ff }}>
+                Next →
+              </button>
+            ) : (
+              <button onClick={save}
+                style={{ padding:'8px 24px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
+                ✓ Add Widget
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
