@@ -30,6 +30,7 @@ import {
 } from '../components/UI'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { applySegmentCondition } from '../lib/segments'
+import { getFieldCatalog } from '../lib/fieldCatalog'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -274,8 +275,15 @@ export function Contacts() {
       .then(async ({ data: seg }) => {
         if (!seg) return
         setActiveSegment(seg)
+        // Load the field catalog (built-in + custom) so a segment
+        // condition on a custom field actually filters here too --
+        // this is the real enforcement point when a user clicks
+        // "View Contacts" on the Segments page, not just that page's
+        // own count badge. See src/lib/fieldCatalog.js and Phase 3 of
+        // UNIVERSAL_FIELD_SYSTEM_PROPOSAL.md.
+        const fieldDefs = await getFieldCatalog('contacts')
         let q = supabase.from('contacts').select('id')
-        ;(seg.conditions || []).forEach(c => { q = applySegmentCondition(q, c) })
+        ;(seg.conditions || []).forEach(c => { q = applySegmentCondition(q, c, fieldDefs) })
         const { data: rows } = await q
         setSegmentContactIds((rows || []).map(r => r.id))
       })
