@@ -948,3 +948,362 @@ function CustomWidgetContent({ config, agentId, allAgents }) {
 }
 
 // ── DETAIL POPUP ──────────────────────────────────────────────────
+function DetailPopup({ open, onClose, title, icon, children, width = 580 }) {
+  useEffect(() => {
+    const fn = (e) => { if (e.key === 'Escape') onClose() }
+    if (open) document.addEventListener('keydown', fn)
+    return () => document.removeEventListener('keydown', fn)
+  }, [open])
+
+  if (!open) return null
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(3px)', fontFamily: ff }}>
+      <div style={{ background: 'var(--panel)', borderRadius: '16px', width: '100%', maxWidth: width, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,.35)', animation: 'fadeUp .15s ease' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '20px' }}>{icon}</span>
+            <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>{title}</span>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)', padding: '4px 8px' }}>✕</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function DetailRow({ left, sub, right, onClick, badge }) {
+  return (
+    <div onClick={onClick}
+      style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 8px', borderBottom: '1px solid var(--border)', cursor: onClick ? 'pointer' : 'default', borderRadius: '6px', transition: 'background .1s' }}
+      onMouseEnter={e => { if (onClick) e.currentTarget.style.background = 'var(--hov)' }}
+      onMouseLeave={e => e.currentTarget.style.background = ''}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{left}</div>
+        {sub && <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
+      </div>
+      <div style={{ flexShrink: 0, textAlign: 'right' }}>
+        {badge && <div style={{ marginBottom: '3px' }}>{badge}</div>}
+        {right && <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{right}</div>}
+      </div>
+      {onClick && <span style={{ color: 'var(--muted)', fontSize: '12px', flexShrink: 0 }}>→</span>}
+    </div>
+  )
+}
+
+// ── WIDGET SETTINGS PANEL ─────────────────────────────────────────
+function WidgetSettings({ widget, onUpdate, onClose }) {
+  const [color,   setColor]   = useState(widget.color || '#CC2200')
+  const [size,    setSize]    = useState(widget.size  || 'md')
+  const [visible, setVisible] = useState(widget.visible !== false)
+
+  function save() {
+    onUpdate({ ...widget, color, size, visible })
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ff, padding: '20px' }}>
+      <div style={{ background: 'var(--panel)', borderRadius: '14px', width: '100%', maxWidth: '360px', boxShadow: '0 20px 50px rgba(0,0,0,.3)' }}>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
+            {WIDGET_DEFS[widget.id]?.icon} Widget Settings
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+        </div>
+        <div style={{ padding: '16px 20px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Accent Color</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+            {ACCENT_COLORS.map(c => (
+              <div key={c} onClick={() => setColor(c)}
+                style={{ width: 26, height: 26, borderRadius: '50%', background: c, cursor: 'pointer', border: color === c ? '3px solid var(--text)' : '2px solid transparent', transition: 'border .12s', boxShadow: color === c ? '0 0 0 1px var(--panel)' : 'none' }} />
+            ))}
+          </div>
+
+          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Width</div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            {[
+              { value: 'md', label: 'Half Width',  desc: '1 column' },
+              { value: 'lg', label: 'Full Width',  desc: '2 columns' },
+            ].map(s => (
+              <div key={s.value} onClick={() => setSize(s.value)}
+                style={{ flex: 1, padding: '10px 12px', border: "2px solid " + (size === s.value ? color : 'var(--border)'), borderRadius: '8px', cursor: 'pointer', background: size === s.value ? color + '11' : 'transparent', textAlign: 'center' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: size === s.value ? color : 'var(--text)' }}>{s.label}</div>
+                <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px' }}>{s.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+            <div onClick={() => setVisible(v => !v)}
+              style={{ width: 36, height: 20, borderRadius: '99px', background: visible ? color : 'var(--border)', position: 'relative', flexShrink: 0, cursor: 'pointer', transition: 'background .2s' }}>
+              <div style={{ position: 'absolute', top: 2, left: visible ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+            </div>
+            <span style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 500 }}>Visible on dashboard</span>
+          </label>
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={save} style={{ background: color }}>Save</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── CUSTOMIZE PANEL ───────────────────────────────────────────────
+function CustomizePanel({ widgets, onSave, onClose, role, hasBackupLayout, onTryNewLayout, onRestorePreviousLayout }) {
+  const [wids, setWids] = useState(widgets.map(w => ({ ...w })))
+  const [editing, setEditing] = useState(null)
+  const [confirmSwitch, setConfirmSwitch] = useState(null) // 'new' | 'old' | null
+
+  function toggleVisible(id) {
+    setWids(ws => ws.map(w => w.id === id ? { ...w, visible: !w.visible } : w))
+  }
+
+  function updateWidget(updated) {
+    setWids(ws => ws.map(w => w.id === updated.id ? updated : w))
+  }
+
+  const available = wids.filter(w => WIDGET_DEFS[w.id]?.roles.includes(role))
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ff, padding: '20px' }}>
+      <div style={{ background: 'var(--panel)', borderRadius: '14px', width: '100%', maxWidth: '440px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,.3)' }}>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>🎛 Customize Dashboard</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+        </div>
+
+        <div style={{ padding: '12px 20px 0', flexShrink: 0 }}>
+          <div style={{ background: 'var(--dim)', borderRadius: '10px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '16px' }}>✨</span>
+            <div style={{ flex: 1, fontSize: '11px', color: 'var(--muted)', lineHeight: 1.4 }}>
+              {hasBackupLayout
+                ? "You're on the new recommended layout. Your previous one is saved."
+                : 'A new recommended layout is available (better widget sizing, more useful order).'}
+            </div>
+            {hasBackupLayout ? (
+              <Btn variant="secondary" onClick={() => setConfirmSwitch('old')} style={{ fontSize: '11px', padding: '6px 10px', flexShrink: 0 }}>
+                Switch Back
+              </Btn>
+            ) : (
+              <Btn onClick={() => setConfirmSwitch('new')} style={{ fontSize: '11px', padding: '6px 10px', flexShrink: 0 }}>
+                Try It
+              </Btn>
+            )}
+          </div>
+        </div>
+
+        <div style={{ fontSize: '12px', color: 'var(--muted)', padding: '10px 20px 0' }}>Toggle, resize, or change colors. Drag widgets on the dashboard to reorder.</div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 20px' }}>
+          {available.map(w => {
+            const def = WIDGET_DEFS[w.id]
+            if (!def) return null
+            return (
+              <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', border: "1px solid " + (w.visible ? w.color + '55' : 'var(--border)'), background: w.visible ? w.color + '08' : 'transparent', marginBottom: '6px' }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: w.color, flexShrink: 0 }} />
+                <span style={{ fontSize: '15px' }}>{def.icon}</span>
+                <div style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{def.label}</div>
+                <div style={{ fontSize: '10px', color: 'var(--muted)', background: 'var(--dim)', padding: '2px 6px', borderRadius: '4px' }}>
+                  {w.size === 'lg' ? 'Full' : 'Half'}
+                </div>
+                <button onClick={() => setEditing(w)}
+                  style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px', color: 'var(--muted)', fontFamily: ff }}>
+                  ✏️
+                </button>
+                <div onClick={() => toggleVisible(w.id)}
+                  style={{ width: 32, height: 18, borderRadius: '99px', background: w.visible ? w.color : 'var(--border)', position: 'relative', flexShrink: 0, cursor: 'pointer', transition: 'background .2s' }}>
+                  <div style={{ position: 'absolute', top: 1, left: w.visible ? 15 : 1, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={() => { onSave(wids); onClose() }}>Save Layout</Btn>
+        </div>
+      </div>
+      {editing && <WidgetSettings widget={editing} onUpdate={updateWidget} onClose={() => setEditing(null)} />}
+      <Confirm
+        open={!!confirmSwitch}
+        danger={false}
+        message={confirmSwitch === 'new'
+          ? 'Try the new layout? Your current layout will be saved so you can switch back anytime.'
+          : 'Switch back to your previous layout? This replaces your current layout with the one you had before trying the new default.'}
+        onConfirm={() => { confirmSwitch === 'new' ? onTryNewLayout() : onRestorePreviousLayout(); setConfirmSwitch(null) }}
+        onCancel={() => setConfirmSwitch(null)}
+      />
+    </div>
+  )
+}
+
+// ── GOAL EDITOR ───────────────────────────────────────────────────
+function GoalEditor({ agents, currentAgent, isAdmin, onClose, onSaved }) {
+  const [selId,      setSelId]      = useState(currentAgent.id)
+  const [goalGci,    setGoalGci]    = useState('')
+  const [goalDeals,  setGoalDeals]  = useState('')
+  const [teamGci,    setTeamGci]    = useState('')
+  const [teamDeals,  setTeamDeals]  = useState('')
+  const [saving,     setSaving]     = useState(false)
+  const [loading,    setLoading]    = useState(false)
+  const { toast } = useApp()
+
+  useEffect(() => { loadForAgent(selId) }, [selId])
+
+  async function loadForAgent(id) {
+    setLoading(true)
+    const goals = await loadAgentGoals(id)
+    setGoalGci(goals.goal_gci)
+    setGoalDeals(goals.goal_deals)
+    const tg = await loadTeamGoal()
+    setTeamGci(tg.team_gci)
+    setTeamDeals(tg.team_deals)
+    setLoading(false)
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      await saveAgentGoal(selId, parseFloat(goalGci) || 250000, parseInt(goalDeals) || 50)
+      if (isAdmin) await saveTeamGoal(parseFloat(teamGci) || 2000000, parseInt(teamDeals) || 200)
+      toast('✅ Goals saved')
+      onSaved?.()
+      onClose()
+    } catch(e) {
+      toast('Failed: ' + e.message, '#DC2626')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ff, padding: '20px' }}>
+      <div style={{ background: 'var(--panel)', borderRadius: '14px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,.3)' }}>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>🎯 Edit Goals</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+        </div>
+        <div style={{ padding: '16px 20px' }}>
+          {/* Agent selector — admin sees all, agent sees only themselves */}
+          {isAdmin && (
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>Agent</div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {agents.map(a => (
+                  <div key={a.id} onClick={() => setSelId(a.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px', borderRadius: '8px', border: "1px solid " + (selId === a.id ? 'var(--brand)' : 'var(--border)'), background: selId === a.id ? 'rgba(204,34,0,.08)' : 'transparent', cursor: 'pointer' }}>
+                    <Avatar agent={a} size={18} />
+                    <span style={{ fontSize: '11px', fontWeight: 600 }}>{a.name.split(' ')[0]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {loading ? <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '13px' }}>Loading...</div> : (
+            <>
+              {/* Agent goals */}
+              <div style={{ background: 'var(--dim)', borderRadius: '10px', padding: '14px', marginBottom: '14px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', marginBottom: '10px' }}>
+                  {isAdmin ? agents.find(a => a.id === selId)?.name + "'s Goals" : 'My Goals'}
+                </div>
+                <Field label="Annual GCI Goal ($)">
+                  <Input value={goalGci} onChange={setGoalGci} type="number" placeholder="250000" />
+                </Field>
+                <Field label="Annual Deal Goal">
+                  <Input value={goalDeals} onChange={setGoalDeals} type="number" placeholder="50" />
+                </Field>
+              </div>
+
+              {/* Team goals — admin only */}
+              {isAdmin && (
+                <div style={{ background: 'var(--dim)', borderRadius: '10px', padding: '14px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', marginBottom: '10px' }}>Team Goals (All Agents)</div>
+                  <Field label="Team Annual GCI Goal ($)">
+                    <Input value={teamGci} onChange={setTeamGci} type="number" placeholder="2000000" />
+                  </Field>
+                  <Field label="Team Annual Deal Goal">
+                    <Input value={teamDeals} onChange={setTeamDeals} type="number" placeholder="200" />
+                  </Field>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={save} loading={saving}>Save Goals</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── AGENT VIEW ADMIN CONTROL ──────────────────────────────────────
+function AgentViewControl({ agents, onClose }) {
+  const [sel,   setSel]   = useState(agents[0]?.id || '')
+  const [wids,  setWids]  = useState([])
+  const [saving,setSaving]= useState(false)
+  const { toast } = useApp()
+
+  useEffect(() => {
+    if (!sel) return
+    const a = agents.find(x => x.id === sel)
+    if (!a) return
+    loadDashPrefs(sel).then(p => setWids(p.widgets || DEFAULT_WIDGETS))
+  }, [sel])
+
+  const selAgent  = agents.find(a => a.id === sel)
+  const available = wids.filter(w => WIDGET_DEFS[w.id]?.roles.includes(selAgent?.role || 'agent'))
+
+  async function save() {
+    setSaving(true)
+    await saveDashPrefs(sel, wids)
+    toast("✅ Dashboard saved for " + (selAgent?.name))
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: ff, padding: '20px' }}>
+      <div style={{ background: 'var(--panel)', borderRadius: '14px', width: '100%', maxWidth: '480px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,.3)' }}>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>👥 Manage Agent Dashboards</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+        </div>
+        <div style={{ padding: '12px 20px 0' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {agents.map(a => (
+              <div key={a.id} onClick={() => setSel(a.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '8px', border: "1px solid " + (sel === a.id ? 'var(--brand)' : 'var(--border)'), background: sel === a.id ? 'rgba(204,34,0,.08)' : 'transparent', cursor: 'pointer' }}>
+                <Avatar agent={a} size={20} />
+                <span style={{ fontSize: '12px', fontWeight: 600 }}>{a.name.split(' ')[0]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 20px' }}>
+          {available.map(w => {
+            const def = WIDGET_DEFS[w.id]
+            if (!def) return null
+            return (
+              <div key={w.id} onClick={() => setWids(ws => ws.map(x => x.id === w.id ? { ...x, visible: !x.visible } : x))}
+                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', border: "1px solid " + (w.visible ? w.color + '55' : 'var(--border)'), background: w.visible ? w.color + '08' : 'transparent', marginBottom: '6px', cursor: 'pointer' }}>
+                <span style={{ fontSize: '15px' }}>{def.icon}</span>
+                <div style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{def.label}</div>
+                <div style={{ width: 32, height: 18, borderRadius: '99px', background: w.visible ? (w.color || 'var(--brand)') : 'var(--border)', position: 'relative', flexShrink: 0, transition: 'background .2s' }}>
+                  <div style={{ position: 'absolute', top: 1, left: w.visible ? 15 : 1, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={save} loading={saving}>Save for {selAgent?.name?.split(' ')[0]}</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
