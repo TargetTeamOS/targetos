@@ -147,3 +147,89 @@ function MiniBar({ data, color = '#CC2200' }) {
     </div>
   )
 }
+
+// ═══════════════════════════════════════════════════════════════
+// CUSTOM WIDGET BUILDER
+// Admin can create a widget showing any board: Contacts, Deals,
+// Tasks, Listings, etc. with a status/field filter and a chosen
+// display mode (count, list, or table).
+// ═══════════════════════════════════════════════════════════════
+
+
+
+const DISPLAY_MODES = [
+  { id:'count', label:'Count only',   icon:'🔢', desc:'Big number — how many items match' },
+  { id:'list',  label:'Item list',    icon:'📋', desc:'Scrollable list of names' },
+  { id:'table', label:'Mini table',   icon:'📊', desc:'Compact table with columns' },
+  { id:'donut', label:'Status donut', icon:'🍩', desc:'Pie chart by status' },
+]
+
+const DATE_RANGES_BASE = [
+  { id:'all',     label:'All time' },
+  { id:'today',   label:'Today' },
+  { id:'week',    label:'This week' },
+  { id:'month',   label:'This month' },
+  { id:'quarter', label:'This quarter' },
+  { id:'year',    label:'This year' },
+]
+
+// Dynamically built — populated at app load from actual DB data
+let DATE_RANGES = [...DATE_RANGES_BASE]
+
+// Call once on app init — detects all years present in deals + contacts
+async function loadAvailableYears(supabaseClient) {
+  try {
+    // Pull earliest and latest deal year
+    const { data: dealYears } = await supabaseClient
+      .from('deals')
+      .select('ao_date, close_date, created_at')
+      .not('ao_date', 'is', null)
+      .order('ao_date', { ascending: true })
+      .limit(1)
+    const { data: dealYearsMax } = await supabaseClient
+      .from('deals')
+      .select('ao_date, close_date, created_at')
+      .not('ao_date', 'is', null)
+      .order('ao_date', { ascending: false })
+      .limit(1)
+
+    const minYear = dealYears?.[0]?.ao_date
+      ? parseInt(dealYears[0].ao_date.slice(0,4))
+      : new Date().getFullYear()
+    const maxYear = dealYearsMax?.[0]?.ao_date
+      ? parseInt(dealYearsMax[0].ao_date.slice(0,4))
+      : new Date().getFullYear()
+    const currentYear = new Date().getFullYear()
+    const finalMax = Math.max(maxYear, currentYear)
+
+    const years = []
+    for (let y = finalMax; y >= Math.min(minYear, finalMax - 1); y--) {
+      years.push({ id: String(y), label: String(y) })
+    }
+    DATE_RANGES = [...DATE_RANGES_BASE, ...years]
+    return years
+  } catch(e) {
+    console.warn('loadAvailableYears:', e.message)
+    // Fallback: last 5 years
+    const cur = new Date().getFullYear()
+    DATE_RANGES = [...DATE_RANGES_BASE, ...Array.from({length:5},(_,i)=>({ id:String(cur-i), label:String(cur-i) }))]
+    return []
+  }
+}
+
+function getDateRange(rangeId) {
+  const now = new Date()
+  const today = now.toISOString().slice(0,10)
+  if (rangeId === 'today')   return { from: today, to: today }
+  if (rangeId === 'week')    { const d = new Date(now); d.setDate(d.getDate() - 7); return { from: d.toISOString().slice(0,10), to: today } }
+  if (rangeId === 'month')   { const d = new Date(now); d.setMonth(d.getMonth() - 1); return { from: d.toISOString().slice(0,10), to: today } }
+  if (rangeId === 'quarter') { const d = new Date(now); d.setMonth(d.getMonth() - 3); return { from: d.toISOString().slice(0,10), to: today } }
+  if (rangeId === 'year')    return { from: now.getFullYear() + '-01-01', to: today }
+  if (/^\d{4}$/.test(rangeId)) return { from: rangeId + '-01-01', to: rangeId + '-12-31' }
+  // Custom range: "custom:YYYY-MM-DD:YYYY-MM-DD"
+  if (typeof rangeId === 'string' && rangeId.startsWith('custom:')) {
+    const [, from, to] = rangeId.split(':')
+    if (from && to) return { from, to }
+  }
+  return null
+}
