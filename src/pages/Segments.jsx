@@ -10,22 +10,21 @@ import { useAuth }  from '../context/AuthContext'
 import { useApp }   from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { PageHeader, Btn, Loading, Empty, Modal, ModalActions, Field, Input, Select, SectionTitle } from '../components/UI'
-import { CONTACT_STATUSES, CONTACT_SOURCES, CONTACT_TYPES } from '../lib/constants'
 import { applySegmentCondition } from '../lib/segments'
+import { getFieldCatalog, BUILT_IN_FIELDS } from '../lib/fieldCatalog'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-const SEGMENT_CONDITIONS = [
-  { key:'status',   label:'Status is',    type:'select', options: CONTACT_STATUSES },
-  { key:'source',   label:'Source is',    type:'select', options: (CONTACT_SOURCES||[]).map(s=>({value:s,label:s})) },
-  { key:'type',     label:'Type is',      type:'select', options: CONTACT_TYPES.map(v=>({value:v,label:v})) },
-  { key:'no_activity_days', label:'No activity for', type:'number', suffix:'days' },
-  { key:'created_days',     label:'Added in last',   type:'number', suffix:'days' },
-  { key:'has_phone',        label:'Has phone',       type:'bool' },
-  { key:'has_email',        label:'Has email',       type:'bool' },
-  { key:'assigned',         label:'Has assigned agent', type:'bool' },
-  { key:'tags_contains',    label:'Tag contains',    type:'text' },
-]
+// The list of conditions a user can pick from used to be hardcoded
+// here (see git history before this change). It's now the Field
+// Catalog (src/lib/fieldCatalog.js): built-in conditions plus
+// whatever custom fields an admin has added to Contacts via the
+// Custom Fields page -- loaded below in a useEffect, so a brand new
+// custom field shows up here automatically, with no code change,
+// the moment it's created. See UNIVERSAL_FIELD_SYSTEM_PROPOSAL.md
+// (Phase 3: "rewire Segments first" -- this is that phase).
+// Seeded with just the built-ins so the picker isn't empty for the
+// instant before the async catalog load below resolves.
 
 const BLANK_SEGMENT = { name:'', description:'', conditions:[], color:'#3B82F6', icon:'👥' }
 const ICONS = ['👥','🔥','❄️','⭐','💰','🏠','🎯','📞','✉️','🌱']
@@ -43,9 +42,11 @@ export function Segments() {
   const [form,     setForm]     = useState(BLANK_SEGMENT)
   const [saving,   setSaving]   = useState(false)
   const [agents,   setAgents]   = useState([])
+  const [conditionDefs, setConditionDefs] = useState(BUILT_IN_FIELDS.contacts)
 
   useEffect(() => { load() }, [])
   useEffect(() => { if (agents.length === 0) supabase.from('agents').select('id,name').eq('active',true).then(r=>setAgents(r.data||[])) }, [])
+  useEffect(() => { getFieldCatalog('contacts').then(setConditionDefs) }, [])
 
   async function load() {
     setLoading(true)
@@ -71,7 +72,7 @@ export function Segments() {
 
   async function countContacts(conditions) {
     let q = supabase.from('contacts').select('*', { count:'exact', head:true })
-    conditions.forEach(c => q = applySegmentCondition(q, c))
+    conditions.forEach(c => q = applySegmentCondition(q, c, conditionDefs))
     const { count } = await q
     return count || 0
   }
@@ -156,7 +157,7 @@ export function Segments() {
               {/* Conditions summary */}
               <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:12 }}>
                 {(seg.conditions||[]).slice(0,3).map((c,i) => {
-                  const def = SEGMENT_CONDITIONS.find(d=>d.key===c.key)
+                  const def = conditionDefs.find(d=>d.key===c.key)
                   return (
                     <div key={i} style={{ fontSize:10, padding:'2px 7px', borderRadius:99, background:'var(--dim)', border:'1px solid var(--border)', color:'var(--muted)', fontWeight:600 }}>
                       {def?.label} {c.value}{def?.suffix?' '+def.suffix:''}
@@ -211,11 +212,11 @@ export function Segments() {
         <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>Contacts matching ALL conditions will be included.</div>
 
         {(form.conditions||[]).map((cond,i) => {
-          const def = SEGMENT_CONDITIONS.find(d=>d.key===cond.key)
+          const def = conditionDefs.find(d=>d.key===cond.key)
           return (
             <div key={i} style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
               <select value={cond.key} onChange={e=>setCondition(i,'key',e.target.value)} style={{ flex:1, padding:'7px 9px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff }}>
-                {SEGMENT_CONDITIONS.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
+                {conditionDefs.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
               </select>
               {def?.type === 'select' ? (
                 <select value={cond.value||''} onChange={e=>setCondition(i,'value',e.target.value)} style={{ flex:1, padding:'7px 9px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff }}>
