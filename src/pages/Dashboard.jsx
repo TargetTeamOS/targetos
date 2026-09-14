@@ -1620,3 +1620,281 @@ function WidgetManager({ widgets, role, onSave, onClose, onAddCustom }) {
     </div>
   )
 }
+
+export function Dashboard() {
+  const navigate  = useNavigate()
+  const { agent, isAdmin, canManage } = useAuth()
+  usePageView('dashboard')
+  const { toast } = useApp()
+  const year = new Date().getFullYear().toString()
+
+  // Load available years from DB on mount — auto-detects 2015, 2016... whatever exists
+  React.useEffect(() => {
+    loadAvailableYears(supabase).catch(() => {})
+  }, [])
+
+  // State
+  const [data,         setData]         = useState({})
+  const [loading,      setLoading]      = useState(true)
+  const [widgets,      setWidgets]      = useState([])
+  const [agentGoals,   setAgentGoals]   = useState({ goal_gci: 250000, goal_deals: 50 })
+  const [teamGoals,    setTeamGoals]    = useState({ team_gci: 2000000, team_deals: 200 })
+  const [agents,       setAgents]       = useState([])
+  const [agentFilter,  setAgentFilter]  = useState('')
+  const [yearFilter,   setYearFilter]   = useState(year)
+  const [stageFilter,  setStageFilter]  = useState([])   // multi-select stages
+  const [sideFilter,   setSideFilter]   = useState('')
+  const [showFilters,  setShowFilters]  = useState(false) // filter panel open
+  const [showWidgetMgr,setShowWidgetMgr]= useState(false) // widget manager open
+  const [popup,        setPopup]        = useState(null)
+  const [showCustomize,    setShowCustomize]    = useState(false)
+  const [showGoals,        setShowGoals]        = useState(false)
+  const [showAgentView,    setShowAgentView]    = useState(false)
+  const [showCustomWidget, setShowCustomWidget] = useState(false)
+  const [dragId,       setDragId]       = useState(null)
+  const [editMode,       setEditMode]       = useState(false)
+  const [pendingWidgets, setPendingWidgets]  = useState(null) // staged changes before save
+  const [configWidget,   setConfigWidget]    = useState(null) // widget being configured
+  const [savingPrefs,  setSavingPrefs]  = useState(false)
+  const [hasBackupLayout, setHasBackupLayout] = useState(false)
+
+  // ── FIELD CATALOG (Phase 4 of UNIVERSAL_FIELD_SYSTEM_PROPOSAL.md) ──
+  // Built-in + custom fields per entity, loaded once (not per widget
+  // render) so: (1) the widget config modal can offer any custom
+  // field an admin has added via the Custom Fields page as a filter
+  // on the matching widget, and (2) renderWidget()'s own filter-apply
+  // logic can honor it via matchesCustomFilters() above. Mirrors the
+  // same catalog already wired into Segments/Contacts -- see
+  // src/lib/fieldCatalog.js. Degrades to built-ins-only (empty arrays)
+  // if custom fields aren't reachable for some reason.
+  const [fieldCatalogs, setFieldCatalogs] = useState({ contacts: [], deals: [], listings: [] })
+  useEffect(() => {
+    Promise.all([
+      getFieldCatalog('contacts'),
+      getFieldCatalog('deals'),
+      getFieldCatalog('listings'),
+    ]).then(([contacts, deals, listings]) => setFieldCatalogs({ contacts, deals, listings }))
+      .catch(e => console.warn('Dashboard field catalog load failed:', e.message))
+  }, [])
+
+  // ── LOAD PREFS AND GOALS FROM DB ──────────────────────────────
+  useEffect(() => {
+    if (!agent) return
+    loadDashPrefs(agent.id).then(p => {
+      setWidgets(p.widgets || DEFAULT_WIDGETS)
+      setHasBackupLayout(!!p.hasBackup)
+    })
+    loadAgentGoals(agent.id).then(setAgentGoals)
+    loadTeamGoal().then(setTeamGoals)
+  }, [agent?.id])
+
+  // ── SAVE WIDGETS TO DB ────────────────────────────────────────
+  async function persistWidgets(newWidgets) {
+    setWidgets(newWidgets)
+    setSavingPrefs(true)
+    try {
+      await saveDashPrefs(agent.id, newWidgets)
+    } catch(e) {
+      toast('Could not save layout: ' + e.message, '#DC2626')
+    } finally { setSavingPrefs(false) }
+  }
+
+  // ── TRY THE NEW RECOMMENDED LAYOUT (backs up current layout first) ──
+  async function tryNewLayout() {
+    setSavingPrefs(true)
+    try {
+      await switchToNewDashLayout(agent.id, widgets)
+      setWidgets(DEFAULT_WIDGETS)
+      setHasBackupLayout(true)
+      toast('✅ Switched to the new layout — your old one is saved, switch back anytime')
+    } catch(e) {
+      toast('Could not switch layout: ' + e.message, '#DC2626')
+    } finally { setSavingPrefs(false) }
+  }
+
+  // ── RESTORE THE PREVIOUS LAYOUT ───────────────────────────────
+  async function restorePreviousLayout() {
+    setSavingPrefs(true)
+    try {
+      const restored = await restoreOldDashLayout(agent.id)
+      if (restored) {
+        setWidgets(restored)
+        toast('✅ Restored your previous layout')
+      } else {
+        toast('No previous layout found to restore', '#DC2626')
+      }
+    } catch(e) {
+      toast('Could not restore layout: ' + e.message, '#DC2626')
+    } finally { setSavingPrefs(false) }
+  }
+
+  // ── DRAG TO REORDER ───────────────────────────────────────────
+  const dragOver = useRef(null)
+
+  function onDragStart(id) {
+    if (!editMode) return
+    setDragId(id)
+  }
+  function onDragEnter(e, id) {
+    // Only update if entering the widget root element, not a child
+    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget)) {
+      dragOver.current = id
+    }
+  }
+
+  function onDragEnd() {
+    if (!dragId || !dragOver.current || dragId === dragOver.current) {
+      setDragId(null); dragOver.current = null; return
+    }
+    // Stage changes — don't save until Save Layout is clicked
+    const base = pendingWidgets || widgets
+    const newW = [...base]
+    const fromIdx = newW.findIndex(w => w.id === dragId)
+    const toIdx   = newW.findIndex(w => w.id === dragOver.current)
+    if (fromIdx < 0 || toIdx < 0) { setDragId(null); return }
+    const [moved] = newW.splice(fromIdx, 1)
+    newW.splice(toIdx, 0, moved)
+    setPendingWidgets(newW)   // stage only — not saved to DB yet
+    setWidgets(newW)          // update UI immediately
+    setDragId(null)
+    dragOver.current = null
+  }
+
+  async function saveLayout() {
+    const toSave = pendingWidgets || widgets
+    await persistWidgets(toSave)
+    setPendingWidgets(null)
+    setEditMode(false)
+    toast('✅ Layout saved and locked')
+  }
+
+  function cancelEdit() {
+    // Revert unsaved changes
+    if (pendingWidgets) {
+      loadDashPrefs(agent.id).then(p => setWidgets(p.widgets || DEFAULT_WIDGETS))
+      setPendingWidgets(null)
+    }
+    setEditMode(false)
+  }
+
+  // ── LOAD DATA ─────────────────────────────────────────────────
+  const loadData = useCallback(async () => {
+    if (!agent) return
+    setLoading(true)
+    try {
+      const viewId = agentFilter || ((isAdmin || canManage) ? null : agent.id)
+      const filter = arr => viewId ? arr.filter(x => x.agent_id === viewId) : arr
+
+      const [rawDeals, rawContacts, rawTasks, rawListings, rawOH, rawAnn, rawAgents, rawGifts] = await Promise.all([
+        supabase.from('deals').select('id,stage,gci,production,ao_date,close_date,expected_close_date,addr,client_name,agent_id,side,agents(id,name,color)').then(r => r.data || []),
+        supabase.from('contacts').select('id,first_name,last_name,status,source,agent_id,created_at,phone').then(r => r.data || []),
+        supabase.from('tasks').select('id,title,status,priority,due_date,agent_id,agents(id,name,color)').then(r => r.data || []),
+        supabase.from('listings').select('id,addr,city,status,list_price,agent_id,agents(id,name,color)').then(r => r.data || []),
+        supabase.from('open_houses').select('id,listing_addr,date,start_time,agent_id,agents(id,name,color)').then(r => r.data || []),
+        supabase.from('announcements').select('*,agents(id,name,color)').order('pinned', { ascending: false }).limit(5).then(r => r.data || []),
+        supabase.from('agents').select('*').eq('active', true).order('name').then(r => r.data || []),
+        supabase.from('gifts').select('id,client_name,status,agent_id').then(r => r.data || []),
+      ])
+
+      const myDeals    = filter(rawDeals)
+      const myContacts = filter(rawContacts)
+      const myTasks    = filter(rawTasks)
+      const myListings = filter(rawListings)
+      const myOH       = filter(rawOH)
+
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const weekEnd  = new Date(); weekEnd.setDate(weekEnd.getDate() + 7)
+      const weekStr  = weekEnd.toISOString().slice(0, 10)
+
+      const yearDeals   = myDeals.filter(d => {
+        if (!d.ao_date?.startsWith(yearFilter)) return false
+        if (sideFilter  && d.side  !== sideFilter)           return false
+        return true
+      })
+      const closedDeals = yearDeals.filter(d => d.stage === 'Closed')
+      const activeDeals = myDeals.filter(d => !['Closed','Deal Fell Through'].includes(d.stage))
+      const closedGCI   = closedDeals.reduce((s, d) => s + parseNum(d.gci), 0)
+      const pipelineGCI = activeDeals.reduce((s, d) => s + parseNum(d.gci), 0)
+
+      // Team GCI — always all agents, for team_goal widget
+      const teamClosed = rawDeals.filter(d => {
+        if (!d.ao_date?.startsWith(yearFilter)) return false
+        if (d.stage !== 'Closed') return false
+        if (sideFilter && d.side !== sideFilter) return false
+        return true
+      })
+      const teamGCI    = teamClosed.reduce((s, d) => s + parseNum(d.gci), 0)
+      const teamDeals  = teamClosed.length
+
+      const todayTasks  = myTasks.filter(t => t.status !== 'done' && (isDueToday(t.due_date) || isOverdue(t.due_date)))
+      const overdueTasks = myTasks.filter(t => t.status !== 'done' && isOverdue(t.due_date))
+      const hotLeads    = myContacts.filter(c => c.status === 'Hot' || c.status === 'Warm').sort((a, b) => a.status === 'Hot' ? -1 : 1)
+
+      const upcoming = myDeals.filter(d => {
+        const date = d.expected_close_date || d.close_date
+        if (!date) return false
+        const days = getDaysUntil(date)
+        return days !== null && days >= 0 && days <= 30 && d.stage !== 'Closed'
+      }).sort((a, b) => getDaysUntil(a.expected_close_date||a.close_date) - getDaysUntil(b.expected_close_date||b.close_date))
+
+      const activeListings = myListings.filter(l => l.status === 'Active')
+      const upcomingOH     = myOH.filter(oh => oh.date >= todayStr && oh.date <= weekStr)
+
+      const monthlyGCI = Array.from({ length: 12 }, (_, m) => {
+        const ms = yearFilter + '-' + String(m+1).padStart(2,'0')
+        const gci = myDeals.filter(d => d.ao_date?.startsWith(ms) && d.stage === 'Closed').reduce((s, d) => s + parseNum(d.gci), 0)
+        return { label: 'JFMAMJJASOND'[m], value: gci }
+      })
+
+      const leaderboard = rawAgents.map(a => {
+        const ad  = rawDeals.filter(d => d.agent_id === a.id && d.ao_date?.startsWith(yearFilter))
+        const gci = ad.filter(d => d.stage === 'Closed').reduce((s, d) => s + parseNum(d.gci), 0)
+        return { agent: a, gci, closed: ad.filter(d => d.stage === 'Closed').length, active: ad.filter(d => !['Closed','Deal Fell Through'].includes(d.stage)).length }
+      }).sort((a, b) => b.gci - a.gci)
+
+      const pipeByStage = DEAL_STAGES.map(s => ({
+        ...s,
+        deals: activeDeals.filter(d => d.stage === s.value),
+        gci:   activeDeals.filter(d => d.stage === s.value).reduce((sum, d) => sum + parseNum(d.gci), 0),
+      }))
+
+      const acceptedOffers   = myDeals.filter(d => d.stage === 'Offer Accapted')
+      const underContract    = myDeals.filter(d => d.stage === 'Under Contract')
+      const pendingGifts     = rawGifts.filter(g => !['Delivered'].includes(g.status))
+
+      setAgents(rawAgents)
+      setData({
+        closedGCI, pipelineGCI, closedDeals, activeDeals, yearDeals,
+        teamGCI, teamDeals, todayTasks, overdueTasks, hotLeads,
+        upcoming, activeListings, upcomingOH, monthlyGCI, leaderboard,
+        pipeByStage, announcements: rawAnn, pendingGifts,
+        acceptedOffers, underContract,
+        contactCount: myContacts.length,
+      })
+    } catch(e) {
+      toast('Dashboard error: ' + e.message, '#DC2626')
+    } finally { setLoading(false) }
+  }, [agent?.id, agentFilter, yearFilter, stageFilter, sideFilter, isAdmin, canManage])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  const stageHex = s => DEAL_STAGES.find(x => x.value === s)?.hex || '#c4c4c4'
+  const show = id => widgets.find(w => w.id === id)?.visible
+  const wColor = id => widgets.find(w => w.id === id)?.color || '#CC2200'
+  const wSize  = id => widgets.find(w => w.id === id)?.size  || 'md'
+  const visibleOrdered = widgets.filter(w => {
+    if (!w.visible) return false
+    // Custom widgets (id starts with 'custom_') always pass role check
+    if (w.id.startsWith('custom_') || w.id === 'custom') return true
+    // Standard widgets check role
+    return WIDGET_DEFS[w.id]?.roles.includes(agent?.role || 'agent')
+  })
+
+  const greeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'
+  const years = Array.from({ length: 10 }, (_, i) => (new Date().getFullYear() - i).toString())
+
+  if (!agent || !widgets.length) return <div style={{ fontFamily: ff }}><Loading /></div>
+
+  // ── RENDER A WIDGET ───────────────────────────────────────────
+  function renderWidget(w) {
+    // Custom widgets have dynamic id like 'custom_1234'
