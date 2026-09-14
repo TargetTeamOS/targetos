@@ -688,3 +688,263 @@ function CustomWidgetContent({ config, agentId, allAgents }) {
       </div>
     )
   }
+
+  // ── DONUT MODE — fully interactive, click slice to drill down ──
+  if (config.display === 'donut') {
+    if (!boardDef.statusField || items.length === 0) {
+      return <div style={{ color:'var(--muted)', fontSize:12, textAlign:'center', padding:'16px 0' }}>No data to chart</div>
+    }
+
+    // Group by status field — count AND collect actual records
+    const groups = {}
+    items.forEach(function(it) {
+      const v = it[boardDef.statusField] || 'Unknown'
+      if (!groups[v]) groups[v] = { count: 0, records: [], value: 0 }
+      groups[v].count++
+      groups[v].records.push(it)
+      // Sum value field if present (e.g. GCI for deals)
+      if (boardDef.valueField && it[boardDef.valueField]) {
+        const n = parseFloat(String(it[boardDef.valueField]).replace(/[$,]/g,''))
+        if (!isNaN(n)) groups[v].value += n
+      }
+    })
+
+    const total = items.length
+    const slices = Object.entries(groups)
+    const COLORS = ['#3B82F6','#10B981','#F5A623','#CC2200','#8B5CF6','#EC4899','#14B8A6','#84CC16','#F97316','#06B6D4']
+
+    function clickSlice(status, grp) {
+      if (activeSlice === status) { setActiveSlice(null); setDrillItems(null); return }
+      setActiveSlice(status)
+      setDrillItems(grp.records)
+    }
+
+    // SVG donut — interactive slices
+    const CX = 60, CY = 60, R = 48, THICK = 20
+    const circ = 2 * Math.PI * R
+    let offset = 0
+    const svgSlices = slices.map(function([status, grp], i) {
+      const pct  = grp.count / total
+      const dash = pct * circ
+      const isActive = activeSlice === status
+      const el = (
+        <circle key={status}
+          cx={CX} cy={CY} r={R} fill="none"
+          stroke={COLORS[i % COLORS.length]}
+          strokeWidth={isActive ? THICK + 6 : THICK}
+          strokeDasharray={dash + ' ' + (circ - dash)}
+          strokeDashoffset={circ * 0.25 - offset}
+          style={{ cursor:'pointer', transition:'stroke-width .15s, opacity .15s', opacity: activeSlice && !isActive ? 0.45 : 1 }}
+          onClick={function() { clickSlice(status, grp) }}
+        />
+      )
+      offset += dash
+      return el
+    })
+
+    return (
+      <div>
+        <div style={{ display:'flex', gap:16, alignItems:'center' }}>
+          {/* Donut chart */}
+          <div style={{ position:'relative', flexShrink:0 }}>
+            <svg width={120} height={120} viewBox="0 0 120 120">
+              {svgSlices}
+              <text x={CX} y={CY-6} textAnchor="middle" style={{ fontSize:20, fontWeight:900, fill:'var(--text)' }}>
+                {activeSlice ? groups[activeSlice]?.count : total}
+              </text>
+              <text x={CX} y={CY+10} textAnchor="middle" style={{ fontSize:9, fill:'var(--muted)' }}>
+                {activeSlice ? activeSlice.slice(0,12) : 'total'}
+              </text>
+            </svg>
+          </div>
+
+          {/* Legend — clickable */}
+          <div style={{ flex:1, minWidth:0 }}>
+            {slices.map(function([status, grp], i) {
+              const isActive = activeSlice === status
+              const pct = Math.round(grp.count / total * 100)
+              return (
+                <div key={status}
+                  onClick={function() { clickSlice(status, grp) }}
+                  style={{ display:'flex', alignItems:'center', gap:7, marginBottom:5, cursor:'pointer', padding:'3px 6px', borderRadius:6,
+                    background: isActive ? COLORS[i%COLORS.length]+'18' : 'transparent',
+                    border: isActive ? '1px solid '+COLORS[i%COLORS.length]+'44' : '1px solid transparent',
+                    transition:'all .12s' }}>
+                  <div style={{ width:10, height:10, borderRadius:'50%', background:COLORS[i%COLORS.length], flexShrink:0 }} />
+                  <div style={{ flex:1, fontSize:11, fontWeight: isActive?700:500, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{status}</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:COLORS[i%COLORS.length], flexShrink:0 }}>{grp.count}</div>
+                  <div style={{ fontSize:10, color:'var(--muted)', flexShrink:0 }}>{pct}%</div>
+                  {boardDef.valueField && grp.value > 0 && (
+                    <div style={{ fontSize:10, color:'#10B981', flexShrink:0, fontWeight:700 }}>{fmt$(grp.value)}</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Drill-down panel — shows when a slice is clicked */}
+        {activeSlice && drillItems && (
+          <div style={{ marginTop:10, borderTop:'1px solid var(--border)', paddingTop:8 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:6 }}>
+              {activeSlice} — {drillItems.length} record{drillItems.length!==1?'s':''}
+            </div>
+            {drillItems.slice(0,8).map(function(item, i) {
+              const name = boardDef.nameField === 'first_name'
+                ? ((item.first_name||'')+' '+(item.last_name||'')).trim()
+                : (item[boardDef.nameField]||'—')
+              const val = boardDef.valueField && item[boardDef.valueField] ? fmt$(item[boardDef.valueField]) : ''
+              const sub = boardDef.subField ? (item[boardDef.subField]||'') : ''
+              return (
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', borderBottom:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:12, flexShrink:0 }}>{boardDef.icon}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{name}</div>
+                    {sub && <div style={{ fontSize:10, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
+                  </div>
+                  {val && <div style={{ fontSize:11, fontWeight:700, color:'#10B981', flexShrink:0 }}>{val}</div>}
+                </div>
+              )
+            })}
+            {drillItems.length > 8 && (
+              <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', paddingTop:6 }}>
+                +{drillItems.length-8} more — click View all below
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── LIST MODE — clickable rows with agent avatar ──
+  if (config.display === 'list') {
+    return (
+      <div>
+        {items.length === 0 && (
+          <div style={{ color:'var(--muted)', fontSize:12, padding:'16px 0', fontStyle:'italic', textAlign:'center' }}>
+            No records match this filter
+          </div>
+        )}
+        {items.map(function(item, i) {
+          const name = boardDef.nameField === 'first_name'
+            ? ((item.first_name||'') + ' ' + (item.last_name||'')).trim()
+            : (item[boardDef.nameField] || '—')
+          const sub       = boardDef.subField ? (item[boardDef.subField] || '') : ''
+          const val       = boardDef.valueField && item[boardDef.valueField] ? fmt$(item[boardDef.valueField]) : ''
+          const statusVal = boardDef.statusField ? item[boardDef.statusField] : null
+          const agentName = item.agents?.name || ''
+          const agentColor= item.agents?.color || '#94A3B8'
+          const agentInit = agentName.split(' ').map(function(w){return w[0]}).join('').slice(0,2)
+          return (
+            <div key={i}
+              onClick={function(){ navigate('/'+route+(item.id?'/'+item.id:'')) }}
+              style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 6px', borderRadius:7, cursor:'pointer',
+                borderBottom:'1px solid var(--border)', transition:'background .1s' }}
+              onMouseEnter={function(e){ e.currentTarget.style.background='var(--dim)' }}
+              onMouseLeave={function(e){ e.currentTarget.style.background='transparent' }}>
+              <span style={{ fontSize:13, flexShrink:0 }}>{boardDef.icon}</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{name}</div>
+                {sub && <div style={{ fontSize:10, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
+              </div>
+              {val && <div style={{ fontSize:11, fontWeight:700, color:'#10B981', flexShrink:0 }}>{val}</div>}
+              {statusVal && (
+                <div style={{ fontSize:10, padding:'2px 7px', borderRadius:10, background:'var(--dim)', color:'var(--muted)', fontWeight:600, flexShrink:0, whiteSpace:'nowrap' }}>
+                  {statusVal}
+                </div>
+              )}
+              {agentInit && (
+                <div title={agentName} style={{ width:22, height:22, borderRadius:'50%', background:agentColor, color:'#fff', fontSize:8, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  {agentInit}
+                </div>
+              )}
+            </div>
+          )
+        })}
+        {items.length > 0 && (
+          <div style={{ marginTop:8, textAlign:'right' }}>
+            <button onClick={function(){ navigate('/'+route) }}
+              style={{ fontSize:11, color:'var(--brand)', background:'none', border:'none', cursor:'pointer', fontFamily:ff, fontWeight:700, padding:0 }}>
+              View all {items.length} in {boardDef.label} →
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── TABLE MODE — sortable, clickable rows with agent column ──
+  const cols = config.columns?.length
+    ? config.columns.map(function(f){ return boardDef.displayCols.find(function(c){return c.field===f}) || { field:f, label:f } })
+    : boardDef.displayCols.slice(0,3)
+
+  // Add agent column if not already present and data has it
+  const showAgentCol = items.some(function(it){ return it.agents?.name }) && !cols.find(function(c){ return c.field==='agent_id' })
+
+  return (
+    <div style={{ overflowX:'auto' }}>
+      {items.length === 0 && <div style={{ color:'var(--muted)', fontSize:12, padding:'16px 0', fontStyle:'italic', textAlign:'center' }}>No records match</div>}
+      {items.length > 0 && (
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+          <thead>
+            <tr>
+              {cols.map(function(col) {
+                return <th key={col.field} style={{ padding:'4px 8px 4px 0', textAlign:'left', fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap', borderBottom:'2px solid var(--border)' }}>{col.label}</th>
+              })}
+              {showAgentCol && <th style={{ padding:'4px 8px 4px 0', textAlign:'left', fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', borderBottom:'2px solid var(--border)' }}>Agent</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(function(item, i) {
+              return (
+                <tr key={i}
+                  onClick={function(){ navigate('/'+route+(item.id?'/'+item.id:'')) }}
+                  style={{ cursor:'pointer' }}
+                  onMouseEnter={function(e){ e.currentTarget.style.background='var(--dim)' }}
+                  onMouseLeave={function(e){ e.currentTarget.style.background='transparent' }}>
+                  {cols.map(function(col) {
+                    let val = item[col.field]
+                    if (val === null || val === undefined) val = '—'
+                    if (col.field === 'first_name') val = ((item.first_name||'')+' '+(item.last_name||'')).trim() || '—'
+                    if (typeof val === 'number' && (col.field.includes('price') || col.field === 'gci' || col.field === 'production')) val = fmt$(val)
+                    if (col.field.includes('date') && val && val !== '—') {
+                      try { val = new Date(val).toLocaleDateString('en-US',{month:'short',day:'numeric'}) } catch {}
+                    }
+                    return (
+                      <td key={col.field} style={{ padding:'6px 8px 6px 0', borderBottom:'1px solid var(--border)', color:'var(--text)', overflow:'hidden', maxWidth:120, textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {String(val)}
+                      </td>
+                    )
+                  })}
+                  {showAgentCol && (
+                    <td style={{ padding:'6px 8px 6px 0', borderBottom:'1px solid var(--border)' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                        <div style={{ width:18, height:18, borderRadius:'50%', background:item.agents?.color||'#94A3B8', color:'#fff', fontSize:7, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                          {(item.agents?.name||'?').split(' ').map(function(w){return w[0]}).join('').slice(0,2)}
+                        </div>
+                        <span style={{ fontSize:10, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {item.agents?.name?.split(' ')[0] || '—'}
+                        </span>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+      {items.length > 0 && (
+        <div style={{ marginTop:8, textAlign:'right' }}>
+          <button onClick={function(){ navigate('/'+route) }}
+            style={{ fontSize:11, color:'var(--brand)', background:'none', border:'none', cursor:'pointer', fontFamily:ff, fontWeight:700, padding:0 }}>
+            View all {items.length} →
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── DETAIL POPUP ──────────────────────────────────────────────────
