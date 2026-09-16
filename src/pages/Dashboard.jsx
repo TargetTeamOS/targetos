@@ -1539,38 +1539,38 @@ function WidgetManager({ widgets, role, onSave, onClose, onAddCustom }) {
             const def = isCustom ? { label: w.customConfig?.label || 'Custom', icon: w.customConfig?.icon || '🔲' } : WIDGET_DEFS[w.id]
             if (!def) return null
             return (
-              <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'var(--dim)', borderRadius: '9px', border: '1px solid var(--border)', marginBottom: '6px' }}>
-                <span style={{ fontSize: '18px', flexShrink: 0 }}>{def.icon}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{def.label}</div>
+              <div key={w.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', background:'var(--dim)', borderRadius:'9px', border:'1px solid var(--border)', marginBottom:'6px' }}>
+                <span style={{ fontSize:'18px', flexShrink:0 }}>{def.icon}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>{def.label}</div>
                   {isCustom && w.customConfig?.statuses?.length > 0 && (
-                    <div style={{ fontSize: '10px', color: 'var(--muted)' }}>Filter: {w.customConfig.statuses.join(', ')}</div>
+                    <div style={{ fontSize:'10px', color:'var(--muted)' }}>Filter: {w.customConfig.statuses.join(', ')}</div>
                   )}
                 </div>
                 {/* Size toggle */}
-                <div style={{ display: 'flex', background: 'var(--panel)', borderRadius: '6px', padding: '2px', gap: '2px' }}>
+                <div style={{ display:'flex', background:'var(--panel)', borderRadius:'6px', padding:'2px', gap:'2px' }}>
                   {[['md','½'],['lg','▭']].map(([sz, lbl]) => (
                     <button key={sz} onClick={() => setSize(w.id, sz)}
-                      style={{ padding: '3px 8px', borderRadius: '5px', border: 'none', background: w.size===sz ? '#CC2200' : 'transparent', color: w.size===sz ? '#fff' : 'var(--muted)', fontSize: '11px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+                      style={{ padding:'3px 8px', borderRadius:'5px', border:'none', background: w.size===sz ? '#CC2200' : 'transparent', color: w.size===sz ? '#fff' : 'var(--muted)', fontSize:'11px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
                       {lbl}
                     </button>
                   ))}
                 </div>
                 {/* Color swatches */}
-                <div style={{ display: 'flex', gap: '3px' }}>
+                <div style={{ display:'flex', gap:'3px' }}>
                   {['#CC2200','#10B981','#3B82F6','#F5A623','#8B5CF6','#EC4899'].map(c => (
                     <div key={c} onClick={() => setColor(w.id, c)}
-                      style={{ width: 14, height: 14, borderRadius: '50%', background: c, cursor: 'pointer', border: (w.color||'#CC2200')===c ? '2px solid var(--text)' : '1px solid transparent' }} />
+                      style={{ width:14, height:14, borderRadius:'50%', background:c, cursor:'pointer', border:(w.color||'#CC2200')===c ? '2px solid var(--text)' : '1px solid transparent' }} />
                   ))}
                 </div>
                 {/* Hide button */}
                 <button onClick={() => toggle(w.id)}
-                  style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer', fontFamily: ff, flexShrink: 0 }}>
+                  style={{ padding:'4px 8px', borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:'11px', cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
                   Hide
                 </button>
                 {isCustom && (
                   <button onClick={() => removeCustom(w.id)}
-                    style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #DC262644', background: '#FEF2F2', color: '#DC2626', fontSize: '11px', cursor: 'pointer', fontFamily: ff, flexShrink: 0 }}>
+                    style={{ padding:'4px 8px', borderRadius:'6px', border:'1px solid #DC262644', background:'#FEF2F2', color:'#DC2626', fontSize:'11px', cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
                     Delete
                   </button>
                 )}
@@ -1580,21 +1580,21 @@ function WidgetManager({ widgets, role, onSave, onClose, onAddCustom }) {
 
           {/* Hidden widgets */}
           {hidden.length > 0 && (
-            <div style={{ marginTop: '16px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '10px' }}>
+            <div style={{ marginTop:'16px' }}>
+              <div style={{ fontSize:'11px', fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'10px' }}>
                 Hidden — click to show
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
                 {hidden.map(w => {
                   const isCustom = w.id.startsWith('custom_') || w.id === 'custom'
                   const def = isCustom ? { label: w.customConfig?.label || 'Custom', icon: w.customConfig?.icon || '🔲' } : WIDGET_DEFS[w.id]
                   if (!def) return null
                   return (
                     <button key={w.id} onClick={() => toggle(w.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 12px', borderRadius: '9px', border: '1px dashed var(--border)', background: 'transparent', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff, textAlign: 'left' }}
+                      style={{ display:'flex', alignItems:'center', gap:'8px', padding:'9px 12px', borderRadius:'9px', border:'1px dashed var(--border)', background:'transparent', color:'var(--muted)', fontSize:'12px', fontWeight:600, cursor:'pointer', fontFamily:ff, textAlign:'left' }}
                       onMouseEnter={e => { e.currentTarget.style.borderColor = '#CC2200'; e.currentTarget.style.color = '#CC2200' }}
                       onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' }}>
-                      <span style={{ fontSize: '16px' }}>{def.icon}</span>
+                      <span style={{ fontSize:'16px' }}>{def.icon}</span>
                       + {def.label}
                     </button>
                   )
@@ -1605,14 +1605,14 @@ function WidgetManager({ widgets, role, onSave, onClose, onAddCustom }) {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:'8px', alignItems:'center' }}>
           <button onClick={onAddCustom}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: '2px dashed #CC2200', background: 'rgba(204,34,0,.04)', color: '#CC2200', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: ff }}>
+            style={{ display:'flex', alignItems:'center', gap:'6px', padding:'7px 14px', borderRadius:'8px', border:'2px dashed #CC2200', background:'rgba(204,34,0,.04)', color:'#CC2200', fontSize:'12px', fontWeight:700, cursor:'pointer', fontFamily:ff }}>
             🔲 + Custom Widget
           </button>
-          <div style={{ flex: 1 }} />
+          <div style={{ flex:1 }} />
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={() => { onSave(wids); onClose() }} style={{ background: '#10B981', border: 'none' }}>
+          <Btn onClick={() => { onSave(wids); onClose() }} style={{ background:'#10B981', border:'none' }}>
             💾 Save Changes
           </Btn>
         </div>
