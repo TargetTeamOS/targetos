@@ -6,6 +6,7 @@
 
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import ContactPicker from '../components/ContactPicker'
+import { CustomFieldsSection } from '../components/CustomFieldsSection'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -26,7 +27,8 @@ const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const BLANK = {
   type: 'Under Contract', client_name: '', address: '', unit: '', phone: '',
   status: 'Under Contract', label: '', contract_date: '', sending_date: '',
-  closing_gift_status: '', tracking_number: '', amount: '', vendor: '', notes: ''
+  closing_gift_status: '', tracking_number: '', amount: '', vendor: '', notes: '',
+  custom_data: {}
 }
 
 export function Gifts() {
@@ -59,7 +61,7 @@ export function Gifts() {
   function openGift(g) {
     navigate('/gifts/' + g.id, { replace: true })
     setSelected(g)
-    setForm({ ...BLANK, ...g })
+    setForm({ ...BLANK, ...g, custom_data: g.custom_data || {} })
   }
 
   function openAdd() {
@@ -234,6 +236,7 @@ export function Gifts() {
         <Field label="Notes">
           <Input value={form.notes} onChange={v => set('notes', v)} placeholder="Notes..." />
         </Field>
+        <CustomFieldsSection entity="gifts" customData={form.custom_data} onChange={(k,v) => set('custom_data', { ...(form.custom_data||{}), [k]: v })} />
         {selected?.id && <RecordActivityFeed table="gifts" recordId={selected.id} compact />}
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>}

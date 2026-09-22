@@ -1,17 +1,27 @@
 // TargetOS V2 — Custom Fields System
-// Admins define extra fields per entity (contacts, deals, listings).
+// Admins define extra fields per entity/board — see ENTITY_LABELS below
+// for the full current list (Contacts, Deals, Listings, TC Deals,
+// Tasks, Signs, Offers, Gifts, Open Houses).
 // Fields are stored in system_settings table as JSON.
 // Values are stored in a jsonb column (custom_data) on each entity row.
 //
-// SQL required:
-//   alter table contacts  add column if not exists custom_data jsonb default '{}';
-//   alter table deals     add column if not exists custom_data jsonb default '{}';
-//   alter table listings  add column if not exists custom_data jsonb default '{}';
+// SQL required: see sql/offers_v2/J_extend_custom_data_to_all_boards.sql
+// (idempotent — safe to re-run). In short, one column per board:
+//   alter table <table> add column if not exists custom_data jsonb default '{}';
+//
+// Adding a NEW board to this system later needs exactly two things:
+//   1. that one SQL line, for the new table
+//   2. one entry in ENTITY_LABELS below
+// then wiring <CustomFieldsSection entity="..." .../> into that
+// board's add/edit form (see Listings.jsx for the reference pattern).
+// Nothing else — the Custom Fields admin page, the Field Catalog
+// (src/lib/fieldCatalog.js), and Segments all read ENTITY_LABELS /
+// getFieldsForEntity generically and need no further changes.
 //
 // Field definition shape:
 // {
 //   id:       string (uuid),
-//   entity:   'contacts' | 'deals' | 'listings',
+//   entity:   one of the keys in ENTITY_LABELS,
 //   label:    string,
 //   key:      string (snake_case, used as the jsonb key),
 //   type:     'text' | 'number' | 'date' | 'select' | 'checkbox' | 'textarea' | 'url' | 'phone' | 'email',
@@ -195,7 +205,7 @@ const CMD_STATUS_KEY = 'command_documents_status'
 const CMD_LINK_KEY   = 'command_profile_link'
 const CMD_STATUS_OPTIONS = [
   ['Done','#00C875'], ['Waiting','#FDAB3D'], ['Sent not signed','#0086C0'],
-  ['Waiting for approval','#A25DDC'], ['Doesn\u2019t Want To Sign','#E2445C'],
+  ['Waiting for approval','#A25DDC'], ['Doesn’t Want To Sign','#E2445C'],
   ['Reminder to sign 1','#FFCB00'], ['Reminder to sign 2','#FF9D00'], ['Reminder to sign 3','#FF642E'],
   ['Sent - Waiting for lender','#00D2D2'], ['Contact Info needed','#7C3AED'],
   ['Stuck','#E2445C'], ['No command','#9AADBD'], ['Client has been notified','#0073EA'],
@@ -247,7 +257,13 @@ export const FIELD_TYPES = [
 ]
 
 export const ENTITY_LABELS = {
-  contacts: 'Contacts',
-  deals:    'Deals / Production',
-  listings: 'Listings',
+  contacts:     'Contacts',
+  deals:        'Deals / Production',
+  listings:     'Listings',
+  tc_deals:     'TC Deals',
+  tasks:        'Tasks',
+  signs:        'Signs',
+  offers:       'Offers',
+  gifts:        'Gifts',
+  open_houses:  'Open Houses',
 }

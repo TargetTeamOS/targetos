@@ -6,7 +6,7 @@
 // custom fields previously had nowhere to actually appear despite the
 // admin page implying they'd work everywhere.
 import React, { useState, useEffect } from 'react'
-import { getFieldsForEntity } from '../lib/customFields'
+import { getFieldsForEntity, normalizeOptions } from '../lib/customFields'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const inputStyle = {
@@ -66,10 +66,14 @@ function CustomFieldInput({ field, value, onChange }) {
     )
   }
   if (field.type === 'select') {
+    // Options may be legacy plain strings or the newer {label,value,color}
+    // shape the admin UI now saves (see customFields.js normalizeOption) —
+    // normalize both to the same rendering so colored dropdowns defined on
+    // any board don't render as "[object Object]".
     return (
       <select value={value || ''} onChange={e => onChange(e.target.value)} style={inputStyle}>
         <option value="">—</option>
-        {(field.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+        {normalizeOptions(field.options).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     )
   }
