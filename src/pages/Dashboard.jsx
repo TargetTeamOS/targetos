@@ -1359,6 +1359,7 @@ const WIDGET_ENTITY = {
   active_deals:      'deals',
   production_stats:  'deals',
   active_listings:   'listings',
+  upcoming_close:    'deals',
 }
 
 // Generic custom-field filter check for Dashboard widgets -- the
@@ -2165,10 +2166,32 @@ export function Dashboard() {
     ) }
 
     // ── UPCOMING CLOSINGS ──
-    if (w.id === 'upcoming_close') return shell(
+    if (w.id === 'upcoming_close') {
+      // NOTE (Sept 2026 Field Catalog follow-up): same class of bug as
+      // hot_leads/active_deals/todays_tasks above -- this widget's own
+      // ⚙️ Configure options (agentFilter/daysAhead/limit) were declared
+      // in WIDGET_CONFIG_OPTIONS but never actually applied below; the
+      // render used the fixed-30-day, all-agents `data.upcoming` list
+      // directly. Fixed to recompute from `data.activeDeals` (which
+      // already excludes Closed/Deal Fell Through, same base active_deals
+      // uses) honoring daysAhead/agentFilter/limit, and extended to also
+      // honor any custom deal field via matchesCustomFilters (see
+      // WIDGET_ENTITY above).
+      const wDays = wcfg.daysAhead || 30
+      const filteredUpcoming = (data.activeDeals || []).filter(d => {
+        const date = d.expected_close_date || d.close_date
+        if (!date) return false
+        const days = getDaysUntil(date)
+        if (days === null || days < 0 || days > wDays) return false
+        if (wcfg.agentFilter && d.agent_id !== wcfg.agentFilter) return false
+        if (!matchesCustomFilters(d, wcfg, ['agentFilter','daysAhead','limit'], fieldCatalogs.deals)) return false
+        return true
+      }).sort((a, b) => getDaysUntil(a.expected_close_date||a.close_date) - getDaysUntil(b.expected_close_date||b.close_date))
+      const uLimit = wcfg.limit || 4
+      return shell(
       <div>
-        {data.upcoming?.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No closings in 30 days</div>}
-        {data.upcoming?.slice(0, 4).map(d => {
+        {filteredUpcoming.length === 0 && <div style={{ textAlign: 'center', padding: '14px', color: 'var(--muted)', fontSize: '12px' }}>No closings in {wDays} days</div>}
+        {filteredUpcoming.slice(0, uLimit).map(d => {
           const days = getDaysUntil(d.expected_close_date || d.close_date)
           return (
             <div key={d.id} onClick={() => navigate('/production/' + d.id)}
@@ -2185,9 +2208,9 @@ export function Dashboard() {
             </div>
           )
         })}
-        {data.upcoming?.length > 4 && <div onClick={() => setPopup('upcoming_close')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '6px' }}>+{data.upcoming.length - 4} more →</div>}
+        {filteredUpcoming.length > uLimit && <div onClick={() => setPopup('upcoming_close')} style={{ fontSize: '11px', color: color, cursor: 'pointer', marginTop: '6px' }}>+{filteredUpcoming.length - uLimit} more →</div>}
       </div>
-    )
+    ) }
 
     // ── ACTIVE LISTINGS ──
     if (w.id === 'active_listings') {
