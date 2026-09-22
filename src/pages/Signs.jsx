@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // TargetOS V2 — Signs Board
 // • Google Maps view showing every sign by address
 // • Status badges: On Property, Order Sent, Missing, Removed
@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabase'
 import { db } from '../lib/db'
 import { fmtDate, matchSearch } from '../lib/utils'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
+import { CustomFieldsSection } from '../components/CustomFieldsSection'
 import { ImportExport } from '../components/ImportExport'
 import { useAgents } from '../lib/hooks'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
@@ -32,7 +33,7 @@ const SIGNS_EXPORT_COLS = [
   { key: 'comments',       label: 'Comments',        example: '' },
 ]
 
-// ── CONSTANTS ─────────────────────────────────────────────────────
+// ── CONSTANTS ───────────────────────────────────────────────
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
 
 const ORDER_STATUS = [
@@ -66,11 +67,12 @@ function blankSign() {
   return {
     addr: '', city: '', state: '', zip: '', lat: null, lng: null, agent_id: '', upper_rider: '', lower_rider: '',
     order_status: 'Order Sent In', date_installed: new Date().toISOString().slice(0,10), date_removed: '', comments: '',
+    custom_data: {},
   }
 }
 const BLANK = blankSign()
 
-// ── STATUS BADGE ──────────────────────────────────────────────────
+// ── STATUS BADGE ───────────────────────────────────────────────────────
 function StatusBadge({ status, size = 'sm' }) {
   const def = ORDER_STATUS.find(s => s.id === status) || ORDER_STATUS[1]
   return (
@@ -101,7 +103,7 @@ function RiderBadge({ rider }) {
   )
 }
 
-// ── GOOGLE MAP COMPONENT ──────────────────────────────────────────
+// ── GOOGLE MAP COMPONENT ─────────────────────────────────────────────────────
 function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
   const mapRef   = useRef(null)
   const mapObj   = useRef(null)
@@ -294,9 +296,9 @@ function SignsMap({ signs, selectedIds, onToggleSelect, onSignClick }) {
   )
 }
 
-// ── SIGN EDIT MODAL ───────────────────────────────────────────────
+// ── SIGN EDIT MODAL ──────────────────────────────────────────────────────────────
 function SignModal({ sign, agents, onSave, onClose, saving }) {
-  const [f, setF] = useState(() => sign ? { ...sign } : blankSign())
+  const [f, setF] = useState(() => sign ? { ...sign, custom_data: sign.custom_data || {} } : blankSign())
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
 
   const Lbl = ({ children }) => (
@@ -377,6 +379,7 @@ function SignModal({ sign, agents, onSave, onClose, saving }) {
               placeholder="Notes about this sign..." rows={2}
               style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--inp)', color: 'var(--text)', fontSize: '13px', fontFamily: ff, resize: 'vertical', boxSizing: 'border-box' }} />
           </div>
+          <CustomFieldsSection entity="signs" customData={f.custom_data} onChange={(k,v) => set('custom_data', { ...(f.custom_data||{}), [k]: v })} />
         </div>
         {f.id && <div style={{ padding: '0 18px' }}><RecordActivityFeed table="signs" recordId={f.id} compact /></div>}
         <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -388,7 +391,7 @@ function SignModal({ sign, agents, onSave, onClose, saving }) {
   )
 }
 
-// ── ROUTE PLANNER ─────────────────────────────────────────────────
+// ── ROUTE PLANNER ─────────────────────────────────────────────────────────
 function RoutePlanner({ signs, selectedIds, onClear }) {
   const selected = signs.filter(s => selectedIds.includes(s.id))
 
@@ -441,7 +444,7 @@ function RoutePlanner({ signs, selectedIds, onClear }) {
   )
 }
 
-// ── SIGN ROW ──────────────────────────────────────────────────────
+// ── SIGN ROW ─────────────────────────────────────────────────────────────────────
 function SignRow({ sign, agents, isSelected, onToggleSelect, onEdit }) {
   const agent = agents.find(a => a.id === sign.agent_id)
 
@@ -497,9 +500,9 @@ function SignRow({ sign, agents, isSelected, onToggleSelect, onEdit }) {
   )
 }
 
-// ════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // MAIN PAGE
-// ════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 export function Signs() {
   const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
@@ -541,13 +544,13 @@ export function Signs() {
     return true
   })
 
-  // ── SELECT / ROUTE ────────────────────────────────────────────────
+  // ── SELECT / ROUTE ──────────────────────────────────────────────────────
   function toggleSelect(id) {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
   function clearSelection() { setSelectedIds([]) }
 
-  // ── SAVE ──────────────────────────────────────────────────────────
+  // ── SAVE ───────────────────────────────────────────────────────────────────────────
   async function save(data) {
     if (!data.addr?.trim()) { toast('Address is required', '#DC2626'); return }
     setSaving(true)

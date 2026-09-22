@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // TargetOS V2 — Open House Page
 // Manage open houses and track every visitor.
 // ═══════════════════════════════════════════════════════════════
@@ -16,6 +16,7 @@ import { fmtDate, fmtPhone } from '../lib/utils'
 import { OH_INTEREST_LEVELS } from '../lib/constants'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
+import { CustomFieldsSection } from '../components/CustomFieldsSection'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Confirm,
@@ -24,7 +25,7 @@ import {
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-const BLANK_OH = { listing_addr: '', date: '', start_time: '', end_time: '', notes: '' }
+const BLANK_OH = { listing_addr: '', date: '', start_time: '', end_time: '', notes: '', custom_data: {} }
 const BLANK_V  = { first_name: '', last_name: '', phone: '', email: '', interest_level: 'Warm', notes: '' }
 
 export function OpenHouse() {
@@ -63,7 +64,7 @@ export function OpenHouse() {
   async function openOH(oh) {
     navigate('/openhouse/' + oh.id, { replace: true })
     setSelected(oh)
-    setForm({ ...BLANK_OH, ...oh })
+    setForm({ ...BLANK_OH, ...oh, custom_data: oh.custom_data || {} })
     setShowVForm(false)
     setLoadingV(true)
     try {
@@ -195,6 +196,8 @@ export function OpenHouse() {
           </Field>
         </div>
 
+        <CustomFieldsSection entity="open_houses" customData={form.custom_data} onChange={(k,v) => set('custom_data', { ...(form.custom_data||{}), [k]: v })} />
+
         {selected?.id && <RecordActivityFeed table="open_houses" recordId={selected.id} compact />}
 
         <ModalActions>
@@ -275,6 +278,7 @@ export function OpenHouse() {
             </Field>
           )}
         </div>
+        <CustomFieldsSection entity="open_houses" customData={form.custom_data} onChange={(k,v) => set('custom_data', { ...(form.custom_data||{}), [k]: v })} />
         <ModalActions>
           <Btn variant="secondary" onClick={() => { setShowOHForm(false); navigate('/openhouse') }}>Cancel</Btn>
           <Btn onClick={saveOH} loading={saving}>Create Open House</Btn>

@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // TargetOS V2 — Tasks Page
 // Every task has its own URL. Full CRUD with priorities.
 // ═══════════════════════════════════════════════════════════════
@@ -12,6 +12,7 @@ import { useTasks, useAgents } from '../lib/hooks'
 import { fmtDate, today, isOverdue, isDueToday, isDueSoon } from '../lib/utils'
 import { TASK_PRIORITIES, TASK_STATUSES } from '../lib/constants'
 import { RecordActivityFeed } from '../components/RecordActivityFeed'
+import { CustomFieldsSection } from '../components/CustomFieldsSection'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
@@ -33,6 +34,7 @@ const BLANK = {
   title: '', priority: 'normal', status: 'pending', due_date: '',
   notes: '', agent_id: '', deal_id: '', contact_id: '',
   recur_interval: '', recur_unit: 'week',  // recurring task fields
+  custom_data: {},
 }
 
 export function Tasks() {
@@ -74,7 +76,7 @@ export function Tasks() {
   function openTask(t) {
     navigate('/tasks/' + t.id, { replace: true })
     setSelected(t)
-    setForm({ ...BLANK, ...t })
+    setForm({ ...BLANK, ...t, custom_data: t.custom_data || {} })
     setShowAdd(false)
   }
 
@@ -333,6 +335,8 @@ export function Tasks() {
         <Field label="Notes">
           <Textarea value={form.notes} onChange={v => set('notes', v)} placeholder="Task details..." rows={3} />
         </Field>
+
+        <CustomFieldsSection entity="tasks" customData={form.custom_data} onChange={(k,v) => set('custom_data', { ...(form.custom_data||{}), [k]: v })} />
 
         {/* Recurring task option */}
         <div style={{ marginBottom:16 }}>

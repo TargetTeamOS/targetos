@@ -141,13 +141,14 @@ export function CustomFields() {
 
       {/* Info box */}
       <div style={{ padding:'12px 14px', background:'rgba(59,130,246,.07)', border:'1px solid rgba(59,130,246,.2)', borderRadius:10, marginBottom:16, fontSize:12, color:'var(--text)', lineHeight:1.7 }}>
-        <strong>How it works:</strong> Fields you define here appear automatically on the contact/deal/listing detail page.
+        <strong>How it works:</strong> Fields you define here appear automatically on that board's detail/edit page —
+        and are usable as filters in Segments and Dashboard, no engineering work needed.
         Values are saved with each record. You can reorder, hide, or delete fields at any time.<br/>
-        <strong>SQL required (one-time):</strong>{' '}
-        <code style={{ background:'rgba(0,0,0,.06)', padding:'1px 5px', borderRadius:4, fontSize:11 }}>
-          alter table contacts add column if not exists custom_data jsonb default '{"{}"}';
-          alter table deals add column if not exists custom_data jsonb default '{"{}"}';
-          alter table listings add column if not exists custom_data jsonb default '{"{}"}';
+        <strong>SQL required (one-time per board, already run for every board listed above):</strong>{' '}
+        <code style={{ background:'rgba(0,0,0,.06)', padding:'1px 5px', borderRadius:4, fontSize:11, display:'block', marginTop:4, whiteSpace:'pre-wrap' }}>
+          {Object.keys(ENTITY_LABELS).map(entity =>
+            `alter table ${entity} add column if not exists custom_data jsonb default '{}';`
+          ).join('\n')}
         </code>
       </div>
 
