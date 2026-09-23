@@ -9,6 +9,7 @@ import {
   labelToKey, FIELD_TYPES, ENTITY_LABELS
 } from '../lib/customFields'
 import { PageHeader, Btn, Modal, ModalActions, Field, Input, SectionTitle } from '../components/UI'
+import { FieldOptionsEditor } from '../components/CustomFieldsSection'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const S  = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }
@@ -143,7 +144,9 @@ export function CustomFields() {
       <div style={{ padding:'12px 14px', background:'rgba(59,130,246,.07)', border:'1px solid rgba(59,130,246,.2)', borderRadius:10, marginBottom:16, fontSize:12, color:'var(--text)', lineHeight:1.7 }}>
         <strong>How it works:</strong> Fields you define here appear automatically on that board's detail/edit page —
         and are usable as filters in Segments and Dashboard, no engineering work needed.
-        Values are saved with each record. You can reorder, hide, or delete fields at any time.<br/>
+        Values are saved with each record. You can reorder, hide, or delete fields at any time.
+        Managers and admins can also add a field directly from any board's own add/edit form
+        (look for "+ Add a custom field" at the bottom of the form) — it lands here too, same list, same storage.<br/>
         <strong>SQL required (one-time per board, already run for every board listed above):</strong>{' '}
         <code style={{ background:'rgba(0,0,0,.06)', padding:'1px 5px', borderRadius:4, fontSize:11, display:'block', marginTop:4, whiteSpace:'pre-wrap' }}>
           {Object.keys(ENTITY_LABELS).map(entity =>
@@ -269,32 +272,7 @@ export function CustomFields() {
 
         {form.type === 'select' && (
           <div style={{ marginBottom:12 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:6 }}>Dropdown Options</div>
-            <div style={{ display:'flex', gap:8, marginBottom:8 }}>
-              <input value={optionText} onChange={e=>setOptionText(e.target.value)}
-                onKeyDown={e=>{ if(e.key==='Enter'&&optionText.trim()){ set('options',[...(form.options||[]),optionText.trim()]); setOptionText('') } }}
-                placeholder="Type option, press Enter" style={{...S,flex:1}} />
-              <button onClick={()=>{ if(optionText.trim()){set('options',[...(form.options||[]),optionText.trim()]);setOptionText('')} }}
-                style={{ padding:'7px 14px', borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', fontSize:13, cursor:'pointer', fontFamily:ff }}>Add</button>
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              {(form.options||[]).map((opt,i)=>{
-                const o = (opt && typeof opt === 'object') ? opt : { label:String(opt), value:String(opt), color:null }
-                const setOpt = patch => set('options',(form.options||[]).map((x,j)=> j===i ? { label:o.label, value:o.value, color:o.color, ...patch } : x))
-                return (
-                  <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 8px', borderRadius:8, background:'var(--dim)', border:'1px solid var(--border)' }}>
-                    <input type="color" value={o.color || '#cccccc'} onChange={e=>setOpt({ color:e.target.value })}
-                      title="Option color" style={{ width:30, height:26, border:'1px solid var(--border)', borderRadius:6, cursor:'pointer', background:'#fff' }} />
-                    <input value={o.label} onChange={e=>setOpt({ label:e.target.value, value:e.target.value })}
-                      style={{ ...S, flex:1, padding:'5px 8px', fontSize:12 }} />
-                    <input value={o.color || ''} onChange={e=>setOpt({ color:e.target.value })} placeholder="#RRGGBB"
-                      style={{ ...S, width:96, padding:'5px 8px', fontSize:12 }} />
-                    <button onClick={()=>set('options',(form.options||[]).filter((_,j)=>j!==i))}
-                      style={{ background:'none', border:'none', cursor:'pointer', color:'#DC2626', fontSize:16, padding:0 }}>×</button>
-                  </div>
-                )
-              })}
-            </div>
+            <FieldOptionsEditor options={form.options} onChange={opts => set('options', opts)} />
           </div>
         )}
 
