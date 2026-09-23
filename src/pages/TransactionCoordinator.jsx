@@ -38,6 +38,7 @@ import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../compone
 import { usePageView, LastVisited } from '../components/PageViewTracking'
 import SellerContacts from '../components/SellerContacts'
 import LinkListingControl from '../components/LinkListingControl'
+import { CustomFieldsSection } from '../components/CustomFieldsSection'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -689,7 +690,7 @@ export function TransactionCoordinator() {
     list_price:'', sale_price:'', ao_date:'', close_date:'', c2c_enabled:false,
     attorney_name:'', attorney_phone:'', attorney_email:'',
     mortgage_broker:'', mortgage_phone:'',
-    inspector:'', inspector_phone:'', notes:'',
+    inspector:'', inspector_phone:'', notes:'', custom_data:{},
   }
 
   // Safe insert — only columns confirmed in tc_deals table
@@ -712,6 +713,9 @@ export function TransactionCoordinator() {
       inspector:       f.inspector       || null,
       inspector_phone: f.inspector_phone || null,
       notes:           f.notes || null,
+      // Custom fields (Custom Fields admin page) — no-code fields added
+      // to the TC board live here, same as Contacts/Deals/Listings.
+      custom_data:     f.custom_data || {},
     }
   }
   const TASK_BLANK = {
@@ -743,7 +747,7 @@ export function TransactionCoordinator() {
     const d = deals.find(x => x.id === id)
     if (d) {
       setSelDeal(d)
-      setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'' })
+      setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'', custom_data:d.custom_data||{} })
       setShowEditDeal(true)
     }
     setDeepLinked(true)
@@ -1436,7 +1440,7 @@ export function TransactionCoordinator() {
             onCheckTask={checkTask}
             onEditTask={t => { setSelTask(t); setSelDeal(deals.find(d=>d.id===t.deal_id)); setTaskForm({ title:t.title, priority:t.priority, due_date:t.due_date||'', agent_id:t.agent_id||'', notes:t.notes||'', needs_calendar:!!t.needs_calendar, reminder_days:t.reminder_days||'', completion_action:t.completion_action||'none', completion_note:t.completion_note||'' }); setShowEditTask(true) }}
             onAddTask={d => { setSelDeal(d); setSelTask(null); setTaskForm({...TASK_BLANK}); setShowAddTask(true) }}
-            onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'' }); setShowEditDeal(true) }}
+            onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'', custom_data:d.custom_data||{} }); setShowEditDeal(true) }}
           />
           </div>
         ))
@@ -1469,7 +1473,7 @@ export function TransactionCoordinator() {
                   onCheckTask={checkTask}
                   onEditTask={t => { setSelTask(t); setSelDeal(deals.find(d=>d.id===t.deal_id)); setTaskForm({ title:t.title, priority:t.priority, due_date:t.due_date||'', agent_id:t.agent_id||'', notes:t.notes||'', needs_calendar:!!t.needs_calendar, reminder_days:t.reminder_days||'', completion_action:t.completion_action||'none', completion_note:t.completion_note||'' }); setShowEditTask(true) }}
                   onAddTask={d => { setSelDeal(d); setSelTask(null); setTaskForm({...TASK_BLANK}); setShowAddTask(true) }}
-                  onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'' }); setShowEditDeal(true) }}
+                  onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'', custom_data:d.custom_data||{} }); setShowEditDeal(true) }}
                 />
               </div>
             ))}
@@ -1624,6 +1628,8 @@ export function TransactionCoordinator() {
             <textarea value={dealForm.notes} onChange={e=>setDealForm(p=>({...p,notes:e.target.value}))} rows={2} style={{ ...S, resize:'vertical' }} />
           </div>
         </div>
+        <CustomFieldsSection entity="tc_deals" customData={dealForm.custom_data}
+          onChange={(k,v) => setDealForm(p => ({ ...p, custom_data: { ...(p.custom_data||{}), [k]: v } }))} />
         <div style={{ marginTop:12, padding:'10px 12px', background:'rgba(59,130,246,.06)', borderRadius:8, fontSize:11, color:'var(--muted)' }}>
           📋 <strong>{PHASE_TASKS[dealForm.tc_phase]?.length || 0} tasks</strong> will be auto-generated for <strong>{PHASES.find(p=>p.id===dealForm.tc_phase)?.label}</strong>
           {PHASE_TASKS[dealForm.tc_phase]?.filter(t=>t.cal).length > 0 &&
@@ -1715,6 +1721,9 @@ export function TransactionCoordinator() {
             <span><b>Contract-to-close service</b> — auto-generates weekly mortgage-broker check-ins & party updates until closing, plus a commission-bill reminder a week before close</span>
           </label>
         </div>
+
+        <CustomFieldsSection entity="tc_deals" customData={dealForm.custom_data}
+          onChange={(k,v) => setDealForm(p => ({ ...p, custom_data: { ...(p.custom_data||{}), [k]: v } }))} />
 
         {selDeal?.id && (
           <div style={{ marginTop:14, borderTop:'1px solid var(--border)', paddingTop:4 }}>
