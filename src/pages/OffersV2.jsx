@@ -1,1834 +1,1745 @@
-// ═══════════════════════════════════════════════════════════════════
-// TargetOS V2 — Transaction Coordinator Board (TC Board)
-// THE single board for the secretary to manage every deal.
-// From listing prep → live → offer accepted → under contract → closed.
-//
-// DESIGN PRINCIPLES:
-// - Every deal shows ALL its tasks in one place — no switching boards
-// - Tasks are grouped by phase, checked off inline
-// - Overdue tasks are bright red and always at the top
-// - Photography scheduling creates a calendar event + emails agent
-// - Price/status changes sync to all linked boards automatically
-// - Every deal must have an agent assigned
-// ═══════════════════════════════════════════════════════════════════
+// TargetOS V2 — Offer For Sale of Real Estate
+// Matches the Target Team / KW Valley Realty offer form exactly.
+// Features:
+// - Digital version of the official offer sheet
+// - MLS lookup auto-fills address, MLS#, seller name, agent, company
+// - Date auto-populated
+// - Buyer auto-complete from contacts, saves new buyers to contacts
+// - Attorney lookup from contacts (purchaser's + seller's)
+// - Buyers agent: if secretary → dropdown of our agents; if agent → auto-fills
+// - Purchase price breakdown with auto-calculation
+// - Subject-to checkboxes
+// - Commission field
+// - In-house listing detection → saves to agent's My Listings
+// - Per-agent offer history (agents see only their own)
+// - Stats: total offers, accepted, per-client, conversion rate
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { authFetch } from '../lib/apiAuth'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { useAuth }    from '../context/AuthContext'
-import { useApp }     from '../context/AppContext'
-import { supabase }   from '../lib/supabase'
-import { fmt$, fmtDate, matchSearch } from '../lib/utils'
-import { phaseToStage, phaseToStatus } from '../lib/tcPhaseMap'
-import { logRecordChange } from '../lib/recordActivity'
-import { ActivityPanel } from '../components/ActivityPanel'
-import { DEFAULT_PHASE_TASKS, loadTcSettings } from '../lib/tcSettings'
-
-const PHASE_TASKS = DEFAULT_PHASE_TASKS
-import TCSyncHealth from '../components/TCSyncHealth'
-import TCWorkQueueDrawer from '../components/TCWorkQueueDrawer'
-import { PeoplePanel, DocumentsPanel, PhotographyPanel } from '../components/TCDealPanels'
-import { TCParties, TCEmailLog } from '../components/TCBoardPanels'
-import { TCDealChat } from '../components/TCDealChat'
-import { TCSignPanel, CommissionBillModal } from '../components/TCStage2'
-import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { BoardLinks } from '../components/BoardLinks'
-import { DEFAULT_TC_SETTINGS } from '../lib/tcSettings'
-import { PageHeader, Btn, Modal, ModalActions, Loading, Empty } from '../components/UI'
+import { authFetch } from '../lib/apiAuth'
+import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
-import SellerContacts from '../components/SellerContacts'
-import LinkListingControl from '../components/LinkListingControl'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { useFeature } from '../lib/features'
+import { BulkEditBar } from '../components/BulkEditBar'
+import { useApp }  from '../context/AppContext'
+import { supabase } from '../lib/supabase'
+import { db } from '../lib/db'
+import { useOffers, useAgents } from '../lib/hooks'
+import { fmt$, fmtDate, matchSearch } from '../lib/utils'
+import { OFFER_STATUSES, OFFER_ACCEPTED_VALUES, OFFER_PENDING_VALUES } from '../lib/constants'
+import { dedupeCanonicalAgents } from '../lib/utils'
+import { RecordActivityFeed } from '../components/RecordActivityFeed'
+import { computeOfferFinancials } from '../lib/offerCalc'
+import AdminOfferReports from '../components/AdminOfferReports'
+import { PolishWordingButton } from '../components/PolishWordingButton'
+import { ContactSearch } from '../components/ContactSearch'
 import { CustomFieldsSection } from '../components/CustomFieldsSection'
+import {
+  PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
+  SearchInput, Avatar, ModalActions, Loading, Empty, Confirm
+} from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+const S  = { width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, boxSizing:'border-box' }
+const SL = { fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4, marginTop:10, display:'block' }
 
-// ── PHASES ────────────────────────────────────────────────────────
-const PHASES = [
-  { id:'pre_listing',    label:'Pre-Listing',     icon:'📋', color:'#8B5CF6', desc:'Before going live' },
-  { id:'active',         label:'Active',           icon:'🏡', color:'#3B82F6', desc:'Live on market'    },
-  { id:'offer',          label:'Offer Accepted',   icon:'✍️', color:'#F5A623', desc:'AO signed'         },
-  { id:'under_contract', label:'Under Contract',   icon:'📝', color:'#F97316', desc:'UC through closing'},
-  { id:'closed',         label:'Closed',           icon:'🎉', color:'#10B981', desc:'Post-close'        },
-]
-
-// ── CARD SIGNAL DERIVATION (display-only, from existing data) ──────
-// Which parties matter at each stage → drives "Missing" + "Waiting on".
-const STAGE_CRITICAL_ROLES = {
-  pre_listing:    ['seller'],
-  active:         ['seller'],
-  offer:          ['seller', 'buyer', 'seller_attorney', 'buyer_attorney'],
-  under_contract: ['seller', 'buyer', 'seller_attorney', 'buyer_attorney', 'mortgage_broker', 'title'],
-  closed:         [],
-}
-const ROLE_LABEL = {
-  seller:'seller', buyer:'buyer', seller_attorney:"seller attorney", buyer_attorney:"buyer attorney",
-  mortgage_broker:'mortgage', title:'title', inspector:'inspector', appraiser:'appraiser', other_agent:'other agent',
-}
-// Some roles are also stored as plain text fields on tc_deals (legacy),
-// so treat those as "present" too when a participant row is absent.
-function rolePresent(deal, roleSet, role) {
-  if (roleSet && roleSet.has(role)) return true
-  if (role === 'seller_attorney' || role === 'buyer_attorney') return !!deal.attorney_name
-  if (role === 'mortgage_broker') return !!deal.mortgage_broker
-  if (role === 'inspector') return !!deal.inspector
-  return false
-}
-// Returns { level, chips[] } where level ∈ red|amber|blue|gray
-function deriveCardSignals(deal, tasks, roleSet, photo) {
-  const now = new Date()
-  const startToday = new Date(); startToday.setHours(0,0,0,0)
-  const endToday   = new Date(); endToday.setHours(23,59,59,999)
-  const open = tasks.filter(t => t.status !== 'done')
-  const overdue = open.filter(t => t.due_date && new Date(t.due_date) < startToday).length
-  const dueToday = open.filter(t => t.due_date && new Date(t.due_date) >= startToday && new Date(t.due_date) <= endToday).length
-
-  const chips = []
-  // Missing critical parties for the stage
-  const missing = (STAGE_CRITICAL_ROLES[deal.tc_phase] || []).filter(r => !rolePresent(deal, roleSet, r))
-  missing.forEach(r => chips.push({ kind:'missing', label:'Missing ' + (ROLE_LABEL[r]||r) }))
-
-  // Closing soon
-  let closingSoon = false
-  if (deal.close_date) {
-    const days = Math.ceil((new Date(deal.close_date) - now) / 86400000)
-    if (days >= 0 && days <= 7) { closingSoon = true; chips.push({ kind:'closing', label:'Closing soon' }) }
-  }
-
-  // Photography lifecycle needing secretary action (handoff: "a
-  // communication or workflow event requires secretary action").
-  // 'Corrections Requested' means the secretary is waiting on the
-  // photographer to redo something — genuinely urgent (red). 'Media
-  // Received' means media is sitting unreviewed — needs attention but
-  // isn't as urgent (amber), since nothing is broken, just pending.
-  let photoUrgent = false, photoNeedsReview = false
-  if (photo?.status === 'Corrections Requested') { photoUrgent = true; chips.push({ kind:'missing', label:'📸 Corrections pending' }) }
-  else if (photo?.status === 'Media Received')   { photoNeedsReview = true; chips.push({ kind:'closing', label:'📸 Review media' }) }
-
-  // Newly received: created in the last 48h with no tasks completed
-  // yet — the file hasn't had ANY secretary action taken on it, which
-  // is its own priority signal per the handoff ("it is newly received").
-  const isNew = deal.created_at
-    && (now - new Date(deal.created_at)) < 48 * 3600 * 1000
-    && tasks.every(t => t.status !== 'done')
-  if (isNew) chips.push({ kind:'closing', label:'🆕 New file' })
-
-  // Urgency level (border color): red > amber > blue > gray
-  let level = 'gray'
-  if (overdue > 0 || missing.length > 0 || photoUrgent) level = 'red'
-  else if (dueToday > 0) level = 'amber'
-  else if (closingSoon || photoNeedsReview || isNew) level = 'blue'
-
-  return { level, overdue, dueToday, missing, closingSoon, chips, photoUrgent, photoNeedsReview, isNew }
-}
-const URGENCY_COLOR = { red:'#DC2626', amber:'#F5A623', blue:'#3B82F6', gray:'var(--border)' }
-
-// Small labeled cell used in the Overview tab
-function OverviewCell({ title, children }) {
-  return (
-    <div style={{ background:'var(--dim)', borderRadius:8, padding:'10px 12px' }}>
-      <div style={{ fontSize:10.5, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:5 }}>{title}</div>
-      {children}
-    </div>
-  )
+const BLANK = {
+  // Property
+  listing_addr:'', mls_number:'', off_market:false,
+  // Buyer
+  buyer_name:'', co_buyer_name:'', buyer_contact_id:'',
+  buyer_phone:'', buyer_email:'', buyer_address:'',
+  // Seller
+  seller_name:'', co_seller_name:'', seller_contact_id:'', seller_email:'',
+  seller_agent_name:'', seller_agent_company:'', sellers_agent_email:'', sellers_agent_phone:'',
+  // Financials
+  purchase_price:'', deposit:'', sellers_concession:'',
+  net_to_seller:'', mortgage_amount:'', mortgage_pct:'',
+  balance_at_closing:'', closing_days:'30',
+  closing_mode:'days', closing_target_date:'', closing_custom_text:'', closing_qualifier:'on_or_about',
+  // Subject to
+  subject_attorney:true, subject_clear_title:true,
+  subject_mortgage:false, subject_cash:false,
+  subject_standard_inspection:true, subject_structural:false,
+  // Parties
+  buyers_agent_id:'', sellers_agent_name:'', commission_pct:'',
+  // Attorneys
+  purchaser_attorney_name:'', purchaser_attorney_address:'',
+  purchaser_attorney_tel:'', purchaser_attorney_email:'', purchaser_attorney_contact_id:'',
+  seller_attorney_name:'', seller_attorney_address:'',
+  seller_attorney_tel:'', seller_attorney_email:'', seller_attorney_contact_id:'',
+  // Meta
+  additional_terms:'', notes:'', status:'Draft',
+  offer_date: new Date().toISOString().slice(0,10),
+  offer_url:'', pof_url:'',
+  // Legacy
+  side:'Buyer', production:'', gci:'',
+  // Custom fields
+  custom_data:{},
 }
 
-// ── TASK TEMPLATES PER PHASE ──────────────────────────────────────
+// ── CONTACT SEARCH DROPDOWN ───────────────────────────────────────
 
-function addDays(n) {
-  const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10)
-}
+// ── FILE UPLOADER ─────────────────────────────────────────────────
+function FileUploader({ label, fileUrl, onUploaded, folder }) {
+  const [uploading, setUploading] = useState(false)
+  const ref = useRef(null)
+  const { toast } = useApp()
 
-// ── SQL MIGRATION TEXT ─────────────────────────────────────────────
-const SQL_MIGRATION = `-- Run this in Supabase SQL editor to enable TC Board
-
-create table if not exists tc_deals (
-  id uuid primary key default gen_random_uuid(),
-  addr text not null,
-  side text default 'Seller',
-  tc_phase text default 'pre_listing',
-  agent_id uuid references agents(id),
-  list_price numeric, sale_price numeric,
-  ao_date date, close_date date,
-  attorney_name text, attorney_phone text, attorney_email text,
-  mortgage_broker text, mortgage_phone text,
-  inspector text, inspector_phone text,
-  linked_deal_id uuid references deals(id),
-  linked_listing_id uuid references listings(id),
-  contact_id uuid references contacts(id),
-  notes text,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
-
-create table if not exists tc_tasks (
-  id uuid primary key default gen_random_uuid(),
-  deal_id uuid references tc_deals(id) on delete cascade,
-  title text not null,
-  priority text default 'high',
-  status text default 'pending',
-  due_date date,
-  completed_at timestamptz,
-  agent_id uuid references agents(id),
-  needs_calendar boolean default false,
-  reminder_days int,
-  completion_action text,
-  completion_note text,
-  phase text,
-  notes text,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);`
-
-// ── PRIORITY COLORS ────────────────────────────────────────────────
-const PC = { urgent:'#DC2626', high:'#F97316', normal:'#3B82F6', low:'#94A3B8' }
-const WAIT_REASONS = [
-  { id: '',                  label: '— No blocker —' },
-  { id: 'waiting_agent',     label: '👤 Waiting on agent' },
-  { id: 'waiting_seller',    label: '🏠 Waiting on seller' },
-  { id: 'waiting_attorney',  label: '⚖️ Waiting on attorney' },
-  { id: 'waiting_mortgage',  label: '🏦 Waiting on mortgage/title' },
-  { id: 'blocked',           label: '🚫 Blocked' },
-  { id: 'not_applicable',    label: '➖ Not applicable' },
-]
-const WAIT_COLOR = { waiting_agent:'#3B82F6', waiting_seller:'#3B82F6', waiting_attorney:'#3B82F6', waiting_mortgage:'#3B82F6', blocked:'#DC2626', not_applicable:'var(--muted)' }
-
-// ── TASK ROW ──────────────────────────────────────────────────────
-function TaskRow({ task, agents, onCheck, onEdit, onSetWaitReason }) {
-  // Agent visibility: 👁 = the assigned listing agent sees this step
-  // on their listing (Listings board → Transaction Progress).
-  async function toggleAgentVisible(e) {
-    e.stopPropagation()
+  async function handleFile(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploading(true)
     try {
-      const { error } = await supabase.from('tc_tasks').update({ agent_visible: !task.agent_visible }).eq('id', task.id)
+      const ext  = file.name.split('.').pop()
+      const path = folder + '/' + Date.now() + '.' + ext
+      const { error } = await supabase.storage.from('offer-docs').upload(path, file, { upsert:true })
       if (error) throw error
-      task.agent_visible = !task.agent_visible   // optimistic; list refreshes on next load
-      e.target.closest('button').style.opacity = task.agent_visible ? 1 : 0.35
-      e.target.closest('button').title = task.agent_visible ? 'Visible to the listing agent — click to hide' : 'Hidden from the listing agent — click to show'
-    } catch(err) { alert('Run sql/listing_lifecycle.sql first: ' + err.message) }
+      const { data } = supabase.storage.from('offer-docs').getPublicUrl(path)
+      onUploaded(data.publicUrl)
+    } catch(e) { toast('Upload failed: ' + e.message, '#DC2626') }
+    finally { setUploading(false) }
   }
 
-  const done    = task.status === 'done'
-  const overdue = !done && task.due_date && new Date(task.due_date) < new Date()
-  const agent   = agents.find(a => a.id === task.agent_id)
-  const pc      = PC[task.priority] || '#94A3B8'
-  const waitDef = WAIT_REASONS.find(w => w.id === task.wait_reason)
-  const waitDays = task.wait_since ? Math.floor((new Date() - new Date(task.wait_since)) / 86400000) : null
-
   return (
-    <div id={"task-" + task.id} style={{
-      display:'flex', alignItems:'center', gap:10,
-      padding:'7px 14px',
-      borderBottom:'1px solid var(--border)',
-      background: overdue ? 'rgba(220,38,38,.04)' : done ? 'transparent' : 'transparent',
-      opacity: done ? .55 : 1,
-      transition:'opacity .15s',
-    }}>
-      {/* 👁 agent visibility */}
-      <button onClick={toggleAgentVisible}
-        title={task.agent_visible ? 'Visible to the listing agent — click to hide' : 'Hidden from the listing agent — click to show'}
-        style={{ border:'none', background:'none', cursor:'pointer', fontSize:13, padding:0, flexShrink:0, opacity: task.agent_visible ? 1 : 0.35 }}>
-        👁
-      </button>
-
-      {/* Check circle */}
-      <div onClick={() => onCheck(task)}
-        style={{ width:20, height:20, borderRadius:'50%', flexShrink:0, cursor:done?'default':'pointer',
-          border:'2px solid '+(done?'#10B981':pc), background:done?'#10B981':'transparent',
-          display:'flex', alignItems:'center', justifyContent:'center', transition:'all .15s' }}>
-        {done && <span style={{ color:'#fff', fontSize:9, fontWeight:900 }}>✓</span>}
+    <div>
+      <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>{label}</div>
+      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+        <label style={{ display:'flex', alignItems:'center', gap:7, padding:'7px 12px', borderRadius:8, border:'1.5px dashed '+(fileUrl?'#10B981':'var(--border)'), cursor:'pointer', background:'var(--dim)', flex:1 }}>
+          <input ref={ref} type="file" accept="application/pdf,image/*" onChange={handleFile} style={{ display:'none' }} />
+          <span style={{ fontSize:16 }}>{fileUrl ? '✅' : '📎'}</span>
+          <span style={{ fontSize:12, color:'var(--muted)' }}>{uploading ? 'Uploading...' : fileUrl ? 'Uploaded ✓' : 'Click to upload'}</span>
+        </label>
+        {fileUrl && <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={{ padding:'7px 12px', borderRadius:8, border:'1px solid var(--border)', color:'#3B82F6', fontSize:12, fontWeight:700, textDecoration:'none' }}>View 📄</a>}
       </div>
-
-      {/* Title + meta */}
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontSize:12, fontWeight:600, color:'var(--text)', textDecoration:done?'line-through':'none',
-          display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-          {task.title}
-          {task.needs_calendar && !done && <span style={{ fontSize:9, color:'#8B5CF6', fontWeight:700 }}>📅 Cal</span>}
-        </div>
-        <div style={{ fontSize:10, color: overdue?'#DC2626':'var(--muted)', fontWeight:overdue?700:400, marginTop:1 }}>
-          {overdue && '⚠️ Overdue · '}{task.due_date && fmtDate(task.due_date)}
-          {task.notes && ' · ' + task.notes.slice(0,40)}
-        </div>
-        {waitDef && task.wait_reason && (
-          <div style={{ fontSize:10, fontWeight:700, color: WAIT_COLOR[task.wait_reason] || 'var(--muted)', marginTop:2 }}>
-            {waitDef.label}{waitDays != null && waitDays > 0 ? ' · ' + waitDays + 'd' : ''}
-            {task.wait_note && ' — ' + task.wait_note}
-          </div>
-        )}
-      </div>
-
-      {/* Wait-reason selector — sets/clears the blocker, timestamps
-          when it started so "waiting too long" can be measured for
-          real instead of approximated. */}
-      {!done && onSetWaitReason && (
-        <select value={task.wait_reason || ''} onClick={e => e.stopPropagation()}
-          onChange={e => onSetWaitReason(task, e.target.value)}
-          style={{ fontSize:10, padding:'2px 4px', borderRadius:6, border:'1px solid var(--border)',
-                   background:'var(--panel)', color:'var(--muted)', flexShrink:0, maxWidth:110 }}>
-          {WAIT_REASONS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
-        </select>
-      )}
-
-      {/* Priority */}
-      <span style={{ fontSize:9, fontWeight:700, color:pc, background:pc+'15', padding:'2px 6px', borderRadius:99, textTransform:'uppercase', flexShrink:0 }}>
-        {task.priority}
-      </span>
-
-      {/* Agent avatar */}
-      {agent && (
-        <div title={agent.name} style={{ width:22, height:22, borderRadius:'50%', background:agent.color||'#94A3B8',
-          color:'#fff', fontSize:8, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-          {agent.name.split(' ').map(w=>w[0]).join('').slice(0,2)}
-        </div>
-      )}
-
-      {/* Edit */}
-      <button onClick={() => onEdit(task)}
-        style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:13, padding:'0 2px', flexShrink:0 }}>
-        ✏️
-      </button>
     </div>
   )
 }
 
-// ── DEAL CARD ─────────────────────────────────────────────────────
-function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, onEditTask, onAddTask, onEditDeal, expanded, onToggle, isAdmin, photo, onSetWaitReason }) {
-  const [subTab, setSubTab] = useState('overview')   // overview | tasks | people | photo | email
-  const phase    = PHASES.find(p => p.id === deal.tc_phase) || PHASES[0]
-  const agent    = agents.find(a => a.id === deal.agent_id)
-
-  // ── Phase-aware task classification (DISPLAY ONLY — no DB writes) ──
-  const phaseOrder = PHASES.reduce((m, p, i) => { m[p.id] = i; return m }, {})
-  const curIdx = phaseOrder[deal.tc_phase] ?? 0
-  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
-  const endOfToday   = new Date(); endOfToday.setHours(23, 59, 59, 999)
-  const isOpen = t => t.status !== 'done'
-  // A task belongs to "current/relevant" if its phase == current phase, has no
-  // phase, or is from a LATER phase (so nothing ever disappears). Carryover =
-  // open tasks whose phase is strictly EARLIER than the current phase.
-  const taskPhaseIdx = t => (t.phase != null && phaseOrder[t.phase] != null ? phaseOrder[t.phase] : curIdx)
-  const isCarryover  = t => isOpen(t) && taskPhaseIdx(t) < curIdx
-  const isCurrentRel = t => !isCarryover(t)   // current phase, no-phase, or later-phase
-
-  const currentOpen  = tasks.filter(t => isOpen(t) && isCurrentRel(t))
-  const carryover    = tasks.filter(isCarryover)
-  const doneTasks    = tasks.filter(t => t.status === 'done')
-
-  const overdueTasks = currentOpen.filter(t => t.due_date && new Date(t.due_date) < startOfToday)
-  const dueTodayTasks = currentOpen.filter(t => t.due_date && new Date(t.due_date) >= startOfToday && new Date(t.due_date) <= endOfToday)
-  const otherCurrent = currentOpen.filter(t => !overdueTasks.includes(t) && !dueTodayTasks.includes(t))
-
-  const overdue  = overdueTasks.length
-  const dueToday = dueTodayTasks.length
-
-  // Derived card signals (urgency border, waiting-on/missing chips)
-  const signals = deriveCardSignals(deal, tasks, roleSet, photo)
-  const borderColor = URGENCY_COLOR[signals.level] || 'var(--border)'
-
-  // Progress bar = current-stage completion (done current-phase / all current-phase)
-  const curPhaseAll  = tasks.filter(t => isCurrentRel(t))
-  const curPhaseDone = curPhaseAll.filter(t => t.status === 'done').length
-  const pct = curPhaseAll.length > 0 ? Math.round(curPhaseDone / curPhaseAll.length * 100) : 0
-
-  // Next action = most urgent current-stage open task (overdue → due today → soonest)
-  const byDue = (a, b) => {
-    if (!a.due_date) return 1; if (!b.due_date) return -1
-    return new Date(a.due_date) - new Date(b.due_date)
-  }
-  const nextTask = [...overdueTasks, ...dueTodayTasks, ...otherCurrent].sort(byDue)[0] || null
-  const nextAgent = nextTask ? agents.find(a => a.id === nextTask.agent_id) : null
+// ── AGENT STATS CARD ──────────────────────────────────────────────
+function AgentStatsCard({ ag, agentOffers, onFilter, isActive }) {
+  const total    = agentOffers.length
+  const accepted = agentOffers.filter(o => OFFER_ACCEPTED_VALUES.includes(o.status)).length
+  const pending  = agentOffers.filter(o => OFFER_PENDING_VALUES.includes(o.status)).length
+  const convRate = total > 0 ? Math.round(accepted / total * 100) : 0
+  // Unique buyers per agent
+  // uniqueBuyers intentionally removed from the header display per
+  // owner feedback ("remove the secondary buyers count ... unless it
+  // represents a clearly required offer metric" — it doesn't; total/
+  // accepted/pending/conversion are the required set). Left the
+  // computation itself out entirely rather than computing an unused
+  // value.
 
   return (
-    <div style={{ background:'var(--panel)', borderRadius:8, border:'0.5px solid var(--border)',
-      borderLeft:'3px solid '+borderColor,
-      marginBottom:6, overflow:'hidden' }}>
-
-      {/* ── COMPACT CARD ROW ── */}
-      <div onClick={onToggle} style={{ padding:'9px 12px', cursor:'pointer', borderBottom: expanded?'1px solid var(--border)':'none', display:'flex', alignItems:'center', gap:12 }}>
-        {/* Left: address + agent · stage */}
-        <div style={{ minWidth:130, maxWidth:170, flexShrink:0 }}>
-          <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{deal.addr || '—'}</div>
-          <div style={{ fontSize:11, color:'var(--muted)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-            {agent ? agent.name.split(' ')[0] : '—'} · <span style={{ color:phase.color, fontWeight:700 }}>{phase.label}</span>
-          </div>
+    <div onClick={() => onFilter(ag.id)}
+      style={{ background:'var(--panel)', borderRadius:12, border:'2px solid '+(isActive?'#CC2200':'var(--border)'), padding:'14px 16px', cursor:'pointer', transition:'all .15s' }}
+      onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.borderColor='rgba(204,34,0,.4)' }}
+      onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.borderColor='var(--border)' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+        <div style={{ width:38, height:38, borderRadius:'50%', background:ag.color||'#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, color:'#fff', flexShrink:0 }}>
+          {(ag.name||'').split(' ').map(n=>n[0]).join('').slice(0,2)}
         </div>
-
-        {/* Middle: NEXT action + chips */}
         <div style={{ flex:1, minWidth:0 }}>
-          {nextTask ? (
-            <div style={{ fontSize:13, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-              <span style={{ fontSize:9.5, color:'var(--brand)', fontWeight:800, letterSpacing:'.04em' }}>NEXT</span>
-              &nbsp;{nextTask.title}
-              {nextTask.due_date && (
-                <span style={{ fontWeight:700, color: overdueTasks.includes(nextTask) ? '#DC2626' : dueTodayTasks.includes(nextTask) ? '#F5A623' : 'var(--muted)' }}>
-                  {' — ' + (overdueTasks.includes(nextTask) ? 'overdue' : dueTodayTasks.includes(nextTask) ? 'due today' : 'due ' + fmtDate(nextTask.due_date))}
-                </span>
-              )}
-            </div>
-          ) : (
-            <div style={{ fontSize:13, color:'var(--muted)' }}>✓ No open tasks this stage</div>
-          )}
-          {signals.chips.length > 0 && (
-            <div style={{ display:'flex', gap:5, marginTop:3, flexWrap:'wrap' }}>
-              {signals.chips.slice(0,4).map((c,i) => {
-                const style = c.kind==='missing'
-                  ? { bg:'rgba(220,38,38,.1)', fg:'#DC2626' }
-                  : c.kind==='closing'
-                  ? { bg:'rgba(59,130,246,.1)', fg:'#2563EB' }
-                  : { bg:'var(--dim)', fg:'var(--muted)' }
-                return <span key={i} style={{ fontSize:10.5, background:style.bg, color:style.fg, padding:'1px 8px', borderRadius:99, whiteSpace:'nowrap' }}>{c.label}</span>
-              })}
-            </div>
-          )}
+          <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{ag.name}</div>
+          <div style={{ fontSize:11, color:'var(--muted)' }}>{total} offers</div>
         </div>
-
-        {/* Right: counts + close date + chevron */}
-        <div style={{ textAlign:'right', flexShrink:0, display:'flex', alignItems:'center', gap:10 }}>
-          <div>
-            <div style={{ fontSize:11, fontWeight:700, color: overdue>0?'#DC2626':dueToday>0?'#F5A623':'var(--muted)', whiteSpace:'nowrap' }}>
-              {overdue>0 ? overdue+' overdue' : dueToday>0 ? dueToday+' today' : (currentOpen.length? currentOpen.length+' open' : 'clear')}
-              {overdue>0 && dueToday>0 ? ' · '+dueToday+' today' : ''}
-            </div>
-            <div style={{ fontSize:10.5, color:'var(--muted)', whiteSpace:'nowrap' }}>
-              {deal.close_date ? 'Close ' + fmtDate(deal.close_date) : (carryover.length ? carryover.length+' carryover' : '—')}
-            </div>
-          </div>
-          <span style={{ color:'var(--muted)', fontSize:16, transform:expanded?'rotate(0)':'rotate(-90deg)', transition:'transform .2s' }}>▾</span>
-        </div>
+        {isActive && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background:'rgba(204,34,0,.1)', color:'#CC2200', fontWeight:700 }}>Filtered</span>}
       </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+        {[
+          { label:'Total',    value:total,    color:'var(--text)',  bg:'var(--dim)' },
+          { label:'Accepted', value:accepted, color:'#10B981',     bg:'rgba(16,185,129,.08)' },
+          { label:'Pending',  value:pending,  color:'#F5A623',     bg:'rgba(245,166,35,.08)' },
+          { label:'Conv %',   value:convRate+'%', color:convRate>=50?'#10B981':'#CC2200', bg: convRate>=50?'rgba(16,185,129,.06)':'rgba(204,34,0,.06)' },
+        ].map(s => (
+          <div key={s.label} style={{ textAlign:'center', padding:'8px', background:s.bg, borderRadius:8 }}>
+            <div style={{ fontSize:20, fontWeight:900, color:s.color }}>{s.value}</div>
+            <div style={{ fontSize:10, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em' }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
-      {/* ── EXPANDED BODY ── */}
-      {expanded && (
+// ── MAIN ─────────────────────────────────────────────────────────
+export function OffersV2() {
+  const navigate  = useNavigate()
+  const { id: urlId } = useParams()
+  const { agent, isAdmin, canManage } = useAuth()
+  const [bulkIds, setBulkIds] = useState([])
+  const toggleBulk = id => setBulkIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const canBulkEdit = useFeature('bulk_edit', agent)
+  usePageView('offers')
+  const { toast } = useApp()
+
+  // Agents only see their own offers
+  const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
+  const { offers, loading, add, update, remove, refetch } = useOffers(filters)
+  const { agents } = useAgents()
+  // Bucket/selector display uses the deduplicated canonical list (e.g.
+  // collapses a stale "Yanky" row into the real, Auth-linked "Yanky
+  // Lichtenstein" row) — nothing is deleted or deactivated in the
+  // database; `agents` itself stays the full list for resolving
+  // historical agent_id references correctly even if a record is a
+  // known duplicate.
+  const canonicalAgents = useMemo(() => dedupeCanonicalAgents(agents), [agents])
+
+  const [search,     setSearch]     = useState('')
+  const [statusF,    setStatusF]    = useState('')
+  const [agentF,     setAgentF]     = useState('')
+  const [view,       setView]       = useState('agents')
+  const [selected,   setSelected]   = useState(null)
+  const [form,       setForm]       = useState({ ...BLANK })
+  const [saving,     setSaving]     = useState(false)
+  const [downloading,setDownloading] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [tab,        setTab]        = useState('offer')
+  const [listings,   setListings]   = useState([])
+  const [mlsSearchQ, setMlsSearchQ] = useState('')
+  const [mlsResults, setMlsResults] = useState([])
+  const [mlsLoading, setMlsLoading] = useState(false)
+  const [showMlsDrop,setShowMlsDrop]= useState(false)
+  const mlsRef = useRef(null)
+
+  useEffect(() => {
+    supabase.from('listings').select('id,addr,mls_number,agent_id,status,list_price,agents(name)')
+      .then(r => setListings(r.data || [])).catch(() => {})
+  }, [])
+
+  // Close MLS dropdown on outside click
+  useEffect(() => {
+    function close(e) { if (!mlsRef.current?.contains(e.target)) setShowMlsDrop(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+
+  // Search SimplyRETS MLS by address or MLS#
+  // ── MLS / LISTING LOOKUP (SimplyRETS) ───────────────────────────
+  // NOT currently wired to any input — verified: searchMLS() has no
+  // caller anywhere in this file, and its result state (mlsResults/
+  // showMlsDrop) is never rendered. Left in place as a documented,
+  // clearly-inert starting point for a real OneKey MLS/SimplyRETS
+  // integration, NOT deleted, since removing it would erase groundwork
+  // that may be intentional. Fixed here: the previous version silently
+  // fell back to SimplyRETS's public demo/sandbox credentials
+  // ('simplyrets'/'simplyrets') when the real env vars were unset —
+  // meaning if this ever got wired up without real credentials
+  // configured, an agent could be shown fabricated demo listings under
+  // a live-looking UI. Now it fails safely: no configured credentials
+  // means no external call, full stop. Real per-office search order
+  // (TargetOS listings -> MLS -> Google fallback) is live today via
+  // handleAddressSelect() on the Property Address field below, which
+  // checks the already-loaded `listings` table before anything else.
+  const searchMLS = useCallback(async (q) => {
+    if (!q || q.length < 3) { setMlsResults([]); return }
+    const MLS_USER = import.meta.env.VITE_SIMPLYRETS_USER
+    const MLS_PASS = import.meta.env.VITE_SIMPLYRETS_PASS
+    if (!MLS_USER || !MLS_PASS) {
+      // Fail safely: no real credentials configured, so do not call out
+      // to SimplyRETS's public demo account and present its sandbox
+      // data as if it were live OneKey MLS results.
+      setMlsResults([])
+      return
+    }
+    setMlsLoading(true)
+    try {
+      const auth = btoa(MLS_USER + ':' + MLS_PASS)
+
+      // Try by MLS# first, then by address keyword
+      const isMLSNum = /^\d{5,}$/.test(q.trim())
+      const url = isMLSNum
+        ? 'https://api.simplyrets.com/listings?mlsId=' + encodeURIComponent(q.trim()) + '&limit=5'
+        : 'https://api.simplyrets.com/listings?q=' + encodeURIComponent(q.trim()) + '&limit=8&status=Active,Pending'
+
+      const res = await fetch(url, { headers: { Authorization: 'Basic ' + auth } })
+      if (!res.ok) throw new Error('MLS search failed')
+      const data = await res.json()
+      setMlsResults(Array.isArray(data) ? data : [])
+      setShowMlsDrop(true)
+    } catch(e) {
+      console.warn('MLS search:', e.message)
+      setMlsResults([])
+    } finally { setMlsLoading(false) }
+  }, [])
+
+  // Auto-fill form from MLS listing
+  function applyMLSListing(mls) {
+    const addr   = mls.address || {}
+    const street = [addr.streetNumber, addr.streetName, addr.unit ? '#'+addr.unit : null].filter(Boolean).join(' ')
+    const full   = [street, addr.city, addr.state, addr.postalCode].filter(Boolean).join(', ')
+    const agentFirst = mls.agent?.firstName || ''
+    const agentLast  = mls.agent?.lastName  || ''
+    const agentName  = [agentFirst, agentLast].filter(Boolean).join(' ')
+    const office     = mls.office?.name || mls.office?.officeName || ''
+
+    // Check if in-house
+    const inhouse = listings.find(l => l.mls_number === mls.mlsId || l.mls_number === String(mls.mlsId))
+
+    setForm(f => ({
+      ...f,
+      listing_addr:         full,
+      mls_number:           String(mls.mlsId || ''),
+      seller_name:          mls.sellers?.map(s=>(s.firstName||'')+' '+(s.lastName||'')).join(', ') || f.seller_name,
+      sellers_agent_name:   agentName || f.sellers_agent_name,
+      seller_agent_company: office    || f.seller_agent_company,
+      is_inhouse:           !!inhouse,
+      inhouse_listing_id:   inhouse?.id || null,
+    }))
+    setMlsSearchQ(full)
+    setShowMlsDrop(false)
+    setMlsResults([])
+
+    if (inhouse) toast('🏡 In-house listing — seller agent auto-filled')
+    else toast('✅ MLS data imported: ' + full)
+  }
+
+  useEffect(() => {
+    if (!urlId || urlId === 'new') return
+    if (loading) return // wait for the board's own authorized list first
+    const o = offers.find(x => x.id === urlId)
+    if (o) { openOffer(o); return }
+
+    // Direct-route protection: the id wasn't in this agent's own
+    // authorized list. Rather than silently doing nothing (ambiguous —
+    // is it missing, or not mine?), attempt one direct, RLS-scoped
+    // fetch by id. If THAT also comes back empty (RLS denies it or it
+    // truly doesn't exist), show an explicit not-authorized state and
+    // return to the board, instead of leaving a dead URL with no
+    // feedback. Server/database RLS is still the real enforcement —
+    // this is the client-side experience layered on top of it, not a
+    // substitute for it.
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data, error } = await supabase.from('offers').select('*, agents(id,name,color)').eq('id', urlId).maybeSingle()
+        if (cancelled) return
+        if (error || !data) {
+          toast('This offer does not exist, or you are not authorized to view it.', '#DC2626')
+          navigate('/offers', { replace: true })
+          return
+        }
+        openOffer(data)
+      } catch {
+        if (!cancelled) { toast('This offer does not exist, or you are not authorized to view it.', '#DC2626'); navigate('/offers', { replace: true }) }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [urlId, offers.length, loading])
+
+  function openOffer(o) {
+    navigate('/offers/' + o.id, { replace:true })
+    setSelected(o)
+    setForm({ ...BLANK, ...o })
+    setTab('offer')
+  }
+  function openAdd() {
+    setSelected(null)
+    const defaultAgentId = agentF && agentF !== 'none' ? agentF : (agent?.id || '')
+    setForm({
+      ...BLANK,
+      agent_id: defaultAgentId,
+      buyers_agent_id: defaultAgentId,
+      offer_date: new Date().toISOString().slice(0,10),
+    })
+    navigate('/offers/new', { replace:true })
+  }
+  function closePanel() { setSelected(null); navigate('/offers', { replace:true }) }
+  function set(k, v) { setForm(f => ({ ...f, [k]:v })) }
+
+  // ── AUTO-CALCULATE financials ──────────────────────────────────
+  // Decimal-safe (integer-cents) shared engine — see src/lib/offerCalc.js.
+  // Same function is mirrored server-side in api/_lib/offerCalc.js and
+  // must be re-run there before PDF generation/send, not trusted from
+  // whatever the browser last computed.
+  const [calcWarnings, setCalcWarnings] = useState([])
+  const [calcBlocking, setCalcBlocking] = useState([])
+
+  function recalc(updates) {
+    setForm(prev => {
+      const next = { ...prev, ...updates }
+      const { values, warnings, blocking } = computeOfferFinancials(next)
+      setCalcWarnings(warnings)
+      setCalcBlocking(blocking)
+      return {
+        ...next,
+        mortgage_amount:    values.mortgage_amount,
+        mortgage_pct:       values.mortgage_pct,
+        net_to_seller:      values.net_to_seller,
+        balance_at_closing: values.balance_at_closing,
+        production: next.purchase_price,
+      }
+    })
+  }
+
+  // ── MLS / LISTING LOOKUP ───────────────────────────────────────
+  function handleAddressSelect(addr) {
+    set('listing_addr', addr)
+    // Check if it's an in-house listing
+    const match = listings.find(l =>
+      l.addr?.toLowerCase().includes(addr?.toLowerCase().slice(0,15)) ||
+      addr?.toLowerCase().includes(l.addr?.toLowerCase().slice(0,15))
+    )
+    if (match) {
+      setForm(f => ({
+        ...f,
+        listing_addr:         addr,
+        mls_number:           match.mls_number || f.mls_number,
+        sellers_agent_name:   match.agents?.name || f.sellers_agent_name,
+        is_inhouse:           true,
+        inhouse_listing_id:   match.id,
+      }))
+      toast('🏡 In-house listing detected — seller agent auto-filled')
+    }
+  }
+
+  // ── BUYER CONTACT SELECT ───────────────────────────────────────
+  async function selectBuyer(contact) {
+    if (!contact) {
+      // Save as new contact
+      if (!form.buyer_name?.trim()) return
+      try {
+        const [first, ...rest] = form.buyer_name.trim().split(' ')
+        const data = await db.contacts.create({
+          first_name: first, last_name: rest.join(' '),
+          phone: form.buyer_phone || null,
+          email: form.buyer_email || null,
+          address: form.buyer_address || null,
+          status: 'Active', source: 'Offer', type: 'Buyer',
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        })
+        if (data) {
+          set('buyer_contact_id', data.id)
+          toast('✅ Buyer saved to Contacts')
+        }
+      } catch(e) {
+        if (e.existingContact) {
+          toast('Already exists as ' + (e.existingContact.first_name||'') + ' ' + (e.existingContact.last_name||'') + ' — linking to that contact', '#F5A623')
+          set('buyer_contact_id', e.existingContact.id)
+        } else {
+          toast('Failed to save buyer contact: ' + e.message, '#DC2626')
+        }
+      }
+    } else {
+      setForm(f => ({
+        ...f,
+        buyer_name:        [contact.first_name, contact.last_name].filter(Boolean).join(' '),
+        buyer_contact_id:  contact.id,
+        buyer_phone:       contact.phone || f.buyer_phone,
+        buyer_email:       contact.email || f.buyer_email,
+        buyer_address:     contact.address || f.buyer_address,
+      }))
+    }
+  }
+
+  // ── OUTSIDE SELLER'S AGENT SELECT (create-or-link, mirrors selectBuyer) ──
+  async function selectSellersAgent(contact, extra) {
+    if (!contact) {
+      if (!form.sellers_agent_name?.trim()) return
+      const phone = extra?.phone || form.sellers_agent_phone || null
+      const email = extra?.email || form.sellers_agent_email || null
+      try {
+        const [first, ...rest] = form.sellers_agent_name.trim().split(' ')
+        const data = await db.contacts.create({
+          first_name: first, last_name: rest.join(' '),
+          phone, email,
+          company: form.seller_agent_company || null,
+          status: 'Active', source: 'Offer Form', type: 'Agent',
+          agent_id: agent?.id || null,
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        })
+        if (data) {
+          setForm(f => ({ ...f, sellers_agent_contact_id: data.id, sellers_agent_email: email || f.sellers_agent_email }))
+          toast('✅ Outside agent saved to Contacts')
+        }
+      } catch(e) {
+        if (e.existingContact) {
+          // Existing contact may already carry another valid role (e.g. was
+          // previously entered as a Buyer) — link to it without overwriting
+          // that classification, per spec. This is a resolved success
+          // path, not a failure — do not re-throw.
+          toast('Already exists as ' + (e.existingContact.first_name||'') + ' ' + (e.existingContact.last_name||'') + ' — linking to that contact', '#F5A623')
+          set('sellers_agent_contact_id', e.existingContact.id)
+        } else {
+          // Genuine failure — re-throw so the ContactSearch inline
+          // create-form can show the exact error itself ("never
+          // silently fail"), not just a toast that might go unnoticed.
+          toast('Failed to save outside agent contact: ' + e.message, '#DC2626')
+          throw e
+        }
+      }
+    } else {
+      setForm(f => ({
+        ...f,
+        sellers_agent_name:       [contact.first_name, contact.last_name].filter(Boolean).join(' '),
+        sellers_agent_contact_id: contact.id,
+        seller_agent_company:     contact.company || f.seller_agent_company,
+        sellers_agent_email:      contact.email || f.sellers_agent_email,
+        sellers_agent_phone:      contact.phone || f.sellers_agent_phone,
+      }))
+    }
+  }
+
+  // ── PURCHASER ATTORNEY SELECT ──────────────────────────────────
+  // ── PURCHASER ATTORNEY SELECT (create-or-link, same pattern as Buyer) ──
+  async function selectPurchaserAttorney(contact, extra) {
+    if (!contact) {
+      if (!form.purchaser_attorney_name?.trim()) return
+      const phone = extra?.phone || form.purchaser_attorney_tel   || null
+      const email = extra?.email || form.purchaser_attorney_email || null
+      try {
+        const [first, ...rest] = form.purchaser_attorney_name.trim().split(' ')
+        const data = await db.contacts.create({
+          first_name: first, last_name: rest.join(' '),
+          phone, email,
+          address: form.purchaser_attorney_address || null,
+          status: 'Active', source: 'Offer Form', type: 'Attorney',
+          agent_id: (form.buyers_agent_id || form.agent_id || agent?.id) || null,
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        })
+        if (data) {
+          setForm(f => ({ ...f, purchaser_attorney_contact_id: data.id, purchaser_attorney_tel: phone || f.purchaser_attorney_tel, purchaser_attorney_email: email || f.purchaser_attorney_email }))
+          toast('✅ Purchaser’s Attorney saved to Contacts')
+        }
+      } catch(e) {
+        if (e.existingContact) {
+          toast('Already exists as ' + (e.existingContact.first_name||'') + ' ' + (e.existingContact.last_name||'') + ' — linking to that contact', '#F5A623')
+          set('purchaser_attorney_contact_id', e.existingContact.id)
+        } else {
+          toast('Failed to save attorney contact: ' + e.message, '#DC2626')
+          throw e
+        }
+      }
+    } else {
+      setForm(f => ({
+        ...f,
+        purchaser_attorney_contact_id: contact.id,
+        purchaser_attorney_name:       [contact.first_name, contact.last_name].filter(Boolean).join(' '),
+        purchaser_attorney_tel:        contact.phone || f.purchaser_attorney_tel,
+        purchaser_attorney_email:      contact.email || f.purchaser_attorney_email,
+        purchaser_attorney_address:    contact.address || f.purchaser_attorney_address,
+      }))
+    }
+  }
+
+  // ── SELLER ATTORNEY SELECT (create-or-link, same pattern as Buyer) ──
+  async function selectSellerAttorney(contact, extra) {
+    if (!contact) {
+      if (!form.seller_attorney_name?.trim()) return
+      const phone = extra?.phone || form.seller_attorney_tel   || null
+      const email = extra?.email || form.seller_attorney_email || null
+      try {
+        const [first, ...rest] = form.seller_attorney_name.trim().split(' ')
+        const data = await db.contacts.create({
+          first_name: first, last_name: rest.join(' '),
+          phone, email,
+          address: form.seller_attorney_address || null,
+          status: 'Active', source: 'Offer Form', type: 'Attorney',
+          agent_id: (form.agent_id || form.buyers_agent_id || agent?.id) || null,
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        })
+        if (data) {
+          setForm(f => ({ ...f, seller_attorney_contact_id: data.id, seller_attorney_tel: phone || f.seller_attorney_tel, seller_attorney_email: email || f.seller_attorney_email }))
+          toast('✅ Seller’s Attorney saved to Contacts')
+        }
+      } catch(e) {
+        if (e.existingContact) {
+          toast('Already exists as ' + (e.existingContact.first_name||'') + ' ' + (e.existingContact.last_name||'') + ' — linking to that contact', '#F5A623')
+          set('seller_attorney_contact_id', e.existingContact.id)
+        } else {
+          toast('Failed to save attorney contact: ' + e.message, '#DC2626')
+          throw e
+        }
+      }
+    } else {
+      setForm(f => ({
+        ...f,
+        seller_attorney_contact_id: contact.id,
+        seller_attorney_name:       [contact.first_name, contact.last_name].filter(Boolean).join(' '),
+        seller_attorney_tel:        contact.phone || f.seller_attorney_tel,
+        seller_attorney_email:      contact.email || f.seller_attorney_email,
+        seller_attorney_address:    contact.address || f.seller_attorney_address,
+      }))
+    }
+  }
+
+  // ── DOWNLOAD PDF ──────────────────────────────────────────────
+  async function downloadPDF() {
+    setDownloading(true)
+    try {
+      // Build the full offer data including agent name
+      const buyersAgent = agents.find(a => a.id === (form.buyers_agent_id || form.agent_id))
+      const payload = {
+        ...form,
+        // Outside buyer's agent (representing_side === 'Seller' case) takes
+        // priority over an in-house agent lookup that would otherwise be
+        // empty/wrong when the buyer's agent isn't one of ours.
+        buyers_agent_name:       form.buyers_agent_outside_name || buyersAgent?.name || agent?.name || '',
+        offer_date:              form.offer_date || new Date().toISOString().slice(0, 10),
+        deposit_type:            form.deposit_type || 'dollar',
+        mortgage_type:           form.mortgage_type || 'dollar',
+        sellers_agent_commission:form.sellers_agent_commission || '',
+        seller_agent_company:    form.seller_agent_company || '',
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await authFetch('/api/generate-offer-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'PDF generation failed')
+      }
+
+      // Trigger download
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      const addr = (form.listing_addr || 'offer').replace(/[^a-z0-9]/gi, '_').slice(0, 40)
+      a.download = 'Offer_' + addr + '.pdf'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast('✅ PDF downloaded')
+    } catch(e) {
+      toast('❌ PDF failed: ' + e.message, '#DC2626')
+    } finally { setDownloading(false) }
+  }
+
+  // ── SEND OFFER ───────────────────────────────────────────────────
+  // Sends through the authenticated agent's own connected mailbox
+  // (api/send-offer.js -> api/_lib/connectors.js), never the shared
+  // system mailbox. Requires the offer to already be saved (need an
+  // offer_id) and to have a generated PDF revision to attach.
+  const [showSend, setShowSend]   = useState(false)
+  const [sendTo,   setSendTo]     = useState({ buyer:false, seller:false, purchaser_attorney:false, seller_attorney:false, sellers_agent:false })
+  const [sendExtra,setSendExtra]  = useState('')
+  const [sendCc,   setSendCc]     = useState('')
+  const [sendingMailbox, setSendingMailbox] = useState(null) // null=loading, ''=not connected, else email
+  const [sendAttachDocs, setSendAttachDocs] = useState({ offer:false, pof:false })
+  const [sendMsg,  setSendMsg]    = useState('Please see the attached offer for your review.')
+  const [sending,  setSending]    = useState(false)
+
+  function buildRecipients() {
+    const list = []
+    if (sendTo.buyer && form.buyer_email) list.push({ role:'buyer', name:form.buyer_name, email:form.buyer_email, contact_id:form.buyer_contact_id })
+    if (sendTo.seller && form.seller_email) list.push({ role:'seller', name:form.seller_name, email:form.seller_email, contact_id:form.seller_contact_id })
+    if (sendTo.purchaser_attorney && form.purchaser_attorney_email) list.push({ role:'purchaser_attorney', name:form.purchaser_attorney_name, email:form.purchaser_attorney_email, contact_id:form.purchaser_attorney_contact_id })
+    if (sendTo.seller_attorney && form.seller_attorney_email) list.push({ role:'seller_attorney', name:form.seller_attorney_name, email:form.seller_attorney_email, contact_id:form.seller_attorney_contact_id })
+    if (sendTo.sellers_agent && form.sellers_agent_email) list.push({ role:'sellers_agent', name:form.sellers_agent_name, email:form.sellers_agent_email, contact_id:form.sellers_agent_contact_id })
+    for (const email of sendExtra.split(',').map(s=>s.trim()).filter(Boolean)) list.push({ role:'manual', email })
+    return list
+  }
+
+  async function sendOffer() {
+    if (!selected?.id) { toast('Save the offer before sending', '#F5A623'); return }
+    if (!selected?.current_revision_id) { toast('Generate the PDF at least once before sending', '#F5A623'); return }
+    const recipients = buildRecipients()
+    if (recipients.length === 0) { toast('Choose at least one recipient with a known email', '#DC2626'); return }
+
+    setSending(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await authFetch('/api/send-offer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
+        body: JSON.stringify({
+          offer_id: selected.id,
+          revision_id: selected.current_revision_id,
+          provider: 'outlook',
+          recipients,
+          cc: sendCc.split(',').map(s=>s.trim()).filter(Boolean),
+          subject: 'Offer for the Sale of Real Estate — ' + (form.listing_addr || ''),
+          message: sendMsg,
+          // Additional documents already on file for this offer
+          // (Documents tab) — attached alongside the generated PDF,
+          // not instead of it. Sent as URLs; the server fetches and
+          // encodes them, same private-storage rule as the PDF.
+          additional_attachments: [
+            sendAttachDocs.offer && form.offer_url ? { name: 'Signed Offer Document.pdf', url: form.offer_url } : null,
+            sendAttachDocs.pof   && form.pof_url   ? { name: 'Proof of Funds.pdf',         url: form.pof_url   } : null,
+          ].filter(Boolean),
+          // Stable per attempt, not per click — a second click before
+          // this resolves reuses the same key rather than minting a
+          // fresh one, so a double-click can't become a double-send.
+          idempotency_key: (window.__offerSendKey ||= (form.id + ':' + Date.now())),
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error || 'Send failed')
+      if (body.preview) {
+        toast('✅ Send validated end-to-end (preview mode — external effects disabled, no real email sent)', '#10B981')
+      } else if (body.alreadySent) {
+        toast('Already sent — no duplicate email created')
+      } else {
+        toast('✅ Offer sent from ' + (body.from || 'your mailbox'))
+      }
+      window.__offerSendKey = null
+      setShowSend(false)
+      refetch?.()
+    } catch(e) {
+      toast('❌ Send failed: ' + e.message, '#DC2626')
+    } finally { setSending(false) }
+  }
+
+  // ── SAVE OFFER ─────────────────────────────────────────────────
+  // ── OUTCOME ACTIONS ──────────────────────────────────────────────
+  // Direct, single-field updates rather than set()+saveOffer() — set()
+  // goes through React state, which doesn't commit synchronously, so
+  // calling saveOffer() immediately after would still read the OLD
+  // status from the current render's closure. This updates the DB and
+  // local state together, explicitly, avoiding that stale-read bug.
+  async function markOutcome(newStatus) {
+    if (!selected?.id) return
+    try {
+      const updated = await update(selected.id, { status: newStatus }, agent?.id)
+      setSelected(updated)
+      setForm(f => ({ ...f, status: newStatus }))
+      toast('✅ Marked ' + newStatus)
+      refetch?.()
+    } catch(e) { toast('Failed to update status: ' + e.message, '#DC2626') }
+  }
+
+  async function saveOffer(andDownloadPdf = false, statusOverride = null) {
+    if (!form.listing_addr?.trim()) { toast('Listing address is required', '#DC2626'); return }
+    if (!form.buyer_name?.trim())   { toast('Buyer name is required', '#DC2626'); return }
+    if (!form.purchase_price)       { toast('Purchase price is required', '#DC2626'); return }
+
+    const buyersAgent = agents.find(a => a.id === (form.buyers_agent_id || form.agent_id))
+
+    setSaving(true)
+    try {
+      // Build explicit payload — only include columns that exist in the DB
+      const payload = {
+        listing_addr:        form.listing_addr        || null,
+        mls_number:          form.mls_number          || null,
+        off_market:          !!form.off_market,
+        buyer_name:          form.buyer_name          || null,
+        co_buyer_name:       form.co_buyer_name       || null,
+        buyer_contact_id:    form.buyer_contact_id    || null,
+        buyer_phone:         form.buyer_phone         || null,
+        buyer_email:         form.buyer_email         || null,
+        buyer_address:       form.buyer_address       || null,
+        seller_name:         form.seller_name         || null,
+        seller_contact_id:   form.seller_contact_id   || null,
+        co_buyer_contact_id: form.co_buyer_contact_id || null,
+        co_seller_contact_id: form.co_seller_contact_id || null,
+        co_seller_name:      form.co_seller_name      || null,
+        sellers_agent_name:  form.sellers_agent_name  || null,
+        seller_agent_company:form.seller_agent_company|| null,
+        purchase_price:      form.purchase_price ? parseFloat(String(form.purchase_price).replace(/[$,]/g,'')) : null,
+        deposit:             form.deposit             || null,
+        deposit_type:        form.deposit_type        || 'dollar',
+        sellers_concession:  form.sellers_concession  || null,
+        net_to_seller:       form.net_to_seller       || null,
+        mortgage_amount:     form.mortgage_amount     || null,
+        mortgage_pct:        form.mortgage_pct        || null,
+        balance_at_closing:  form.balance_at_closing  || null,
+        balance_type:        form.balance_type        || 'dollar',
+        closing_days:        form.closing_days        || null,
+        closing_mode:        form.closing_mode         || 'days',
+        closing_target_date: form.closing_target_date  || null,
+        closing_custom_text: form.closing_custom_text  || null,
+        closing_qualifier:   form.closing_qualifier     || 'on_or_about',
+        subject_attorney:    !!form.subject_attorney,
+        subject_clear_title: !!form.subject_clear_title,
+        subject_mortgage:    !!form.subject_mortgage,
+        subject_cash:        !!form.subject_cash,
+        subject_standard_inspection: !!form.subject_standard_inspection,
+        subject_structural:  !!form.subject_structural,
+        buyers_agent_id:     form.buyers_agent_id || form.agent_id || agent?.id,
+        commission_pct:      form.commission_pct      || null,
+        additional_terms:    form.additional_terms    || null,
+        offer_date:          form.offer_date          || null,
+        purchaser_attorney_name:    form.purchaser_attorney_name    || null,
+        purchaser_attorney_address: form.purchaser_attorney_address || null,
+        purchaser_attorney_tel:     form.purchaser_attorney_tel     || null,
+        purchaser_attorney_email:   form.purchaser_attorney_email   || null,
+        purchaser_attorney_contact_id: form.purchaser_attorney_contact_id || null,
+        seller_attorney_name:    form.seller_attorney_name    || null,
+        seller_attorney_address: form.seller_attorney_address || null,
+        seller_attorney_tel:     form.seller_attorney_tel     || null,
+        seller_attorney_email:   form.seller_attorney_email   || null,
+        seller_attorney_contact_id: form.seller_attorney_contact_id || null,
+        is_inhouse:          !!form.is_inhouse,
+        inhouse_listing_id:  form.inhouse_listing_id  || null,
+        notes:               form.notes               || null,
+        status:              statusOverride           || form.status || 'Draft',
+        // Assigned TargetOS agent follows representing_side: seller-side
+        // offers default to the seller's-side agent slot, buyer-side (and
+        // legacy default) to the buyer's-side slot. `side` (legacy,
+        // Production-conversion still reads inhouse_listing_id, not this)
+        // is left as a fixed 'Buyer' string for backward compatibility;
+        // representing_side is the real field going forward.
+        agent_id:            form.representing_side === 'Seller'
+                                ? (form.agent_id || agent?.id)
+                                : (form.buyers_agent_id || form.agent_id || agent?.id),
+        production:          form.purchase_price      || null,
+        side:                'Buyer',
+        representing_side:       form.representing_side       || 'Buyer',
+        sellers_agent_contact_id: form.sellers_agent_contact_id || null,
+        sellers_agent_email:      form.sellers_agent_email      || null,
+        sellers_agent_phone:      form.sellers_agent_phone      || null,
+        buyers_agent_contact_id:  form.buyers_agent_contact_id  || null,
+        mortgage_type:            form.mortgage_type            || 'dollar',
+        is_cash_deal:             !!form.is_cash_deal,
+        submitted_at:        form.offer_date          || null,
+        custom_data:         form.custom_data         || {},
+      }
+
+      if (selected) {
+        const updated = await update(selected.id, payload, agent?.id)
+        setSelected(updated)
+        setForm(f => ({ ...f, id: updated.id, current_revision_id: updated.current_revision_id }))
+        toast('✅ Offer saved')
+        if (andDownloadPdf) { await downloadPDF(); toast('✅ Saved and PDF downloaded') }
+      } else {
+        const newOffer = await add(payload)
+        setSelected(newOffer)
+        setForm(f => ({ ...f, id: newOffer.id, current_revision_id: newOffer.current_revision_id }))
+
+        // Save buyer to contacts if not already saved
+        if (!form.buyer_contact_id && form.buyer_name?.trim()) {
+          await selectBuyer(null)
+        }
+
+        // If in-house listing → save to that listing's showings/offers
+        if (form.inhouse_listing_id) {
+          try {
+            const { error: showingErr } = await supabase.from('listing_showings').insert({
+              listing_id:   form.inhouse_listing_id,
+              listing_addr: form.listing_addr,
+              agent_id:     form.buyers_agent_id || agent?.id,
+              buyer_name:   form.buyer_name,
+              showing_date: form.offer_date,
+              interest_level: 5,
+              feedback:    'Offer submitted: $' + Number(form.purchase_price).toLocaleString(),
+              notes:       'Offer for $' + Number(form.purchase_price).toLocaleString(),
+              created_at:  new Date().toISOString(),
+            })
+            if (showingErr) throw showingErr
+          } catch(e) { console.warn('listing_showings insert failed:', e.message) }
+          toast('✅ Offer saved · Linked to listing · Buyer saved to contacts')
+        } else {
+          toast('✅ Offer saved')
+        }
+        if (andDownloadPdf) {
+          await downloadPDF()
+          toast('✅ Saved and PDF downloaded')
+          // Deliberately does not close the panel here — same as the
+          // standalone Download PDF action always did, so the agent
+          // can see the download happened and keep working (e.g. send
+          // it) rather than being bounced back to the board.
+        } else {
+          closePanel()
+        }
+      }
+
+      // ── ACCEPTED OFFER → PRODUCTION DEAL ─────────────────────────
+      // The moment an offer reaches AO/Accepted, a linked deal appears
+      // on the Production board automatically — no re-typing.
+      //
+      // IDEMPOTENCY (hardened): a real DB transaction/RPC isn't
+      // available here (none exists yet for this — see
+      // docs/offers-v2-audit.md), so atomicity comes from a claim
+      // pattern instead: atomically UPDATE offers.conversion_idempotency_key
+      // WHERE it IS NULL, using a deterministic key ('offer_accept:'+id).
+      // Postgres guarantees only one concurrent request can win that
+      // single-row UPDATE — a genuine atomicity guarantee, just backed
+      // by a conditional update + unique index (sql/offers_v2/A_foundation.sql)
+      // rather than a multi-statement transaction. Losing the claim
+      // (0 rows updated) means either a concurrent request or an
+      // earlier successful run already handled conversion — never
+      // create a second deal in that case. The existing address-based
+      // dupe check is kept as defense in depth, not the primary guard.
+      const nowAccepted = OFFER_ACCEPTED_VALUES.includes(statusOverride || form.status)
+      const wasAccepted = selected && OFFER_ACCEPTED_VALUES.includes(selected.status)
+      if (nowAccepted && !wasAccepted && !selected?.deal_id) {
+        try {
+          const claimKey = 'offer_accept:' + selected.id
+          const { data: claimed, error: claimErr } = await supabase.from('offers')
+            .update({
+              conversion_idempotency_key: claimKey,
+              accepted_at: new Date().toISOString(),
+              accepted_by: agent?.id || null,
+            })
+            .eq('id', selected.id)
+            .is('conversion_idempotency_key', null)
+            .select('id')
+          if (claimErr) throw claimErr
+
+          if (claimed && claimed.length > 0) {
+            // We won the claim — safe to create the deal exactly once.
+            const { data: dupe } = await supabase.from('deals').select('id')
+              .eq('addr', form.listing_addr).not('stage', 'in', '("Closed","Deal Fell Through")').limit(1)
+            if (!dupe?.length) {
+              const { data: newDeal, error: dealErr } = await supabase.from('deals').insert({
+                addr:        form.listing_addr,
+                side:        form.inhouse_listing_id ? 'Listing' : 'Buyer',
+                stage:       'Offer Accapted',   // house spelling — matches DEAL_STAGES
+                production:  form.purchase_price || null,
+                client_name: form.inhouse_listing_id ? (form.seller_name || form.buyer_name) : form.buyer_name,
+                agent_id:    form.buyers_agent_id || agent?.id || null,
+                ao_date:     form.offer_date || new Date().toISOString().slice(0, 10),
+                listing_id:  form.inhouse_listing_id || null,
+                created_at:  new Date().toISOString(),
+              }).select().single()
+              if (dealErr) throw dealErr
+              const offerId = selected?.id
+              if (offerId && newDeal) await supabase.from('offers').update({ deal_id: newDeal.id }).eq('id', offerId).then(() => {}).catch(() => {})
+              if (form.inhouse_listing_id) {
+                await supabase.from('listings').update({ status: 'Accepted offer', updated_at: new Date().toISOString() }).eq('id', form.inhouse_listing_id)
+              }
+              // Audit: links the accepted offer, its current revision,
+              // and the resulting Production record together, since
+              // deals has no offer_id/revision_id columns of its own
+              // (not adding any — that's the Production board's schema,
+              // out of scope for this project) and offers.deal_id only
+              // captures half the link.
+              try {
+                await supabase.from('audit_log').insert({
+                  agent_id: agent?.id || null, table_name: 'offers', record_id: String(offerId),
+                  action: 'production_record_created',
+                  metadata: { deal_id: newDeal.id, revision_id: form.current_revision_id || null, claim_key: claimKey },
+                  created_at: new Date().toISOString(),
+                })
+              } catch {}
+              toast('🎉 Accepted! Deal created on the Production board' + (form.inhouse_listing_id ? ' · listing marked Accepted Offer' : ''), '#10B981')
+            }
+          }
+          // claimed.length === 0: conversion already handled by a prior
+          // request — nothing to do, and importantly nothing to report
+          // as an error; this is the expected idempotent-replay path.
+        } catch(e) { toast('Offer saved, but auto-creating the Production deal failed: ' + e.message, '#F5A623') }
+      }
+    } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
+    finally { setSaving(false) }
+  }
+
+  async function deleteOffer() {
+    try { await remove(selected.id); toast('Offer deleted'); closePanel() }
+    catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+    finally { setConfirmDel(false) }
+  }
+
+  // Leaderboards for the Reports section — counts by name across all
+  // offers. Simple frequency count, not a fuzzy match to deals: the
+  // per-agent conversion rate (offers that reached AO status) already
+  // exists in AgentStatsCard, which is a much more reliable signal
+  // than trying to match an offer to a deal by address.
+  const topAttorneys = useMemo(() => {
+    const counts = {}
+    offers.forEach(o => {
+      ;[o.purchaser_attorney_name, o.seller_attorney_name].forEach(name => {
+        if (!name?.trim()) return
+        counts[name] = (counts[name] || 0) + 1
+      })
+    })
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  }, [offers])
+
+  const topSellerAgents = useMemo(() => {
+    const counts = {}
+    offers.forEach(o => {
+      const name = o.sellers_agent_name?.trim()
+      if (!name) return
+      counts[name] = (counts[name] || 0) + 1
+    })
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  }, [offers])
+
+  const filtered = offers.filter(o => {
+    if (statusF && o.status !== statusF) return false
+    if (agentF === 'none' && o.agent_id) return false
+    if (agentF && agentF !== 'none') {
+      // Clicking a canonical (deduplicated) bucket must still match
+      // offers historically assigned to a merged duplicate agent_id,
+      // not just the exact canonical id.
+      const bucket = canonicalAgents.find(a => a.id === agentF)
+      const matchIds = bucket?.mergedIds || [agentF]
+      if (!matchIds.includes(o.agent_id)) return false
+    }
+    if (search && !matchSearch(o, search, ['listing_addr','buyer_name','mls_number','seller_name'])) return false
+    return true
+  })
+
+  const statusColor = s => OFFER_STATUSES.find(x=>x.value===s)?.hex || '#c4c4c4'
+  const totalOffers = offers.length
+  const totalAO     = offers.filter(o=>OFFER_ACCEPTED_VALUES.includes(o.status)).length
+  const totalVol    = offers.reduce((s,o)=>s+(parseFloat(o.purchase_price||o.production)||0),0)
+
+  // ── RENDER ────────────────────────────────────────────────────
+  return (
+    <div style={{ fontFamily:ff }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:10 }}>
         <div>
-          {/* Sub-tabs — keeps the card from dumping everything at once */}
-          <div style={{ display:'flex', gap:2, padding:'8px 12px 0', background:'var(--dim)', borderBottom:'1px solid var(--border)' }}>
-            {[
-              { id:'overview', label:'📋 Overview' },
-              { id:'tasks',  label:'✓ Tasks', n: currentOpen.length },
-              { id:'people', label:'👥 People & Parties' },
-              { id:'photo',  label:'📸 Photography' },
-              { id:'email',  label:'✉️ Email Log' },
-            ].map(t => (
-              <button key={t.id} onClick={e => { e.stopPropagation(); setSubTab(t.id) }}
-                style={{ padding:'7px 13px', border:'none', borderBottom: subTab===t.id ? '2px solid var(--brand)' : '2px solid transparent',
-                  background:'transparent', color: subTab===t.id ? 'var(--brand)' : 'var(--muted)', fontSize:12, fontWeight: subTab===t.id?800:600,
-                  cursor:'pointer', fontFamily:ff, marginBottom:-1 }}>
-                {t.label}{t.n != null && t.n > 0 ? ' (' + t.n + ')' : ''}
+          <div style={{ fontSize:22, fontWeight:900, color:'var(--text)' }}>📝 Offers</div>
+          <div style={{ fontSize:13, color:'var(--muted)', marginTop:2 }}>
+            {totalOffers} total · {totalAO} accepted · {fmt$(totalVol)} volume
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <LastVisited page="offers" />
+          <div style={{ display:'flex', background:'var(--dim)', borderRadius:8, padding:2, gap:2 }}>
+            {[['agents','👥 By Agent'],['table','📋 Table'],...((isAdmin||canManage)?[['reports','📊 Reports']]:[])].map(([v,l])=>(
+              <button key={v} onClick={()=>setView(v)}
+                style={{ padding:'6px 12px', borderRadius:6, border:'none', background:view===v?'var(--panel)':'transparent', color:view===v?'var(--text)':'var(--muted)', fontSize:12, fontWeight:view===v?700:400, cursor:'pointer', fontFamily:ff }}>
+                {l}
               </button>
             ))}
           </div>
-
-          {/* ── OVERVIEW TAB ── */}
-          {subTab === 'overview' && (
-            <div style={{ padding:'14px 16px' }}>
-              {/* Next step banner */}
-              <div style={{ padding:'10px 12px', background: nextTask ? 'rgba(204,34,0,.05)' : 'var(--dim)', borderRadius:10, marginBottom:14 }}>
-                <div style={{ fontSize:9.5, fontWeight:800, color:'var(--brand)', letterSpacing:'.05em', marginBottom:2 }}>NEXT STEP</div>
-                {nextTask ? (
-                  <div style={{ fontSize:14, fontWeight:700, color:'var(--text)' }}>
-                    {nextTask.title}
-                    {nextTask.due_date && (
-                      <span style={{ marginLeft:8, fontSize:12, fontWeight:700, color: overdueTasks.includes(nextTask)?'#DC2626':dueTodayTasks.includes(nextTask)?'#F5A623':'var(--muted)' }}>
-                        {overdueTasks.includes(nextTask)?'overdue':dueTodayTasks.includes(nextTask)?'due today':'due '+fmtDate(nextTask.due_date)}
-                      </span>
-                    )}
-                    {nextAgent && <span style={{ marginLeft:8, fontSize:12, color:nextAgent.color||'var(--muted)', fontWeight:700 }}>· {nextAgent.name.split(' ')[0]}</span>}
-                  </div>
-                ) : <div style={{ fontSize:14, fontWeight:700, color:'var(--muted)' }}>✓ Nothing open this stage</div>}
-              </div>
-
-              {/* At-a-glance grid */}
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px,1fr))', gap:10 }}>
-                {/* Stage + task summary */}
-                <OverviewCell title="Stage & tasks">
-                  <div style={{ fontSize:13, fontWeight:700, color:phase.color }}>{phase.icon} {phase.label}</div>
-                  <div style={{ fontSize:12, color:'var(--muted)', marginTop:3 }}>
-                    {overdue>0 && <span style={{ color:'#DC2626', fontWeight:700 }}>{overdue} overdue · </span>}
-                    {dueToday>0 && <span style={{ color:'#F5A623', fontWeight:700 }}>{dueToday} today · </span>}
-                    {currentOpen.length} current{carryover.length>0 && ' · '+carryover.length+' carryover'}
-                  </div>
-                </OverviewCell>
-
-                {/* Key dates */}
-                <OverviewCell title="Key dates">
-                  <div style={{ fontSize:12.5, color:'var(--text)' }}>
-                    {deal.ao_date ? 'AO ' + fmtDate(deal.ao_date) : 'AO —'}
-                    {'  ·  '}
-                    {deal.close_date ? 'Close ' + fmtDate(deal.close_date) : 'Close —'}
-                  </div>
-                  {deal.close_date && signals.closingSoon && <div style={{ fontSize:11, color:'#2563EB', fontWeight:700, marginTop:2 }}>Closing soon</div>}
-                </OverviewCell>
-
-                {/* Parties */}
-                <OverviewCell title="Parties">
-                  {(() => {
-                    const need = STAGE_CRITICAL_ROLES[deal.tc_phase] || []
-                    const have = need.filter(r => rolePresent(deal, roleSet, r))
-                    const miss = need.filter(r => !rolePresent(deal, roleSet, r))
-                    return (
-                      <div style={{ fontSize:12.5, color:'var(--text)' }}>
-                        {have.length>0 && <span>{have.map(r=>ROLE_LABEL[r]||r).join(', ')} set</span>}
-                        {miss.length>0 && <div style={{ color:'#DC2626', fontWeight:700, marginTop:2 }}>Missing: {miss.map(r=>ROLE_LABEL[r]||r).join(', ')}</div>}
-                        {need.length===0 && <span style={{ color:'var(--muted)' }}>—</span>}
-                      </div>
-                    )
-                  })()}
-                </OverviewCell>
-
-                {/* Price */}
-                <OverviewCell title="Price">
-                  <div style={{ fontSize:12.5, color:'var(--text)' }}>
-                    {deal.list_price ? 'List ' + fmt$(deal.list_price) : 'List —'}
-                    {deal.sale_price ? '  ·  Sale ' + fmt$(deal.sale_price) : ''}
-                  </div>
-                </OverviewCell>
-
-                {/* Marketing / photography (from linked listing, read-only) */}
-                <OverviewCell title="Marketing & photography">
-                  {deal.linked_listing_id ? (
-                    <div style={{ fontSize:12, color:'var(--muted)' }}>See Photography tab · linked listing</div>
-                  ) : (
-                    <div style={{ fontSize:12, color:'var(--muted)' }}>No linked listing yet</div>
-                  )}
-                </OverviewCell>
-
-                {/* Attorneys / mortgage (legacy text fields) */}
-                <OverviewCell title="Contacts on file">
-                  <div style={{ fontSize:12, color:'var(--text)', lineHeight:1.5 }}>
-                    {deal.attorney_name && <div>⚖️ {deal.attorney_name}</div>}
-                    {deal.mortgage_broker && <div>🏦 {deal.mortgage_broker}</div>}
-                    {deal.inspector && <div>🔍 {deal.inspector}</div>}
-                    {!deal.attorney_name && !deal.mortgage_broker && !deal.inspector && <span style={{ color:'var(--muted)' }}>—</span>}
-                  </div>
-                </OverviewCell>
-              </div>
-
-              {/* Quick jump to full detail */}
-              <div style={{ display:'flex', gap:8, marginTop:14 }}>
-                <button onClick={e=>{ e.stopPropagation(); setSubTab('tasks') }} style={{ fontSize:12, fontWeight:700, color:'var(--brand)', background:'transparent', border:'1px solid var(--border)', borderRadius:7, padding:'6px 12px', cursor:'pointer', fontFamily:ff }}>View tasks →</button>
-                <button onClick={e=>{ e.stopPropagation(); setSubTab('people') }} style={{ fontSize:12, fontWeight:700, color:'var(--brand)', background:'transparent', border:'1px solid var(--border)', borderRadius:7, padding:'6px 12px', cursor:'pointer', fontFamily:ff }}>People & parties →</button>
-                <button onClick={e=>{ e.stopPropagation(); onEditDeal(deal) }} style={{ fontSize:12, fontWeight:700, color:'var(--muted)', background:'transparent', border:'1px solid var(--border)', borderRadius:7, padding:'6px 12px', cursor:'pointer', fontFamily:ff }}>Edit file</button>
-              </div>
-            </div>
-          )}
-
-          {/* ── TASKS TAB ── */}
-          {subTab === 'tasks' && (
-          <div>
-            {/* Phase switcher */}
-            <div style={{ padding:'10px 16px', background:'var(--dim)', borderBottom:'1px solid var(--border)',
-              display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-              <span style={{ fontSize:10, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', marginRight:4 }}>Move to phase:</span>
-              {PHASES.map(p => (
-                <button key={p.id} onClick={() => onPhaseChange(deal, p.id)}
-                  style={{ padding:'4px 11px', borderRadius:99, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff,
-                    border:'1.5px solid '+(deal.tc_phase===p.id?p.color:'var(--border)'),
-                    background: deal.tc_phase===p.id?p.color:'transparent',
-                    color: deal.tc_phase===p.id?'#fff':'var(--muted)', transition:'all .12s' }}>
-                  {p.icon} {p.label}
-                </button>
-              ))}
-            </div>
-            {/* Section 1: Overdue / Due Today (current stage, most urgent) */}
-            {(overdueTasks.length > 0 || dueTodayTasks.length > 0) && (
-              <div>
-                <div style={{ padding:'6px 14px 3px', fontSize:10, fontWeight:800, color:'#DC2626',
-                  textTransform:'uppercase', letterSpacing:'.06em', background:'rgba(220,38,38,.04)' }}>
-                  ⚠️ Overdue / Due Today ({overdueTasks.length + dueTodayTasks.length})
-                </div>
-                {[...overdueTasks, ...dueTodayTasks].map(t => (
-                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} onSetWaitReason={onSetWaitReason} />
-                ))}
-              </div>
-            )}
-
-            {/* Section 2: Current Stage Tasks (remaining open, this phase) */}
-            {otherCurrent.length > 0 && (
-              <div>
-                <div style={{ padding:'6px 14px 3px', fontSize:10, fontWeight:800, color:phase.color,
-                  textTransform:'uppercase', letterSpacing:'.06em', background:'var(--dim)' }}>
-                  {phase.icon} {phase.label} Tasks ({otherCurrent.length})
-                </div>
-                {otherCurrent.map(t => (
-                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} onSetWaitReason={onSetWaitReason} />
-                ))}
-              </div>
-            )}
-
-            {/* Section 3: Carryover from Previous Stages (open, earlier phase) — collapsed */}
-            {carryover.length > 0 && (
-              <details style={{ borderTop:'1px solid var(--border)' }}>
-                <summary style={{ padding:'6px 14px', fontSize:10, fontWeight:700, color:'#B45309',
-                  cursor:'pointer', listStyle:'none', userSelect:'none', background:'rgba(245,166,35,.05)',
-                  display:'flex', alignItems:'center', gap:6 }}>
-                  ↩ Carryover from previous stages ({carryover.length}) — click to view
-                </summary>
-                {carryover.map(t => (
-                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} onSetWaitReason={onSetWaitReason} />
-                ))}
-              </details>
-            )}
-
-            {/* Section 4: Completed / History — collapsed by default */}
-            {doneTasks.length > 0 && (
-              <details style={{ borderTop:'1px solid var(--border)' }}>
-                <summary style={{ padding:'6px 14px', fontSize:10, fontWeight:700, color:'#10B981',
-                  cursor:'pointer', listStyle:'none', userSelect:'none',
-                  display:'flex', alignItems:'center', gap:6 }}>
-                  ✓ Completed / History ({doneTasks.length}) — click to view
-                </summary>
-                {doneTasks.map(t => (
-                  <TaskRow key={t.id} task={t} agents={agents} onCheck={onCheckTask} onEdit={onEditTask} onSetWaitReason={onSetWaitReason} />
-                ))}
-              </details>
-            )}
-
-            {/* Empty state */}
-            {tasks.length === 0 && (
-              <div style={{ padding:'20px', textAlign:'center', color:'var(--muted)', fontSize:12 }}>
-                No tasks yet
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* ── PEOPLE & PARTIES TAB ── */}
-          {subTab === 'people' && (
-            <div style={{ padding:'12px 16px' }}>
-              <TCParties deal={deal} agents={agents} />
-            </div>
-          )}
-
-          {/* ── PHOTOGRAPHY TAB ── */}
-          {subTab === 'photo' && (
-            <div style={{ padding:'12px 16px' }}>
-              <PhotographyPanel deal={deal} isAdmin={isAdmin} />
-            </div>
-          )}
-
-          {/* ── EMAIL LOG TAB ── */}
-          {subTab === 'email' && (
-            <div style={{ padding:'12px 16px' }}>
-              <TCEmailLog deal={deal} />
-            </div>
-          )}
-
-          {/* Footer actions — tasks tab only */}
-          {subTab === 'tasks' && (
-          <div style={{ padding:'10px 16px', display:'flex', gap:8, flexWrap:'wrap',
-            borderTop:'1px solid var(--border)', background:'var(--dim)' }}>
-            <button onClick={() => onAddTask(deal)}
-              style={{ padding:'6px 14px', borderRadius:8, border:'1px solid var(--brand)',
-                background:'rgba(204,34,0,.06)', color:'var(--brand)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
-              + Add Task
-            </button>
-            <button onClick={() => onEditDeal(deal)}
-              style={{ padding:'6px 14px', borderRadius:8, border:'1px solid var(--border)',
-                background:'transparent', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
-              ✏️ Edit Deal
-            </button>
-            {deal.notes && (
-              <div style={{ fontSize:11, color:'var(--muted)', alignSelf:'center', fontStyle:'italic' }}>
-                📝 {deal.notes.slice(0,60)}{deal.notes.length>60?'...':''}
-              </div>
-            )}
-          </div>
-          )}
+          <Btn onClick={openAdd}>+ New Offer</Btn>
         </div>
-      )}
-    </div>
-  )
-}
-
-// Shared helper — every send-email call needs the current session's
-// access token now that the endpoint actually checks auth (July 2026).
-async function callSendEmail(payload) {
-  const { data: { session } } = await supabase.auth.getSession()
-  return authFetch('/api/send-email', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
-    },
-    body: JSON.stringify(payload),
-  })
-}
-
-// ── MAIN ──────────────────────────────────────────────────────────
-export function TransactionCoordinator() {
-  const { agent, isAdmin, canManage } = useAuth()
-  usePageView('tc')
-  const { toast } = useApp()
-  const navigate  = useNavigate()
-
-  const [deals,       setDeals]       = useState([])
-  const [tasks,       setTasks]       = useState([])
-  const [agents,      setAgents]      = useState([])
-  const [loading,     setLoading]     = useState(true)
-  const [sqlError,    setSqlError]    = useState(false)
-  const [search,      setSearch]      = useState('')
-  const [phaseFilter, setPhaseFilter] = useState('all')
-  const [agentFilter, setAgentFilter] = useState('all')
-  const [drawerTile,  setDrawerTile]  = useState(null)   // opens the work-queue drawer
-  const [expanded,    setExpanded]    = useState({})
-  const [partsByDeal, setPartsByDeal] = useState({})
-  const [photoByDeal, setPhotoByDeal] = useState({})
-  const [saving,      setSaving]      = useState(false)
-
-  // Modals
-  const [showAddDeal,  setShowAddDeal]  = useState(false)
-  const [showEditDeal, setShowEditDeal] = useState(false)
-  const [showAddTask,  setShowAddTask]  = useState(false)
-  const [showEditTask, setShowEditTask] = useState(false)
-  const [selDeal,      setSelDeal]      = useState(null)
-  const [selTask,      setSelTask]      = useState(null)
-
-
-
-  const DEAL_BLANK = {
-    addr:'', side:'Seller', agent_id:'', tc_phase:'pre_listing',
-    list_price:'', sale_price:'', ao_date:'', close_date:'', c2c_enabled:false,
-    attorney_name:'', attorney_phone:'', attorney_email:'',
-    mortgage_broker:'', mortgage_phone:'',
-    inspector:'', inspector_phone:'', notes:'', custom_data:{},
-  }
-
-  // Safe insert — only columns confirmed in tc_deals table
-  function dealPayload(f) {
-    return {
-      addr:            f.addr,
-      side:            f.side || 'Seller',
-      agent_id:        f.agent_id || null,
-      tc_phase:        f.tc_phase || 'pre_listing',
-      list_price:      f.list_price ? parseFloat(String(f.list_price).replace(/[$,]/g,'')) : null,
-      sale_price:      f.sale_price ? parseFloat(String(f.sale_price).replace(/[$,]/g,'')) : null,
-      ao_date:         f.ao_date    || null,
-      c2c_enabled:     !!f.c2c_enabled,
-      close_date:      f.close_date || null,
-      attorney_name:   f.attorney_name   || null,
-      attorney_phone:  f.attorney_phone  || null,
-      attorney_email:  f.attorney_email  || null,
-      mortgage_broker: f.mortgage_broker || null,
-      mortgage_phone:  f.mortgage_phone  || null,
-      inspector:       f.inspector       || null,
-      inspector_phone: f.inspector_phone || null,
-      notes:           f.notes || null,
-      // Custom fields (Custom Fields admin page) — no-code fields added
-      // to the TC board live here, same as Contacts/Deals/Listings.
-      custom_data:     f.custom_data || {},
-    }
-  }
-  const TASK_BLANK = {
-    title:'', priority:'high', due_date:'', agent_id:'',
-    notes:'', needs_calendar:false, reminder_days:'',
-    completion_action:'none', completion_note:'',
-  }
-
-  const [dealForm, setDealForm] = useState({ ...DEAL_BLANK })
-  const [taskForm, setTaskForm] = useState({ ...TASK_BLANK })
-
-  useEffect(() => { if (canManage) loadAll() }, [canManage])
-
-  // FIX (Sept 2026 audit, finding H2): these six hooks used to live
-  // AFTER the conditional return below, behind a comment claiming that
-  // was safe. It wasn't — a comment doesn't change what React sees.
-  // Any agent-record refresh that changes `role` while the TC Board is
-  // open (a permission change, onAuthStateChange firing) flips the
-  // hook count mid-life and crashes with the exact React error #310
-  // this project has already been bitten by once (see CLAUDE.md). All
-  // hooks must run unconditionally on every render, so they're hoisted
-  // above the `!canManage` return, same as dealForm/taskForm above.
-  const location = useLocation()
-  const [deepLinked, setDeepLinked] = useState(false)
-  useEffect(() => {
-    if (deepLinked || !deals.length) return
-    const id = new URLSearchParams(location.search).get('open')
-    if (!id) { setDeepLinked(true); return }
-    const d = deals.find(x => x.id === id)
-    if (d) {
-      setSelDeal(d)
-      setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'', custom_data:d.custom_data||{} })
-      setShowEditDeal(true)
-    }
-    setDeepLinked(true)
-  }, [deals.length, location.search])
-
-  // ── #task-ID deep links (July 2026) ─────────────────────────────
-  // Emails link each task as /tc#task-<id>: expand its deal, scroll
-  // to the row, and flash it.
-  // FIX (Sept 2026 audit follow-up, react-hooks/rules-of-hooks): this used
-  // to live right before `generateC2CTasks`, well after the `!canManage`
-  // early return below -- meaning it (and six useMemo calls further down)
-  // were skipped whenever canManage was false. If canManage ever flips true
-  // during a mount (e.g. permissions load async), React would then see a
-  // different number of hooks between renders and crash. Hoisted up here
-  // with the rest of the unconditional hooks, same as the `?open=` deep
-  // link right above it.
-  useEffect(() => {
-    const h = window.location.hash
-    if (!h.startsWith('#task-') || !tasks.length) return
-    const taskId = h.slice(6)
-    const t = tasks.find(x => String(x.id) === taskId)
-    if (!t) return
-    setExpanded(prev => ({ ...prev, [t.tc_deal_id]: true }))
-    setTimeout(() => {
-      const el = document.getElementById('task-' + taskId)
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        el.style.transition = 'background .4s'
-        el.style.background = 'rgba(204,34,0,.14)'
-        setTimeout(() => { el.style.background = '' }, 2600)
-      }
-    }, 350)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks.length])
-
-  const [tcCfg, setTcCfg] = useState(null)   // merged TC settings (templates, services, statuses…)
-  const [showBill, setShowBill] = useState(false)
-  const [billPeople, setBillPeople] = useState({ rows: [], contacts: {} })
-
-  async function openCommissionBill() {
-    try {
-      const { data: rows } = await supabase.from('tc_participants').select('*').eq('tc_deal_id', selDeal.id)
-      const ids = [...new Set((rows||[]).map(r => r.contact_id))]
-      let contacts = {}
-      if (ids.length) {
-        const { data: cs } = await supabase.from('contacts').select('id, first_name, last_name, email').in('id', ids)
-        contacts = Object.fromEntries((cs||[]).map(x => [x.id, x]))
-      }
-      setBillPeople({ rows: rows || [], contacts })
-    } catch { setBillPeople({ rows: [], contacts: {} }) }
-    setShowBill(true)
-  }
-  const templatesFor = phase => (tcCfg?.task_templates?.[phase] || PHASE_TASKS[phase] || [])
-
-  async function loadAll() {
-    setLoading(true)
-    try {
-      loadTcSettings().then(setTcCfg).catch(() => {})
-      const [dr, tr, ar, pr, phr] = await Promise.all([
-        supabase.from('tc_deals').select('*').order('updated_at', { ascending:false }).range(0, 499),
-        supabase.from('tc_tasks').select('*').order('due_date',   { ascending:true  }).range(0, 4999),
-        supabase.from('agents').select('id,name,color,email').eq('active',true).order('name'),
-        supabase.from('tc_participants').select('tc_deal_id,role,contact_id').range(0, 9999),
-        supabase.from('tc_photography').select('tc_deal_id,status,corrections_note').range(0, 999),
-      ])
-      if (dr.error?.message?.includes('does not exist')) { setSqlError(true); return }
-      setDeals(dr.data || [])
-      setTasks(tr.data || [])
-      setAgents(ar.data || [])
-      // group participants by deal → { dealId: Set(roles-with-a-contact) }
-      const pByDeal = {}
-      ;(pr.data || []).forEach(p => { if (!p.contact_id) return; (pByDeal[p.tc_deal_id] = pByDeal[p.tc_deal_id] || new Set()).add(p.role) })
-      setPartsByDeal(pByDeal)
-      // photography by deal — used to surface "corrections requested" /
-      // "media received, needs review" as work-queue signals (handoff:
-      // "a communication or workflow event requires secretary action")
-      const phByDeal = {}
-      ;(phr.data || []).forEach(p => { phByDeal[p.tc_deal_id] = p })
-      setPhotoByDeal(phByDeal)
-    } catch(e) {
-      setSqlError(true)
-    } finally { setLoading(false) }
-  }
-
-  // Sync ANY field change to all linked boards
-  async function syncToAllBoards(deal, updates) {
-    const synced = []
-    let failed = false
-    try {
-      const r0 = await supabase.from('tc_deals').update({ ...updates, updated_at:new Date().toISOString() }).eq('id', deal.id)
-      if (r0.error) throw r0.error
-      // Per-record activity log: TC deals update via raw supabase, so
-      // they bypass db.js's auto-logger — capture who changed what here.
-      try {
-        for (const k of Object.keys(updates)) {
-          if (k === 'updated_at') continue
-          await logRecordChange({ tableName: 'tc_deals', recordId: deal.id, agentId: agent?.id, field: k, oldValue: deal[k], newValue: updates[k], recordName: deal.addr || 'TC Deal' })
-        }
-      } catch (e) { console.warn('TC activity log:', e.message) }
-
-      // Keep the Production↔Listings hard link in sync: whenever a TC
-      // deal knows both sides, make sure deals.listing_id points at
-      // the listing (best-effort — never fails the whole sync).
-      if (deal.linked_deal_id && deal.linked_listing_id) {
-        supabase.from('deals').update({ listing_id: deal.linked_listing_id }).eq('id', deal.linked_deal_id)
-          .then(() => {}, () => {})
-      }
-
-      if (updates.list_price !== undefined && deal.linked_listing_id) {
-        const r = await supabase.from('listings').update({ list_price:updates.list_price, updated_at:new Date().toISOString() }).eq('id', deal.linked_listing_id)
-        if (r.error) throw r.error
-        synced.push('Listings')
-      }
-      if (updates.sale_price !== undefined && deal.linked_deal_id) {
-        const r = await supabase.from('deals').update({ sale_price:updates.sale_price, updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
-        if (r.error) throw r.error
-        synced.push('Production')
-      }
-      if (updates.ao_date !== undefined && deal.linked_deal_id) {
-        const r = await supabase.from('deals').update({ ao_date:updates.ao_date, updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
-        if (r.error) throw r.error
-        if (!synced.includes('Production')) synced.push('Production')
-      }
-      if (updates.close_date !== undefined && deal.linked_deal_id) {
-        const r = await supabase.from('deals').update({ close_date:updates.close_date, updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
-        if (r.error) throw r.error
-        if (!synced.includes('Production')) synced.push('Production')
-      }
-      if (updates.tc_phase !== undefined) {
-        if (deal.linked_deal_id) {
-          const r = await supabase.from('deals').update({ stage:phaseToStage[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
-          if (r.error) throw r.error
-          if (!synced.includes('Production')) synced.push('Production')
-        }
-        if (deal.linked_listing_id) {
-          const r = await supabase.from('listings').update({ status:phaseToStatus[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_listing_id)
-          if (r.error) throw r.error
-          if (!synced.includes('Listings')) synced.push('Listings')
-        }
-      }
-      if (updates.agent_id !== undefined) {
-        if (deal.linked_deal_id) {
-          const r = await supabase.from('deals').update({ agent_id:updates.agent_id }).eq('id', deal.linked_deal_id)
-          if (r.error) throw r.error
-        }
-        if (deal.linked_listing_id) {
-          const r = await supabase.from('listings').update({ agent_id:updates.agent_id }).eq('id', deal.linked_listing_id)
-          if (r.error) throw r.error
-        }
-        synced.push('All boards')
-      }
-    } catch(e) {
-      console.warn('sync error:', e.message)
-      toast('Some changes may not have synced to other boards — please verify Listings/Production.', '#DC2626')
-      failed = true
-    }
-    return { synced, failed }
-  }
-
-  async function createDeal() {
-    if (!dealForm.addr.trim()) { toast('Address is required', '#DC2626'); return }
-    if (!dealForm.agent_id)    { toast('You must assign an agent to this deal', '#DC2626'); return }
-    setSaving(true)
-    try {
-      const { data:newDeal, error } = await supabase.from('tc_deals').insert({
-        ...dealPayload(dealForm),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }).select().single()
-      if (error) throw error
-      await generatePhaseTasks(newDeal, dealForm.tc_phase)
-
-      const taskCount = templatesFor(dealForm.tc_phase).length
-      toast('✅ Deal created · ' + taskCount + ' tasks auto-generated')
-      setShowAddDeal(false)
-      setDealForm({ ...DEAL_BLANK })
-      setExpanded(p => ({ ...p, [newDeal.id]:true }))
-      loadAll()
-    } catch(e) {
-      console.error('createDeal error:', e)
-      toast('Failed: ' + (e.message || e.details || JSON.stringify(e)), '#DC2626')
-    }
-    finally { setSaving(false) }
-  }
-
-  // Contract-to-close service: weekly check-in tasks from now (or AO
-  // date) until close date, capped at 12 weeks. Fired once when the
-  // toggle flips on; tasks are normal tc_tasks (editable/deletable).
-  async function generateC2CTasks(deal) {
-    try {
-      const start = new Date(Math.max(Date.now(), deal.ao_date ? new Date(deal.ao_date).getTime() : 0))
-      const end   = deal.close_date ? new Date(deal.close_date) : new Date(Date.now() + 84*86400000)
-      const rows = []
-      const d = new Date(start)
-      d.setDate(d.getDate() + 7)
-      let week = 1
-      while (d <= end && rows.length < 12) {
-        rows.push({
-          deal_id: deal.id,
-          title: '📞 C2C week ' + week + ': mortgage broker check-in + update seller, buyer’s agent & attorneys',
-          priority: 'high', due_date: d.toISOString().slice(0,10),
-          status: 'pending', agent_id: deal.agent_id,
-          needs_calendar: false, phase: 'under_contract',
-          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        })
-        d.setDate(d.getDate() + 7); week++
-      }
-      if (deal.close_date) {
-        const bill = new Date(deal.close_date); bill.setDate(bill.getDate() - 7)
-        if (bill >= new Date()) rows.push({
-          deal_id: deal.id, title: '🧾 Send commission bill to attorneys (1 week before closing)',
-          priority: 'urgent', due_date: bill.toISOString().slice(0,10),
-          status: 'pending', agent_id: deal.agent_id, needs_calendar: true,
-          phase: 'under_contract', created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        })
-      }
-      if (rows.length) {
-        const { error } = await supabase.from('tc_tasks').insert(rows)
-        if (error) throw error
-        setTasks(prev => [...prev, ...rows])
-        toast('📋 ' + rows.length + ' contract-to-close tasks generated')
-      }
-    } catch (e) { toast('C2C task generation failed: ' + e.message, '#DC2626') }
-  }
-
-  async function generatePhaseTasks(deal, phase) {
-    const templates = templatesFor(phase)
-    if (!templates.length) return
-
-    // IDEMPOTENCY (fixed 2026-08-09): without this check, re-entering a
-    // phase (e.g. Active → Pre-Listing → Active again) would insert the
-    // same template tasks a second time. Check what already exists for
-    // this deal+phase FIRST, then only insert templates with no match —
-    // matched by title, since that's the stable identifier a template
-    // produces (due_date/priority can legitimately differ per instance).
-    const { data: existing } = await supabase.from('tc_tasks')
-      .select('title').eq('deal_id', deal.id).eq('phase', phase)
-    const existingTitles = new Set((existing || []).map(t => t.title))
-    const newTemplates = templates.filter(t => !existingTitles.has(t.label))
-    if (!newTemplates.length) return   // every template task already exists — nothing to do
-
-    const rows = newTemplates.map(t => ({
-      deal_id:       deal.id,
-      title:         t.label,
-      priority:      t.priority,
-      due_date:      addDays(t.days),
-      status:        'pending',
-      agent_id:      deal.agent_id,
-      needs_calendar:!!t.cal,
-      phase,
-      created_at:    new Date().toISOString(),
-      updated_at:    new Date().toISOString(),
-    }))
-    const { error } = await supabase.from('tc_tasks').insert(rows)
-    if (error) throw error
-
-    // Create calendar events for tasks that need it
-    for (const t of rows.filter(r => r.needs_calendar)) {
-      try { await supabase.from('calendar_events').insert({
-        agent_id:   deal.agent_id,
-        tc_deal_id: deal.id,
-        title:      t.title + ' — ' + deal.addr,
-        start_date: t.due_date,
-        start_time: '10:00',
-        type:       'task',
-        description: 'Auto-created by TC Board',
-        created_at: new Date().toISOString(),
-      }) } catch(e) { console.warn('TC calendar sync failed:', e.message) }
-    }
-
-    // Email agent about calendar tasks (photography, inspections etc.)
-    const calTasks = newTemplates.filter(t => t.cal && t.notify_agent)
-    if (calTasks.length > 0) {
-      const ag = agents.find(a => a.id === deal.agent_id)
-      if (ag?.email) {
-        const items = calTasks.map(t => '<li>' + t.label + ' (due in ' + t.days + ' days)</li>').join('')
-        callSendEmail({
-          to: ag.email,
-          subject: '📋 New tasks assigned: ' + deal.addr + ',',
-          html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p>The following tasks require your attention for <strong>' + deal.addr + '</strong>:</p><ul>' + items + '</ul><p>These have been added to your calendar. Please confirm the dates.</p><p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
-        }).catch(() => {})
-      }
-    }
-  }
-
-  async function changePhase(deal, newPhase) {
-    if (deal.tc_phase === newPhase) return
-    const pDef = PHASES.find(p => p.id === newPhase)
-
-    // Count only the tasks that would ACTUALLY be created (idempotency-
-    // aware), so the confirm dialog and agent email don't overstate what
-    // will happen if some/all of this phase's tasks already exist from
-    // a previous visit to this phase.
-    const allTemplates = templatesFor(newPhase)
-    const { data: existingForPhase } = await supabase.from('tc_tasks')
-      .select('title').eq('deal_id', deal.id).eq('phase', newPhase)
-    const existingTitles = new Set((existingForPhase || []).map(t => t.title))
-    const newTemplates = allTemplates.filter(t => !existingTitles.has(t.label))
-    const taskCount = newTemplates.length
-    const calCount  = newTemplates.filter(t => t.cal).length
-
-    const confirmMsg = 'Move "' + deal.addr + '" to ' + (pDef?.label||'') + '?\n\n'
-      + (taskCount > 0
-          ? '• ' + taskCount + ' new task' + (taskCount===1?'':'s') + ' will be auto-generated' + (calCount>0 ? '\n• ' + calCount + ' calendar event' + (calCount===1?'':'s') + ' will be created' : '')
-          : '• No new tasks — this phase\'s tasks already exist on this file')
-      + '\n• All linked boards will be updated automatically'
-    if (!window.confirm(confirmMsg)) return
-
-    try {
-      const { synced, failed } = await syncToAllBoards(deal, { tc_phase:newPhase })
-      await generatePhaseTasks({ ...deal, tc_phase:newPhase }, newPhase)
-
-      // Email agent — only mention new tasks if any were actually created
-      const ag = agents.find(a => a.id === deal.agent_id)
-      if (ag?.email) {
-        callSendEmail({
-          to: ag.email,
-          subject: (pDef?.icon||'') + ' ' + deal.addr + ' moved to ' + (pDef?.label||'') + ',',
-          html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p><strong>' + deal.addr + '</strong> has moved to <strong>' + (pDef?.label||'') + '</strong>.</p>' + (taskCount > 0 ? '<p>' + taskCount + ' new task' + (taskCount===1?'':'s') + ' assigned. Please check your TC Board.</p>' : '') + '<p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
-        }).catch(() => {})
-      }
-
-      if (!failed) toast('✅ Phase → ' + (pDef?.label||'') + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
-      loadAll()
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
-  }
-
-  // Inline task edit from the work-queue drawer (existing tc_tasks rows only)
-  async function updateTask(taskId, patch) {
-    try {
-      const { error } = await supabase.from('tc_tasks').update({ ...patch, updated_at:new Date().toISOString() }).eq('id', taskId)
-      if (error) throw error
-      setTasks(p => p.map(t => t.id === taskId ? { ...t, ...patch } : t))
-    } catch (e) { alert('Could not update task: ' + (e.message || e)) }
-  }
-
-  // Set/clear a task's blocker reason. wait_since is stamped fresh
-  // whenever the reason CHANGES to a new non-empty value (so "waiting
-  // too long" measures from when THIS blocker started, not some
-  // earlier one), and cleared when the reason is cleared.
-  async function setTaskWaitReason(task, reason) {
-    const patch = {
-      wait_reason: reason || null,
-      wait_since: reason ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    }
-    try {
-      const { error } = await supabase.from('tc_tasks').update(patch).eq('id', task.id)
-      if (error) throw error
-      setTasks(p => p.map(t => t.id === task.id ? { ...t, ...patch } : t))
-    } catch (e) { toast('Could not update: ' + e.message, '#DC2626') }
-  }
-
-  // Open a deal's TC card: expand it (single-expand) + scroll into view
-  function openDealFile(dealId) {
-    if (!dealId) return
-    setExpanded({ [dealId]: true })
-    setTimeout(() => {
-      const el = document.getElementById('tc-deal-' + dealId)
-      if (el) el.scrollIntoView({ behavior:'smooth', block:'center' })
-    }, 120)
-  }
-
-  async function checkTask(task) {
-    if (task.status === 'done') return
-    try {
-      const { error } = await supabase.from('tc_tasks').update({
-        status:'done', completed_at:new Date().toISOString(), updated_at:new Date().toISOString()
-      }).eq('id', task.id)
-      if (error) throw error
-      setTasks(p => p.map(t => t.id===task.id ? {...t, status:'done'} : t))
-
-      // Completion action
-      if (task.completion_action === 'notify_agent') {
-        const deal = deals.find(d => d.id === task.deal_id)
-        const ag   = agents.find(a => a.id === (task.agent_id || deal?.agent_id))
-        if (ag?.email) {
-          callSendEmail({
-            to: ag.email,
-            subject: '✅ Task completed: ' + task.title + ',',
-            html: '<p>Hi ' + (ag.name?.split(' ')[0]||'Agent') + ',</p><p>Task <strong>"' + task.title + '"</strong> for <strong>' + (deal?.addr||'your deal') + '</strong> has been completed.</p>' + (task.completion_note ? '<p>Note: ' + task.completion_note + '</p>' : '') + '<p><a href="https://app.targetreteam.com/tc">Open TC Board →</a></p>',
-          }).catch(() => {})
-        }
-      } else if (task.completion_action === 'create_next_task' && task.completion_note) {
-        const { error: nextErr } = await supabase.from('tc_tasks').insert({
-          deal_id:    task.deal_id,
-          title:      task.completion_note,
-          priority:   'high', status:'pending',
-          agent_id:   task.agent_id, phase:task.phase,
-          created_at: new Date().toISOString(), updated_at:new Date().toISOString(),
-        })
-        if (nextErr) throw nextErr
-        loadAll()
-      }
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
-  }
-
-  async function saveTask() {
-    if (!taskForm.title.trim()) { toast('Task title required', '#DC2626'); return }
-    setSaving(true)
-    try {
-      if (selTask) {
-        // Edit existing
-        const { error: e1 } = await supabase.from('tc_tasks').update({
-          ...taskForm, updated_at:new Date().toISOString()
-        }).eq('id', selTask.id)
-        if (e1) throw e1
-        if (taskForm.needs_calendar && taskForm.due_date) {
-          const { error: e2 } = await supabase.from('calendar_events').insert({
-            agent_id:   taskForm.agent_id || selDeal?.agent_id,
-            tc_deal_id: selDeal?.id,
-            title:      taskForm.title + ' — ' + selDeal?.addr,
-            start_date: taskForm.due_date, start_time:'10:00', type:'task',
-            created_at: new Date().toISOString(),
-          })
-          if (e2) throw e2
-        }
-        toast('✅ Task updated')
-      } else {
-        // Add new
-        const { error: e3 } = await supabase.from('tc_tasks').insert({
-          deal_id:    selDeal.id,
-          agent_id:   taskForm.agent_id || selDeal.agent_id,
-          phase:      selDeal.tc_phase,
-          status:     'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          ...taskForm,
-        })
-        if (e3) throw e3
-        if (taskForm.needs_calendar && taskForm.due_date) {
-          const { error: e4 } = await supabase.from('calendar_events').insert({
-            agent_id:   taskForm.agent_id || selDeal.agent_id,
-            tc_deal_id: selDeal.id,
-            title:      taskForm.title + ' — ' + selDeal.addr,
-            start_date: taskForm.due_date, start_time:'10:00', type:'task',
-            created_at: new Date().toISOString(),
-          })
-          if (e4) throw e4
-        }
-        toast('✅ Task added' + (taskForm.needs_calendar && taskForm.due_date ? ' · Calendar event created' : ''))
-      }
-      setShowAddTask(false); setShowEditTask(false); setSelTask(null)
-      setTaskForm({ ...TASK_BLANK })
-      loadAll()
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
-    finally { setSaving(false) }
-  }
-
-  async function saveDeal() {
-    if (!dealForm.addr.trim()) { toast('Address required', '#DC2626'); return }
-    if (!dealForm.agent_id)    { toast('Agent required', '#DC2626'); return }
-    setSaving(true)
-    try {
-      const { synced, failed } = await syncToAllBoards(selDeal, dealPayload(dealForm))
-      if (!failed) toast('✅ Deal saved' + (synced.length ? ' · Synced: ' + synced.join(', ') : ''))
-      if (dealForm.c2c_enabled && !selDeal.c2c_enabled) await generateC2CTasks({ ...selDeal, ...dealPayload(dealForm) })
-      setShowEditDeal(false); loadAll()
-    } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
-    finally { setSaving(false) }
-  }
-
-  // Derived state
-  const tasksByDeal = useMemo(() => {
-    const m = {}
-    tasks.forEach(t => { if (!m[t.deal_id]) m[t.deal_id]=[]; m[t.deal_id].push(t) })
-    return m
-  }, [tasks])
-
-  // Per-deal derived signals (for dashboard tiles + tile filtering)
-  const signalsByDeal = useMemo(() => {
-    const m = {}
-    deals.forEach(d => { m[d.id] = deriveCardSignals(d, tasksByDeal[d.id] || [], partsByDeal[d.id], photoByDeal[d.id]) })
-    return m
-  }, [deals, tasksByDeal, partsByDeal, photoByDeal])
-
-  // Which deals fall in each dashboard bucket (memoized)
-  const buckets = useMemo(() => {
-    const b = { attention:[], today:[], week:[], overdue:[], closing:[], wait_agent:[], wait_attorney:[], wait_mtg:[], missing:[], photo:[], newFile:[], blocked:[] }
-    const t = new Date().toISOString().slice(0,10)
-    const wk = (()=>{ const d=new Date(); d.setDate(d.getDate()+7); return d.toISOString().slice(0,10) })()
-    deals.forEach(d => {
-      const s = signalsByDeal[d.id]; if (!s) return
-      const dTasks = (tasksByDeal[d.id] || []).filter(x => x.status !== 'done')
-      if (s.level === 'red') b.attention.push(d.id)
-      if (dTasks.some(x => x.due_date === t)) b.today.push(d.id)
-      if (dTasks.some(x => x.due_date && x.due_date > t && x.due_date <= wk)) b.week.push(d.id)
-      if (s.overdue > 0) b.overdue.push(d.id)
-      if (s.closingSoon) b.closing.push(d.id)
-      if (s.missing.length) b.missing.push(d.id)
-      if (s.isNew) b.newFile.push(d.id)
-      if (s.photoUrgent || s.photoNeedsReview) b.photo.push(d.id)
-      // REAL waiting-on tracking (fixed 2026-08-09) — was previously
-      // approximated from unrelated fields (e.g. "has an assigned
-      // agent" as a stand-in for "waiting on agent"). Now reads the
-      // actual wait_reason set on each task via the dropdown in
-      // TaskRow.
-      if (dTasks.some(x => x.wait_reason === 'waiting_agent'))    b.wait_agent.push(d.id)
-      if (dTasks.some(x => x.wait_reason === 'waiting_attorney'))  b.wait_attorney.push(d.id)
-      if (dTasks.some(x => x.wait_reason === 'waiting_mortgage'))  b.wait_mtg.push(d.id)
-      if (dTasks.some(x => x.wait_reason === 'blocked'))           b.blocked.push(d.id)
-    })
-    return b
-  }, [deals, signalsByDeal, tasksByDeal, photoByDeal])
-
-  const filteredDeals = useMemo(() => deals.filter(d => {
-    if (d.fell_through) return false   // shown separately below, not in the normal phase board
-    if (phaseFilter !== 'all' && d.tc_phase !== phaseFilter) return false
-    if (agentFilter !== 'all' && d.agent_id !== agentFilter) return false
-    if (search && !matchSearch(d, search, ['addr','attorney_name','mortgage_broker','notes'])) return false
-    return true
-  }), [deals, phaseFilter, agentFilter, search])
-
-  // Fell-through files: pulled out of the normal 5-phase workflow (see
-  // migration 009 — synced automatically from the linked production
-  // deal, regardless of which board the change came from) but kept
-  // visible per the confirmed business rule that these stay on record,
-  // not archived. Still respects the agent/search filters, just not
-  // the phase filter since fell-through isn't one of the 5 phases.
-  const fellThroughDeals = useMemo(() => deals.filter(d => {
-    if (!d.fell_through) return false
-    if (agentFilter !== 'all' && d.agent_id !== agentFilter) return false
-    if (search && !matchSearch(d, search, ['addr','attorney_name','mortgage_broker','notes'])) return false
-    return true
-  }), [deals, agentFilter, search])
-
-  const stats = useMemo(() => ({
-    total:   deals.length,
-    overdue: tasks.filter(t => t.due_date && new Date(t.due_date)<new Date() && t.status!=='done').length,
-    pre:     deals.filter(d => d.tc_phase==='pre_listing').length,
-    uc:      deals.filter(d => d.tc_phase==='under_contract').length,
-    closing: deals.filter(d => d.tc_phase==='under_contract' && d.close_date && new Date(d.close_date)<=new Date(Date.now()+14*86400000)).length,
-  }), [deals, tasks])
-
-  const S  = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff, boxSizing:'border-box' }
-  const SL = { fontSize:10, fontWeight:800, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4, marginTop:10, display:'block' }
-
-  // TC Board is Secretary + Admin only — agents get zero access. Every
-  // hook this component uses is declared above this line, unconditionally
-  // (moved here from higher up in the file -- Sept 2026 audit follow-up,
-  // react-hooks/rules-of-hooks -- see the #task-ID deep-link useEffect and
-  // the useMemo block just above for why that matters).
-  if (!canManage) return (
-    <div>
-      <PageHeader title="TC Board" />
-      <div style={{background:'var(--panel)',borderRadius:'var(--radius)',border:'1px solid var(--border)',padding:40,textAlign:'center'}}>
-        <div style={{fontSize:32,marginBottom:12}}>🔒</div>
-        <div style={{fontWeight:700,fontSize:16,color:'var(--text)'}}>Secretary or Admin Access Only</div>
-      </div>
-    </div>
-  )
-
-  if (loading) return <div style={{padding:48,textAlign:'center'}}><Loading /></div>
-
-  // SQL migration notice
-  if (sqlError) return (
-    <div style={{ fontFamily:ff }}>
-      <PageHeader title="TC Board" sub="Transaction Coordinator — one board from listing to close" />
-      <div style={{ background:'rgba(59,130,246,.06)', border:'1px solid rgba(59,130,246,.25)', borderRadius:12, padding:20, maxWidth:700 }}>
-        <div style={{ fontSize:16, fontWeight:800, color:'var(--text)', marginBottom:8 }}>⚙️ First-time setup required</div>
-        <p style={{ color:'var(--muted)', fontSize:13, marginBottom:12 }}>
-          Run this SQL in your Supabase dashboard to create the TC Board tables.
-          Go to <strong>supabase.com → SQL Editor</strong> and paste the following:
-        </p>
-        <pre style={{ background:'var(--dim)', borderRadius:8, padding:14, fontSize:10, overflow:'auto', color:'var(--text)', lineHeight:1.6 }}>
-          {SQL_MIGRATION}
-        </pre>
-        <Btn onClick={loadAll} style={{ marginTop:12 }}>Retry after running SQL</Btn>
-      </div>
-    </div>
-  )
-
-  return (
-    <div style={{ fontFamily:ff }}>
-      <PageHeader
-        title="🎯 TC Board"
-        sub="One board — every deal from listing prep to post-close"
-        actions={
-          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            <LastVisited page="tc" />
-            {isAdmin && <Btn variant="secondary" onClick={() => navigate('/tc-settings')}>⚙️ TC Settings</Btn>}
-            <TCSyncHealth agents={agents} onFixed={loadAll} />
-            <Btn variant="secondary" onClick={() => navigate('/calendar')}>📅 Calendar</Btn>
-            <Btn onClick={() => { setDealForm({...DEAL_BLANK}); setShowAddDeal(true) }}>+ New Deal</Btn>
-          </div>
-        }
-      />
-
-      {/* Stats — clickable KPI cards open the work-queue drawer */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:16 }}>
-        {[
-          { label:'Total Deals',    val:stats.total,   color:'var(--brand)', icon:'📋', tile:'all_deals' },
-          { label:'Overdue Tasks',  val:stats.overdue, color:'#DC2626',      icon:'⚠️', tile:'overdue' },
-          { label:'Pre-Listing',    val:stats.pre,     color:'#8B5CF6',      icon:'📋', tile:'pre_listing' },
-          { label:'Under Contract', val:stats.uc,      color:'#F97316',      icon:'📝', tile:'under_contract' },
-          { label:'Closing ≤14d',   val:stats.closing, color:'#10B981',      icon:'🎉', tile:'closing14' },
-        ].map(s => (
-          <button key={s.label} onClick={()=>setDrawerTile(s.tile)}
-            onMouseEnter={e=>{ e.currentTarget.style.boxShadow='0 4px 14px rgba(0,0,0,.1)'; e.currentTarget.style.transform='translateY(-1px)' }}
-            onMouseLeave={e=>{ e.currentTarget.style.boxShadow='none'; e.currentTarget.style.transform='none' }}
-            style={{ background:'var(--panel)', borderRadius:10, border:'1px solid var(--border)',
-            padding:'12px 14px', borderLeft:'4px solid '+s.color, cursor:'pointer', textAlign:'left',
-            fontFamily:ff, transition:'box-shadow .15s, transform .15s' }}>
-            <div style={{ fontSize:24, fontWeight:900, color:s.color }}>{s.val}</div>
-            <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', marginTop:2 }}>
-              {s.label} <span style={{ opacity:.5 }}>›</span>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      {/* Office dashboard — one strip; click a tile to open the work-queue drawer */}
-      <div style={{ display:'flex', gap:6, marginBottom:14, flexWrap:'wrap' }}>
-        {[
-          { id:'overdue',   label:'Overdue',         n:buckets.overdue.length,       c:'#DC2626',       bg:'rgba(220,38,38,.1)' },
-          { id:'today',     label:'Due today',       n:buckets.today.length,         c:'#B45309',       bg:'rgba(245,166,35,.14)' },
-          { id:'week',      label:'Due this week',   n:buckets.week.length,          c:'#2563EB',       bg:'rgba(59,130,246,.1)' },
-          { id:'attention', label:'Needs attention', n:buckets.attention.length,     c:'#DC2626',       bg:'rgba(220,38,38,.1)' },
-          { id:'closing',   label:'Closing ≤7d',     n:buckets.closing.length,       c:'#2563EB',       bg:'rgba(59,130,246,.1)' },
-          { id:'wait_agent',label:'Waiting agent',   n:buckets.wait_agent.length,    c:'var(--muted)',  bg:'var(--dim)' },
-          { id:'wait_attorney',label:'Waiting attorney', n:buckets.wait_attorney.length, c:'var(--muted)', bg:'var(--dim)' },
-          { id:'wait_mtg',  label:'Waiting mtg/title',n:buckets.wait_mtg.length,     c:'var(--muted)',  bg:'var(--dim)' },
-          { id:'missing',   label:'Missing info',    n:buckets.missing.length,       c:'var(--muted)',  bg:'var(--dim)' },
-          { id:'photo',     label:'Photography',     n:buckets.photo.length,         c:'var(--muted)',  bg:'var(--dim)' },
-          { id:'newFile',   label:'New files',       n:buckets.newFile.length,       c:'#8B5CF6',       bg:'rgba(139,92,246,.1)' },
-          { id:'blocked',   label:'Blocked',         n:buckets.blocked.length,       c:'#DC2626',       bg:'rgba(220,38,38,.1)' },
-        ].map(t => (
-          <button key={t.id} onClick={()=> setDrawerTile(t.id)}
-            style={{ display:'flex', alignItems:'baseline', gap:6, padding:'5px 11px', borderRadius:8,
-              border:'1px solid transparent', background:t.bg, cursor:'pointer', fontFamily:ff,
-              opacity: t.n===0 ? 0.55 : 1 }}>
-            <span style={{ fontSize:15, fontWeight:800, color:t.c }}>{t.n}</span>
-            <span style={{ fontSize:12, color:t.c }}>{t.label}</span>
-          </button>
-        ))}
       </div>
 
       {/* Filters */}
-      <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by address, attorney, broker..."
-          style={{ flex:1, minWidth:200, padding:'8px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }} />
+      <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search address, buyer, MLS#..." style={{ flex:1, minWidth:200 }} />
+        <select value={statusF} onChange={e=>setStatusF(e.target.value)}
+          style={{ padding:'9px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
+          <option value="">All Statuses</option>
+          {OFFER_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+        {(isAdmin||canManage) && (
+          <select value={agentF} onChange={e=>setAgentF(e.target.value)}
+            style={{ padding:'9px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
+            <option value="">All Agents</option>
+            {canonicalAgents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        )}
+      </div>
 
-        {/* Phase filter */}
-        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-          <button onClick={()=>setPhaseFilter('all')}
-            style={{ padding:'6px 12px', borderRadius:99, border:'1px solid '+(phaseFilter==='all'?'var(--brand)':'var(--border)'), background:phaseFilter==='all'?'rgba(204,34,0,.08)':'transparent', color:phaseFilter==='all'?'var(--brand)':'var(--muted)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
-            All
-          </button>
-          {PHASES.map(p => (
-            <button key={p.id} onClick={()=>setPhaseFilter(p.id)}
-              style={{ padding:'6px 12px', borderRadius:99, border:'1px solid '+(phaseFilter===p.id?p.color:'var(--border)'), background:phaseFilter===p.id?p.color+'18':'transparent', color:phaseFilter===p.id?p.color:'var(--muted)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
-              {p.icon} {p.label}
+      {loading && <Loading />}
+
+      {!loading && (
+        <>
+          {view === 'reports' && (isAdmin||canManage) && (
+            <div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginBottom:10 }}>
+                Reports fetch full offer history directly (paginated, server-authorized by the same RLS rules as the board) — not limited to this board's own 200-row default page.
+              </div>
+              <AdminOfferReports offers={offers} agents={agents} />
+            </div>
+          )}
+
+          {/* Agent stats */}
+          {view === 'agents' && (isAdmin||canManage) && (
+            <div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:12, marginBottom:24 }}>
+                {canonicalAgents.map(ag=>(
+                  <AgentStatsCard key={ag.id} ag={ag}
+                    agentOffers={offers.filter(o=>(ag.mergedIds||[ag.id]).includes(o.agent_id))}
+                    onFilter={id=>setAgentF(agentF===id?'':id)}
+                    isActive={agentF===ag.id} />
+                ))}
+              </div>
+
+              {/* Leaderboards */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:16, marginBottom:24 }}>
+                {[
+                  { title: '⚖️ Most Active Attorneys', data: topAttorneys },
+                  { title: '🏠 Most Frequent Seller\'s Agents', data: topSellerAgents },
+                ].map(board => (
+                  <div key={board.title} style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', padding:16 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', marginBottom:10 }}>{board.title}</div>
+                    {board.data.length === 0 && <div style={{ fontSize:12, color:'var(--muted)' }}>No data yet.</div>}
+                    {board.data.map(([name, count], i) => (
+                      <div key={name} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 0', borderBottom: i < board.data.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        <span style={{ fontSize:12, color:'var(--text)', fontWeight:600 }}>{i+1}. {name}</span>
+                        <span style={{ fontSize:11, color:'var(--muted)', fontWeight:700, background:'var(--dim)', padding:'2px 8px', borderRadius:10 }}>{count} offer{count!==1?'s':''}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              {filtered.length > 0 && (
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:10 }}>
+                    {agentF ? agents.find(a=>a.id===agentF)?.name+"'s Offers" : 'All Offers'} ({filtered.length})
+                  </div>
+                  <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} onBulkIdsChange={setBulkIds} onBulkDone={refetch} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {(view === 'table' || !(isAdmin||canManage)) && (
+            filtered.length === 0
+              ? <Empty icon="📝" title="No offers" sub="Track submitted offers here." action={<Btn onClick={openAdd}>+ New Offer</Btn>} />
+              : <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} onBulkIdsChange={setBulkIds} onBulkDone={refetch} />
+          )}
+        </>
+      )}
+
+      {/* ── OFFER MODAL ── */}
+      <Modal open={!!(selected || urlId==='new')} onClose={closePanel}
+        title={
+          <span>
+            {selected ? 'Offer — ' + selected.listing_addr : 'New Offer for Sale of Real Estate'}
+            {selected && (() => {
+              const s = OFFER_STATUSES.find(x=>x.value===form.status)
+              return <span style={{ marginLeft:10, fontSize:11, fontWeight:700, color: s?.hex || 'var(--muted)' }}>● {s?.label || form.status || 'Draft'}</span>
+            })()}
+          </span>
+        } width={680}>
+
+        {/* Tabs */}
+        <div style={{ display:'flex', borderBottom:'1px solid var(--border)', marginBottom:16, gap:0 }}>
+          {(selected ? [['offer','📋 Offer Form'],['activity','📋 Activity']] : [['offer','📋 Offer Form']]).map(([id,label])=>(
+            <button key={id} onClick={()=>setTab(id)}
+              style={{ padding:'7px 14px', border:'none', background:'none', cursor:'pointer', borderBottom:tab===id?'2px solid #CC2200':'2px solid transparent', marginBottom:'-1px', fontSize:12, fontWeight:tab===id?700:400, color:tab===id?'#CC2200':'var(--muted)', fontFamily:ff }}>
+              {label}
             </button>
           ))}
         </div>
 
-        {/* Agent filter */}
-        <select value={agentFilter} onChange={e=>setAgentFilter(e.target.value)}
-          style={{ padding:'8px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:12, fontFamily:ff }}>
-          <option value="all">All Agents</option>
-          {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
-      </div>
+        {/* ── OFFER FORM TAB ── */}
+        {tab === 'offer' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
 
-      {/* Deals */}
-      {filteredDeals.length === 0 ? (
-        <div style={{ textAlign:'center', padding:'48px 24px', color:'var(--muted)' }}>
-          <div style={{ fontSize:40, marginBottom:12 }}>🎯</div>
-          <div style={{ fontSize:16, fontWeight:700, color:'var(--text)', marginBottom:8 }}>
-            {deals.length === 0 ? 'No deals yet' : 'No deals match your filters'}
-          </div>
-          {deals.length === 0 && (
-            <Btn onClick={() => { setDealForm({...DEAL_BLANK}); setShowAddDeal(true) }}>+ Add Your First Deal</Btn>
-          )}
-        </div>
-      ) : (
-        filteredDeals.map(deal => (
-          <div id={'tc-deal-' + deal.id} key={deal.id}>
-          <DealCard
-            deal={deal}
-            tasks={tasksByDeal[deal.id] || []}
-            roleSet={partsByDeal[deal.id]}
-            agents={agents}
-            isAdmin={isAdmin}
-            photo={photoByDeal[deal.id]}
-            onSetWaitReason={setTaskWaitReason}
-            expanded={!!expanded[deal.id]}
-            onToggle={() => setExpanded(p => (p[deal.id] ? {} : { [deal.id]: true }))}
-            onPhaseChange={changePhase}
-            onCheckTask={checkTask}
-            onEditTask={t => { setSelTask(t); setSelDeal(deals.find(d=>d.id===t.deal_id)); setTaskForm({ title:t.title, priority:t.priority, due_date:t.due_date||'', agent_id:t.agent_id||'', notes:t.notes||'', needs_calendar:!!t.needs_calendar, reminder_days:t.reminder_days||'', completion_action:t.completion_action||'none', completion_note:t.completion_note||'' }); setShowEditTask(true) }}
-            onAddTask={d => { setSelDeal(d); setSelTask(null); setTaskForm({...TASK_BLANK}); setShowAddTask(true) }}
-            onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'', custom_data:d.custom_data||{} }); setShowEditDeal(true) }}
-          />
-          </div>
-        ))
-      )}
+            {/* Header: Date + Commission + Representing. Status is no
+                longer here at all, editable or otherwise, per owner
+                feedback ("remove the status dropdown from the top" —
+                and per the spec, the header "should no longer waste
+                space on a status dropdown"). It's now a small badge
+                next to the modal title instead, and changes only
+                through explicit lifecycle actions (Send Offer / Mark
+                Accepted / Mark Rejected / Withdraw / Mark Expired, in
+                the footer) — never hand-picked from a dropdown. */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:8 }}>
+              <div>
+                <span style={SL}>Date</span>
+                <input type="date" value={form.offer_date} onChange={e=>set('offer_date',e.target.value)} style={S} />
+              </div>
+              <div>
+                <span style={SL}>Commission %</span>
+                <input value={form.commission_pct} onChange={e=>set('commission_pct',e.target.value)} placeholder="e.g. 2.5" style={S} />
+              </div>
+              <div>
+                <span style={SL}>Representing</span>
+                <select value={form.representing_side || 'Buyer'} onChange={e=>{
+                  const nextSide = e.target.value
+                  // Defaulting rule: switching representation side re-defaults
+                  // the matching agent slot to the signed-in agent, but never
+                  // overwrites an already-chosen agent on the OTHER side, and
+                  // never touches anything if the signed-in user is not the
+                  // one driving this offer (admin/secretary picking for
+                  // someone else via the dropdown below stays untouched).
+                  setForm(f => {
+                    const next = { ...f, representing_side: nextSide }
+                    if (!canManage && !isAdmin) {
+                      if (nextSide === 'Buyer' || nextSide === 'Both') next.buyers_agent_id = f.buyers_agent_id || agent?.id
+                      if (nextSide === 'Seller' || nextSide === 'Both') next.agent_id = f.agent_id || agent?.id
+                    }
+                    return next
+                  })
+                }} style={S}>
+                  <option value="Buyer">Buyer</option>
+                  <option value="Seller">Seller</option>
+                  <option value="Both">Both (dual, if permitted)</option>
+                </select>
+              </div>
+            </div>
 
-      {/* ── DEAL FELL THROUGH — separate quiet section, not part of the
-          5-phase workflow. Auto-synced (migration 009) from the linked
-          production deal, regardless of which board the change came
-          from. Stays visible per business rule -- never archived. ── */}
-      {fellThroughDeals.length > 0 && (
-        <details style={{ marginTop: 18, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-          <summary style={{ padding: '10px 14px', background: 'rgba(107,114,128,.08)', cursor: 'pointer',
-                             fontSize: 12, fontWeight: 800, color: 'var(--muted)', listStyle: 'none', userSelect: 'none' }}>
-            💔 Deal Fell Through ({fellThroughDeals.length}) — click to view
-          </summary>
-          <div style={{ padding: '8px 12px' }}>
-            {fellThroughDeals.map(deal => (
-              <div id={'tc-deal-' + deal.id} key={deal.id} style={{ opacity: 0.75 }}>
-                <DealCard
-                  deal={deal}
-                  tasks={tasksByDeal[deal.id] || []}
-                  roleSet={partsByDeal[deal.id]}
-                  agents={agents}
-                  isAdmin={isAdmin}
-                  photo={photoByDeal[deal.id]}
-                  onSetWaitReason={setTaskWaitReason}
-                  expanded={!!expanded[deal.id]}
-                  onToggle={() => setExpanded(p => (p[deal.id] ? {} : { [deal.id]: true }))}
-                  onPhaseChange={changePhase}
-                  onCheckTask={checkTask}
-                  onEditTask={t => { setSelTask(t); setSelDeal(deals.find(d=>d.id===t.deal_id)); setTaskForm({ title:t.title, priority:t.priority, due_date:t.due_date||'', agent_id:t.agent_id||'', notes:t.notes||'', needs_calendar:!!t.needs_calendar, reminder_days:t.reminder_days||'', completion_action:t.completion_action||'none', completion_note:t.completion_note||'' }); setShowEditTask(true) }}
-                  onAddTask={d => { setSelDeal(d); setSelTask(null); setTaskForm({...TASK_BLANK}); setShowAddTask(true) }}
-                  onEditDeal={d => { setSelDeal(d); setDealForm({ addr:d.addr, side:d.side, agent_id:d.agent_id||'', tc_phase:d.tc_phase, list_price:d.list_price||'', sale_price:d.sale_price||'', ao_date:d.ao_date||'', close_date:d.close_date||'', c2c_enabled:!!d.c2c_enabled, attorney_name:d.attorney_name||'', attorney_phone:d.attorney_phone||'', attorney_email:d.attorney_email||'', mortgage_broker:d.mortgage_broker||'', mortgage_phone:d.mortgage_phone||'', inspector:d.inspector||'', inspector_phone:d.inspector_phone||'', notes:d.notes||'', custom_data:d.custom_data||{} }); setShowEditDeal(true) }}
+            {/* PROPERTY INFORMATION — MLS Search auto-fills everything */}
+            <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12, marginBottom:10 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em' }}>
+                  🏠 Property Information
+                  {form.is_inhouse && <span style={{ color:'#10B981', background:'rgba(16,185,129,.12)', padding:'1px 7px', borderRadius:99, marginLeft:6, fontSize:10 }}>🏡 In-House</span>}
+                  {form.inhouse_listing_id ? <div style={{ marginTop:6 }}><BoardLinks listingId={form.inhouse_listing_id} /></div> : null}
+                </div>
+                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--text)', cursor:'pointer' }}>
+                  <input type="checkbox" checked={!!form.off_market} onChange={e=>set('off_market',e.target.checked)} style={{ accentColor:'var(--brand)' }} />
+                  Off Market
+                </label>
+              </div>
+
+              <span style={SL}>Address {form.off_market ? '' : '— start typing for real address suggestions'}</span>
+              <div ref={mlsRef} style={{ position:'relative' }}>
+                <div style={{ display:'flex', gap:8, marginBottom:6 }}>
+                  <div style={{ flex:1, position:'relative' }}>
+                    <AddressAutocomplete
+                      value={form.listing_addr || ''}
+                      onChange={v => set('listing_addr', v)}
+                      onSelect={s => handleAddressSelect(s.full || s.street || '')}
+                      placeholder={form.off_market ? 'Enter address manually...' : 'Start typing an address...'}
+                      style={S}
+                    />
+                  </div>
+                  <input value={form.mls_number||''} onChange={e=>set('mls_number',e.target.value)}
+                    placeholder="MLS # (if known)" style={{ ...S, width:130, flexShrink:0 }} />
+                </div>
+              </div>
+            </div>
+
+            {/* BUYER | SELLER — collapses to one column below ~560px combined width */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:12, marginBottom:10 }}>
+              {/* BUYER */}
+              <div style={{ background:'rgba(59,130,246,.05)', borderRadius:10, border:'1px solid rgba(59,130,246,.2)', padding:12 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'#3B82F6', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>BUYER</div>
+                <span style={SL}>Buyer Name</span>
+                <ContactSearch
+                  value={form.buyer_name||''}
+                  onChange={v=>set('buyer_name',v)}
+                  onSelect={selectBuyer}
+                  placeholder="Search contacts or enter name..."
                 />
+                {form.buyer_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:3 }}>✓ Linked to contact record</div>}
+                <span style={SL}>Co-Buyer (optional)</span>
+                <ContactSearch value={form.co_buyer_name||''} onChange={v=>set('co_buyer_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,co_buyer_name:[c.first_name,c.last_name].filter(Boolean).join(' '),co_buyer_contact_id:c.id})) }}
+                  placeholder="Search contacts or enter co-buyer name..." />
+                <span style={SL}>Buyer Phone</span>
+                <input value={form.buyer_phone||''} onChange={e=>set('buyer_phone',e.target.value)} placeholder="(845) 555-1234" style={S} />
+                <span style={SL}>Buyer Email</span>
+                <input value={form.buyer_email||''} onChange={e=>set('buyer_email',e.target.value)} placeholder="buyer@email.com" style={S} />
+                <span style={SL}>Buyer Address</span>
+                <AddressAutocomplete value={form.buyer_address||''} onChange={v=>set('buyer_address',v)} onSelect={sel=>set('buyer_address', sel.full || sel.street)} placeholder="Home address" />
               </div>
+
+              {/* SELLER */}
+              <div style={{ background:'rgba(16,185,129,.05)', borderRadius:10, border:'1px solid rgba(16,185,129,.2)', padding:12 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'#10B981', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>SELLER</div>
+                <span style={SL}>Seller Name</span>
+                <ContactSearch value={form.seller_name||''} onChange={v=>set('seller_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),seller_contact_id:c.id,seller_email:c.email||f.seller_email})) }}
+                  placeholder="Search contacts or enter name..." />
+                <span style={SL}>Seller Email (for sending)</span>
+                <input value={form.seller_email||''} onChange={e=>set('seller_email',e.target.value)} placeholder="seller@email.com" style={S} />
+                <span style={SL}>Co-Seller (optional)</span>
+                <ContactSearch value={form.co_seller_name||''} onChange={v=>set('co_seller_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,co_seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),co_seller_contact_id:c.id})) }}
+                  placeholder="Co-seller name" />
+              </div>
+            </div>
+
+            {/* FINANCIALS + SUBJECT TO — collapses to one column on narrow screens */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:12, marginBottom:10 }}>
+              {/* Purchase Price & Breakdown */}
+              <div style={{ background:'rgba(245,166,35,.05)', borderRadius:10, border:'1px solid rgba(245,166,35,.2)', padding:12 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'#B45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>💰 Purchase Price & Breakdown</div>
+                {[
+                  { label:'Purchase Price', key:'purchase_price', bold:true, prefix:'$' },
+                  { label:'Deposit upon contract', key:'deposit', isDeposit:true },
+                  { label:"Seller's Concession", key:'sellers_concession', prefix:'$' },
+                  { label:'Net to Seller', key:'net_to_seller', calc:true, prefix:'$' },
+                  { label:'Mortgage Amount', key:'mortgage_amount', prefix:'$', isMortgageDollar:true },
+                  { label:'Mortgage Amount', key:'mortgage_pct', prefix:'%', isMortgagePct:true },
+                  { label:'Balance at Closing', key:'balance_at_closing', isBalance:true },
+                ].map(row => (
+                  <div key={row.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                    <label style={{ fontSize:11, color:row.bold?'var(--text)':'var(--muted)', fontWeight:row.bold?700:400, flex:1 }}>{row.label}</label>
+                    <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                      {row.calc && <span style={{ fontSize:9, color:'#10B981', fontWeight:700 }}>auto</span>}
+                      {row.isDeposit ? (
+                        <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                          {/* $ / % toggle for deposit */}
+                          <div style={{ display:'flex', borderRadius:6, border:'1px solid var(--border)', overflow:'hidden' }}>
+                            {['dollar','percent'].map(t=>(
+                              <button key={t} onClick={()=>recalc({deposit_type:t})}
+                                style={{ padding:'2px 7px', fontSize:10, fontWeight:700, border:'none', cursor:'pointer', fontFamily:ff, background:form.deposit_type===t?'var(--brand)':'transparent', color:form.deposit_type===t?'#fff':'var(--muted)' }}>
+                                {t==='dollar'?'$':'%'}
+                              </button>
+                            ))}
+                          </div>
+                          <input value={form.deposit||''} onChange={e=>recalc({deposit:e.target.value})}
+                            placeholder={form.deposit_type==='percent'?'%':'$0'}
+                            style={{ ...S, width:90, textAlign:'right', fontSize:11 }} />
+                        </div>
+                      ) : row.isBalance ? (
+                        <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                          <div style={{ display:'flex', borderRadius:6, border:'1px solid var(--border)', overflow:'hidden' }}>
+                            {['dollar','percent'].map(t=>(
+                              <button key={t} onClick={()=>set('balance_type',t)}
+                                style={{ padding:'2px 7px', fontSize:10, fontWeight:700, border:'none', cursor:'pointer', fontFamily:ff, background:form.balance_type===t?'var(--brand)':'transparent', color:form.balance_type===t?'#fff':'var(--muted)' }}>
+                                {t==='dollar'?'$':'%'}
+                              </button>
+                            ))}
+                          </div>
+                          <input value={form.balance_at_closing||''} onChange={e=>recalc({balance_at_closing:e.target.value})}
+                            placeholder={form.balance_type==='percent'?'%':'$0'}
+                            style={{ ...S, width:90, textAlign:'right', fontSize:11 }} />
+                        </div>
+                      ) : (
+                        <>
+                          <span style={{ fontSize:11, color:'var(--muted)', minWidth:10 }}>{row.prefix}</span>
+                          <input value={form[row.key]||''} disabled={form.is_cash_deal && (row.isMortgageDollar||row.isMortgagePct)}
+                            onChange={e=>{
+                              // Editing either mortgage line marks it as the source of
+                              // truth for this edit, so the OTHER line derives from it —
+                              // same bidirectional pattern as deposit's $/% toggle, just
+                              // without a separate toggle control since the PDF prints
+                              // both lines regardless of which one was typed.
+                              if (row.isMortgageDollar) recalc({ mortgage_type:'dollar', mortgage_amount:e.target.value })
+                              else if (row.isMortgagePct) recalc({ mortgage_type:'percent', mortgage_pct:e.target.value })
+                              else recalc({[row.key]:e.target.value})
+                            }}
+                            placeholder={row.prefix==='%'?'0':'0'}
+                            style={{ ...S, width:100, textAlign:'right', fontWeight:row.bold?800:400, fontSize:row.bold?13:11, borderColor:row.bold?'#F5A623':'var(--border)', opacity:(form.is_cash_deal && (row.isMortgageDollar||row.isMortgagePct))?0.5:1 }} />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ marginTop:10, paddingTop:8, borderTop:'1px solid var(--border)' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                    <label style={{ fontSize:11, color:'var(--muted)' }}>Closing time frame</label>
+                    <div style={{ display:'flex', gap:2 }}>
+                      {[['on_or_about','On or About'],['on_or_before','On or Before']].map(([v,l])=>(
+                        <button key={v} onClick={()=>set('closing_qualifier',v)}
+                          style={{ padding:'2px 6px', fontSize:9, fontWeight:700, border:'none', borderRadius:4, cursor:'pointer', fontFamily:ff,
+                            background:(form.closing_qualifier||'on_or_about')===v?'var(--brand)':'transparent', color:(form.closing_qualifier||'on_or_about')===v?'#fff':'var(--muted)' }}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', gap:2, marginBottom:6 }}>
+                    {[['days','Number of days'],['date','Specific date']].map(([v,l])=>(
+                      <button key={v} onClick={()=>set('closing_mode',v)}
+                        style={{ padding:'2px 6px', fontSize:9, fontWeight:700, border:'1px solid var(--border)', borderRadius:4, cursor:'pointer', fontFamily:ff,
+                          background:(form.closing_mode||'days')===v?'var(--dim)':'transparent', color:(form.closing_mode||'days')===v?'var(--text)':'var(--muted)' }}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+
+                  {(form.closing_mode||'days') === 'days' ? (
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4 }}>
+                      <input value={form.closing_days||'30'} onChange={e=>set('closing_days',e.target.value)} style={{ ...S, width:60, textAlign:'right' }} />
+                      <span style={{ fontSize:11, color:'var(--muted)' }}>days</span>
+                    </div>
+                  ) : (
+                    <input type="date" value={form.closing_target_date||''} onChange={e=>set('closing_target_date',e.target.value)} style={S} />
+                  )}
+
+                  {/* Live preview of the exact sentence that will print — real
+                      wording DOES fit the template's 67.68pt field before its
+                      static "DAYS" suffix (measured directly against the real
+                      font: "on or about 60" fits at 7.5pt), confirmed by
+                      rendering an actual sample. A specific date is shown here
+                      for the agent but always prints as its equivalent
+                      day-count, since a raw date can't sit gracefully before
+                      the page's fixed "DAYS" text. */}
+                  {(() => {
+                    const qualifier = form.closing_qualifier === 'on_or_before' ? 'on or before' : 'on or about'
+                    let days = null
+                    if ((form.closing_mode||'days') === 'days') {
+                      days = form.closing_days || null
+                    } else if (form.closing_target_date && form.offer_date) {
+                      days = Math.max(0, Math.round((new Date(form.closing_target_date) - new Date(form.offer_date)) / 86400000))
+                    }
+                    if (days === null) return null
+                    return (
+                      <div style={{ fontSize:10.5, color:'var(--muted)', marginTop:4 }}>
+                        Prints as: <b>Closing time frame: {qualifier} {days} DAYS</b>
+                        {form.closing_mode === 'date' && form.closing_target_date && (
+                          <> ({qualifier} {new Date(form.closing_target_date + 'T00:00:00').toLocaleDateString()} — the exact date stays here in the CRM)</>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </div>
+              </div>
+
+              {/* Subject to + Agents */}
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
+                  <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Subject to:</div>
+                  {[
+                    { key:'subject_attorney',           label:'Attorney Approval',      bold:true },
+                    { key:'subject_clear_title',        label:'Clear Title',             bold:true },
+                    { key:'subject_mortgage',           label:'Mortgage' },
+                    { key:'subject_cash',               label:'Cash Deal' },
+                    { key:'subject_standard_inspection',label:'Standard home inspections' },
+                    { key:'subject_structural',         label:'Structural issues only' },
+                  ].map(cb => (
+                    <label key={cb.key} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', marginBottom:5, fontSize:12, fontWeight:cb.bold?700:400, color:'var(--text)' }}>
+                      <input type="checkbox" checked={!!form[cb.key]}
+                        onChange={e=>{
+                          // Cash Deal drives is_cash_deal, which the shared calc
+                          // engine treats as authoritative (zeroes mortgage even
+                          // if a mortgage % was previously entered).
+                          if (cb.key === 'subject_cash') recalc({ subject_cash:e.target.checked, is_cash_deal:e.target.checked })
+                          // Every Subject To checkbox recalculates now,
+                          // not just Cash Deal — confirmed real bug:
+                          // the "Mortgage amount is set but 'Mortgage'
+                          // is not checked" warning never refreshed
+                          // when the Mortgage box itself was toggled,
+                          // because only subject_cash called recalc()
+                          // before. This is the fix for "notice/warning
+                          // not updating."
+                          else recalc({ [cb.key]: e.target.checked })
+                        }}
+                        style={{ accentColor:'var(--brand)', width:14, height:14 }} />
+                      {cb.label}
+                    </label>
+                  ))}
+                  {calcBlocking.length > 0 && (
+                    <div style={{ marginTop:8, padding:'6px 8px', borderRadius:6, background:'rgba(220,38,38,.08)', color:'#DC2626', fontSize:10, fontWeight:600 }}>
+                      {calcBlocking.map((m,i)=><div key={i}>⛔ {m}</div>)}
+                    </div>
+                  )}
+                  {calcWarnings.length > 0 && (
+                    <div style={{ marginTop:6, padding:'6px 8px', borderRadius:6, background:'rgba(245,166,35,.1)', color:'#B45309', fontSize:10, fontWeight:600 }}>
+                      {calcWarnings.map((m,i)=><div key={i}>⚠ {m}</div>)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Agents — single authoritative section. Which fields
+                    are internal-agent selectors vs. outside-Contact
+                    pickers depends on representing_side, per the
+                    required representation behavior: whichever side
+                    Target Team represents gets an internal selector
+                    defaulting to the signed-in agent; the other side is
+                    always an outside Contact picker. "Both" means both
+                    sides are internal (an in-house deal on both ends),
+                    so neither needs an outside picker. */}
+                <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
+                  <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Agents</div>
+
+                  {/* SELLER'S AGENT */}
+                  {form.representing_side === 'Seller' || form.representing_side === 'Both' ? (
+                    <>
+                      <span style={SL}>Seller's Agent (Target Team)</span>
+                      {canManage || isAdmin ? (
+                        <select value={form.agent_id||''} onChange={e=>setForm(f=>({ ...f, agent_id:e.target.value }))} style={S}>
+                          <option value="">— Select our agent —</option>
+                          {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      ) : (
+                        <input value={agent?.name||''} readOnly style={{ ...S, background:'var(--dim)', color:'var(--muted)' }} />
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span style={SL}>Seller's Agent</span>
+                      <ContactSearch value={form.sellers_agent_name||''} onChange={v=>set('sellers_agent_name',v)}
+                        filter="Agent" onSelect={selectSellersAgent}
+                        placeholder="Search outside agents or enter name..." />
+                      {form.sellers_agent_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2, marginBottom:6 }}>✓ Linked to contact</div>}
+                      <span style={SL}>Seller Agent Commission %</span>
+                      <input value={form.sellers_agent_commission||''} onChange={e=>set('sellers_agent_commission',e.target.value)} placeholder="e.g. 2.5" style={S} />
+                      <span style={SL}>Seller Agent's Broker Company</span>
+                      <input value={form.seller_agent_company||''} onChange={e=>set('seller_agent_company',e.target.value)} placeholder="Auto-filled from MLS or enter" style={S} />
+                    </>
+                  )}
+
+                  {/* BUYER'S AGENT */}
+                  <div style={{ marginTop:10 }}>
+                    {form.representing_side === 'Buyer' || form.representing_side === 'Both' || !form.representing_side ? (
+                      <>
+                        <span style={SL}>Buyer's Agent (Target Team)</span>
+                        <span style={SL}>Buyers Agent Commission %</span>
+                        <input value={form.buyers_agent_commission||''} onChange={e=>set('buyers_agent_commission',e.target.value)} placeholder="e.g. 1.5" style={S} />
+                        {canManage || isAdmin ? (
+                          <select value={form.buyers_agent_id||''} onChange={e=>{
+                            setForm(f=>({ ...f, buyers_agent_id:e.target.value, agent_id: f.representing_side==='Buyer' || !f.representing_side ? e.target.value : f.agent_id }))
+                          }} style={S}>
+                            <option value="">— Select our agent —</option>
+                            {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                        ) : (
+                          <input value={agent?.name||''} readOnly style={{ ...S, background:'var(--dim)', color:'var(--muted)' }} />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span style={SL}>Buyer's Agent</span>
+                        <ContactSearch value={form.buyers_agent_outside_name||''} onChange={v=>set('buyers_agent_outside_name',v)}
+                          filter="Agent"
+                          onSelect={c=>{ if (c) setForm(f=>({ ...f, buyers_agent_contact_id:c.id, buyers_agent_outside_name:[c.first_name,c.last_name].filter(Boolean).join(' ') })) }}
+                          placeholder="Search outside agents or enter name..." />
+                        {form.buyers_agent_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2 }}>✓ Linked to contact</div>}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Additional Terms */}
+            <div style={{ marginBottom:10 }}>
+              <span style={SL}>Additional Terms</span>
+              <PolishWordingButton text={form.additional_terms} fieldLabel="Additional Terms"
+                onAccept={improved => set('additional_terms', improved)} />
+              <textarea value={form.additional_terms||''} onChange={e=>set('additional_terms',e.target.value)}
+                placeholder="Additional terms and conditions..." rows={2}
+                style={{ ...S, resize:'vertical' }} />
+            </div>
+
+            {/* ATTORNEYS — collapses to one column on narrow screens */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:12, marginBottom:10 }}>
+              {/* Purchaser's Attorney */}
+              <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>PURCHASER'S ATTORNEY</div>
+                <span style={SL}>Name</span>
+                <ContactSearch
+                  value={form.purchaser_attorney_name||''}
+                  onChange={v=>set('purchaser_attorney_name',v)}
+                  onSelect={selectPurchaserAttorney}
+                  placeholder="Search attorneys in contacts..."
+                  filter="Attorney"
+                />
+                {form.purchaser_attorney_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2 }}>✓ Linked to contact</div>}
+                <span style={SL}>Address</span>
+                <AddressAutocomplete value={form.purchaser_attorney_address||''} onChange={v=>set('purchaser_attorney_address',v)} onSelect={sel=>set('purchaser_attorney_address', sel.full || sel.street)} placeholder="Attorney address" />
+                <span style={SL}>Tel</span>
+                <input value={form.purchaser_attorney_tel||''} onChange={e=>set('purchaser_attorney_tel',e.target.value)} placeholder="(845) 555-1234" style={S} />
+                <span style={SL}>Email</span>
+                <input value={form.purchaser_attorney_email||''} onChange={e=>set('purchaser_attorney_email',e.target.value)} placeholder="attorney@firm.com" style={S} />
+              </div>
+
+              {/* Seller's Attorney */}
+              <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>SELLER'S ATTORNEY</div>
+                <span style={SL}>Name</span>
+                <ContactSearch
+                  value={form.seller_attorney_name||''}
+                  onChange={v=>set('seller_attorney_name',v)}
+                  onSelect={selectSellerAttorney}
+                  placeholder="Search attorneys in contacts..."
+                  filter="Attorney"
+                />
+                {form.seller_attorney_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2 }}>✓ Linked to contact</div>}
+                <span style={SL}>Address</span>
+                <AddressAutocomplete value={form.seller_attorney_address||''} onChange={v=>set('seller_attorney_address',v)} onSelect={sel=>set('seller_attorney_address', sel.full || sel.street)} placeholder="Attorney address" />
+                <span style={SL}>Tel</span>
+                <input value={form.seller_attorney_tel||''} onChange={e=>set('seller_attorney_tel',e.target.value)} placeholder="(845) 555-1234" style={S} />
+                <span style={SL}>Email</span>
+                <input value={form.seller_attorney_email||''} onChange={e=>set('seller_attorney_email',e.target.value)} placeholder="attorney@firm.com" style={S} />
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <span style={SL}>Internal Notes (not on the form)</span>
+              <PolishWordingButton text={form.notes} fieldLabel="Internal Notes" isNotes
+                onAccept={improved => set('notes', improved)} />
+              <textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)} rows={2}
+                placeholder="Internal notes only — not visible on the printed offer..." style={{ ...S, resize:'vertical' }} />
+              <CustomFieldsSection entity="offers" customData={form.custom_data} onChange={(k,v) => set('custom_data', { ...(form.custom_data||{}), [k]: v })} />
+            </div>
+
+            {/* Documents — inline in the main form, not a separate tab.
+                Uses the same offer-docs storage model as before (no
+                new/duplicate document source); the generated legal PDF
+                stays a distinct, separately-tracked object per revision
+                (see api/_lib/offersDb.js storeGeneratedPdf) and is never
+                shown or manageable here. */}
+            <div style={{ borderTop:'1px solid var(--border)', paddingTop:14 }}>
+              <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Documents</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:12 }}>
+                <FileUploader label="📄 Signed Offer Document (PDF)" fileUrl={form.offer_url} onUploaded={url=>set('offer_url',url)} folder="offers" />
+                <FileUploader label="💰 Proof of Funds (PDF / Image)" fileUrl={form.pof_url}  onUploaded={url=>set('pof_url',url)}  folder="pof" />
+              </div>
+              <div style={{ fontSize:10.5, color:'var(--muted)', marginTop:6 }}>
+                The generated legal Offer PDF is separate from these supporting documents and is created via Save + Download PDF below — it is never overwritten by a later revision.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ACTIVITY TAB */}
+        {tab === 'activity' && selected?.id && (
+          <RecordActivityFeed table="offers" recordId={selected.id} />
+        )}
+
+        {/* QUICK SAVE TAB — minimal fields, no PDF */}
+        {showSend && (
+          <div style={{ background:'var(--dim)', border:'1px solid var(--border)', borderRadius:10, padding:12, marginBottom:10 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
+              Send Offer
+            </div>
+            <div style={{ fontSize:11, marginBottom:10, padding:'6px 8px', borderRadius:6, background: sendingMailbox ? 'rgba(16,185,129,.08)' : 'rgba(220,38,38,.08)', color: sendingMailbox ? '#10B981' : '#DC2626' }}>
+              {sendingMailbox === null ? 'Checking your connected mailbox...'
+                : sendingMailbox ? 'Sending from your connected mailbox: ' + sendingMailbox
+                : '⚠ No connected Outlook mailbox found — connect one in Settings before sending.'}
+            </div>
+            <span style={SL}>To</span>
+            {[
+              { key:'sellers_agent', label:"Seller's Agent", email:form.sellers_agent_email },
+              { key:'buyer', label:'Buyer', email:form.buyer_email },
+              { key:'seller', label:'Seller', email:form.seller_email },
+              { key:'purchaser_attorney', label:"Purchaser's Attorney", email:form.purchaser_attorney_email },
+              { key:'seller_attorney', label:"Seller's Attorney", email:form.seller_attorney_email },
+            ].map(r => (
+              <label key={r.key} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, fontSize:12, opacity:r.email?1:0.4 }}>
+                <input type="checkbox" disabled={!r.email} checked={!!sendTo[r.key]}
+                  onChange={e=>setSendTo(t=>({ ...t, [r.key]:e.target.checked }))} />
+                {r.label} {r.email ? '(' + r.email + ')' : '(no email on file)'}
+              </label>
             ))}
-          </div>
-        </details>
-      )}
+            <span style={SL}>CC (comma-separated emails)</span>
+            <input value={sendCc} onChange={e=>setSendCc(e.target.value)} placeholder="cc@email.com" style={S} />
+            <span style={SL}>Additional recipients (comma-separated emails)</span>
+            <input value={sendExtra} onChange={e=>setSendExtra(e.target.value)} placeholder="someone@email.com, other@email.com" style={S} />
+            {(form.offer_url || form.pof_url) && (
+              <>
+                <span style={SL}>Also attach from Documents</span>
+                {form.offer_url && (
+                  <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, fontSize:12 }}>
+                    <input type="checkbox" checked={!!sendAttachDocs.offer} onChange={e=>setSendAttachDocs(d=>({...d,offer:e.target.checked}))} />
+                    📄 Signed Offer Document
+                  </label>
+                )}
+                {form.pof_url && (
+                  <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, fontSize:12 }}>
 
-      {/* ── WORK-QUEUE DRAWER (opened by dashboard tiles) ── */}
-      {(() => {
-        if (!drawerTile) return null
-        const t = new Date().toISOString().slice(0,10)
-        const wk = (()=>{ const d=new Date(); d.setDate(d.getDate()+7); return d.toISOString().slice(0,10) })()
-        const dealById = id => deals.find(d => d.id === id)
-        const openTasksFor = id => (tasksByDeal[id] || []).filter(x => x.status !== 'done')
-        const TITLES = {
-          overdue:'🔴 Overdue', today:'📌 Due today', week:'📆 Due this week', attention:'⚠️ Needs attention',
-          closing:'🏁 Closing ≤7 days', wait_agent:'👤 Waiting on agent', wait_attorney:'⚖️ Waiting on attorney',
-          wait_mtg:'🏦 Waiting on mortgage/title', missing:'❗ Missing info', photo:'📸 Photography',
-          newFile:'🆕 New files', blocked:'🚫 Blocked', all_deals:'📋 All TC files', pre_listing:'📋 Pre-Listing files', under_contract:'📝 Under Contract files',
-          closing14:'🎉 Closing within 14 days',
-        }
-        const APPROX = {
-          photo:'files where a photo shoot needs corrections addressed, or media is received and waiting for your review',
-          newFile:'files created in the last 48 hours with no task completed yet',
-        }
-        let rows = []
-        // KPI keys pull their own deal lists (not in buckets)
-        let dealIds
-        if (drawerTile === 'all_deals') dealIds = deals.map(d => d.id)
-        else if (drawerTile === 'pre_listing') dealIds = deals.filter(d => d.tc_phase === 'pre_listing').map(d => d.id)
-        else if (drawerTile === 'under_contract') dealIds = deals.filter(d => d.tc_phase === 'under_contract').map(d => d.id)
-        else if (drawerTile === 'closing14') {
-          const in14 = (()=>{ const d=new Date(); d.setDate(d.getDate()+14); return d.toISOString().slice(0,10) })()
-          dealIds = deals.filter(d => d.close_date && d.close_date >= t && d.close_date <= in14).map(d => d.id)
-        } else dealIds = buckets[drawerTile] || []
-
-        if (['overdue','today','week','attention','wait_agent','wait_attorney','wait_mtg','blocked'].includes(drawerTile)) {
-          // task-level rows (editable)
-          dealIds.forEach(id => {
-            const deal = dealById(id)
-            openTasksFor(id).forEach(task => {
-              let include = true
-              if (drawerTile === 'overdue') include = task.due_date && task.due_date < t
-              else if (drawerTile === 'today') include = task.due_date === t
-              else if (drawerTile === 'week') include = task.due_date && task.due_date > t && task.due_date <= wk
-              else if (drawerTile === 'wait_agent') include = task.wait_reason === 'waiting_agent'
-              else if (drawerTile === 'wait_attorney') include = task.wait_reason === 'waiting_attorney'
-              else if (drawerTile === 'wait_mtg') include = task.wait_reason === 'waiting_mortgage'
-              else if (drawerTile === 'blocked') include = task.wait_reason === 'blocked'
-              else if (drawerTile === 'attention') include = (task.due_date && task.due_date <= t)
-              if (include) rows.push({ key:task.id, task, deal })
-            })
-          })
-        } else {
-          // deal-level rows (Total Deals / Pre-Listing / Under Contract / Closing / missing / waiting party / photography)
-          rows = dealIds.map(id => {
-            const deal = dealById(id)
-            const s = signalsByDeal[id]
-            const missLabel = (s?.missing || []).map(r=>({seller:'seller',buyer:'buyer',seller_attorney:'seller attorney',buyer_attorney:'buyer attorney',mortgage_broker:'mortgage',title:'title'}[r]||r)).join(', ')
-            const actionLabel = drawerTile === 'closing' || drawerTile === 'closing14' ? (missLabel ? 'Missing: '+missLabel : 'Closing prep')
-              : drawerTile === 'missing' ? ('Add ' + missLabel)
-              : drawerTile === 'wait_attorney' ? 'Follow up with attorney'
-              : drawerTile === 'wait_mtg' ? 'Follow up with mortgage/title'
-              : drawerTile === 'photo' ? 'Schedule / confirm photography'
-              : (missLabel ? 'Missing: '+missLabel : (s && (s.overdue>0||s.dueToday>0) ? s.overdue+' overdue · '+s.dueToday+' today' : 'On track'))
-            return { key:id, task:null, deal, actionLabel }
-          })
-        }
-        return (
-          <TCWorkQueueDrawer
-            open={!!drawerTile}
-            onClose={()=>setDrawerTile(null)}
-            title={TITLES[drawerTile] || 'Work queue'}
-            approxNote={APPROX[drawerTile]}
-            rows={rows}
-            agents={agents}
-            phases={PHASES}
-            onUpdateTask={updateTask}
-            onCompleteTask={checkTask}
-            onOpenFile={openDealFile}
-          />
-        )
-      })()}
-
-      {/* ── ADD DEAL MODAL ── */}
-      <Modal open={showAddDeal} onClose={()=>setShowAddDeal(false)} title="New Deal" width={600}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-          <div style={{ gridColumn:'span 2' }}>
-            <span style={SL}>Property Address *</span>
-            <AddressAutocomplete value={dealForm.addr||''} onChange={v=>setDealForm(p=>({...p,addr:v}))}
-              onSelect={s=>setDealForm(p=>({...p, addr:(s.street||s.full)+(s.unit?' #'+s.unit:'')}))}
-              placeholder="123 Main St, Monsey NY" style={S} />
-          </div>
-          <div>
-            <span style={SL}>Side *</span>
-            <select value={dealForm.side} onChange={e=>setDealForm(p=>({...p,side:e.target.value}))} style={S}>
-              {['Seller','Buyer','Dual','Rental'].map(s=><option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <span style={SL}>Agent * (required)</span>
-            <select value={dealForm.agent_id} onChange={e=>setDealForm(p=>({...p,agent_id:e.target.value}))}
-              style={{ ...S, borderColor:!dealForm.agent_id?'#DC2626':'var(--border)' }}>
-              <option value="">— Select Agent —</option>
-              {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <span style={SL}>Starting Phase</span>
-            <select value={dealForm.tc_phase} onChange={e=>setDealForm(p=>({...p,tc_phase:e.target.value}))} style={S}>
-              {PHASES.map(p=><option key={p.id} value={p.id}>{p.icon} {p.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <span style={SL}>List Price</span>
-            <input value={dealForm.list_price} onChange={e=>setDealForm(p=>({...p,list_price:e.target.value}))} placeholder="$0" style={S} />
-          </div>
-          <div>
-            <span style={SL}>AO Date</span>
-            <input type="date" value={dealForm.ao_date} onChange={e=>setDealForm(p=>({...p,ao_date:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Expected Close Date</span>
-            <input type="date" value={dealForm.close_date} onChange={e=>setDealForm(p=>({...p,close_date:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Attorney Name</span>
-            <input value={dealForm.attorney_name} onChange={e=>setDealForm(p=>({...p,attorney_name:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Attorney Phone</span>
-            <input value={dealForm.attorney_phone} onChange={e=>setDealForm(p=>({...p,attorney_phone:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Mortgage Broker</span>
-            <input value={dealForm.mortgage_broker} onChange={e=>setDealForm(p=>({...p,mortgage_broker:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Broker Phone</span>
-            <input value={dealForm.mortgage_phone} onChange={e=>setDealForm(p=>({...p,mortgage_phone:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Inspector</span>
-            <input value={dealForm.inspector} onChange={e=>setDealForm(p=>({...p,inspector:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Inspector Phone</span>
-            <input value={dealForm.inspector_phone} onChange={e=>setDealForm(p=>({...p,inspector_phone:e.target.value}))} style={S} />
-          </div>
-          <div style={{ gridColumn:'span 2' }}>
-            <span style={SL}>Notes</span>
-            <textarea value={dealForm.notes} onChange={e=>setDealForm(p=>({...p,notes:e.target.value}))} rows={2} style={{ ...S, resize:'vertical' }} />
-          </div>
-        </div>
-        <CustomFieldsSection entity="tc_deals" customData={dealForm.custom_data}
-          onChange={(k,v) => setDealForm(p => ({ ...p, custom_data: { ...(p.custom_data||{}), [k]: v } }))} />
-        <div style={{ marginTop:12, padding:'10px 12px', background:'rgba(59,130,246,.06)', borderRadius:8, fontSize:11, color:'var(--muted)' }}>
-          📋 <strong>{PHASE_TASKS[dealForm.tc_phase]?.length || 0} tasks</strong> will be auto-generated for <strong>{PHASES.find(p=>p.id===dealForm.tc_phase)?.label}</strong>
-          {PHASE_TASKS[dealForm.tc_phase]?.filter(t=>t.cal).length > 0 &&
-            ' · 📅 ' + PHASE_TASKS[dealForm.tc_phase].filter(t=>t.cal).length + ' calendar events'}
-          {PHASE_TASKS[dealForm.tc_phase]?.filter(t=>t.notify_agent).length > 0 &&
-            ' · 📧 Agent will be notified'}
-        </div>
-        <ModalActions>
-          <Btn variant="secondary" onClick={()=>setShowAddDeal(false)}>Cancel</Btn>
-          <Btn onClick={createDeal} loading={saving}>Create Deal + Auto-Tasks</Btn>
-        </ModalActions>
-      </Modal>
-
-      {/* ── EDIT DEAL MODAL ── */}
-      <Modal open={showEditDeal} onClose={()=>setShowEditDeal(false)} title={'Edit — ' + (selDeal?.addr||'')} width={720}>
-        <div style={{ marginBottom:10, padding:'8px 12px', background:'rgba(16,185,129,.06)', borderRadius:8, fontSize:11, color:'var(--muted)' }}>
-          ⚡ Changes sync automatically to Production and Listings boards
-        </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-          <div style={{ gridColumn:'span 2' }}>
-            <span style={SL}>Address</span>
-            <AddressAutocomplete value={dealForm.addr||''} onChange={v=>setDealForm(p=>({...p,addr:v}))}
-              onSelect={s=>setDealForm(p=>({...p, addr:(s.street||s.full)+(s.unit?' #'+s.unit:'')}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Side</span>
-            <select value={dealForm.side} onChange={e=>setDealForm(p=>({...p,side:e.target.value}))} style={S}>
-              {['Seller','Buyer','Dual','Rental'].map(s=><option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <span style={SL}>Agent</span>
-            <select value={dealForm.agent_id} onChange={e=>setDealForm(p=>({...p,agent_id:e.target.value}))} style={S}>
-              <option value="">— Select —</option>
-              {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <span style={SL}>List Price</span>
-            <input value={dealForm.list_price} onChange={e=>setDealForm(p=>({...p,list_price:e.target.value}))} placeholder="$0" style={S} />
-          </div>
-          <div>
-            <span style={SL}>Sale Price</span>
-            <input value={dealForm.sale_price} onChange={e=>setDealForm(p=>({...p,sale_price:e.target.value}))} placeholder="$0" style={S} />
-          </div>
-          <div>
-            <span style={SL}>AO Date</span>
-            <input type="date" value={dealForm.ao_date} onChange={e=>setDealForm(p=>({...p,ao_date:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Close Date</span>
-            <input type="date" value={dealForm.close_date} onChange={e=>setDealForm(p=>({...p,close_date:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Attorney Name</span>
-            <input value={dealForm.attorney_name} onChange={e=>setDealForm(p=>({...p,attorney_name:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Attorney Phone</span>
-            <input value={dealForm.attorney_phone} onChange={e=>setDealForm(p=>({...p,attorney_phone:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Attorney Email</span>
-            <input value={dealForm.attorney_email} onChange={e=>setDealForm(p=>({...p,attorney_email:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Mortgage Broker</span>
-            <input value={dealForm.mortgage_broker} onChange={e=>setDealForm(p=>({...p,mortgage_broker:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Broker Phone</span>
-            <input value={dealForm.mortgage_phone} onChange={e=>setDealForm(p=>({...p,mortgage_phone:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Inspector</span>
-            <input value={dealForm.inspector} onChange={e=>setDealForm(p=>({...p,inspector:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Inspector Phone</span>
-            <input value={dealForm.inspector_phone} onChange={e=>setDealForm(p=>({...p,inspector_phone:e.target.value}))} style={S} />
-          </div>
-          <div style={{ gridColumn:'span 2' }}>
-            <span style={SL}>Notes</span>
-            <textarea value={dealForm.notes} onChange={e=>setDealForm(p=>({...p,notes:e.target.value}))} rows={2} style={{ ...S, resize:'vertical' }} />
-          </div>
-          <label style={{ gridColumn:'span 2', display:'flex', alignItems:'center', gap:8, fontSize:13, color:'var(--text)', cursor:'pointer' }}>
-            <input type="checkbox" checked={!!dealForm.c2c_enabled}
-                   onChange={e=>setDealForm(p=>({...p,c2c_enabled:e.target.checked}))} />
-            <span><b>Contract-to-close service</b> — auto-generates weekly mortgage-broker check-ins & party updates until closing, plus a commission-bill reminder a week before close</span>
-          </label>
-        </div>
-
-        <CustomFieldsSection entity="tc_deals" customData={dealForm.custom_data}
-          onChange={(k,v) => setDealForm(p => ({ ...p, custom_data: { ...(p.custom_data||{}), [k]: v } }))} />
-
-        {selDeal?.id && (
-          <div style={{ marginTop:14, borderTop:'1px solid var(--border)', paddingTop:4 }}>
-            <BoardLinks tcDealId={selDeal.id} listingId={selDeal.linked_listing_id} dealId={selDeal.linked_deal_id} />
-            <LinkListingControl deal={selDeal} toast={toast}
-              onLinked={lid => { setSelDeal(d => ({ ...d, linked_listing_id: lid })); setDeals(ds => ds.map(x => x.id === selDeal.id ? { ...x, linked_listing_id: lid } : x)) }} />
-            {selDeal.linked_listing_id && (
-              <div style={{ marginTop:10 }}>
-                <SellerContacts listingId={selDeal.linked_listing_id} listingAgentId={selDeal.agent_id} />
-              </div>
+                    <input type="checkbox" checked={!!sendAttachDocs.pof} onChange={e=>setSendAttachDocs(d=>({...d,pof:e.target.checked}))} />
+                    💰 Proof of Funds
+                  </label>
+                )}
+              </>
             )}
-            <PeoplePanel dealId={selDeal.id} agentId={selDeal.agent_id}
-                         roles={(tcCfg || DEFAULT_TC_SETTINGS).participant_roles} toast={toast} />
-            <DocumentsPanel dealId={selDeal.id}
-                            statuses={(tcCfg || DEFAULT_TC_SETTINGS).doc_statuses} toast={toast} />
-            <PhotographyPanel deal={selDeal}
-                              services={(tcCfg || DEFAULT_TC_SETTINGS).photo_services}
-                              checklist={(tcCfg || DEFAULT_TC_SETTINGS).readiness_checklist} toast={toast} isAdmin={isAdmin} />
-            <TCSignPanel deal={selDeal} toast={toast}
-                         onLinked={id => setSelDeal(d => ({ ...d, linked_sign_id: id }))} />
-            <TCDealChat dealId={selDeal.id} dealAddr={selDeal.addr} agents={agents} me={agent} toast={toast} />
-            <div style={{ marginTop:12 }}>
-              <ActivityPanel table="tc_deals" recordId={selDeal.id} recordName={selDeal.addr} compact />
-            </div>
-            <div style={{ marginTop:12 }}>
-              <Btn variant="secondary" onClick={openCommissionBill}>🧾 Commission Bill…</Btn>
+            <span style={SL}>Message</span>
+            <textarea value={sendMsg} onChange={e=>setSendMsg(e.target.value)} rows={2} style={{ ...S, resize:'vertical' }} />
+            <div style={{ display:'flex', gap:8, marginTop:8, justifyContent:'flex-end' }}>
+              <Btn variant="secondary" onClick={()=>setShowSend(false)}>Cancel</Btn>
+              <Btn onClick={sendOffer} loading={sending}>{sending ? 'Sending...' : '📧 Confirm & Send'}</Btn>
             </div>
           </div>
         )}
 
-        <CommissionBillModal open={showBill} onClose={()=>setShowBill(false)} deal={selDeal}
-                             participants={billPeople.rows} contacts={billPeople.contacts}
-                             agent={agent} ratePercent={(tcCfg || DEFAULT_TC_SETTINGS).commission_rate_percent || 1.5}
-                             toast={toast} />
-
         <ModalActions>
-          <Btn variant="secondary" onClick={()=>setShowEditDeal(false)}>Cancel</Btn>
-          <Btn onClick={saveDeal} loading={saving}>Save + Sync All Boards</Btn>
+          {selected && <Btn variant="ghost" style={{ marginRight:4, color:'#DC2626' }} onClick={()=>setConfirmDel(true)}>Delete</Btn>}
+          {selected && OFFER_PENDING_VALUES.includes(form.status) && (
+            <div style={{ display:'flex', gap:4, marginRight:'auto' }}>
+              <Btn variant="ghost" style={{ color:'#10B981', fontSize:11 }} onClick={()=>markOutcome('Accepted')}>✓ Mark Accepted</Btn>
+              <Btn variant="ghost" style={{ color:'#DC2626', fontSize:11 }} onClick={()=>markOutcome('Rejected')}>Mark Rejected</Btn>
+              <Btn variant="ghost" style={{ color:'#6B7280', fontSize:11 }} onClick={()=>markOutcome('Withdrawn')}>Withdraw</Btn>
+              <Btn variant="ghost" style={{ color:'#78716C', fontSize:11 }} onClick={()=>markOutcome('Expired')}>Mark Expired</Btn>
+            </div>
+          )}
+          {!showSend && (
+            <Btn variant="secondary" disabled={!form.current_revision_id}
+              title={!selected ? 'Save the offer first, then generate the PDF, to enable Send Offer'
+                : !form.current_revision_id ? 'Generate the PDF first (Save + Download PDF), then Send Offer becomes available'
+                : undefined}
+              onClick={()=>{
+              // Default recipient per spec: the linked Seller's Agent,
+              // pre-checked whenever they have a usable email on file.
+              setSendTo(t => ({ ...t, sellers_agent: !!form.sellers_agent_email }))
+              setShowSend(true)
+              // Show which mailbox will actually send, before the agent
+              // commits to sending — reuses the existing connectors
+              // endpoint rather than a new one.
+              ;(async () => {
+                try {
+                  const { data: { session } } = await supabase.auth.getSession()
+                  const r = await fetch('/api/connectors', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: 'Bearer ' + session.access_token } : {}) },
+                    body: JSON.stringify({ action: 'my_accounts', agent_id: agent?.id }),
+                  })
+                  const j = await r.json().catch(() => ({}))
+                  const outlook = (j.accounts || []).find(a => a.provider === 'outlook' && a.status === 'connected')
+                  setSendingMailbox(outlook?.account_email || '')
+                } catch { setSendingMailbox('') }
+              })()
+            }}>📧 Send Offer{!form.current_revision_id ? ' (generate PDF first)' : ''}</Btn>
+          )}
+          <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
+          <Btn variant="secondary" onClick={()=>saveOffer(false)} loading={saving && !downloading}>
+            {saving && !downloading ? 'Saving...' : 'Save'}
+          </Btn>
+          <Btn onClick={()=>saveOffer(true)} loading={saving && downloading}>
+            {downloading ? 'Generating PDF...' : saving ? 'Saving...' : '📄 Save + Download PDF'}
+          </Btn>
         </ModalActions>
       </Modal>
 
-      {/* ── ADD / EDIT TASK MODAL ── */}
-      <Modal open={showAddTask||showEditTask} onClose={()=>{setShowAddTask(false);setShowEditTask(false);setSelTask(null)}}
-        title={(selTask?'Edit Task':'Add Task') + ' — ' + (selDeal?.addr||'')} width={500}>
-        <span style={SL}>Task Title *</span>
-        <input value={taskForm.title} onChange={e=>setTaskForm(p=>({...p,title:e.target.value}))}
-          placeholder="What needs to be done?" style={S} />
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:4 }}>
-          <div>
-            <span style={SL}>Priority</span>
-            <select value={taskForm.priority} onChange={e=>setTaskForm(p=>({...p,priority:e.target.value}))} style={S}>
-              {['urgent','high','normal','low'].map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-            </select>
-          </div>
-          <div>
-            <span style={SL}>Due Date</span>
-            <input type="date" value={taskForm.due_date} onChange={e=>setTaskForm(p=>({...p,due_date:e.target.value}))} style={S} />
-          </div>
-          <div>
-            <span style={SL}>Assign To</span>
-            <select value={taskForm.agent_id} onChange={e=>setTaskForm(p=>({...p,agent_id:e.target.value}))} style={S}>
-              <option value="">— Same as deal agent —</option>
-              {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <span style={SL}>Reminder (days before due)</span>
-            <select value={taskForm.reminder_days} onChange={e=>setTaskForm(p=>({...p,reminder_days:e.target.value}))} style={S}>
-              <option value="">No reminder</option>
-              {[1,2,3,5,7,14].map(d=><option key={d} value={d}>{d} day{d!==1?'s':''} before</option>)}
-            </select>
-          </div>
-        </div>
+      <Confirm open={confirmDel} message="Delete this offer?" onConfirm={deleteOffer} onCancel={()=>setConfirmDel(false)} />
+    </div>
+  )
+}
 
-        <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', margin:'12px 0 4px', fontSize:13, color:'var(--text)' }}>
-          <input type="checkbox" checked={!!taskForm.needs_calendar} onChange={e=>setTaskForm(p=>({...p,needs_calendar:e.target.checked}))}
-            style={{ width:15, height:15, accentColor:'var(--brand)' }} />
-          📅 Create calendar event + notify agent
-        </label>
-
-        <span style={SL}>When completed, automatically…</span>
-        <select value={taskForm.completion_action} onChange={e=>setTaskForm(p=>({...p,completion_action:e.target.value}))} style={{ ...S, marginBottom:6 }}>
-          <option value="none">Nothing (just mark done)</option>
-          <option value="notify_agent">📧 Email agent that this is done</option>
-          <option value="create_next_task">➕ Create next task automatically</option>
-        </select>
-
-        {taskForm.completion_action === 'create_next_task' && (
-          <input value={taskForm.completion_note} onChange={e=>setTaskForm(p=>({...p,completion_note:e.target.value}))}
-            placeholder="Next task title to auto-create..." style={S} />
-        )}
-        {taskForm.completion_action === 'notify_agent' && (
-          <textarea value={taskForm.completion_note} onChange={e=>setTaskForm(p=>({...p,completion_note:e.target.value}))}
-            placeholder="Optional message to include in the notification..." rows={2} style={{ ...S, resize:'vertical' }} />
-        )}
-
-        <span style={SL}>Notes</span>
-        <textarea value={taskForm.notes} onChange={e=>setTaskForm(p=>({...p,notes:e.target.value}))}
-          placeholder="Any additional details..." rows={2} style={{ ...S, resize:'vertical' }} />
-
-        <ModalActions>
-          <Btn variant="secondary" onClick={()=>{setShowAddTask(false);setShowEditTask(false);setSelTask(null)}}>Cancel</Btn>
-          <Btn onClick={saveTask} loading={saving}>{selTask ? 'Save Changes' : 'Add Task'}</Btn>
-        </ModalActions>
-      </Modal>
+// ── OFFER TABLE ───────────────────────────────────────────────────
+function OfferTable({ offers, agents, onOpen, statusColor, canBulkEdit, bulkIds = [], onToggleBulk, onBulkIdsChange, onBulkDone }) {
+  return (
+    <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', overflow:'hidden' }}>
+      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+        <thead>
+          <tr style={{ background:'var(--dim)' }}>
+            {(canBulkEdit ? [' '] : []).concat(['Address','MLS#','Buyer','Agent','Status','Purchase Price','Date','In-House','Files']).map(h=>(
+              <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {offers.map(o=>{
+            const ag = agents.find(a=>a.id===(o.buyers_agent_id||o.agent_id))
+            return (
+              <tr key={o.id} onClick={()=>onOpen(o)}
+                style={{ borderBottom:'1px solid var(--border)', cursor:'pointer' }}
+                onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
+                onMouseLeave={e=>e.currentTarget.style.background=''}>
+                {canBulkEdit && (
+                  <td style={{ padding:'10px 8px', width:30 }} onClick={e=>e.stopPropagation()}>
+                    <input type="checkbox" checked={bulkIds.includes(o.id)} onChange={()=>onToggleBulk(o.id)}
+                      style={{ width:15, height:15, cursor:'pointer', accentColor:'#CC2200' }} />
+                  </td>
+                )}
+                <td style={{ padding:'10px 12px', fontWeight:600, color:'var(--text)' }}>{o.listing_addr}</td>
+                <td style={{ padding:'10px 12px', color:'var(--muted)', fontSize:11 }}>{o.mls_number||'—'}</td>
+                <td style={{ padding:'10px 12px', color:'var(--muted)' }}>{o.buyer_name||'—'}</td>
+                <td style={{ padding:'10px 12px' }}>
+                  {ag ? (
+                    <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                      <div style={{ width:20, height:20, borderRadius:'50%', background:ag.color||'#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:800, color:'#fff' }}>
+                        {(ag.name||'').split(' ').map(n=>n[0]).join('').slice(0,2)}
+                      </div>
+                      <span style={{ fontSize:11, color:'var(--muted)' }}>{ag.name?.split(' ')[0]}</span>
+                    </div>
+                  ) : '—'}
+                </td>
+                <td style={{ padding:'10px 12px' }}><Pill label={o.status} color={statusColor(o.status)} /></td>
+                <td style={{ padding:'10px 12px', fontWeight:700 }}>{fmt$(o.purchase_price||o.production)}</td>
+                <td style={{ padding:'10px 12px', color:'var(--muted)', fontSize:11 }}>{fmtDate(o.offer_date||o.submitted_at)}</td>
+                <td style={{ padding:'10px 12px' }}>
+                  {o.is_inhouse ? <span style={{ fontSize:10, padding:'2px 7px', borderRadius:99, background:'rgba(16,185,129,.1)', color:'#10B981', fontWeight:700 }}>🏡 In-House</span> : '—'}
+                </td>
+                <td style={{ padding:'10px 12px' }}>
+                  <div style={{ display:'flex', gap:4 }}>
+                    {o.offer_url && <a href={o.offer_url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{ textDecoration:'none' }} title="Offer">📄</a>}
+                    {o.pof_url   && <a href={o.pof_url}   target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{ textDecoration:'none' }} title="POF">💰</a>}
+                  </div>
+                </td>
+              </tr>
+            )
+          })}</tbody>
+      </table>
+      {canBulkEdit && (
+        // FIX (ESLint no-undef, Sept 2026 audit follow-up): same bug as
+        // OffersLegacy.jsx's OfferTable -- filtered/setBulkIds/refetch all
+        // belong to the parent, not this component. `offers` is the same
+        // list the parent calls `filtered`; the setter/refetch are now
+        // threaded down as callback props. Previously crashed this
+        // table's render for any agent with bulk-edit permission.
+        <BulkEditBar selectedIds={bulkIds} table="offers" agents={agents}
+          allIds={offers.map(o => o.id)} onSelectAll={ids => onBulkIdsChange?.(ids)}
+          fields={[
+            { key:'status',          label:'Status', type:'select', options:(OFFER_STATUSES||[]).map(x=>({value:x.value||x,label:x.label||x})) },
+            { key:'buyers_agent_id', label:'Buyer\'s Agent', type:'agent' },
+          ]}
+          onDone={() => { onBulkIdsChange?.([]); onBulkDone?.() }} onClear={() => onBulkIdsChange?.([])} />
+      )}
     </div>
   )
 }
