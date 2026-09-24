@@ -1736,6 +1736,7 @@ export function Production() {
   const hbarRef = React.useRef(null)
   const [boardScrollW, setBoardScrollW] = useState(0)
   const [boardClientW, setBoardClientW] = useState(0)
+  const [boardScrollLeft, setBoardScrollLeft] = useState(0)
   const syncingRef = React.useRef(false)
   // Shared Side colors (cosmetic, from system_settings) + admin editor toggle.
   const [sideColors, setSideColorsState] = useState(SIDE_COLOR_DEFAULTS)
@@ -2411,6 +2412,7 @@ export function Production() {
 
   // Two-way scroll sync between the board and the bottom proxy bar.
   function onBoardScroll() {
+    setBoardScrollLeft(boardScrollRef.current ? boardScrollRef.current.scrollLeft : 0)
     if (syncingRef.current) { syncingRef.current = false; return }
     if (hbarRef.current && boardScrollRef.current) {
       syncingRef.current = true
@@ -2418,6 +2420,7 @@ export function Production() {
     }
   }
   function onHbarScroll() {
+    setBoardScrollLeft(hbarRef.current ? hbarRef.current.scrollLeft : 0)
     if (syncingRef.current) { syncingRef.current = false; return }
     if (hbarRef.current && boardScrollRef.current) {
       syncingRef.current = true
@@ -2716,6 +2719,7 @@ export function Production() {
       ) : viewMode === 'board' ? (
         /* BOARD VIEW — Monday.com style */
         <>
+        <div style={{ position: 'relative' }}>
         <div ref={boardScrollRef} onScroll={onBoardScroll} style={{ overflowX: 'auto', background: '#fff', border: '1px solid ' + BOARD.border, borderRadius: 6 }}>
           {/* Sticky column header — SAME colgroup as every row table → exact alignment */}
           <table style={{ position: 'sticky', top: 0, zIndex: 10, borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', background: BOARD.page }}>
@@ -2785,14 +2789,48 @@ export function Production() {
             <span>Add group</span>
           </div>
         </div>
-        {/* Always-visible synchronized horizontal move bar (Monday-style). */}
+        {/* Right-edge scroll cue: a soft fade over the last sliver of a column
+            that's only partially visible, so it reads as "more to the right"
+            instead of a hard, arbitrary clip. Hidden once scrolled to the
+            end. Lives OUTSIDE the scrolling div (a sibling, absolutely
+            positioned against the relative wrapper) so it stays pinned to
+            the visible edge rather than scrolling away with the content. */}
+        {boardScrollW > boardClientW + 2 && boardScrollLeft < boardScrollW - boardClientW - 2 && (
+          <div style={{
+            position: 'absolute', top: 0, bottom: 0, right: 1, width: 28,
+            background: 'linear-gradient(to right, rgba(255,255,255,0), rgba(255,255,255,.95))',
+            pointerEvents: 'none', borderRadius: '0 6px 6px 0',
+          }} />
+        )}
+        </div>
+        {/* Always-visible synchronized horizontal move bar (Monday-style),
+            with a visible thumb so it reads as a scrollbar rather than a
+            stray strip — otherwise, sitting flush against the bottom of the
+            viewport, it can look like clipped/broken UI instead of a control. */}
         {boardScrollW > boardClientW + 2 && (
           <div ref={hbarRef} onScroll={onHbarScroll}
             style={{ position: 'sticky', bottom: 0, zIndex: 15, overflowX: 'auto', overflowY: 'hidden',
                      background: BOARD.page, borderTop: '1px solid ' + BOARD.border, borderRadius: '0 0 6px 6px',
-                     height: 16, marginTop: -1 }}
+                     height: 16, marginTop: -1, boxShadow: '0 -2px 6px rgba(0,0,0,.06)' }}
             title="Scroll the board left / right">
             <div style={{ width: boardScrollW, height: 1 }} />
+            {/* Custom thumb, overlaid on the native (often hover-only /
+                invisible-at-rest) scrollbar so the control always reads as
+                a scrollbar rather than a blank strip. Sized and positioned
+                against the bar's own VISIBLE width (boardClientW), not the
+                scrollable track width — pointer-events:none so dragging
+                still goes through to the real scrollbar underneath. */}
+            <div style={{
+              position: 'absolute', top: 3, left: 0, height: 10, borderRadius: 5,
+              width: boardClientW, pointerEvents: 'none',
+            }}>
+              <div style={{
+                position: 'absolute', top: 0, height: 10, borderRadius: 5,
+                left: boardScrollW > 0 ? (boardScrollLeft / boardScrollW) * boardClientW : 0,
+                width: Math.max(40, boardScrollW > 0 ? (boardClientW / boardScrollW) * boardClientW : boardClientW),
+                background: BOARD.border,
+              }} />
+            </div>
           </div>
         )}
         </>
