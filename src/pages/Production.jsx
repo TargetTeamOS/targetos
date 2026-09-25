@@ -85,6 +85,7 @@ function fmtWidget(v, format) {
 // width; the Item column is user-resizable (min 180) and its live width is
 // threaded through BoardColgroup so header + every group table stay aligned.
 const COL_CHECK = 36
+const COL_NUM   = 34
 const COL_ITEM  = 220
 const COL_OPEN  = 32
 const ITEM_MIN  = 180
@@ -96,6 +97,7 @@ function BoardColgroup({ visibleCols, itemW = COL_ITEM }) {
   return (
     <colgroup>
       <col style={{ width: COL_CHECK }} />
+      <col style={{ width: COL_NUM }} />
       <col style={{ width: itemW }} />
       {visibleCols.map(c => <col key={c.key} style={{ width: c.width }} />)}
       <col style={{ width: COL_OPEN }} />
@@ -795,7 +797,7 @@ function MondayCell({ col, deal, onQuickUpdate, agents, rowH = BOARD.ROW_H, onEd
 }
 
 // ── MONDAY.COM ROW ────────────────────────────────────────────────
-function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect, visibleCols, onDealDragStart, onDealDropOnRow, rowH = BOARD.ROW_H, onEditColors }) {
+function DealRow({ deal, index, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onToggleSelect, visibleCols, onDealDragStart, onDealDropOnRow, rowH = BOARD.ROW_H, onEditColors }) {
   const [hover, setHover] = React.useState(false)
   const [dragOverRow, setDragOverRow] = React.useState(false)
   const rowBg = isSelected ? BOARD.selected : hover ? BOARD.hover : '#fff'
@@ -824,14 +826,28 @@ function DealRow({ deal, agents, onOpen, onQuickUpdate, isAdmin, isSelected, onT
         </div>
       </td>
 
+      {/* Row number — Monday-style "#" column, position within its group */}
+      <td style={{ padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle', position: 'sticky', left: COL_CHECK, background: rowBg, zIndex: 2, textAlign: 'center' }}>
+        <span style={{ fontSize: 11, color: BOARD.sub, fontWeight: 500 }}>{index}</span>
+      </td>
+
       {/* Address — sticky item column, single line, tooltip on hover */}
       <td onClick={() => onOpen(deal)} title={(deal.addr || '') + (deal.unit ? ' #' + deal.unit : '')}
-        style={{ padding: '0 12px', height: rowH, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle', position: 'sticky', left: COL_CHECK, background: rowBg, zIndex: 2, cursor: 'pointer', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', height: rowH, fontSize: 13, fontWeight: 600, color: BOARD.text, overflow: 'hidden' }}>
+        style={{ padding: '0 12px', height: rowH, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle', position: 'sticky', left: COL_CHECK + COL_NUM, background: rowBg, zIndex: 2, cursor: 'pointer', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', height: rowH, fontSize: 13, fontWeight: 600, color: BOARD.text, overflow: 'hidden', gap: 6 }}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {deal.addr}
             {deal.unit && <span style={{ color: BOARD.sub, fontWeight: 400 }}> #{deal.unit}</span>}
           </span>
+          {/* Has-notes indicator — Monday-style "has updates" cue. Uses
+              the deal.notes field already loaded with the row (no extra
+              query); shows the note's own text as the tooltip. */}
+          {deal.notes && deal.notes.trim() && (
+            <span title={deal.notes.trim().slice(0, 200)}
+              style={{ flexShrink: 0, fontSize: 11, color: BOARD.sub, opacity: .7, cursor: 'help' }}>
+              💬
+            </span>
+          )}
         </div>
       </td>
 
@@ -867,6 +883,18 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
   const totalGCI  = deals.reduce((s, d) => s + parseNum(d.gci), 0)
   const totalProd = deals.reduce((s, d) => s + parseNum(d.production), 0)
   const allSelected = deals.length > 0 && deals.every(d => selectedIds.includes(d.id))
+  // Unique agents represented in this group, in first-seen order — feeds
+  // the stacked-avatar summary on the group's totals row.
+  const groupAgents = (() => {
+    const seen = new Set()
+    const out = []
+    for (const d of deals) {
+      if (!d.agent_id || seen.has(d.agent_id)) continue
+      const a = agents.find(x => x.id === d.agent_id)
+      if (a) { seen.add(d.agent_id); out.push(a) }
+    }
+    return out
+  })()
 
   // Header/accent color = the group's canonical Stage color (override-aware),
   // resolved from an explicit headerStage key rather than the display label
@@ -932,8 +960,8 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', background: '#fff' }}>
             <BoardColgroup visibleCols={visibleCols} itemW={itemW} />
             <tbody>
-              {deals.map(d => (
-                <DealRow key={d.id} deal={d} agents={agents} onOpen={onOpen} onQuickUpdate={onQuickUpdate}
+              {deals.map((d, i) => (
+                <DealRow key={d.id} deal={d} index={i + 1} agents={agents} onOpen={onOpen} onQuickUpdate={onQuickUpdate}
                   isAdmin={isAdmin} isSelected={selectedIds.includes(d.id)}
                   onToggleSelect={onToggleSelect} visibleCols={visibleCols}
                   onDealDragStart={onDealDragStart}
@@ -945,8 +973,41 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
               <tfoot>
                 <tr style={{ background: BOARD.page, borderTop: '2px solid ' + BOARD.border }}>
                   <td style={{ borderRight: '1px solid ' + BOARD.cellBorder, height: 34 }} />
+                  <td style={{ borderRight: '1px solid ' + BOARD.cellBorder, height: 34 }} />
                   <td style={{ padding: '0 12px', borderRight: '1px solid ' + BOARD.cellBorder, fontSize: 11, color: BOARD.sub, fontWeight: 700 }}>
-                    {deals.length} item{deals.length !== 1 ? 's' : ''}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span>{deals.length} item{deals.length !== 1 ? 's' : ''}</span>
+                      {/* Stacked agent avatars — same "who's in this group"
+                          summary Monday shows on its own totals row. */}
+                      {groupAgents.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center' }} title={groupAgents.map(a => a.name).join(', ')}>
+                          {groupAgents.slice(0, 5).map((a, i) => {
+                            const initials = a.name ? a.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() : '?'
+                            return (
+                              <div key={a.id} style={{
+                                width: 20, height: 20, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                background: a.color || BOARD.blue, border: '1.5px solid ' + BOARD.page,
+                                marginLeft: i === 0 ? 0 : -6, boxSizing: 'content-box',
+                              }}>
+                                {a.photo_url
+                                  ? <img src={a.photo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                  : <span style={{ color: '#fff', fontSize: 8, fontWeight: 700, lineHeight: 1 }}>{initials}</span>}
+                              </div>
+                            )
+                          })}
+                          {groupAgents.length > 5 && (
+                            <div style={{
+                              width: 20, height: 20, borderRadius: '50%', flexShrink: 0, marginLeft: -6,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              background: BOARD.border, border: '1.5px solid ' + BOARD.page,
+                            }}>
+                              <span style={{ color: BOARD.text, fontSize: 8, fontWeight: 700 }}>+{groupAgents.length - 5}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   {visibleCols.map(col => (
                     <td key={col.key} style={{ height: 34, padding: '0 10px', borderRight: '1px solid ' + BOARD.cellBorder, textAlign: colAlign(col), fontSize: 12, fontWeight: 700, overflow: 'hidden' }}>
@@ -963,7 +1024,7 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
 
           {/* Add item row */}
           <div onClick={() => onAddDeal && onAddDeal(group)}
-            style={{ display: 'flex', alignItems: 'center', height: 38, paddingLeft: COL_CHECK + 12, cursor: 'pointer', borderTop: '1px solid ' + BOARD.cellBorder, background: '#fff', gap: 6, color: BOARD.sub, fontSize: 13 }}
+            style={{ display: 'flex', alignItems: 'center', height: 38, paddingLeft: COL_CHECK + COL_NUM + 12, cursor: 'pointer', borderTop: '1px solid ' + BOARD.cellBorder, background: '#fff', gap: 6, color: BOARD.sub, fontSize: 13 }}
             onMouseEnter={e => e.currentTarget.style.background = BOARD.page}
             onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
             <span style={{ fontSize: 16, fontWeight: 700, color: headerBg }}>+</span>
@@ -2428,6 +2489,36 @@ export function Production() {
     }
   }
 
+  // ── Shared toolbar "chip" button style ─────────────────────────────
+  // One consistent look for every secondary toolbar action (Columns,
+  // Collapse/Expand, Side Colors, Edit Widgets, ...): white pill, soft
+  // border, subtle hover elevation instead of each button carrying its
+  // own slightly-different flat gray box. `active` swaps to the brand
+  // color for a pressed/selected state (e.g. the density toggle).
+  function chipBtn(active = false) {
+    return {
+      display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px',
+      borderRadius: 999, border: '1px solid ' + (active ? BOARD.blue : '#e2e5ee'),
+      background: active ? BOARD.blue : '#fff', color: active ? '#fff' : '#4d5566',
+      fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: ff,
+      boxShadow: active ? '0 1px 4px rgba(0,115,234,.25)' : '0 1px 2px rgba(0,0,0,.03)',
+      transition: 'box-shadow .12s, border-color .12s, background .12s',
+    }
+  }
+  function chipHover(e, active) {
+    if (active) return
+    e.currentTarget.style.borderColor = '#c7cce0'
+    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,.08)'
+  }
+  function chipUnhover(e, active) {
+    if (active) return
+    e.currentTarget.style.borderColor = '#e2e5ee'
+    e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.03)'
+  }
+  // A thin vertical rule between logical toolbar groups, Monday-style,
+  // so related actions read as a cluster instead of one long button row.
+  const toolbarDivider = <div style={{ width: 1, alignSelf: 'stretch', background: '#e6e9ef', margin: '0 2px' }} />
+
   return (
     <div style={{ fontFamily: ff }}>
 
@@ -2471,14 +2562,13 @@ export function Production() {
         />
         </div>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <LastVisited page="production" />
-          {/* View mode */}
-          <div style={{ display: 'flex', background: 'var(--dim)', borderRadius: '8px', padding: '3px', gap: '2px' }}>
-            {/* Column picker */}
+          {/* Column picker */}
           <div style={{ position: 'relative' }}>
             <button onClick={() => setShowColPicker(p => !p)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6, border: '1px solid #e6e9ef', background: '#fff', color: '#676879', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
+              onMouseEnter={e => chipHover(e)} onMouseLeave={e => chipUnhover(e)}
+              style={chipBtn()}>
               ⚙ Columns {hiddenCols.length > 0 ? '(' + hiddenCols.length + ' hidden)' : ''}
             </button>
             {showColPicker && (
@@ -2513,36 +2603,48 @@ export function Production() {
             )}
           </div>
 
-          {[['board','📋 Board'],['table','📊 Table']].map(([m,l]) => (
+          {toolbarDivider}
+
+          {/* Board / Table view toggle — pill-shaped segmented control */}
+          <div style={{ display: 'flex', background: '#f0f1f5', borderRadius: 999, padding: 3, gap: 2 }}>
+            {[['board','📋 Board'],['table','📊 Table']].map(([m,l]) => (
               <button key={m} onClick={() => setViewMode(m)}
-                style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: viewMode === m ? 'var(--panel)' : 'transparent', color: viewMode === m ? 'var(--text)' : 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff, boxShadow: viewMode === m ? '0 1px 3px rgba(0,0,0,.12)' : 'none' }}>
+                style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: viewMode === m ? '#fff' : 'transparent', color: viewMode === m ? BOARD.text : BOARD.sub, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: ff, boxShadow: viewMode === m ? '0 1px 3px rgba(0,0,0,.12)' : 'none', transition: 'all .12s' }}>
                 {l}
               </button>
             ))}
           </div>
+
           {viewMode === 'board' && (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <div style={{ display: 'flex', border: '1px solid ' + BOARD.border, borderRadius: 6, overflow: 'hidden' }} title="Row density">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {/* Row density — pill-shaped segmented control, matching the view toggle */}
+              <div style={{ display: 'flex', background: '#f0f1f5', borderRadius: 999, padding: 3, gap: 2 }} title="Row density">
                 {[['comfortable','Comfortable'],['compact','Compact']].map(([d,l]) => (
                   <button key={d} onClick={() => setDensity(d)}
-                    style={{ padding: '5px 9px', border: 'none', background: density === d ? BOARD.blue : '#fff', color: density === d ? '#fff' : BOARD.sub, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: ff }}>
+                    style={{ padding: '5px 10px', borderRadius: 999, border: 'none', background: density === d ? BOARD.blue : 'transparent', color: density === d ? '#fff' : BOARD.sub, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: ff, transition: 'all .12s' }}>
                     {l}
                   </button>
                 ))}
               </div>
+
+              {toolbarDivider}
+
               <button onClick={() => setCollapseSignal(s => ({ n: s.n + 1, collapsed: true }))}
-                style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}
-                title="Collapse all stage groups">⊟ Collapse All</button>
+                onMouseEnter={e => chipHover(e)} onMouseLeave={e => chipUnhover(e)}
+                style={chipBtn()} title="Collapse all stage groups">⊟ Collapse All</button>
               <button onClick={() => setCollapseSignal(s => ({ n: s.n + 1, collapsed: false }))}
-                style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}
-                title="Expand all stage groups">⊞ Expand All</button>
+                onMouseEnter={e => chipHover(e)} onMouseLeave={e => chipUnhover(e)}
+                style={chipBtn()} title="Expand all stage groups">⊞ Expand All</button>
               {can('deals.edit_widgets') && (
                 <button onClick={() => setSideEditorOpen(true)}
-                  style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--muted)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: ff }}
-                  title="Edit Side label colors (shared)">🎨 Side Colors</button>
+                  onMouseEnter={e => chipHover(e)} onMouseLeave={e => chipUnhover(e)}
+                  style={chipBtn()} title="Edit Side label colors (shared)">🎨 Side Colors</button>
               )}
             </div>
           )}
+
+          {toolbarDivider}
+
           <ImportExport
             table="deals"
             data={filtered}
@@ -2555,12 +2657,13 @@ export function Production() {
       </div>
 
       {/* ── SHARED WIDGETS (server-computed; same for everyone) ── */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, minHeight: 24 }}>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, minHeight: 24 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: BOARD.sub, textTransform: 'uppercase', letterSpacing: '.05em' }}>Team Overview</div>
           {can('deals.edit_widgets') && (
             <button onClick={() => setWidgetEditorOpen(true)}
-              style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid ' + BOARD.border, background: '#fff', color: BOARD.blue, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: ff, display: 'flex', alignItems: 'center', gap: 5 }}
+              onMouseEnter={e => chipHover(e)} onMouseLeave={e => chipUnhover(e)}
+              style={{ ...chipBtn(), color: BOARD.blue, fontWeight: 700 }}
               title="Edit shared Production Board widgets">⚙ Edit Widgets</button>
           )}
         </div>
@@ -2727,7 +2830,10 @@ export function Production() {
             <thead>
               <tr style={{ height: BOARD.HEAD_H, borderBottom: '2px solid ' + BOARD.border }}>
                 <th style={{ borderRight: '1px solid ' + BOARD.cellBorder, position: 'sticky', left: 0, background: BOARD.page, zIndex: 11 }} />
-                <th style={{ borderRight: '1px solid ' + BOARD.cellBorder, textAlign: 'left', padding: '0 12px', position: 'sticky', left: COL_CHECK, background: BOARD.page, zIndex: 11 }}>
+                <th style={{ borderRight: '1px solid ' + BOARD.cellBorder, textAlign: 'center', position: 'sticky', left: COL_CHECK, background: BOARD.page, zIndex: 11 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: BOARD.sub }}>#</span>
+                </th>
+                <th style={{ borderRight: '1px solid ' + BOARD.cellBorder, textAlign: 'left', padding: '0 12px', position: 'sticky', left: COL_CHECK + COL_NUM, background: BOARD.page, zIndex: 11 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: BOARD.sub, textTransform: 'uppercase', letterSpacing: '.06em' }}>Item</span>
                   {/* Drag-resize grip on the right edge (min ITEM_MIN) */}
                   <span onMouseDown={startItemResize} onClick={e => e.stopPropagation()}
