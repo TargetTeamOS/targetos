@@ -84,7 +84,7 @@ function fmtWidget(v, format) {
 // Fixed leading columns (checkbox + sticky Item). COL_ITEM is the DEFAULT
 // width; the Item column is user-resizable (min 180) and its live width is
 // threaded through BoardColgroup so header + every group table stay aligned.
-const COL_CHECK = 36
+const COL_CHECK = 46
 const COL_NUM   = 34
 const COL_ITEM  = 220
 const COL_OPEN  = 32
@@ -816,11 +816,11 @@ function DealRow({ deal, index, agents, onOpen, onQuickUpdate, isAdmin, isSelect
 
       {/* Checkbox + color bar + drag handle */}
       <td style={{ padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle', position: 'sticky', left: 0, background: rowBg, zIndex: 2 }}>
-        <div style={{ display: 'flex', alignItems: 'center', height: rowH, paddingLeft: 4, gap: 3 }}>
+        <div style={{ display: 'flex', alignItems: 'center', height: rowH, paddingLeft: 6, gap: 4 }}>
           <span title="Drag to change stage" style={{ cursor: 'grab', color: '#c5c7d0', fontSize: 11, opacity: hover ? 1 : 0, transition: 'opacity .1s', width: 10, flexShrink: 0, userSelect: 'none' }}>⠿</span>
           <div style={{ width: 3, height: 26, borderRadius: 2, background: BOARD.blue, opacity: hover || isSelected ? 1 : 0, transition: 'opacity .1s', flexShrink: 0 }} />
           <div onClick={e => { e.stopPropagation(); onToggleSelect(deal.id) }}
-            style={{ width: 16, height: 16, borderRadius: 3, border: '2px solid ' + (isSelected ? BOARD.blue : '#c5c7d0'), background: isSelected ? BOARD.blue : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all .1s' }}>
+            style={{ width: 17, height: 17, borderRadius: 4, border: '2px solid ' + (isSelected ? BOARD.blue : '#c5c7d0'), background: isSelected ? BOARD.blue : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all .1s' }}>
             {isSelected && <span style={{ color: '#fff', fontSize: 9, fontWeight: 900, lineHeight: 1 }}>✓</span>}
           </div>
         </div>
@@ -910,11 +910,11 @@ function BoardGroup({ group, deals, agents, onOpen, onQuickUpdate, isAdmin, sele
       onDrop={e => { e.preventDefault(); onDropDeal?.() }}
       style={{ marginBottom: 10, outline: isDragOver ? '2px solid #0073ea' : 'none', outlineOffset: -2, transition: 'outline .1s' }}>
       {/* ── Group header row (sticky below the column header) ── */}
-      <div style={{ display: 'flex', alignItems: 'center', height: BOARD.HEAD_H, background: headerBg + '12', borderTop: '1px solid ' + BOARD.cellBorder, borderBottom: '1px solid ' + BOARD.cellBorder, borderLeft: '3px solid ' + headerBg, userSelect: 'none', position: 'sticky', top: BOARD.HEAD_H, zIndex: 5 }}>
+      <div style={{ display: 'flex', alignItems: 'center', height: BOARD.HEAD_H, background: headerBg + '12', borderTop: '1px solid ' + BOARD.cellBorder, borderBottom: '1px solid ' + BOARD.cellBorder, borderLeft: '3px solid ' + headerBg, userSelect: 'none', position: 'sticky', top: BOARD.HEAD_H, zIndex: 5, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}>
         {/* Checkbox */}
-        <div style={{ width: 50, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+        <div style={{ width: 60, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
           <div onClick={e => { e.stopPropagation(); onSelectAll(deals.map(d => d.id)) }}
-            style={{ width: 16, height: 16, borderRadius: 3, border: '2px solid ' + (allSelected ? '#0073ea' : '#c5c7d0'), background: allSelected ? '#0073ea' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            style={{ width: 17, height: 17, borderRadius: 4, border: '2px solid ' + (allSelected ? '#0073ea' : '#c5c7d0'), background: allSelected ? '#0073ea' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             {allSelected && <span style={{ color: '#fff', fontSize: 9, fontWeight: 900, lineHeight: 1 }}>✓</span>}
           </div>
         </div>
@@ -2540,7 +2540,7 @@ export function Production() {
 
         <div style={{ marginBottom: -12 }}>
         <FilterBar
-          searchKey="search" placeholder="🔍 Address, client, attorney..."
+          searchKey="search" placeholder="Address, client, attorney..."
           filters={{ search, yearF, stageF, sideF, agentF, saleTypeF, propTypeF }}
           onChange={next => {
             if ('search'     in next) setSearch(next.search)
