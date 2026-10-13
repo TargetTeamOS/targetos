@@ -151,7 +151,12 @@ export function Analytics() {
   const biz = useMemo(() => {
     const calc = (r) => {
       const sent     = offers.filter(o => inRange(o.offer_date || o.created_at, r))
-      const accepted = offers.filter(o => ['AO','Accepted','Closed'].includes(o.status) && inRange(o.offer_date || o.created_at, r))
+      // Accepted offers come from DEALS, not the offers table: every accepted
+      // offer becomes a deal with an A/O date (OffersV2 does this on accept,
+      // and the monday.com import brings A/O Date over), while the offers
+      // table only holds offers negotiated inside the app. Counting by A/O
+      // date also keeps deals that later went Under Contract or Closed.
+      const accepted = deals.filter(d => d.ao_date && inRange(d.ao_date, r))
       const uc       = deals.filter(d => d.stage === 'Under Contract' && inRange(d.ao_date || d.created_at, r))
       const closed   = deals.filter(d => d.stage === 'Closed' && inRange(d.close_date || d.created_at, r))
       const fell     = deals.filter(d => d.stage === 'Deal Fell Through' && inRange(d.created_at, r))
