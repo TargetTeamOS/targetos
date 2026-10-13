@@ -101,7 +101,7 @@ module.exports = async function handler(req, res) {
           .eq('contact_id', contactId).eq('status', 'active').order('applied_at', { ascending: false })
         active = (r.data || []).map(a => ({ ...a, mine: true }))
       }
-      const { data: available } = await db.from('automations').select('id, name, trigger_type, enabled').eq('enabled', true).order('name')
+      const { data: available } = await db.from('automations').select('id, name, trigger_type, active').eq('active', true).order('name')
       res.statusCode = 200
       return res.end(JSON.stringify({ active, available: available || [] }))
     }

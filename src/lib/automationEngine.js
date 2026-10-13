@@ -124,7 +124,7 @@ async function executeAction(action, context, triggerData, agents) {
           if (byName?.length === 1) { homeAddr = byName[0].address || ''; clientType = clientType || byName[0].type || '' }
         }
       } catch {}
-      await supabase.from('gifts').insert({
+      const { error: giftErr } = await supabase.from('gifts').insert({
         client_name: triggerData.client_name || '',
         address:     homeAddr || triggerData.addr || '',
         phone:       triggerData.client_phone || null,
@@ -136,6 +136,8 @@ async function executeAction(action, context, triggerData, agents) {
                      + (homeAddr ? '' : ' · (client home address not on file — property address used)'),
         created_at:  new Date().toISOString(), updated_at: new Date().toISOString(),
       })
+      // Previously ignored, so a failed insert was still logged as success.
+      if (giftErr) throw new Error('Gift entry not created: ' + giftErr.message)
       break
     }
 

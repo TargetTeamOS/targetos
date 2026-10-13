@@ -15,6 +15,42 @@ async function fireTrigger(name, ...args) {
   } catch { /* automation errors must never crash the app */ }
 }
 
+// ── AFTER A DEAL IS SAVED (Oct 2026) ─────────────────────────────
+// Everything that must happen after ANY deal create/update, wherever it
+// was saved from (db.deals, Production board, TC board):
+//   • fire automations (gift entries, stage emails, alerts)
+//   • LIFECYCLE: a stage change mirrors onto the linked listing's
+//     status (My Listings / All Listings) and the linked TC deal's
+//     phase, so every board shows the same stage. Fell Through
+//     releases the listing back to Active.
+// Before this existed, the Production and TC boards wrote to the deals
+// table directly, so none of this ran for most stage changes.
+// Never throws — a failure here must never block the save itself.
+export async function afterDealSaved(result, before, meta = {}) {
+  if (!result?.id) return
+  try {
+    if (!before) fireTrigger('dealCreated', result)
+    else fireTrigger('dealUpdated', result, before, meta)
+  } catch { /* never block */ }
+  // triggersOnly: the caller (TC board) already syncs listing + TC itself.
+  if (meta.triggersOnly) return
+  try {
+    if (result.stage && result.stage !== before?.stage) {
+      const { stageToListingStatus, stageToTcPhase } = await import('./tcPhaseMap')
+      const listingId = result.listing_id || before?.listing_id
+      const newStatus = stageToListingStatus[result.stage]
+      if (listingId && newStatus) {
+        await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listingId)
+      }
+      // A brand-new deal has no TC deal yet; only sync on real changes.
+      const newPhase = stageToTcPhase[result.stage]
+      if (newPhase && before) {
+        await supabase.from('tc_deals').update({ tc_phase: newPhase, updated_at: new Date().toISOString() }).eq('linked_deal_id', result.id).then(()=>{}).catch(()=>{})
+      }
+    }
+  } catch(e) { console.warn('[lifecycle] deal→boards sync skipped:', e.message) }
+}
+
 // ── HELPER ───────────────────────────────────────────────────────
 async function run(promise) {
   const { data, error } = await promise
@@ -395,27 +431,7 @@ deals: {
     const result = await run(supabase.from('deals').update({ ...stripVirtual(data), updated_at: new Date().toISOString() }).eq('id', id).select().single())
     const agentId = actingAgentId || data.agent_id || before?.agent_id || null
     await logDiff(agentId, 'deals', id, before, result, result.addr || 'Deal')
-    fireTrigger('dealUpdated', result, before, { actingAgentId })
-    // ── LIFECYCLE: deal stage mirrors EVERYWHERE (July 2026) ────────
-    // Every stage change on the Production board updates the linked
-    // listing's status (My Listings / All Listings) AND the linked TC
-    // deal's phase — so every board shows the listing's actual stage.
-    // Fell Through releases the listing back to Active for everyone.
-    // Never blocks the save.
-    try {
-      if (data.stage && data.stage !== before?.stage) {
-        const { stageToListingStatus, stageToTcPhase } = await import('./tcPhaseMap')
-        const listingId = result.listing_id || before?.listing_id
-        const newStatus = stageToListingStatus[data.stage]
-        if (listingId && newStatus) {
-          await supabase.from('listings').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', listingId)
-        }
-        const newPhase = stageToTcPhase[data.stage]
-        if (newPhase) {
-          await supabase.from('tc_deals').update({ tc_phase: newPhase, updated_at: new Date().toISOString() }).eq('linked_deal_id', id).then(()=>{}).catch(()=>{})
-        }
-      }
-    } catch(e) { console.warn('[lifecycle] deal→boards sync skipped:', e.message) }
+    await afterDealSaved(result, before, { actingAgentId })
     return result
   },
   async delete(id, agentId) {

@@ -132,6 +132,12 @@ function buildTriggerData(triggerType, record, prev) {
     gci:          record.gci  || 0,
     production:   record.production || 0,
     close_date:   record.expected_close_date || record.close_date || '',
+    // Deal client details — used by the create_gift action and by
+    // {{client_name}} / {{side}} placeholders in emails & notes.
+    client_name:  isDealTrigger ? (record.client_name || record.client_legal_name || '') : '',
+    client_email: isDealTrigger ? (record.client_email || '') : '',
+    client_phone: isDealTrigger ? (record.client_phone || '') : '',
+    side:         record.side || '',
     // Task
     task_id:      isTaskTrigger ? record.id : null,
     title:        record.title || '',
