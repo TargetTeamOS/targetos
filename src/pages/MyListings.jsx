@@ -29,10 +29,11 @@ import { mainThemeFor, themeLabel } from '../lib/feedbackThemes'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-const LISTING_STATUSES = ['Active','Coming Soon','Under Contract','Sold','Expired','Withdrawn']
+const LISTING_STATUSES = ['Active','Coming Soon','Accepted offer','Under Contract','Sold','Expired','Withdrawn']
 const STATUS_COLORS = {
   'Active':           '#10B981',
   'Coming Soon':      '#8B5CF6',
+  'Accepted offer':   '#784bd1',
   'Under Contract':   '#F97316',
   'Sold':             '#3B82F6',
   'Expired':          '#DC2626',
@@ -380,7 +381,7 @@ export function MyListings() {
         tcDeal = r.data
       } catch(e) { console.warn('tc_deals sync lookup failed:', e.message) }
       if (tcDeal?.id) {
-        const statusToPhase = { 'Active': 'active', 'Under Contract': 'under_contract', 'Sold': 'closed', 'Coming Soon': 'pre_listing' }
+        const statusToPhase = { 'Active': 'active', 'Accepted offer': 'offer', 'Under Contract': 'under_contract', 'Sold': 'closed', 'Coming Soon': 'pre_listing' }
         const phase = statusToPhase[newStatus]
         if (phase) await supabase.from('tc_deals').update({ tc_phase: phase, updated_at: new Date().toISOString() }).eq('id', tcDeal.id)
       }
@@ -394,7 +395,8 @@ export function MyListings() {
 
   const stats = {
     active:  listings.filter(l => l.status === 'Active').length,
-    uc:      listings.filter(l => l.status === 'Under Contract').length,
+    // Same rule as All Listings: an accepted offer counts as under contract.
+    uc:      listings.filter(l => l.status === 'Under Contract' || l.status === 'Accepted offer').length,
     sold:    listings.filter(l => l.status === 'Sold').length,
     totalShowings: showings.length,
   }

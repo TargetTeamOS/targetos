@@ -146,13 +146,7 @@ export function CustomFields() {
         and are usable as filters in Segments and Dashboard, no engineering work needed.
         Values are saved with each record. You can reorder, hide, or delete fields at any time.
         Managers and admins can also add a field directly from any board's own add/edit form
-        (look for "+ Add a custom field" at the bottom of the form) — it lands here too, same list, same storage.<br/>
-        <strong>SQL required (one-time per board, already run for every board listed above):</strong>{' '}
-        <code style={{ background:'rgba(0,0,0,.06)', padding:'1px 5px', borderRadius:4, fontSize:11, display:'block', marginTop:4, whiteSpace:'pre-wrap' }}>
-          {Object.keys(ENTITY_LABELS).map(entity =>
-            `alter table ${entity} add column if not exists custom_data jsonb default '{}';`
-          ).join('\n')}
-        </code>
+        (look for "+ Add a custom field" at the bottom of the form) — it lands here too, same list, same storage.
       </div>
 
       {/* Entity tabs */}

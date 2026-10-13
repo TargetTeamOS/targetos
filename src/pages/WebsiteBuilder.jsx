@@ -84,9 +84,14 @@ export function WebsiteBuilder() {
   const [content,       setContent]       = useState({})
   const [saving,        setSaving]        = useState(false)
   const [saved,         setSaved]         = useState({})  // { sectionId: true }
+  // True only when the website_content table can't be read (e.g. it was
+  // never created). The setup SQL now lives in sql/fixes/2026-10_audit_fixes.sql
+  // instead of being printed on the page for every visitor.
+  const [setupNeeded,   setSetupNeeded]   = useState(false)
 
   useEffect(() => {
-    supabase.from('website_content').select('section,content').then(({ data }) => {
+    supabase.from('website_content').select('section,content').then(({ data, error }) => {
+      if (error) { console.warn('website_content load failed:', error.message); setSetupNeeded(true); return }
       const loaded = {}
       ;(data || []).forEach(row => { loaded[row.section] = row.content })
       setContent(loaded)
@@ -337,14 +342,13 @@ export function WebsiteBuilder() {
         </div>
       </div>
 
-      {/* SQL reminder */}
-      <div style={{ padding:'10px 16px', background:'rgba(59,130,246,.08)', borderRadius:10, border:'1px solid rgba(59,130,246,.2)', marginBottom:16, fontSize:12, color:'#1E40AF', lineHeight:1.6 }}>
-        <strong>One-time setup:</strong> Run in Supabase SQL editor:
-        <code style={{ display:'block', marginTop:4, fontFamily:'monospace', fontSize:11, background:'rgba(59,130,246,.1)', padding:'6px 10px', borderRadius:6 }}>
-          create table if not exists website_content (id uuid default gen_random_uuid() primary key, section text unique not null, content jsonb, updated_at timestamptz default now()); alter table website_content enable row level security; create policy "Allow all" on website_content for all using (true);
-        </code>
-        Also create a Supabase Storage bucket named <strong>website-assets</strong> (Public) for images.
-      </div>
+      {/* Only shown when the website_content table can't be read */}
+      {setupNeeded && (
+        <div style={{ padding:'10px 16px', background:'rgba(220,38,38,.06)', borderRadius:10, border:'1px solid rgba(220,38,38,.25)', marginBottom:16, fontSize:12, color:'#991B1B', lineHeight:1.6 }}>
+          <strong>Website content can't be loaded or saved yet.</strong>{' '}
+          {isAdmin ? 'The website_content table is missing. Ask your developer to run sql/fixes/2026-10_audit_fixes.sql once in Supabase.' : 'Please let an admin know.'}
+        </div>
+      )}
 
       <div style={{ display:'grid', gridTemplateColumns:'220px 1fr', gap:16 }}>
         {/* Left: section list */}
