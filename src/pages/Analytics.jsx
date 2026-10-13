@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext'
 import { useAgents } from '../lib/hooks'
 import { fmt$, parseNum } from '../lib/utils'
 import { Loading } from '../components/UI'
+import { stageLabel } from '../lib/constants'
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area,
@@ -609,7 +610,7 @@ export function Analytics() {
               return counts.map(c => (
                 <div key={c.st} style={{ marginBottom: 12 }}>
                   <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}>
-                    <span style={{ fontWeight:700, color:'var(--text)' }}>{c.st}</span>
+                    <span style={{ fontWeight:700, color:'var(--text)' }}>{stageLabel(c.st)}</span>
                     <span style={{ color:'var(--muted)' }}>{c.n} {c.gci > 0 ? '· ' + fmt$(c.gci) + ' GCI' : ''}</span>
                   </div>
                   <div style={{ height: 26, background:'var(--dim)', borderRadius:6, overflow:'hidden' }}>
