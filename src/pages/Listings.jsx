@@ -902,7 +902,7 @@ export function Listings() {
           action={<Btn onClick={syncFromMonday}>{syncing?'⏳ Syncing...':'↓ Sync from Monday.com'}</Btn>} />
       ) : view === 'grid' ? (
         // Grid View
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px,1fr))', gap:12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(250px,1fr))', gap:12, width:'100%', minWidth:0 }}>
           {filtered.map(l => (
             <ListingCard key={l.id} listing={l} selected={selected?.id===l.id} agents={agents}
               onSelect={setSelected} onToggleIvr={toggleIvr} onShowings={l2=>{setSelected(l2);}}

@@ -179,8 +179,11 @@ export function Layout({ children }) {
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="app-main" style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '28px 28px' }}>
+      <main className="app-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', background: 'var(--bg)' }}>
+        {/* width:100% + minWidth:0 so the content column always spans the
+            space beside the sidebar (capped at maxWidth) and can't shrink to
+            its content's intrinsic width inside the flex row. */}
+        <div style={{ width: '100%', minWidth: 0, maxWidth: '1400px', margin: '0 auto', padding: '28px 28px', boxSizing: 'border-box' }}>
           {children}
         </div>
       </main>
