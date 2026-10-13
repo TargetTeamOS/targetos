@@ -18,6 +18,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth }    from '../context/AuthContext'
 import { useApp }     from '../context/AppContext'
 import { supabase }   from '../lib/supabase'
+import { afterDealSaved } from '../lib/db'
 import { fmt$, fmtDate, matchSearch } from '../lib/utils'
 import { phaseToStage, phaseToStatus } from '../lib/tcPhaseMap'
 import { logRecordChange } from '../lib/recordActivity'
@@ -878,8 +879,12 @@ export function TransactionCoordinator() {
       }
       if (updates.tc_phase !== undefined) {
         if (deal.linked_deal_id) {
-          const r = await supabase.from('deals').update({ stage:phaseToStage[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id)
+          const { data: beforeDeal } = await supabase.from('deals').select('*').eq('id', deal.linked_deal_id).maybeSingle()
+          const r = await supabase.from('deals').update({ stage:phaseToStage[updates.tc_phase], updated_at:new Date().toISOString() }).eq('id', deal.linked_deal_id).select('*').maybeSingle()
           if (r.error) throw r.error
+          // Fire deal automations (gift entries, stage emails) — this path
+          // used to skip them. Listing/TC sync is done right here instead.
+          if (r.data && beforeDeal) afterDealSaved(r.data, beforeDeal, { actingAgentId: agent?.id, triggersOnly: true })
           if (!synced.includes('Production')) synced.push('Production')
         }
         if (deal.linked_listing_id) {
