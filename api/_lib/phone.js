@@ -331,6 +331,87 @@ function isTwilioRecordingUrl(url) {
   return /^https:\/\/api\.twilio\.com\//.test(String(url || ''))
 }
 
+// ── WHISPER HALLUCINATION GUARD (Oct 2026) ──────────────────────────
+// On silent / very short / near-empty audio (caller hung up at the
+// beep, dead air, hold tone), Whisper doesn't return "" -- it invents
+// text learned from subtitled YouTube videos in its training data. The
+// classic outputs are subtitle credit lines ("Subtítulos realizados por
+// la comunidad de Amara.org") and video sign-offs ("¡Adiós!", "Thanks
+// for watching"). These were showing up as real voicemail transcripts.
+//
+// Rules:
+//  1. Any sentence mentioning Amara.org, or a "Subtitles by ..." credit
+//     line in any language, is ALWAYS removed -- a caller never says it.
+//  2. If what's left consists ONLY of stock sign-off phrases below, the
+//     whole transcript is treated as "no speech" (null). Phrases are
+//     only blocked when they are the ENTIRE transcript -- "...call me
+//     back, thank you" in a real message is kept untouched.
+// Matching is done on a normalized form (lowercase, accents and
+// punctuation stripped), so "¡Adiós!" and "adios" both match.
+const WHISPER_CREDIT_LINE_RE = /amara\s*\.?\s*org|^\s*(subt[ií]tulos|subtitulado|subtitles|subtitled|captions|untertitel|sous-titres|sous-titrage|sottotitoli|ondertiteling|napisy|legendas)\b.*\b(by|por|von|par|da|door|przez|realizados|creados|hechos|im auftrag)\b/i
+const WHISPER_SIGNOFF_PHRASES = new Set([
+  // English
+  'you', 'thank you', 'thanks', 'thank you very much', 'thank you so much',
+  'thanks for watching', 'thank you for watching', 'thanks for watching bye',
+  'please subscribe', 'like and subscribe', 'subscribe to my channel',
+  'bye', 'bye bye', 'goodbye', 'music', 'applause', 'silence', 'blank',
+  // Spanish
+  'adios', 'gracias', 'muchas gracias', 'gracias por ver', 'gracias por ver el video',
+  'gracias por mirar', 'hasta luego', 'hasta la proxima', 'musica', 'suscribete',
+  // German / French / Italian / Portuguese (Whisper's other common sign-offs)
+  'danke', 'tschuss', 'vielen dank', 'danke fürs zuschauen', 'danke furs zuschauen',
+  'merci', 'au revoir', 'merci d avoir regarde', 'grazie', 'grazie per la visione',
+  'obrigado', 'tchau',
+])
+
+function normalizeForHallucinationCheck(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // strip accents
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')                    // strip punctuation (¡!¿?.,)
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Returns the cleaned transcript, or null if it contains no real speech.
+// Safe to call on any transcript source (Whisper or Twilio's own
+// TranscriptionText).
+function cleanTranscript(text) {
+  if (!text) return null
+  const sentences = String(text).split(/(?<=[.!?。])\s+|\n+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .filter(s => !WHISPER_CREDIT_LINE_RE.test(s))         // rule 1
+  if (!sentences.length) return null
+  const allSignoffs = sentences.every(s => {
+    const n = normalizeForHallucinationCheck(s)
+    return !n || WHISPER_SIGNOFF_PHRASES.has(n)
+  })
+  if (allSignoffs) return null                             // rule 2
+  const out = sentences.join(' ').trim()
+  return out || null
+}
+
+// Audio shorter than this is treated as "no speech" without trusting
+// whatever Whisper returned for it.
+const MIN_SPEECH_SECONDS = 2
+
+// Per-segment filter on Whisper's verbose_json output. Thresholds are
+// the ones Whisper itself uses internally: a segment is silence if
+// no_speech_prob > 0.6 AND avg_logprob < -1.0; we also drop segments
+// that are near-certainly silence, extremely low confidence, or a
+// repetition loop (compression_ratio > 2.4).
+function isLikelyRealSpeechSegment(seg) {
+  const nsp = typeof seg.no_speech_prob === 'number' ? seg.no_speech_prob : 0
+  const alp = typeof seg.avg_logprob   === 'number' ? seg.avg_logprob   : -10
+  const cr  = typeof seg.compression_ratio === 'number' ? seg.compression_ratio : 0
+  if (nsp > 0.6 && alp < -1.0) return false
+  if (nsp > 0.8) return false
+  if (alp < -1.5) return false
+  if (cr > 2.4) return false
+  return true
+}
+
 // ── TRANSCRIPTION (OpenAI Whisper) ──────────────────────────────────
 // Transcribes a Twilio recording URL for calls AND voicemails, in
 // English, Yiddish, or Spanish (auto-detected -- Whisper doesn't
@@ -410,11 +491,24 @@ async function transcribeAudio(recordingUrl) {
         })
         if (res.ok) {
           const result = await res.json()
-          const segments = result.segments || []
+          // Too short to contain a real message (hang-up at the beep).
+          // Duration is a property of the audio, not the language, so
+          // stop immediately rather than paying for more passes.
+          if (typeof result.duration === 'number' && result.duration < MIN_SPEECH_SECONDS) {
+            console.info('[transcribeAudio] audio ' + result.duration + 's < ' + MIN_SPEECH_SECONDS + 's — no speech')
+            return null
+          }
+          // Keep only segments that look like real speech, and rebuild
+          // the text from those (result.text includes the hallucinated
+          // segments too).
+          const segments = (result.segments || []).filter(isLikelyRealSpeechSegment)
           const avgLogProb = segments.length
-            ? segments.reduce((sum, s) => sum + (s.avg_logprob || -10), 0) / segments.length
+            ? segments.reduce((sum, s) => sum + (typeof s.avg_logprob === 'number' ? s.avg_logprob : -10), 0) / segments.length
             : -10
-          attempt = { lang, text: result.text || '', avgLogProb }
+          const rawText = segments.length
+            ? segments.map(s => (s.text || '').trim()).filter(Boolean).join(' ')
+            : ((result.segments && result.segments.length) ? '' : (result.text || ''))
+          attempt = { lang, text: cleanTranscript(rawText) || '', avgLogProb }
         }
       } catch (e) { /* try next in priority order */ }
 
@@ -429,8 +523,10 @@ async function transcribeAudio(recordingUrl) {
     }
 
     // Nothing hit the confidence threshold — use whichever attempt
-    // scored best overall rather than returning nothing.
-    if (bestSoFar) return { text: bestSoFar.text, language: langNames[bestSoFar.lang] || bestSoFar.lang }
+    // scored best overall rather than returning nothing, as long as it
+    // isn't so low-confidence that it's almost certainly invented.
+    if (bestSoFar && bestSoFar.avgLogProb >= -1.0) return { text: bestSoFar.text, language: langNames[bestSoFar.lang] || bestSoFar.lang }
+    if (bestSoFar) console.info('[transcribeAudio] best attempt too low-confidence (' + bestSoFar.avgLogProb.toFixed(2) + ') — treating as no speech')
     return null
   } catch (e) {
     console.warn('[transcribeAudio] failed:', e.message)
@@ -464,7 +560,7 @@ module.exports = {
   // Phone
   normalizePhone, formatPhone, phoneVariants,
   // Business logic
-  isBusinessHours, loadFlow, lookupContact, transcribeAudio, logCallEvent,
+  isBusinessHours, loadFlow, lookupContact, transcribeAudio, cleanTranscript, logCallEvent,
   // Constants
   BASE_URL, TWILIO_NUMBER, DEFAULT_VOICE, HOLD_MUSIC,
 }

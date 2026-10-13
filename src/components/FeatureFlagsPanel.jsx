@@ -9,6 +9,11 @@ import { invalidateFlags } from '../lib/features'
 
 const ff = 'Inter,system-ui,sans-serif'
 
+// Flags evaluated fail-closed with NO admin bypass (src/lib/offersV2Flag.js,
+// api/_lib/offersDb.js isSendTestEnabled) — unlike flagAllows() in
+// src/lib/features.js, which the general "Admins always have access" text describes.
+const FAIL_CLOSED_KEYS = ['offers_v2_beta', 'offers_v2_send_test']
+
 export function FeatureFlagsPanel({ agents = [] }) {
   const { agent } = useAuth()
   const { toast } = useApp()
@@ -56,7 +61,7 @@ export function FeatureFlagsPanel({ agents = [] }) {
     <div style={{ fontFamily: ff }}>
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
         Kill switches and access control for gated features. <strong>Off</strong> hides the feature and blocks its API for everyone except admins.
-        With no agents selected, an enabled feature is available to <strong>everyone</strong>; selecting agents restricts it to <strong>only them</strong>. Admins always have access.
+        With no agents selected, an enabled feature is available to <strong>everyone</strong>; selecting agents restricts it to <strong>only them</strong>. Admins always have access, except for flags marked otherwise below.
       </div>
       {rows.map(row => {
         const allow = Array.isArray(row.allowed_agent_ids) ? row.allowed_agent_ids : []
@@ -66,6 +71,11 @@ export function FeatureFlagsPanel({ agents = [] }) {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{row.label}</div>
                 {row.description && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{row.description}</div>}
+                {FAIL_CLOSED_KEYS.includes(row.key) && (
+                  <div style={{ fontSize: 11, color: '#B45309', marginTop: 4, fontWeight: 600 }}>
+                    Admins are NOT automatically included for this flag. If any agents are selected below, select yourself too, or you will keep seeing the old version.
+                  </div>
+                )}
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: row.enabled ? '#10B981' : 'var(--muted)', fontWeight: 700, cursor: 'pointer' }}>
                 <input type="checkbox" checked={!!row.enabled} onChange={e => save(row.key, { enabled: e.target.checked })} />

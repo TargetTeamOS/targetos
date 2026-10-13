@@ -1,6 +1,6 @@
 'use strict'
 const querystring = require('querystring')
-const { getSupabase, checkTwilioSignature, transcribeAudio, isTwilioRecordingUrl } = require('./_lib/phone')
+const { getSupabase, checkTwilioSignature, transcribeAudio, cleanTranscript, isTwilioRecordingUrl } = require('./_lib/phone')
 const { notifyAgent } = require('./_lib/notify')
 function getRawBody(req) { return new Promise((res,rej)=>{ let d=''; req.on('data',c=>{d+=c}); req.on('end',()=>res(d)); req.on('error',rej) }) }
 module.exports = async function handler(req, res) {
@@ -22,10 +22,20 @@ module.exports = async function handler(req, res) {
     // Awaited deliberately -- see twilio-status.js for why "fire and
     // forget" isn't safe on Vercel serverless. No-ops cleanly if
     // OPENAI_API_KEY isn't configured yet.
+    //
+    // Oct 2026: transcribeAudio() now filters Whisper's well-known
+    // silence hallucinations ("Subtítulos realizados por la comunidad de
+    // Amara.org", "¡Adiós!", ...) and returns null for audio under ~2s.
+    // A null transcript means "no speech detected" -- the recording
+    // itself is still saved below regardless. Twilio's own
+    // TranscriptionText in this callback is intentionally NOT used.
     let transcriptText = null, transcriptLang = null
-    if (fullRecordingUrl) {
+    const recSecs = RecordingDuration != null && RecordingDuration !== '' ? parseInt(RecordingDuration, 10) : NaN
+    if (fullRecordingUrl && !(recSecs >= 0 && recSecs < 2)) {
       const result = await transcribeAudio(fullRecordingUrl)
-      if (result) { transcriptText = result.text; transcriptLang = result.language }
+      // cleanTranscript again as a final guard on whatever we store.
+      const cleaned = result ? cleanTranscript(result.text) : null
+      if (cleaned) { transcriptText = cleaned; transcriptLang = result.language }
     }
 
     const { data: call } = await supabase.from('calls').select('*').eq('twilio_call_sid', CallSid).maybeSingle()

@@ -7,12 +7,21 @@
 // ── DEAL STAGES (Production Sheet → Stage column) ───────────────
 export const DEAL_STAGES = [
   { value: 'Negotiations',      label: 'Negotiations',      hex: '#037f4c' },
-  { value: 'Offer Accapted',    label: 'Offer Accapted',    hex: '#00c875' }, // intentional spelling
+  // value keeps the stored spelling 'Offer Accapted' — it's the key used in
+  // the database, the monday.com sync, automations and reports, so it must
+  // NOT change. Only the on-screen label is spelled correctly.
+  { value: 'Offer Accapted',    label: 'Offer Accepted',    hex: '#00c875' },
   { value: 'Under Shtar',       label: 'Under Shtar',       hex: '#bb3354' },
   { value: 'Under Contract',    label: 'Under Contract',    hex: '#757575' },
   { value: 'Closed',            label: 'Closed',            hex: '#225091' },
   { value: 'Deal Fell Through', label: 'Deal Fell Through', hex: '#ff007f' },
 ]
+
+// On-screen name for a stored stage value (fixes the 'Offer Accapted'
+// spelling for display only; unknown values are shown as-is).
+export function stageLabel(stage) {
+  return DEAL_STAGES.find(s => s.value === stage)?.label || stage || ''
+}
 
 // ── CONTRACT TO CLOSE STAGES ────────────────────────────────────
 export const CTC_STAGES = [

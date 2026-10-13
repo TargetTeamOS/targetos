@@ -18,6 +18,7 @@ import html2canvas from 'html2canvas'
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 const NAVY = '#1B2B4B'
 const RED  = '#CC2200'
+const MAX_SLOTS = 9 // flyer grid capacity (3x3)
 
 // Static team roster for the footer — matches the original artwork.
 // Update here if the roster changes; deliberately not pulled from the
@@ -169,8 +170,9 @@ export function WeeklyAd() {
   function toggle(id) {
     setSelectedIds(prev => {
       if (prev.includes(id)) return prev.filter(x => x !== id)
-      if (prev.length >= 9) { toast('Weekly ad fits 9 listings — remove one first', '#F5A623'); return prev }
-      return [...prev, id]
+      const live = prev.filter(x => listings.some(l => l.id === x))
+      if (live.length >= MAX_SLOTS) { toast('Weekly ad fits ' + MAX_SLOTS + ' listings — remove one first', '#F5A623'); return live }
+      return [...live, id]
     })
   }
 
@@ -214,7 +216,7 @@ export function WeeklyAd() {
       <div className="no-print">
         <PageHeader
           title="Weekly Ad"
-          sub={selectedIds.length + ' of 9 listings selected'}
+          sub={selectedListings.length + ' of ' + listings.length + ' listings selected · max ' + MAX_SLOTS + ' per ad'}
           actions={
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <LastVisited page="weekly-ad" />
