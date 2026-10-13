@@ -1008,21 +1008,82 @@ function TwilioSettings() {
     { path:'/api/twilio-voicemail', label:'Voicemail Transcription',   desc:'Automatically called when a voicemail transcription is ready' },
   ]
 
+  // Real connection check (Oct 2026). This panel used to show a
+  // hardcoded "Credentials in Vercel — add your Twilio credentials"
+  // banner even with Twilio live. Credentials are server-only env vars
+  // the browser can't (and shouldn't) see, so the proof we use is the
+  // same thing that makes Admin → System say "Twilio Active": calls are
+  // actually flowing. Every call row created by the Twilio webhooks
+  // carries a twilio_call_sid; at least one such row means the account
+  // SID / auth token / number / webhooks are configured and working.
+  // Only a count + last-activity date is read — no secrets.
+  const [twStatus, setTwStatus] = useState({ loading:true, count:0, lastAt:null, error:null })
+  const [showSetup, setShowSetup] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    async function check() {
+      try {
+        const [cnt, last] = await Promise.all([
+          supabase.from('calls').select('id', { count:'exact', head:true }).not('twilio_call_sid', 'is', null),
+          supabase.from('calls').select('created_at').not('twilio_call_sid', 'is', null).order('created_at', { ascending:false }).limit(1),
+        ])
+        if (cancelled) return
+        if (cnt.error) throw cnt.error
+        const lastRow = (last && last.data && last.data[0]) || null
+        setTwStatus({ loading:false, count:cnt.count || 0, lastAt:lastRow ? lastRow.created_at : null, error:null })
+      } catch (e) {
+        if (!cancelled) setTwStatus({ loading:false, count:0, lastAt:null, error:(e && e.message) || 'check failed' })
+      }
+    }
+    check()
+    return () => { cancelled = true }
+  }, [])
+  const twConnected = !twStatus.loading && twStatus.count > 0
+  const setupOpen = !twStatus.loading && (!twConnected || showSetup)
+
   return (
     <div style={{ maxWidth:'640px' }}>
       <div style={{ fontSize:'15px', fontWeight:800, color:'var(--text)', marginBottom:'4px' }}>Twilio Connection</div>
       <div style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'20px' }}>
-        Connect your Twilio account to activate inbound call routing, call recording, and voicemail.
+        {twConnected
+          ? 'Twilio is connected — inbound call routing, call recording, and voicemail are live.'
+          : 'Connect your Twilio account to activate inbound call routing, call recording, and voicemail.'}
       </div>
 
-      <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'12px 16px', background:'var(--dim)', borderRadius:'10px', border:'1px solid var(--border)', marginBottom:'20px' }}>
-        <div style={{ width:10, height:10, borderRadius:'50%', background:'#F5A623', flexShrink:0 }} />
-        <div>
-          <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>Credentials in Vercel</div>
-          <div style={{ fontSize:'11px', color:'var(--muted)' }}>Add your Twilio credentials in Vercel environment variables to activate</div>
+      {twStatus.loading ? (
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'12px 16px', background:'var(--dim)', borderRadius:'10px', border:'1px solid var(--border)', marginBottom:'20px' }}>
+          <div style={{ width:10, height:10, borderRadius:'50%', background:'var(--muted)', flexShrink:0 }} />
+          <div style={{ fontSize:'13px', fontWeight:700, color:'var(--muted)' }}>Checking Twilio connection…</div>
         </div>
-      </div>
+      ) : twConnected ? (
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'12px 16px', background:'rgba(16,185,129,.08)', borderRadius:'10px', border:'1px solid rgba(16,185,129,.3)', marginBottom:'20px' }}>
+          <div style={{ width:10, height:10, borderRadius:'50%', background:'#10B981', flexShrink:0 }} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:'13px', fontWeight:800, color:'#10B981' }}>✅ Connected / Active</div>
+            <div style={{ fontSize:'11px', color:'var(--muted)' }}>
+              {twStatus.count + ' call' + (twStatus.count === 1 ? '' : 's') + ' handled through Twilio' + (twStatus.lastAt ? ' · last activity ' + fmtDate(twStatus.lastAt) : '')}
+            </div>
+          </div>
+          <button onClick={() => setShowSetup(v => !v)}
+            style={{ padding:'4px 10px', borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:'11px', cursor:'pointer', fontFamily:ff, flexShrink:0 }}>
+            {showSetup ? 'Hide setup details' : 'Show setup details'}
+          </button>
+        </div>
+      ) : (
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'12px 16px', background:'var(--dim)', borderRadius:'10px', border:'1px solid var(--border)', marginBottom:'20px' }}>
+          <div style={{ width:10, height:10, borderRadius:'50%', background:'#F5A623', flexShrink:0 }} />
+          <div>
+            <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>Not connected yet</div>
+            <div style={{ fontSize:'11px', color:'var(--muted)' }}>
+              {twStatus.error
+                ? 'Could not verify the connection (' + twStatus.error + '). If Twilio is not set up yet, follow the steps below.'
+                : 'No calls have come through Twilio yet. Add your Twilio credentials in Vercel environment variables and set the webhooks below to activate.'}
+            </div>
+          </div>
+        </div>
+      )}
 
+      {setupOpen && (<>
       <div style={{ background:'var(--panel)', borderRadius:'12px', border:'1px solid var(--border)', padding:'16px', marginBottom:'16px' }}>
         <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'10px' }}>Step 1 — Add to Vercel Environment Variables</div>
         {[
@@ -1062,6 +1123,7 @@ function TwilioSettings() {
           </div>
         ))}
       </div>
+      </>)}
 
       <div style={{ background:'var(--dim)', borderRadius:'12px', border:'1px solid var(--border)', padding:'16px' }}>
         <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)', marginBottom:'10px' }}>✅ What's Already Built and Ready</div>
@@ -1071,7 +1133,7 @@ function TwilioSettings() {
           'Round-robin distribution across agents when no match',
           'All calls logged automatically with duration, direction, outcome',
           'Call recordings saved and playable in the Call Log',
-          'Voicemails saved with transcript (when Twilio transcription is on)',
+          'Voicemails saved with transcript (Whisper — silent/very short recordings are left blank)',
         ].map((item, i) => (
           <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:'8px', marginBottom:'6px' }}>
             <span style={{ color:'#10B981', flexShrink:0 }}>✓</span>
