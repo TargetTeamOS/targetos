@@ -836,7 +836,7 @@ export function Contacts() {
 
       {/* Contact Grid / List — grouped by role when enabled */}
       {!loading && filtered.length > 0 && viewMode === 'grid' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px', width: '100%', minWidth: 0 }}>
           {displayList.map((c, idx, arr) => {
             const isSelected = selectedIds.includes(c.id)
             const isPopup    = popupContact?.id === c.id
