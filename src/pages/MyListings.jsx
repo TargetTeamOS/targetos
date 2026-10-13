@@ -28,6 +28,13 @@ import { usePageView, LastVisited } from '../components/PageViewTracking'
 import { mainThemeFor, themeLabel } from '../lib/feedbackThemes'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+// Stored MLS links can be double URL-encoded (multi_search=15%2520North%2520St).
+// Collapse extra "%25XX" layers so the URL is encoded exactly once.
+function fixMlsUrl(url) {
+  let s = String(url || '').trim()
+  for (let i = 0; i < 5 && /%25[0-9A-Fa-f]{2}/.test(s); i++) s = s.replace(/%25([0-9A-Fa-f]{2})/g, '%$1')
+  return s
+}
 
 const LISTING_STATUSES = ['Active','Coming Soon','Accepted offer','Under Contract','Sold','Expired','Withdrawn']
 const STATUS_COLORS = {
@@ -145,7 +152,7 @@ function ListingRow({ listing, agent, showings, openHouses, onOpen, connected })
           <span>{listing.marketing_status ? listing.marketing_status + ' · ' : ''}Seller upd: {listing.seller_updated_at ? fmtDate(listing.seller_updated_at) : 'never'}</span>
           {connected?.tc && <span style={{ color:'#0B7A45', fontWeight:700 }}>📋 TC</span>}
           {connected?.prod && <span style={{ color:'#0B7A45', fontWeight:700 }}>💼 Production</span>}
-          {listing.mls_link && <a href={listing.mls_link} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{ color:'#3B82F6', fontWeight:700, textDecoration:'none' }}>MLS ↗</a>}
+          {listing.mls_link && <a href={fixMlsUrl(listing.mls_link)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{ color:'#3B82F6', fontWeight:700, textDecoration:'none' }}>MLS ↗</a>}
         </div>
       </div>
       {/* Open */}

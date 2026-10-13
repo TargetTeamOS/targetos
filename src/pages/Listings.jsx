@@ -66,6 +66,14 @@ const MONDAY_BOARD   = '2445753704'
 
 // ── HELPERS ───────────────────────────────────────────────────
 function statusColor(s) { return STATUSES.find(x => x.id === s)?.color || '#c4c4c4' }
+// Stored MLS links (imported from Monday) can be double URL-encoded, e.g.
+// multi_search=15%2520North%2520St. Collapse every extra "%25XX" layer so
+// the final URL is encoded exactly once (15%20North%20St).
+function fixMlsUrl(url) {
+  let s = String(url || '').trim()
+  for (let i = 0; i < 5 && /%25[0-9A-Fa-f]{2}/.test(s); i++) s = s.replace(/%25([0-9A-Fa-f]{2})/g, '%$1')
+  return s
+}
 function Badge({ label, color, size = 11 }) {
   return (
     <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:20, background:color+'22', color, border:"1px solid " + (color) + "44", fontSize:size, fontWeight:700, whiteSpace:'nowrap' }}>
@@ -293,7 +301,7 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
                 </select>
               </Field>
               {form.mls_link && (
-                <a href={form.mls_link} target="_blank" rel="noopener noreferrer"
+                <a href={fixMlsUrl(form.mls_link)} target="_blank" rel="noopener noreferrer"
                   style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, border:'1px solid #3B82F644', background:'#3B82F611', color:'#3B82F6', fontSize:12, fontWeight:700, textDecoration:'none', marginBottom:10 }}>
                   🔗 View MLS Listing
                 </a>
@@ -687,6 +695,7 @@ export function Listings() {
   }
 
   async function saveListing(form) {
+    if (form.mls_link) form = { ...form, mls_link: fixMlsUrl(form.mls_link) }
     try {
       if (selected) {
         const { showings_count: _sc, agents: _la, ...cleanListing } = form
@@ -744,7 +753,12 @@ export function Listings() {
     if (bedsF     && String(l.beds)  !== bedsF)     return false
     if (minPrice  && parseFloat(l.list_price) < parseFloat(minPrice)) return false
     if (maxPrice  && parseFloat(l.list_price) > parseFloat(maxPrice)) return false
-    if (search    && !matchSearch(l, search, ['addr','city','notes','seller_name'])) return false
+    if (search) {
+      // Case-insensitive match across text fields + assigned agent's name
+      const agName = (agents.find(a => a.id === l.agent_id) || {}).name || ''
+      const row = { ...l, _agent: agName }
+      if (!matchSearch(row, search.trim(), ['addr','unit','city','town','state','zip','mls_number','mls_id','mls_link','seller_name','client_name','agent_name','_agent','property_type','notes'])) return false
+    }
     return true
   })
 
@@ -835,36 +849,43 @@ export function Listings() {
       </div>
 
       {/* Filters */}
+      {/* FilterBar API: filters (values obj) + onChange(nextObj) + definitions (select-style defs).
+          Min/Max price are free-text, so they live in the extra slot rather than definitions. */}
       <FilterBar
-        search={search} onSearch={setSearch} searchPlaceholder="🔍 Address, city, notes..."
-        values={{ statusF, agentF, typeF, bedsF, minPrice, maxPrice }}
-        onChange={(k,v) => {
-          if (k==='statusF')   setStatusF(v)
-          if (k==='agentF')    setAgentF(v)
-          if (k==='typeF')     setTypeF(v)
-          if (k==='bedsF')     setBedsF(v)
-          if (k==='minPrice')  setMinPrice(v)
-          if (k==='maxPrice')  setMaxPrice(v)
+        page="listings"
+        filters={{ search, statusF, agentF, typeF, bedsF }}
+        onChange={f => {
+          const one = v => Array.isArray(v) ? (v[0] || '') : (v || '')
+          setSearch(f.search || '')
+          setStatusF(one(f.statusF))
+          setAgentF(one(f.agentF))
+          setTypeF(one(f.typeF))
+          setBedsF(one(f.bedsF))
         }}
-        total={listings.length} filtered={filtered.length}
-        right={
-          <div style={{ display:'flex', background:'var(--dim)', borderRadius:5, padding:2, gap:1 }}>
-            {[['grid','⊞'],['board','▦']].map(([v,icon])=>(
-              <button key={v} onClick={()=>setView(v)}
-                style={{ padding:'2px 6px', borderRadius:3, border:'none', background:view===v?'#CC2200':'transparent', color:view===v?'#fff':'var(--muted)', cursor:'pointer', fontSize:12, fontFamily:ff }}>
-                {icon}
-              </button>
-            ))}
+        searchKey="search" placeholder="Address, unit, city, MLS#, agent..."
+        definitions={[
+          { key:'statusF',  label:'Status', options:STATUSES.map(s=>({value:s.id,label:s.label,color:s.color})) },
+          ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', options:agents.map(a=>({value:a.id,label:a.name,color:a.color})) }]:[]),
+          { key:'typeF',    label:'Type',   options:PROPERTY_TYPES.map(t=>({value:t,label:t})) },
+          { key:'bedsF',    label:'Beds',   options:['1','2','3','4','5','6','7','8','9'].map(n=>({value:n,label:n+' bd'})) },
+        ]}
+        totalCount={listings.length} filteredCount={filtered.length}
+        extra={
+          <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
+            <input value={minPrice} onChange={e=>setMinPrice(e.target.value)} placeholder="Min $"
+              style={{ width:70, padding:'5px 8px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff }}/>
+            <input value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} placeholder="Max $"
+              style={{ width:70, padding:'5px 8px', borderRadius:7, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:11, fontFamily:ff }}/>
+            <div style={{ display:'flex', background:'var(--dim)', borderRadius:5, padding:2, gap:1 }}>
+              {[['grid','⊞'],['board','▦']].map(([v,icon])=>(
+                <button key={v} onClick={()=>setView(v)}
+                  style={{ padding:'2px 6px', borderRadius:3, border:'none', background:view===v?'#CC2200':'transparent', color:view===v?'#fff':'var(--muted)', cursor:'pointer', fontSize:12, fontFamily:ff }}>
+                  {icon}
+                </button>
+              ))}
+            </div>
           </div>
         }
-        filters={[
-          { key:'statusF',  label:'Status',    type:'select', options:STATUSES.map(s=>({value:s.id,label:s.label})),    placeholder:'Status' },
-          ...(isAdmin||canManage?[{ key:'agentF', label:'Agent', type:'select', options:agents.map(a=>({value:a.id,label:a.name})), placeholder:'Agent' }]:[]),
-          { key:'typeF',    label:'Type',      type:'select', options:PROPERTY_TYPES.map(t=>({value:t,label:t})),       placeholder:'Type' },
-          { key:'bedsF',    label:'Beds',      type:'select', options:['1','2','3','4','5','6','7','8','9'].map(n=>({value:n,label:n+' bd'})), placeholder:'Beds' },
-          { key:'minPrice', label:'Min $',     type:'text',   placeholder:'Min $', width:70, secondary:true },
-          { key:'maxPrice', label:'Max $',     type:'text',   placeholder:'Max $', width:70, secondary:true },
-        ]}
       />
 
       {/* IVR notice */}
