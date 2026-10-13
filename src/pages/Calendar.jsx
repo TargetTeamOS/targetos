@@ -3,7 +3,7 @@
 // Monthly calendar view + list view. All events with own URLs.
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
@@ -43,6 +43,27 @@ function sourceRecordPath(ev) {
   return null
 }
 
+// "1 event" / "2 events" -- never "1 events".
+function eventCountLabel(n) {
+  return n + ' ' + (n === 1 ? 'event' : 'events')
+}
+
+// Collapse rows that share an id (overlapping refetches / any future
+// merge of sources must never paint the same row twice).
+function dedupeById(list) {
+  const seen = new Set()
+  const out = []
+  for (const ev of (list || [])) {
+    const key = ev && ev.id != null ? String(ev.id) : null
+    if (key) {
+      if (seen.has(key)) continue
+      seen.add(key)
+    }
+    out.push(ev)
+  }
+  return out
+}
+
 export function Calendar() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
@@ -80,12 +101,16 @@ export function Calendar() {
     ? { from: startDate, to: endDate }
     : { from: startDate, to: endDate, agent_id: agent?.id }
 
-  const { events, loading, add, update, remove } = useCalendar(filters)
+  const { events: rawEvents, loading, add, update, remove } = useCalendar(filters)
+  const events = useMemo(() => dedupeById(rawEvents), [rawEvents])
   const { agents } = useAgents()
 
   const [selected, setSelected] = useState(null)
   const [form,     setForm]     = useState(BLANK)
   const [saving,   setSaving]   = useState(false)
+  // Synchronous guard: state updates are async, so a fast double-click
+  // could call saveEvent twice before the button re-renders disabled.
+  const savingRef = useRef(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
@@ -121,7 +146,9 @@ export function Calendar() {
   }
 
   async function saveEvent() {
+    if (savingRef.current) return
     if (!form.title.trim()) { toast('Title required', '#DC2626'); return }
+    savingRef.current = true
     setSaving(true)
     try {
       if (selected) {
@@ -138,7 +165,7 @@ export function Calendar() {
       }
     } catch(e) {
       toast('Save failed: ' + e.message, '#DC2626')
-    } finally { setSaving(false) }
+    } finally { savingRef.current = false; setSaving(false) }
   }
 
   async function deleteEvent() {
@@ -171,7 +198,7 @@ export function Calendar() {
     <div style={{ fontFamily: ff }}>
       <PageHeader
         title="Calendar"
-        sub={(seesAll ? '' : 'Your schedule · ') + events.length + ' events in ' + MONTHS[month] + ' ' + year}
+        sub={(seesAll ? '' : 'Your schedule · ') + eventCountLabel(events.length) + ' in ' + MONTHS[month] + ' ' + year}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <LastVisited page="calendar" />
@@ -219,7 +246,7 @@ export function Calendar() {
             ))}
             {/* Day cells */}
             {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-              const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+              const dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0')
               const isToday = dateStr === todayStr
               const dayEvents = eventsOnDay(day)
 
@@ -252,7 +279,7 @@ export function Calendar() {
                     </div>
                     )
                   })}
-                  {dayEvents.length > SZ.max && <div style={{ fontSize: SZ.chip, color: 'var(--muted)', fontWeight:600, marginTop:1 }}>+{dayEvents.length - SZ.max} more</div>}
+                  {dayEvents.length > SZ.max && <div title={eventCountLabel(dayEvents.length)} style={{ fontSize: SZ.chip, color: 'var(--muted)', fontWeight:600, marginTop:1 }}>{'+' + (dayEvents.length - SZ.max) + ' more'}</div>}
                   {showWeather && (
                     <DayWeather address={dayEvents.find(e => e.location)?.location} date={dateStr} />
                   )}
@@ -335,7 +362,7 @@ export function Calendar() {
         <ModalActions>
           {selected && <Btn variant="ghost" style={{ marginRight: 'auto', color: '#DC2626' }} onClick={() => setConfirmDelete(true)}>Delete</Btn>}
           <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
-          <Btn onClick={saveEvent} loading={saving}>{selected ? 'Save' : 'Add Event'}</Btn>
+          <Btn onClick={saveEvent} loading={saving} disabled={saving}>{selected ? 'Save' : 'Add Event'}</Btn>
         </ModalActions>
       </Modal>
 

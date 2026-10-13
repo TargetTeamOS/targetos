@@ -43,20 +43,49 @@ const NOTIF_GROUPS = [
   { key:'emailOnNewLead',  label:'Email me on new lead',         icon:'✉️' },
   { key:'emailOnTaskDue',  label:'Email me on task due',         icon:'✉️' },
 ]
+// Every row here must match a real key handler. Sources:
+//   Ctrl+K            → components/CommandPalette.jsx useCommandPalette()
+//   ↑ ↓ / Enter / Esc → components/CommandPalette.jsx, UI.jsx Modal, dashboard/DrillDown.jsx
+//   Ctrl+Enter        → components/RecordActivityFeed.jsx, components/TCDealChat.jsx
+//   Call Flow keys    → pages/CallFlow.jsx onKey
+//   Design Studio     → pages/DesignStudio.jsx onKey
+// Ctrl/Cmd+F is intentionally left to the browser (Find in page).
 const SHORTCUTS = [
-  { keys: ['N'],         action: 'New contact',        scope: 'Contacts page' },
-  { keys: ['Ctrl','F'],  action: 'Focus search',        scope: 'Anywhere' },
-  { keys: ['Ctrl','K'],  action: 'Command palette',     scope: 'Anywhere (coming soon)' },
-  { keys: ['Esc'],       action: 'Close panel / modal', scope: 'Anywhere' },
-  { keys: ['Del'],       action: 'Delete selected node',scope: 'Call Flow editor' },
-  { keys: ['Ctrl','S'],  action: 'Save',                scope: 'Call Flow editor' },
-  { keys: ['Ctrl','F'],  action: 'Fullscreen',          scope: 'Call Flow editor' },
+  { keys: ['Ctrl','K'],          action: 'Open / close command palette (search)', scope: 'Anywhere' },
+  { keys: ['↑','↓'],             action: 'Move through results',          scope: 'Command palette' },
+  { keys: ['Enter'],             action: 'Open highlighted result',       scope: 'Command palette' },
+  { keys: ['Esc'],               action: 'Close modal / palette / drill-down', scope: 'Anywhere a modal is open' },
+  { keys: ['Ctrl','Enter'],      action: 'Post comment / send message',   scope: 'Activity feed, TC deal chat' },
+  { keys: ['F11'],               action: 'Toggle fullscreen',             scope: 'Call Flow editor' },
+  { keys: ['Ctrl','Shift','F'],  action: 'Toggle fullscreen',             scope: 'Call Flow editor' },
+  { keys: ['Del'],               action: 'Delete selected node (also Backspace)', scope: 'Call Flow editor' },
+  { keys: ['Esc'],               action: 'Deselect node',                 scope: 'Call Flow editor' },
+  { keys: ['Ctrl','Z'],          action: 'Undo',                          scope: 'Design Studio' },
+  { keys: ['Ctrl','Shift','Z'],  action: 'Redo (also Ctrl+Y)',            scope: 'Design Studio' },
+  { keys: ['Ctrl','D'],          action: 'Duplicate selected element',    scope: 'Design Studio' },
+  { keys: ['Ctrl','C'],          action: 'Copy selected element',         scope: 'Design Studio' },
+  { keys: ['Ctrl','V'],          action: 'Paste element',                 scope: 'Design Studio' },
+  { keys: ['Del'],               action: 'Delete selected element (also Backspace)', scope: 'Design Studio' },
+  { keys: ['←','↑','→','↓'],     action: 'Nudge element 1px (hold Shift for 10px)', scope: 'Design Studio' },
 ]
 
 function PhoneSetup() {
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(false)
   const [checked, setChecked] = useState(false)
+  const [copied, setCopied]   = useState(false)
+
+  // Clipboard is written ONLY from this explicit click handler — never on
+  // mount, render, or focus.
+  function copySid() {
+    const sid = status && status.twimlAppSid
+    if (!sid) return
+    try {
+      navigator.clipboard.writeText(sid)
+        .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+        .catch(() => {})
+    } catch (e) { /* clipboard unavailable */ }
+  }
 
   async function checkSetup() {
     setLoading(true)
@@ -84,7 +113,15 @@ function PhoneSetup() {
       {status && (
         <div style={{ padding:'12px 14px', borderRadius:10, background:status.ok?'rgba(16,185,129,.08)':'rgba(245,166,35,.08)', border:'1px solid '+(status.ok?'rgba(16,185,129,.3)':'rgba(245,166,35,.3)') }}>
           <div style={{ fontSize:14, fontWeight:800, color:status.ok?'#10B981':'#D97706', marginBottom:6 }}>{status.ok?'✅ ':'⚠️ '}{status.message}</div>
-          {status.twimlAppSid && <code style={{ display:'block', fontSize:11, fontFamily:'monospace', background:'rgba(0,0,0,.06)', padding:'6px 10px', borderRadius:6, marginBottom:8 }}>TWILIO_TWIML_APP_SID = {status.twimlAppSid}</code>}
+          {status.twimlAppSid && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+              <code style={{ flex:1, minWidth:0, overflowWrap:'anywhere', fontSize:11, fontFamily:'monospace', background:'rgba(0,0,0,.06)', padding:'6px 10px', borderRadius:6 }}>TWILIO_TWIML_APP_SID = {status.twimlAppSid}</code>
+              <button type="button" onClick={copySid}
+                style={{ padding:'5px 10px', borderRadius:6, border:'1px solid var(--border)', background:'var(--panel)', color:copied?'#10B981':'var(--text)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff, whiteSpace:'nowrap' }}>
+                {copied ? 'Copied ✓' : 'Copy'}
+              </button>
+            </div>
+          )}
           {status.nextStep && <div style={{ fontSize:12, color:'var(--text)', marginBottom:4 }}><strong>Next:</strong> {status.nextStep}</div>}
         </div>
       )}
@@ -447,7 +484,7 @@ export function Settings() {
         <div style={CARD}>
           <SectionTitle>Keyboard Shortcuts</SectionTitle>
           <div style={{ fontSize:12, color:'var(--muted)', marginBottom:16, lineHeight:1.6 }}>
-            These shortcuts work throughout the CRM. Custom shortcut binding coming in a future update.
+            Shortcuts currently available in the CRM. On a Mac, use ⌘ in place of Ctrl. Ctrl+F is left to your browser's Find in page.
           </div>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
             <thead>
@@ -461,9 +498,9 @@ export function Settings() {
               {SHORTCUTS.map((s,i) => (
                 <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
                   <td style={{ padding:'10px 12px 10px 0' }}>
-                    <div style={{ display:'flex', gap:4 }}>
-                      {s.keys.map(k => (
-                        <kbd key={k} style={{ padding:'2px 7px', borderRadius:5, background:'var(--dim)', border:'1px solid var(--border)', fontSize:11, fontFamily:'monospace', fontWeight:700, color:'var(--text)' }}>{k}</kbd>
+                    <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                      {s.keys.map((k, ki) => (
+                        <kbd key={ki}style={{ padding:'2px 7px', borderRadius:5, background:'var(--dim)', border:'1px solid var(--border)', fontSize:11, fontFamily:'monospace', fontWeight:700, color:'var(--text)' }}>{k}</kbd>
                       ))}
                     </div>
                   </td>

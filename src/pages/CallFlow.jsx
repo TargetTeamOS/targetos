@@ -537,7 +537,9 @@ export function CallFlow() {
         if (selectedNode) setSelected(null)
       }
       if (e.key === 'F11') { e.preventDefault(); toggleFullscreen() }
-      if (e.key === 'f' && (e.ctrlKey||e.metaKey)) { e.preventDefault(); toggleFullscreen() }
+      // Ctrl/Cmd+Shift+F toggles fullscreen. Plain Ctrl/Cmd+F is deliberately
+      // NOT bound so the browser's Find-in-page keeps working everywhere.
+      if ((e.ctrlKey||e.metaKey) && e.shiftKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); toggleFullscreen() }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selected && selected !== 'start' && !e.target.closest('input,textarea,select')) {
         e.preventDefault(); deleteNode(selected)
       }
@@ -585,7 +587,7 @@ export function CallFlow() {
             toast('✅ Flow live! ' + agentMsg)
           } catch(e) { toast('❌ ' + e.message, '#DC2626') }
         }} style={{padding:'5px 12px',borderRadius:7,border:'1px solid var(--brand)',background:'rgba(204,34,0,.07)',color:'var(--brand)',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:ff}}>📋 Reset to Template</button>
-        <button onClick={toggleFullscreen} title={fullscreen?'Exit fullscreen (F11 or Ctrl+F)':'Fullscreen — see entire flow (F11 or Ctrl+F)'} style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:fullscreen?'var(--brand)':'var(--inp)',color:fullscreen?'#fff':'var(--text)',fontSize:14,cursor:'pointer',fontFamily:ff}}>{fullscreen?'⊡':'⛶'}</button>
+        <button onClick={toggleFullscreen} title={fullscreen?'Exit fullscreen (F11 or Ctrl+Shift+F)':'Fullscreen — see entire flow (F11 or Ctrl+Shift+F)'} style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border)',background:fullscreen?'var(--brand)':'var(--inp)',color:fullscreen?'#fff':'var(--text)',fontSize:14,cursor:'pointer',fontFamily:ff}}>{fullscreen?'⊡':'⛶'}</button>
         <button onClick={saveFlow} disabled={saving} style={{padding:'6px 16px',borderRadius:8,border:'none',background:dirty?'#CC2200':'#1B2B4B',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:ff,opacity:saving?.7:1}}>
           {saving?'⏳ Saving...':'💾 Save Flow'}
         </button>
