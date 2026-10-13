@@ -831,8 +831,9 @@ function DealRow({ deal, index, agents, onOpen, onQuickUpdate, isAdmin, isSelect
         <span style={{ fontSize: 11, color: BOARD.sub, fontWeight: 500 }}>{index}</span>
       </td>
 
-      {/* Address — sticky item column, single line, tooltip on hover */}
-      <td onClick={() => onOpen(deal)} title={(deal.addr || '') + (deal.unit ? ' #' + deal.unit : '')}
+      {/* Address — sticky item column, single line. Clicking it opens the
+          deal drawer (view + edit); the "Open" pill makes that discoverable. */}
+      <td onClick={() => onOpen(deal)} title={'Open deal: ' + (deal.addr || '') + (deal.unit ? ' #' + deal.unit : '')}
         style={{ padding: '0 12px', height: rowH, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle', position: 'sticky', left: COL_CHECK + COL_NUM, background: rowBg, zIndex: 2, cursor: 'pointer', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', height: rowH, fontSize: 13, fontWeight: 600, color: BOARD.text, overflow: 'hidden', gap: 6 }}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -848,6 +849,11 @@ function DealRow({ deal, index, agents, onOpen, onQuickUpdate, isAdmin, isSelect
               💬
             </span>
           )}
+          {hover && (
+            <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, fontWeight: 700, color: BOARD.blue, border: '1px solid ' + BOARD.border, borderRadius: 999, padding: '1px 8px', background: '#fff' }}>
+              Open ↗
+            </span>
+          )}
         </div>
       </td>
 
@@ -857,8 +863,8 @@ function DealRow({ deal, index, agents, onOpen, onQuickUpdate, isAdmin, isSelect
       ))}
 
       {/* Open icon */}
-      <td style={{ width: 36, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle' }} onClick={() => onOpen(deal)}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: rowH, cursor: 'pointer', opacity: hover ? 1 : 0, transition: 'opacity .1s', color: BOARD.sub, fontSize: 14 }}>
+      <td title="Open deal" style={{ width: 36, padding: 0, borderRight: '1px solid ' + BOARD.cellBorder, verticalAlign: 'middle' }} onClick={() => onOpen(deal)}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: rowH, cursor: 'pointer', opacity: hover ? 1 : .35, transition: 'opacity .1s', color: BOARD.sub, fontSize: 14 }}>
           ↗
         </div>
       </td>
