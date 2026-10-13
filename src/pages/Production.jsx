@@ -18,7 +18,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
-import { db } from '../lib/db'
+import { db, afterDealSaved } from '../lib/db'
 import { fmt$, fmtFull$, fmtDate, fmtDateShort, parseNum, matchSearch, getDaysUntil } from '../lib/utils'
 import {
   DEAL_STAGES, CTC_STAGES, DEAL_SIDES, SALE_TYPES, PROPERTY_TYPES,
@@ -2064,8 +2064,11 @@ export function Production() {
       if (form.id) {
         // Strip client-side virtual fields before saving to DB
         const { _contact_count, agents, ...cleanForm } = form
+        const before = deals.find(d => d.id === form.id) || null
         const { data, error } = await supabase.from('deals').update({ ...cleanForm, updated_at: new Date().toISOString() }).eq('id', form.id).select('*, agents(id,name,color)').single()
         if (error) throw error
+        // Automations + listing/TC stage sync (was skipped on this board)
+        afterDealSaved(data, before, { actingAgentId: agent?.id })
         setDeals(prev => prev.map(d => d.id === form.id ? data : d))
         setSelected(data)
         toast('✅ Deal saved')
@@ -2073,6 +2076,7 @@ export function Production() {
         const { _contact_count: _cc, agents: _ag, id: _id, ...cleanFormInsert } = form
         const { data, error } = await supabase.from('deals').insert({ ...cleanFormInsert, agent_id: form.agent_id || agent?.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select('*, agents(id,name,color)').single()
         if (error) throw error
+        afterDealSaved(data, null, { actingAgentId: agent?.id })
         setDeals(prev => [data, ...prev])
         setSelected(data)
         navigate('/production/' + data.id, { replace: true })
@@ -2135,6 +2139,11 @@ export function Production() {
     try {
       const { error } = await supabase.from('deals').update({ stage, updated_at: new Date().toISOString() }).in('id', selectedIds)
       if (error) throw error
+      // Automations + listing/TC stage sync for each moved deal
+      selectedIds.forEach(id => {
+        const before = deals.find(d => d.id === id)
+        if (before) afterDealSaved({ ...before, stage }, before, { actingAgentId: agent?.id })
+      })
       setDeals(prev => prev.map(d => selectedIds.includes(d.id) ? { ...d, stage } : d))
       toast('✅ Updated ' + selectedIds.length + ' deals to "' + stage + '"')
     } catch(e) { toast('Failed: ' + e.message, '#DC2626') }
@@ -2318,6 +2327,8 @@ export function Production() {
       if (error) throw error
       if (data) setDeals(prev => prev.map(d => d.id === deal.id ? data : d))
       logDealChange(deal, field, deal[field], value)
+      // Automations + listing/TC stage sync (was skipped on this board)
+      afterDealSaved(data || { ...deal, ...autoFields }, deal, { actingAgentId: agent?.id })
 
       // Automation: Offer Accepted -> Under Contract triggers an email
       // to the deal's agent. Board placement itself needs no extra
