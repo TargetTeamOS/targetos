@@ -72,6 +72,11 @@ function Badge({ label, color }) {
   )
 }
 
+// Voicemail = flagged by the Twilio webhook, or outcome logged as "Voicemail".
+function isVoicemailCall(c) {
+  return !!(c && (c.is_voicemail || /voicemail/i.test(c.outcome || '')))
+}
+
 // ── RECORDING PLAYER ─────────────────────────────────────────
 function RecordingPlayer({ callId, voicemailId }) {
   const [state,   setState]   = useState('idle') // idle | loading | ready | error
@@ -1182,7 +1187,9 @@ export function Calls() {
   const todayCalls = calls.filter(c => (c.called_at||'').slice(0,10) === new Date().toISOString().slice(0,10))
   const connected  = calls.filter(c => c.outcome === 'Connected').length
   const hotLeads   = calls.filter(c => c.outcome === 'Hot Lead').length
-  const voicemails = calls.filter(c => c.is_voicemail).length
+  // A call counts as a voicemail if Twilio flagged it (is_voicemail) OR a
+  // person logged its outcome as "Voicemail" by hand.
+  const voicemails = calls.filter(isVoicemailCall).length
 
   return (
     <div style={{ fontFamily:ff }}>
@@ -1283,7 +1290,7 @@ export function Calls() {
                         onMouseLeave={e => e.currentTarget.style.background = ''}>
                         <td style={{ padding:'10px 12px', fontWeight:700, fontSize:'13px', color:'var(--text)', whiteSpace:'nowrap' }}>
                           {c.contact_name || '—'}
-                          {c.is_voicemail && <span style={{ marginLeft:'6px', fontSize:'10px', color:'#F5A623' }}>📬</span>}
+                          {isVoicemailCall(c) && <span style={{ marginLeft:'6px', fontSize:'10px', color:'#F5A623' }}>📬</span>}
                         </td>
                         <td style={{ padding:'10px 12px', fontSize:'12px', color:'var(--muted)' }}>{c.from_number ? fmtPhone(c.from_number) : '—'}</td>
                         <td style={{ padding:'10px 12px' }}>{c.direction ? <Badge label={c.direction} color={directionColor(c.direction)} /> : '—'}</td>
