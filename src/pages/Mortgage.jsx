@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react'
 import { MultiFamilyPnL } from '../components/MultiFamilyPnL'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
+import { buyerClosingCosts, sellerClosingCosts } from '../lib/closingCosts'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -456,10 +457,13 @@ function MortgageCalc() {
               const pi2 = rr>0 ? calc.loan*(rr*Math.pow(1+rr,n2))/(Math.pow(1+rr,n2)-1) : calc.loan/n2
               const tot = pi2 + num(tax) + num(ins) + num(hoa)
               const isMe = Math.abs(r - num(rate)) < 0.01
+              // Always a string with 2 decimals ("7.00%", "6.50%") so whole-number
+              // rates render the same as the others; also used for stable keys.
+              const rateLabel = Number(r).toFixed(2) + '%'
               return [
-                <div key={r+'r'} style={{ padding:'7px 10px', borderTop:'1px solid var(--border)', fontSize:12, fontWeight:isMe?800:400, color:isMe?'#CC2200':'var(--text)', background:isMe?'rgba(204,34,0,.04)':'' }}>{r}%</div>,
-                <div key={r+'p'} style={{ padding:'7px 10px', borderTop:'1px solid var(--border)', fontSize:12, fontWeight:isMe?800:400, color:isMe?'#CC2200':'var(--text)', background:isMe?'rgba(204,34,0,.04)':'' }}>{fmt$(Math.round(pi2))}</div>,
-                <div key={r+'t'} style={{ padding:'7px 10px', borderTop:'1px solid var(--border)', fontSize:12, fontWeight:isMe?800:400, color:isMe?'#CC2200':'var(--text)', background:isMe?'rgba(204,34,0,.04)':'' }}>{fmt$(Math.round(tot))}</div>,
+                <div key={rateLabel+'r'} style={{ padding:'7px 10px', borderTop:'1px solid var(--border)', fontSize:12, fontWeight:isMe?800:400, color:isMe?'#CC2200':'var(--text)', background:isMe?'rgba(204,34,0,.04)':'' }}>{rateLabel}</div>,
+                <div key={rateLabel+'p'}style={{ padding:'7px 10px', borderTop:'1px solid var(--border)', fontSize:12, fontWeight:isMe?800:400, color:isMe?'#CC2200':'var(--text)', background:isMe?'rgba(204,34,0,.04)':'' }}>{fmt$(Math.round(pi2))}</div>,
+                <div key={rateLabel+'t'}style={{ padding:'7px 10px', borderTop:'1px solid var(--border)', fontSize:12, fontWeight:isMe?800:400, color:isMe?'#CC2200':'var(--text)', background:isMe?'rgba(204,34,0,.04)':'' }}>{fmt$(Math.round(tot))}</div>,
               ]
             })}
           </div>
@@ -512,33 +516,15 @@ function ClosingCosts() {
   const p = num(price)
   const loan = loanAmt ? num(loanAmt) : p * 0.8
 
-  // NY transfer tax rates
-  const transferTaxRate = county === 'nyc' ? 0.01425 : 0.004
-  const mansionTax      = p >= 1000000 ? p * 0.01 : 0
+  // Shared with Deal Analyzer (src/lib/closingCosts.js) so both tools agree.
+  // Transfer tax is seller-side only; mansion tax (>= $1M) is buyer-side.
+  const sellerCalc = sellerClosingCosts({ price: p, commPct: num(commPct), county })
+  const seller     = sellerCalc.items
+  const sellerNet  = sellerCalc.net
 
-  const seller = {
-    commission:   p * (num(commPct)/100),
-    transferTax:  p * transferTaxRate,
-    titleInsurance: p * 0.004,
-    attorneyFee:  1500,
-    mortgageSatisfaction: 500,
-    miscFees:     750,
-  }
-  const sellerNet = p - Object.values(seller).reduce((a,b)=>a+b,0)
-
-  const buyer = {
-    bankFees:       loan * 0.01,
-    appraisal:      750,
-    titleSearch:    600,
-    titleInsurance: loan * 0.005,
-    mortgageTax:    county === 'nyc' ? loan * 0.019 : loan * 0.013,
-    prepaids:       p * 0.005,
-    inspections:    600,
-    attorneyFee:    1500,
-    mansionTax,
-    miscFees:       500,
-  }
-  const buyerTotal = Object.values(buyer).reduce((a,b)=>a+b,0)
+  const buyerCalc  = buyerClosingCosts({ price: p, loan, county })
+  const buyer      = buyerCalc.items
+  const buyerTotal = buyerCalc.total
   const downPayment = p - loan
 
   return (
@@ -737,12 +723,18 @@ function DealAnalyzer() {
   const n    = 30*12
   const pi   = r > 0 ? loan*(r*Math.pow(1+r,n))/(Math.pow(1+r,n)-1) : loan/n
 
-  const buyerClosing = loan*0.025 + 750 + 600 + loan*0.013 + 750 + 600 + 1500 + 500
+  // Same estimator as the Closing Costs tab (src/lib/closingCosts.js).
+  // Buyer closing costs exclude transfer tax (seller pays it in NY).
+  const buyerCalc    = buyerClosingCosts({ price: p, loan, county })
+  const buyerClosing = buyerCalc.total
   const cashToClose  = (p * num(down)/100) + buyerClosing
 
-  const grossComm = p * (num(commPct)/100)
-  const agentComm = grossComm * (num(splitPct)/100)
-  const sellerNet = p - grossComm - p*0.004 - p*(county==='nyc'?0.01425:0.004) - 2500
+  const sellerCalc = sellerClosingCosts({ price: p, commPct: num(commPct), county })
+  const grossComm  = sellerCalc.items.commission
+  const agentComm  = grossComm * (num(splitPct)/100)
+  const sellerTransferTax = sellerCalc.items.transferTax
+  const sellerTitleFees   = sellerCalc.total - grossComm - sellerTransferTax
+  const sellerNet  = sellerCalc.net
 
   return (
     <div>
@@ -778,8 +770,8 @@ function DealAnalyzer() {
         <Section title="🏦 Seller Summary" accent="#1B2B4B">
           <Row label="Sale Price"       value={fmt$(p)} bold />
           <Row label="Commission"       value={'— ' + fmt$(Math.round(grossComm))} color="#DC2626" />
-          <Row label="Transfer Tax"     value={'— ' + fmt$(Math.round(p*(county==='nyc'?0.01425:0.004)))} color="#DC2626" />
-          <Row label="Title + Fees"     value={'— ' + fmt$(Math.round(p*0.004 + 2500))} color="#DC2626" />
+          <Row label="Transfer Tax"     value={'— ' + fmt$(Math.round(sellerTransferTax))} color="#DC2626" />
+          <Row label="Title + Fees"     value={'— ' + fmt$(Math.round(sellerTitleFees))} color="#DC2626" />
           <Row label="Seller Net"       value={fmt$(Math.round(sellerNet))} bold color="#10B981" highlight />
         </Section>
 
