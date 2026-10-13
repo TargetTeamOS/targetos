@@ -1348,20 +1348,26 @@ function TemplatesTab({ listings, deals }) {
 
   return (
     <div style={{ display:'flex', gap:20, flexWrap:'wrap', alignItems:'flex-start' }}>
-      {/* Template list */}
-      <div style={{ flex:'0 0 260px' }}>
+      {/* Template list — full-width responsive gallery until a template is
+          picked, then collapses to a 260px column beside the canvas. */}
+      <div style={{ flex: sel ? '0 0 260px' : '1 1 100%', minWidth:0 }}>
         <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', marginBottom:12 }}>Saved Templates ({templates.length})</div>
+        {!sel && !loading && templates.length > 0 && (
+          <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12 }}>Select a template to use it</div>
+        )}
         {loading ? <div style={{ color:'var(--muted)', fontSize:13 }}>Loading...</div>
         : templates.length === 0 ? (
           <div style={{ textAlign:'center', padding:32, color:'var(--muted)', fontSize:12, lineHeight:1.7 }}>
             <div style={{ fontSize:32, marginBottom:8 }}>📁</div>
             No templates yet.<br/>Use the <strong>⚡ Smart Cards</strong> tab to upload your card and save it as a template.
           </div>
-        ) : templates.map(tpl => {
+        ) : (
+        <div style={{ display:'grid', gridTemplateColumns: sel ? '1fr' : 'repeat(auto-fill, minmax(220px, 1fr))', gap:8 }}>
+        {templates.map(tpl => {
           const isActive = sel?.id === tpl.id
           const ct = CARD_TYPES.find(t=>t.id===tpl.card_type) || CARD_TYPES[0]
           return (
-            <div key={tpl.id} style={{ borderRadius:10, border:'1.5px solid '+(isActive?'#CC2200':'var(--border)'), background:isActive?'rgba(204,34,0,.04)':'var(--panel)', marginBottom:8, overflow:'hidden', transition:'all .15s' }}>
+            <div key={tpl.id} style={{ borderRadius:10, border:'1.5px solid '+(isActive?'#CC2200':'var(--border)'), background:isActive?'rgba(204,34,0,.04)':'var(--panel)', overflow:'hidden', transition:'all .15s', minWidth:0 }}>
               <div onClick={() => loadTemplate(tpl)} style={{ padding:'10px 12px', cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
                 {tpl.thumbnail
                   ? <img src={tpl.thumbnail} alt="" style={{ width:44, height:44, borderRadius:6, objectFit:'cover', flexShrink:0 }} />
@@ -1376,15 +1382,13 @@ function TemplatesTab({ listings, deals }) {
             </div>
           )
         })}
+        </div>
+        )}
       </div>
 
-      {/* Right: controls + canvas */}
+      {/* Right: controls + canvas (only once a template is selected) */}
+      {sel && (
       <div style={{ flex:1, minWidth:0 }}>
-        {!sel ? (
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:300, color:'var(--muted)', fontSize:13, textAlign:'center' }}>
-            Select a template on the left to use it
-          </div>
-        ) : (
           <>
             <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', padding:14, marginBottom:14 }}>
               <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', marginBottom:10 }}>Select listing — address auto-fills</div>
@@ -1433,8 +1437,8 @@ function TemplatesTab({ listings, deals }) {
               </div>
             </div>
           </>
-        )}
       </div>
+      )}
     </div>
   )
 }
