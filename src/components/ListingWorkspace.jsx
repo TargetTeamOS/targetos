@@ -20,6 +20,13 @@ import { THEME_DEFS, themeLabel, mainThemeFor, buildThemeSummary, buildBuyerStat
 import { sendContactEmail } from '../lib/emailService'
 
 const ff = 'Inter,system-ui,sans-serif'
+// Stored MLS links can be double URL-encoded (multi_search=15%2520North%2520St).
+// Collapse extra "%25XX" layers so the URL is encoded exactly once.
+function fixMlsUrl(url) {
+  let s = String(url || '').trim()
+  for (let i = 0; i < 5 && /%25[0-9A-Fa-f]{2}/.test(s); i++) s = s.replace(/%25([0-9A-Fa-f]{2})/g, '%$1')
+  return s
+}
 const ALL_TABS = [
   { id:'tasks',     label:'Summary / Next Action' },
   { id:'feedback',  label:'Buyer Feedback' },
@@ -778,8 +785,8 @@ export default function ListingWorkspace({
                     <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
                       {listing.mls_link && (
                         <div style={{ display:'flex', gap:6 }}>
-                          <button onClick={()=>navigator.clipboard.writeText(listing.mls_link)} style={{ fontSize:11, padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--text)', cursor:'pointer', fontFamily:ff }}>Copy MLS Link</button>
-                          <a href={listing.mls_link} target="_blank" rel="noreferrer" style={{ fontSize:11, padding:'3px 8px', borderRadius:6, border:'1px solid #3B82F6', color:'#3B82F6', textDecoration:'none' }}>Open MLS</a>
+                          <button onClick={()=>navigator.clipboard.writeText(fixMlsUrl(listing.mls_link))} style={{ fontSize:11, padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--text)', cursor:'pointer', fontFamily:ff }}>Copy MLS Link</button>
+                          <a href={fixMlsUrl(listing.mls_link)} target="_blank" rel="noreferrer" style={{ fontSize:11, padding:'3px 8px', borderRadius:6, border:'1px solid #3B82F6', color:'#3B82F6', textDecoration:'none' }}>Open MLS</a>
                         </div>
                       )}
                       {listing.photo_url && (
