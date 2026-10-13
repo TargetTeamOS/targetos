@@ -473,7 +473,7 @@ function SentenceBuilder({ form, onChange, agents }) {
                     />
                     {openPicker === (pickerKey) + "_stage" && (
                       <Dropdown
-                        options={[{ label: null, items: DEAL_STAGES.map(s => ({ id: s, label: s, icon: '📊' })) }]}
+                        options={[{ label: null, items: DEAL_STAGES.map(s => ({ id: s, label: s === 'Offer Accapted' ? 'Offer Accepted' : s, icon: '📊' })) }]}
                         onSelect={s => { updateActionConfig(idx, 'stage', s.id); setOpenPicker(null) }}
                         onClose={() => setOpenPicker(null)}
                         width={220}
