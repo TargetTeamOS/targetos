@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
 // TargetOS V2 — Database Layer
 // Every create/update/delete automatically logs to audit_log.
 // Who, what, when, on which record — always.
@@ -522,10 +522,23 @@ gifts: {
   },
 },
 
-// ── OFFERS ───────────────────────────────────────────────────────
+// ── OFFERS ────────────────────────────────────────────────────────
 offers: {
   async list(filters = {}) {
-    let q = supabase.from('offers').select('*, agents(id,name,color)')
+    // agents!agent_id: offers has THREE columns referencing agents
+    // (agent_id, buyers_agent_id, accepted_by — sql/offers_v2/A_foundation.sql),
+    // so the unqualified embed below threw PostgREST's "more than one
+    // relationship was found" (PGRST201) on every single list/get call —
+    // identical bug and identical fix to tasks.list()/get() below. This
+    // silently emptied the Offers board (useTable swallowed the error,
+    // same as it did for Tasks) even though saves to `offers` itself
+    // always succeeded: the save worked, the board just couldn't show
+    // it back, which read exactly like a phantom/failed save. Neither
+    // page actually renders the embedded `.agents` object today (both
+    // OffersV2.jsx and OffersLegacy.jsx resolve agent display from the
+    // separately-fetched agents list by id instead), so this hint is
+    // just about unblocking the query, not changing what's shown.
+    let q = supabase.from('offers').select('*, agents!agent_id(id,name,color)')
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
     if (filters.status)   q = q.eq('status', filters.status)
     const limit  = filters.limit  || 200
@@ -533,7 +546,7 @@ offers: {
     return run(q.order('created_at', { ascending: false }).range(offset, offset + limit - 1))
   },
   async get(id) {
-    return run(supabase.from('offers').select('*, agents(id,name,color)').eq('id', id).single())
+    return run(supabase.from('offers').select('*, agents!agent_id(id,name,color)').eq('id', id).single())
   },
   async create(data) {
     const result = await run(supabase.from('offers').insert({ ...stripVirtual(data), created_at: new Date().toISOString() }).select().single())
