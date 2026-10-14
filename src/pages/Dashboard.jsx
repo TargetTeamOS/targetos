@@ -103,7 +103,7 @@ const ACCENT_COLORS = [
   '#84CC16','#6366F1','#9D50DD','#007eb5','#037f4c',
 ]
 
-// ── GCI RING ──────────────────────────────────────────────────
+// ── GCI RING ─────────────────────────────────────────────────────
 function GCIRing({ value, goal, color = '#CC2200', size = 88 }) {
   const r = (size - 12) / 2
   const circ = 2 * Math.PI * r
@@ -870,3 +870,62 @@ function CustomWidgetContent({ config, agentId, allAgents }) {
             </button>
           </div>
         )}
+      </div>
+    )
+  }
+
+  // ── TABLE MODE — sortable, clickable rows with agent column ──
+  const cols = config.columns?.length
+    ? config.columns.map(function(f){ return boardDef.displayCols.find(function(c){return c.field===f}) || { field:f, label:f } })
+    : boardDef.displayCols.slice(0,3)
+
+  // Add agent column if not already present and data has it
+  const showAgentCol = items.some(function(it){ return it.agents?.name }) && !cols.find(function(c){ return c.field==='agent_id' })
+
+  return (
+    <div style={{ overflowX:'auto' }}>
+      {items.length === 0 && <div style={{ color:'var(--muted)', fontSize:12, padding:'16px 0', fontStyle:'italic', textAlign:'center' }}>No records match</div>}
+      {items.length > 0 && (
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+          <thead>
+            <tr>
+              {cols.map(function(col) {
+                return <th key={col.field} style={{ padding:'4px 8px 4px 0', textAlign:'left', fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap', borderBottom:'2px solid var(--border)' }}>{col.label}</th>
+              })}
+              {showAgentCol && <th style={{ padding:'4px 8px 4px 0', textAlign:'left', fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', borderBottom:'2px solid var(--border)' }}>Agent</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(function(item, i) {
+              return (
+                <tr key={i}
+                  onClick={function(){ navigate('/'+route+(item.id?'/'+item.id:'')) }}
+                  style={{ cursor:'pointer' }}
+                  onMouseEnter={function(e){ e.currentTarget.style.background='var(--dim)' }}
+                  onMouseLeave={function(e){ e.currentTarget.style.background='transparent' }}>
+                  {cols.map(function(col) {
+                    let val = item[col.field]
+                    if (val === null || val === undefined) val = '—'
+                    if (col.field === 'first_name') val = ((item.first_name||'')+' '+(item.last_name||'')).trim() || '—'
+                    if (typeof val === 'number' && (col.field.includes('price') || col.field === 'gci' || col.field === 'production')) val = fmt$(val)
+                    if (col.field.includes('date') && val && val !== '—') {
+                      try { val = new Date(val).toLocaleDateString('en-US',{month:'short',day:'numeric'}) } catch {}
+                    }
+                    return (
+                      <td key={col.field} style={{ padding:'6px 8px 6px 0', borderBottom:'1px solid var(--border)', color:'var(--text)', overflow:'hidden', maxWidth:120, textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {String(val)}
+                      </td>
+                    )
+                  })}
+                  {showAgentCol && (
+                    <td style={{ padding:'6px 8px 6px 0', borderBottom:'1px solid var(--border)' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                        <div style={{ width:18, height:18, borderRadius:'50%', background:item.agents?.color||'#94A3B8', color:'#fff', fontSize:7, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                          {(item.agents?.name||'?').split(' ').map(function(w){return w[0]}).join('').slice(0,2)}
+                        </div>
+                        <span style={{ fontSize:10, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {item.agents?.name?.split(' ')[0] || '—'}
+                        </span>
+                      </div>
+                    </td>
+                  )}
