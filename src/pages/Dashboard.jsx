@@ -39,3 +39,5 @@ import { usePageView } from '../components/PageViewTracking'
 import { getFieldCatalog } from '../lib/fieldCatalog'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
+
+TEST_SENTINEL_WILL_BE_REPLACED_BY_REAL_PUSH
