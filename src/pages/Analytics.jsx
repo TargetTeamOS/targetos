@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
 // TargetOS — Reports & Analytics (July 2026)
 // One hub, two lenses (Business + Agents), rich graphs, custom date
 // ranges, and comparison against the SAME period prior (same length,
@@ -268,7 +268,7 @@ export function Analytics() {
     return { asOf, now: calc(ytd), prev: calc(lastYtd) }
   }, [deals, offers, cur])
 
-  // ── Alerts (Tier A subset — from data we have) ────────────────
+  // ── Alerts (Tier A subset — from data we have) ──────────────────
   const alerts = useMemo(() => {
     const now = Date.now()
     const soon = deals.filter(d => d.stage === 'Under Contract' && d.close_date && (() => { const dd = new Date(d.close_date).getTime(); return dd >= now && dd <= now + 7*86400000 })())
@@ -304,7 +304,7 @@ export function Analytics() {
     return { total, collected, outstanding: Math.max(0, total - collected) }
   }, [deals, cur])
 
-  // ── Contact Health (part 4) ───────────────────────────────────
+  // ── Contact Health (part 4) ────────────────────────────────
   // Per-contact related-property index (built once). Sources:
   //  • deals.contact_id (direct)  • deal_contacts (multi-party)
   //  • deals.addr/unit as the address string
@@ -327,7 +327,7 @@ export function Analytics() {
     return out
   }, [deals, dealContacts, listings, listingContacts])
 
-  // ── Seller-update accountability ──────────────────────────────
+  // ── Seller-update accountability ──────────────────────────
   const sellerHealth = useMemo(() => {
     const now = Date.now()
     const ACTIVE = ['Active', 'Coming Soon', 'Under Contract', 'Accepted offer']
@@ -591,7 +591,7 @@ export function Analytics() {
                 : alerts.stuck.slice(0,8).map(d => (
                   <div key={d.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}>
                     <span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{d.addr}</span>
-                    <span style={{ color:'var(--muted)', flexShrink:0 }}>{d.stage}</span>
+                    <span style={{ color:'var(--muted)', flexShrink:0 }}>{stageLabel(d.stage)}</span>
                   </div>
                 ))}
             </Panel>
