@@ -58,7 +58,7 @@ function starterWidgets() {
     { i:'w_upclose', title:'Closing Soon',       board:'deals', statuses:['Under Contract','Under Shtar'], dateRange:'all', display:'list', agentScope:'all', color:'#D97706', x:8, y:10, w:4, h:4 },
     // detail
     { i:'w_recent',  title:'Recent Contacts',    board:'contacts', statuses:[], dateRange:'month', display:'list', agentScope:'mine', color:'#7C3AED', x:0, y:14, w:4, h:4 },
-    { i:'w_dealtable',title:'Deals \u2014 Detail', board:'deals', statuses:[], dateRange:'all', display:'table', columns:['addr','stage','gci','ao_date'], agentScope:'all', color:'#2563EB', x:4, y:14, w:8, h:4 },
+    { i:'w_dealtable',title:'Deals — Detail', board:'deals', statuses:[], dateRange:'all', display:'table', columns:['addr','stage','gci','ao_date'], agentScope:'all', color:'#2563EB', x:4, y:14, w:8, h:4 },
   ]
 }
 export function DashboardSmart() {
@@ -200,7 +200,7 @@ function WidgetBuilder({ initial, onClose, onSave, isAdmin }) {
           <>
             <div style={L}>Filter — {boardDef.statusField} (pick any; empty = all)</div>
             <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-              {boardDef.statusOptions.map(s => <span key={s} onClick={()=>toggleArr('statuses', s)} style={chip(cfg.statuses?.includes(s))}>{s}</span>)}
+              {boardDef.statusOptions.map(s => <span key={s} onClick={()=>toggleArr('statuses', s)} style={chip(cfg.statuses?.includes(s))}>{s === 'Offer Accapted' ? 'Offer Accepted' : s}</span>)}
             </div>
           </>
         )}

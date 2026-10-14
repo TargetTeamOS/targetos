@@ -26,7 +26,21 @@ export function formatGoalValue(v, basis) {
   return `${Math.round(Number(v)).toLocaleString()}`
 }
 
-function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
+function startOfDay(d) {
+  // A plain 'YYYY-MM-DD' string (how start_date/end_date come back from
+  // Postgres `date` columns) is parsed by `new Date()` as UTC midnight,
+  // while every other Date we build here (including `now`) is local time.
+  // In any timezone behind UTC that mismatch silently shifts the parsed
+  // start/end back a calendar day once .setHours(0,0,0,0) snaps it to
+  // local midnight — throwing daysElapsed/daysRemaining off by one for
+  // every goal. Parse the Y/M/D components directly as a local date to
+  // avoid the UTC round-trip entirely.
+  if (typeof d === 'string') {
+    const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  }
+  const x = new Date(d); x.setHours(0, 0, 0, 0); return x
+}
 
 // Everything the UI needs for one goal, derived from server `actual` + target + window.
 export function goalProgress(goal, now = new Date()) {
@@ -73,9 +87,9 @@ export function goalProgress(goal, now = new Date()) {
 
 export function statusMeta(status) {
   switch (status) {
-    case 'ahead': return { word: 'Ahead of pace', glyph: '\u25B2', color: '#037f4c' }
-    case 'behind': return { word: 'Behind pace', glyph: '\u25BC', color: '#b42318' }
-    case 'complete': return { word: 'Goal reached', glyph: '\u2713', color: '#037f4c' }
-    default: return { word: 'On pace', glyph: '\u2014', color: '#0073EA' }
+    case 'ahead': return { word: 'Ahead of pace', glyph: '▲', color: '#037f4c' }
+    case 'behind': return { word: 'Behind pace', glyph: '▼', color: '#b42318' }
+    case 'complete': return { word: 'Goal reached', glyph: '✓', color: '#037f4c' }
+    default: return { word: 'On pace', glyph: '—', color: '#0073EA' }
   }
 }

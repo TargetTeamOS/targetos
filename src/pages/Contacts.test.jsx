@@ -16,7 +16,11 @@ describe('Contacts board — "browse everyone\'s contacts" shared-directory sect
   it('excludes contacts the agent already owns from the directory-only list, so nothing is shown twice', () => {
     const marker = 'if (agentFilter && showAllAgents)'
     const start = src.indexOf(marker)
-    const block = src.slice(start, start + 1000)
+    // Window widened past 1000: the engagement-aware merge above this
+    // block (Sept 2026) added a long explanatory comment between the
+    // marker and the actual ownedIds filter, pushing it past the old
+    // fixed window with no functional change.
+    const block = src.slice(start, start + 1200)
     expect(block).toMatch(/ownedIds\.has\(c\.id\)/)
   })
 
@@ -59,27 +63,28 @@ describe('Contacts board — "browse everyone\'s contacts" shared-directory sect
     expect(block).toMatch(/!\(isAdmin \|\| canManage\)/)
   })
 
-  it('defaults to off — the existing "my contacts" primary view is unchanged unless the agent opts in', () => {
-    expect(src).toMatch(/useState\(false\)\s*\/\/ contacts NOT owned by me|const \[showAllAgents, setShowAllAgents\] = useState\(false\)/)
+  it('defaults to on — shows past deals + custom fields from the shared directory immediately (commit faa046c)', () => {
+    expect(src).toMatch(/const \[showAllAgents, setShowAllAgents\] = useState\(true\)/)
   })
 })
 
-describe('Contacts board — "Start Working This Lead" claims an independent per-agent branch', () => {
-  it('startWorkingLead creates a NEW contact scoped to the current agent, copying only the safe parent fields (name/phone/email/type), never inventing notes/status history', () => {
+describe('Contacts board — "Start Working This Lead" claims a private engagement on a shared contact', () => {
+  it('startWorkingLead claims the SAME shared contact via a private contact_engagements row scoped to the current agent — no duplicate contact row (superseded the old clone-per-agent design, see the function\'s doc comment)', () => {
     const marker = 'async function startWorkingLead(dirContact)'
     const start = src.indexOf(marker)
     expect(start).toBeGreaterThan(-1)
     const block = src.slice(start, start + 900)
-    expect(block).toMatch(/agent_id:\s*agent\?\.id/)
-    expect(block).toMatch(/first_name:\s*dirContact\.first_name/)
+    expect(block).toMatch(/db\.engagements\.startWorking\(dirContact\.id,\s*agent\?\.id/)
     expect(block).toMatch(/status:\s*'New'/)
+    expect(block).toMatch(/source:\s*'Shared Directory'/)
   })
 
-  it('if the current agent already has their own branch for this same person, it opens that one instead of creating a confusing duplicate', () => {
+  it('if the current agent already has their own engagement for this same person, it reopens that one (keyed off the `created` flag db.engagements.startWorking returns) instead of creating a confusing duplicate', () => {
     const marker = 'async function startWorkingLead(dirContact)'
     const start = src.indexOf(marker)
     const block = src.slice(start, start + 900)
-    expect(block).toMatch(/e\.existingContact/)
+    expect(block).toMatch(/already have your own record for this contact/)
+    expect(block).toMatch(/navigate\('\/contacts\/'\s*\+\s*dirContact\.id\)/)
   })
 
   it('requires explicit confirmation before claiming a lead — not a single accidental click', () => {

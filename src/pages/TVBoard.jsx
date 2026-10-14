@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { stageLabel } from '../lib/constants'
 
 // /tv?token=... — full-screen office display board. Dark, huge type,
 // auto-refreshes every 60s. Point any smart TV / Fire Stick browser
@@ -150,7 +151,7 @@ export function TVBoard() {
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.1vh 0', borderBottom: '1px solid #1E293B', fontSize: '2vh' }}>
               <div style={{ fontWeight: 600, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', paddingRight: '0.8vw' }}>{d.addr}</div>
               <div style={{ display: 'flex', gap: '0.7vw', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                <span style={{ background: STAGE_HEX[d.stage] || '#334155', borderRadius: '999px', padding: '0.3vh 0.8vw', fontSize: '1.5vh', fontWeight: 700 }}>{d.stage}</span>
+                <span style={{ background: STAGE_HEX[d.stage] || '#334155', borderRadius: '999px', padding: '0.3vh 0.8vw', fontSize: '1.5vh', fontWeight: 700 }}>{stageLabel(d.stage)}</span>
                 <span style={{ color: '#FACC15', fontWeight: 700 }}>{niceDate(d.close_date)}</span>
               </div>
             </div>
@@ -303,4 +304,3 @@ function Confetti() {
   }, [])
   return <canvas id="tv-confetti" style={{ position: 'fixed', inset: 0, zIndex: 60, pointerEvents: 'none' }} />
 }
-
