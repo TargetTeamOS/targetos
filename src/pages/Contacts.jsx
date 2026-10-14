@@ -824,7 +824,7 @@ export function Contacts() {
           { key:'status', label:'Status', type:'select', options:(CONTACT_STATUSES||[]).map(s=>({value:s.value||s,label:s.label||s})) },
           { key:'agent_id', label:'Assigned Agent', type:'agent' },
           { key:'source',   label:'Source', type:'select', options:(CONTACT_SOURCES||[]).map(s=>({value:s,label:s})) },
-          { key:'stage',    label:'Stage',  type:'select', options:['SOI','Nurture','Active','Offer Accapted','Under Contract'].map(v=>({value:v,label:v})) },
+          { key:'stage',    label:'Stage',  type:'select', options:['SOI','Nurture','Active','Offer Accapted','Under Contract'].map(v=>({value:v,label:v==='Offer Accapted'?'Offer Accepted':v})) },
         ]}
         onDone={() => { setSelectedIds([]); refetch() }}
         onClear={() => setSelectedIds([])}
