@@ -31,6 +31,11 @@ function useTable(tableName, fetcher) {
       const rows = await fetcher()
       if (mounted.current) setData(rows || [])
     } catch(e) {
+      // Every list fetch used to fail in total silence — the page showed
+      // the same empty state whether the table was genuinely empty or the
+      // query itself errored (e.g. an ambiguous embedded-resource join).
+      // Surface it in the console so a broken list is diagnosable.
+      console.error('[useTable:' + tableName + '] list fetch failed:', e)
       if (mounted.current) setError(e)
     } finally {
       if (mounted.current) setLoading(false)

@@ -588,7 +588,7 @@ transactions: {
 // ── TASKS ────────────────────────────────────────────────────────
 tasks: {
   async list(filters = {}) {
-    let q = supabase.from('tasks').select('*, agents(id,name,color)')
+    let q = supabase.from('tasks').select('*, agents!agent_id(id,name,color)')
     if (filters.agent_id)   q = q.eq('agent_id', filters.agent_id)
     if (filters.status)     q = q.eq('status', filters.status)
     if (filters.deal_id)    q = q.eq('deal_id', filters.deal_id)
@@ -598,7 +598,7 @@ tasks: {
     return run(q.order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }).range(offset, offset + limit - 1))
   },
   async get(id) {
-    return run(supabase.from('tasks').select('*, agents(id,name,color)').eq('id', id).single())
+    return run(supabase.from('tasks').select('*, agents!agent_id(id,name,color)').eq('id', id).single())
   },
   async create(data) {
     const result = await run(supabase.from('tasks').insert({ ...stripVirtual(data), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single())

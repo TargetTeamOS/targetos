@@ -45,7 +45,7 @@ export function Tasks() {
   const { toast } = useApp()
 
   const filters = isAdmin || canManage ? {} : { agent_id: agent?.id }
-  const { tasks, loading, add, update, complete, remove } = useTasks(filters)
+  const { tasks, loading, error, add, update, complete, remove } = useTasks(filters)
   const { agents } = useAgents()
 
   const [search,      setSearch]      = useState('')
@@ -293,7 +293,13 @@ export function Tasks() {
       )}
 
       {loading && <Loading />}
-      {!loading && filtered.length === 0 && (
+      {!loading && error && (
+        <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:10, padding:'12px 14px', marginBottom:14, color:'#991B1B', fontSize:13 }}>
+          ⚠️ Couldn't load tasks ({error.message || 'unknown error'}). This list can look empty even
+          when tasks exist, if the query itself failed — this isn't necessarily "no tasks."
+        </div>
+      )}
+      {!loading && !error && filtered.length === 0 && (
         <Empty icon="✅" title="No tasks" sub="Add your first task or create one via voice capture." action={<Btn onClick={openAdd}>+ Add Task</Btn>} />
       )}
 
