@@ -21,11 +21,19 @@ node scripts/render-smoke.js     # must show "ALL PAGES RENDER" — SSR-mounts
                                  # (verifies every import/export resolves +
                                  #  /api handlers parse — the bug class the
                                  #  bundler misses; bit us 3× before this)
-git push origin v2               # push to v2
-git push origin v2:main          # deploy to Vercel (NO --force — ever)
+git push origin main              # deploy to Vercel (NO --force — ever)
 ```
 
-**Never push if either command fails. Fix the issue first.**
+**Never push if any command fails. Fix the issue first.**
+
+`main` is the only branch Vercel deploys and the only one to push to.
+The old two-step (`push origin v2` then `push origin v2:main`) is
+retired as of Oct 14, 2026 — `v2` split off Jul 20, 2026 and drifted
+301 commits behind / 24 ahead; a commit-by-commit audit of all 24
+found nothing `main` doesn't already have in equal or better form (in
+one case — the TC Board Rules-of-Hooks fix — `v2`'s own version was
+still broken, while `main`'s independent fix was correct). `v2` is
+retired; don't resurrect the old flow or push to it.
 
 ---
 
@@ -141,7 +149,7 @@ Database:  Supabase (PostgreSQL + Realtime + Auth)
 Styling:   CSS variables in src/styles.css — NO Tailwind, NO CSS modules
 Icons:     Inline SVG or emoji only — NO icon libraries
 API:       /api/*.js — Vercel serverless, CommonJS only
-Deploy:    git push origin v2:main → Vercel auto-deploys (NO --force — ever)
+Deploy:    git push origin main → Vercel auto-deploys (NO --force — ever)
 Live URL:  https://app.targetreteam.com
 ```
 
@@ -180,4 +188,3 @@ scripts/
 | Runtime crash on any page | Backtick template literals in JSX | String concatenation only in JSX |
 | `location.search` undefined | `useLocation()` called in child, used in parent | Call `useLocation()` in the same component that uses it |
 | Calls page crash | `location.search` used in main component but `useLocation` only called in sub-component | Moved `useLocation()` to top of `Calls()` function |
-
