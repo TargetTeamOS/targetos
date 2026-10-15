@@ -591,8 +591,7 @@ export function Analytics() {
                 : alerts.stuck.slice(0,8).map(d => (
                   <div key={d.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}>
                     <span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{d.addr}</span>
-                    <span style={{ color:'var(--muted)', flexShrink:0 }}>{stageLabel(d.stage)}</span>
-                  </div>
+<span style={{ color:'var(--muted)', flexShrink:0 }}>{stageLabel(d.stage)}</span>                  </div>
                 ))}
             </Panel>
           </div>
