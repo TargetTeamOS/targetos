@@ -50,12 +50,20 @@ function isMissingAgentColumn(e) {
 }
 
 module.exports = async function handler(req, res) {
+  res.setHeader('Content-Type', 'application/json')
+  // SECURITY (Oct 2026 hardening, task #41): the AUTH_ENFORCE check
+  // below used to be staged/log-only -- part of a ~20-endpoint cluster
+  // found to fail open whenever AUTH_ENFORCE isn't explicitly set to
+  // 'true' in Vercel. An unauthenticated caller fell through to the
+  // "Anonymous/service callers" branch below as myAgent = null, which
+  // (depending on the action) could still apply/stop automations on a
+  // contact. Now hard-gated unconditionally: a request with no valid
+  // user is always rejected, so myAgent below is always resolved.
   const { requireUser } = require('./_lib/auth')
   const __user = await requireUser(req)
-  if (!__user && String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-    res.statusCode = 401; res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
+  if (!__user) {
+    res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' }))
   }
-  res.setHeader('Content-Type', 'application/json')
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'POST only' })) }
 
   try {
@@ -67,13 +75,8 @@ module.exports = async function handler(req, res) {
 
     // Resolve the caller's OWN agent identity server-side from their
     // auth token -- never trust an agent_id the client might send.
-    // Anonymous/service callers (no __user, e.g. AUTH_ENFORCE=false in
-    // dev) fall through with myAgent = null, same as before this change.
-    let myAgent = null
-    if (__user) {
-      const { data } = await db.from('agents').select('id, role').eq('auth_user_id', __user.id).maybeSingle()
-      myAgent = data || null
-    }
+    const { data: myAgentRow } = await db.from('agents').select('id, role').eq('auth_user_id', __user.id).maybeSingle()
+    const myAgent = myAgentRow || null
     const myAgentId  = myAgent?.id || null
     const isManager  = myAgent?.role === 'admin' || myAgent?.role === 'secretary'
 

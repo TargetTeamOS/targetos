@@ -6,7 +6,8 @@
 // 'note') so tracking lives in the CRM per Yanky's spec.
 // Body: { provider: 'outlook'|'gmail', to, subject, html|text, contact_id? }
 
-const { getIntegration, freshMicrosoftToken, freshGoogleToken, logEvent, sb, getAgentAccount, freshAccountToken, agentIdFromAuthUser } = require('./_lib/connectors')
+const { getIntegration, freshMicrosoftToken, freshGoogleToken, logEvent, sb, getAgentAccount, freshAccountToken } = require('./_lib/connectors')
+const { requireAnyAgent } = require('./_lib/phone')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -19,20 +20,18 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
-      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
-  }
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') { res.status(200).end(); return }
   if (req.method !== 'POST')    { res.status(405).json({ error: 'Method not allowed' }); return }
+
+  // SECURITY (Oct 2026 hardening, task #41): this used to only be gated
+  // by a staged, log-only requireUser/AUTH_ENFORCE check -- part of a
+  // ~20-endpoint cluster found to fail open whenever AUTH_ENFORCE isn't
+  // explicitly set to 'true' in Vercel. Now hard-gated unconditionally.
+  const authCheck = await requireAnyAgent(req)
+  if (!authCheck.ok) { res.status(authCheck.status).json({ error: authCheck.message }); return }
 
   // ── EXTERNAL EFFECTS GATE (added 2026-08-06) ──────────────────
   // Same gate as automation-engine and api/send-email.js. This endpoint
@@ -90,7 +89,7 @@ module.exports = async function handler(req, res) {
     // them to their own contacts. Now it's always derived from the
     // caller's own verified identity; a client-supplied agent_id is
     // never trusted.
-    let senderAgentId = __user ? await agentIdFromAuthUser(__user.id) : null
+    const senderAgentId = authCheck.agentId
 
     if (provider === 'outlook') {
       let token = null

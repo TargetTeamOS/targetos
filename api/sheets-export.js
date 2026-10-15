@@ -6,7 +6,8 @@
 // office Google account.
 
 const { getIntegration, freshGoogleToken, logEvent,
-        getAgentAccount, freshAccountToken, agentIdFromAuthUser } = require('./_lib/connectors')
+        getAgentAccount, freshAccountToken } = require('./_lib/connectors')
+const { requireAnyAgent } = require('./_lib/phone')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -19,20 +20,18 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
-      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
-  }
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') { res.status(200).end(); return }
   if (req.method !== 'POST')    { res.status(405).json({ error: 'Method not allowed' }); return }
+
+  // SECURITY (Oct 2026 hardening, task #41): this used to only be gated
+  // by a staged, log-only requireUser/AUTH_ENFORCE check -- part of a
+  // ~20-endpoint cluster found to fail open whenever AUTH_ENFORCE isn't
+  // explicitly set to 'true' in Vercel. Now hard-gated unconditionally.
+  const authCheck = await requireAnyAgent(req)
+  if (!authCheck.ok) { res.status(authCheck.status).json({ error: authCheck.message }); return }
 
   try {
     const body = await parseBody(req)
@@ -49,7 +48,7 @@ module.exports = async function handler(req, res) {
     // ever served as an unauthenticated way to create a Sheet (and
     // burn API quota) under ANOTHER agent's connected Google account.
     // Now it's always derived from the caller's own verified identity.
-    let agentId = __user ? await agentIdFromAuthUser(__user.id) : null
+    const agentId = authCheck.agentId
 
     let token = null
     if (agentId) {

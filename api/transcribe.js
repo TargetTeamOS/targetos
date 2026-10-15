@@ -24,22 +24,12 @@ async function parseBody(req) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
-  // Staged auth (same pattern as the other endpoints)
-  const { requireUser } = require('./_lib/auth')
-  const user = await requireUser(req)
-  if (!user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to /api/transcribe ALLOWED (log-only)')
-  }
-
-  // SECURITY (Sept 2026 audit, finding C2): the AUTH_ENFORCE check above
-  // is staged/log-only, so on its own this endpoint has NO real auth
-  // yet. Every other AUTH_ENFORCE-listed endpoint also has a second,
-  // unconditional role check that blocks unauthenticated callers
-  // regardless of the flag -- this one didn't. Without it, anyone can
-  // spend OpenAI Whisper credits on arbitrary uploaded audio.
+  // SECURITY (Oct 2026 hardening): this used to also carry a staged,
+  // log-only AUTH_ENFORCE pre-check ahead of this call -- redundant
+  // and confusing once requireAnyAgent (below) already hard-blocks an
+  // unauthenticated caller unconditionally, so it's been removed.
+  // Without it, anyone could spend OpenAI Whisper credits on arbitrary
+  // uploaded audio.
   const authCheck = await requireAnyAgent(req)
   if (!authCheck.ok) return res.status(authCheck.status).end(JSON.stringify({ error: authCheck.message }))
 

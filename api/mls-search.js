@@ -80,15 +80,17 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   if (req.method !== 'GET') return res.status(405).end(JSON.stringify({ error: 'GET only' }))
 
-  // Staged auth (same pattern as the other endpoints)
+  // SECURITY (Oct 2026 hardening, task #41): this used to be staged/
+  // log-only -- part of a ~20-endpoint cluster found to fail open
+  // whenever AUTH_ENFORCE isn't explicitly set to 'true' in Vercel.
+  // An unauthenticated caller fell through as user=null, which also
+  // defeats the admin-kill-switch/per-agent allowlist check below
+  // whenever the feature_flags row doesn't exist yet (that check
+  // fails OPEN on infra errors, by design, not on a missing user).
+  // Now hard-gated unconditionally.
   const { requireUser } = require('./_lib/auth')
   const user = await requireUser(req)
-  if (!user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to /api/mls-search ALLOWED (log-only)')
-  }
+  if (!user) return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
 
   const BASE  = (process.env.MLSGRID_BASE || '').replace(/\/$/, '')
   const TOKEN = process.env.MLSGRID_TOKEN

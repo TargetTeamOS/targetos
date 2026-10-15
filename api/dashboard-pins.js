@@ -57,20 +57,26 @@ async function liveCount(db, board, filters) {
 }
 
 module.exports = async function handler(req, res) {
+  res.setHeader('Content-Type','application/json')
+  // SECURITY (Oct 2026 hardening, task #41): the AUTH_ENFORCE check
+  // below used to be staged/log-only -- part of a ~20-endpoint cluster
+  // found to fail open whenever AUTH_ENFORCE isn't explicitly set to
+  // 'true' in Vercel. An unauthenticated caller fell through with
+  // myId = null, which affects which pins are visible/owned below.
+  // Now hard-gated unconditionally: myId is always resolved.
   const { requireUser } = require('./_lib/auth')
   const __user = await requireUser(req)
-  if (!__user && String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-    res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error:'unauthorized' }))
+  if (!__user) {
+    res.statusCode = 401; return res.end(JSON.stringify({ error:'unauthorized' }))
   }
-  res.setHeader('Content-Type','application/json')
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error:'POST only' })) }
 
   try {
     const body = await parseBody(req)
     const db = sb()
     // resolve my agent id
-    let myId = null
-    if (__user) { const { data } = await db.from('agents').select('id').eq('auth_user_id', __user.id).maybeSingle(); myId = data?.id || null }
+    const { data: myAgentRow } = await db.from('agents').select('id').eq('auth_user_id', __user.id).maybeSingle()
+    const myId = myAgentRow?.id || null
 
     if (body.action === 'create') {
       if (!body.title || !body.board) { res.statusCode = 400; return res.end(JSON.stringify({ error:'title + board required' })) }

@@ -1,15 +1,15 @@
 // ═══════════════════════════════════════════════════════════════
 // /api/send-campaign — sends an email blast to a resolved audience
 // through Resend, in batches, skipping anyone on the unsubscribe
-// list. Auth-gated (staged, like the other endpoints). Appends a
-// compliant unsubscribe footer + physical-address line to every
-// message. Updates the email_campaigns row with progress.
+// list. Hard admin/secretary-gated. Appends a compliant unsubscribe
+// footer + physical-address line to every message. Updates the
+// email_campaigns row with progress.
 //
 // Body: { campaignId, subject, bodyHtml, audience }
 // audience: { type:'all'|'status'|'tag'|'segment', value }
 // ═══════════════════════════════════════════════════════════════
 'use strict'
-const { getSupabase, requireAnyAgent } = require('./_lib/phone')
+const { getSupabase, requireAdminOrSecretary } = require('./_lib/phone')
 const { unsubToken } = require('./unsubscribe')
 
 const BASE = process.env.PUBLIC_BASE_URL || 'https://app.targetreteam.com'
@@ -36,21 +36,16 @@ function footer(email) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
-  // Staged auth (mirrors AUTH_ENFORCE pattern)
-  const { requireUser } = require('./_lib/auth')
-  const user = await requireUser(req)
-  if (!user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      return res.status(401).end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to /api/send-campaign ALLOWED (log-only)')
-  }
-
-  // SECURITY (Sept 2026 audit, finding C2): the AUTH_ENFORCE check above
-  // is staged/log-only, so this endpoint had NO real auth yet. Without
-  // this, anyone could blast every contact's email address using this
-  // business's Resend account.
-  const authCheck = await requireAnyAgent(req)
+  // SECURITY (Oct 2026 hardening): this previously only required
+  // requireAnyAgent -- meaning ANY logged-in agent, not just a
+  // manager, could trigger a mass email blast to the entire contact
+  // list/segment using the business's Resend account (the Marketing →
+  // Email Blast UI that calls this has no isAdmin/canManage gate of
+  // its own either). Blasting the whole book of business is a
+  // manager-level action, so this now matches the role level used for
+  // every other broad-reach/credential-bearing action in this
+  // codebase: admin or secretary.
+  const authCheck = await requireAdminOrSecretary(req)
   if (!authCheck.ok) return res.status(authCheck.status).end(JSON.stringify({ error: authCheck.message }))
 
   const RESEND_KEY = process.env.RESEND_API_KEY

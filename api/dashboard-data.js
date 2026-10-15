@@ -7,6 +7,7 @@
 // Body: { action: 'counts', days } | { action: 'get_areas' } | { action:'save_areas', areas }
 
 const { createClient } = require('@supabase/supabase-js')
+const { requireAnyAgent } = require('./_lib/phone')
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
 function sb() {
   const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -19,12 +20,14 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user && String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-    res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error:'unauthorized' }))
-  }
   res.setHeader('Content-Type','application/json')
+  // SECURITY (Oct 2026 hardening, task #41): used to only be gated by
+  // a staged, log-only requireUser/AUTH_ENFORCE check -- part of a
+  // ~20-endpoint cluster found to fail open whenever AUTH_ENFORCE
+  // isn't explicitly set to 'true' in Vercel. Now hard-gated
+  // unconditionally.
+  const authCheck = await requireAnyAgent(req)
+  if (!authCheck.ok) { res.statusCode = authCheck.status; return res.end(JSON.stringify({ error: authCheck.message })) }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error:'POST only' })) }
 
   try {

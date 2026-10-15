@@ -102,7 +102,10 @@ async function requireRole(req, allowedRoles) {
     if (!allowedRoles.includes(agentRow.role)) {
       return { ok: false, status: 403, message: 'Requires ' + allowedRoles.join(' or ') + ' role' }
     }
-    return { ok: true, agentId: agentRow.id, role: agentRow.role }
+    // authUserId: the raw Supabase auth.users id (distinct from agentId,
+    // the agents table's own primary key) — needed by callers like
+    // verifyOfferOwnership() that look up ownership by auth_user_id.
+    return { ok: true, agentId: agentRow.id, role: agentRow.role, authUserId: userData.user.id }
   } catch (e) {
     return { ok: false, status: 500, message: 'Auth check failed: ' + e.message }
   }
