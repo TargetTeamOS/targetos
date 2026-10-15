@@ -40,6 +40,19 @@ function startOfDay(d) {
     if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
   }
   const x = new Date(d); x.setHours(0, 0, 0, 0); return x
+}  // A plain 'YYYY-MM-DD' string (how start_date/end_date come back from
+  // Postgres `date` columns) is parsed by `new Date()` as UTC midnight,
+  // while every other Date we build here (including `now`) is local time.
+  // In any timezone behind UTC that mismatch silently shifts the parsed
+  // start/end back a calendar day once .setHours(0,0,0,0) snaps it to
+  // local midnight — throwing daysElapsed/daysRemaining off by one for
+  // every goal. Parse the Y/M/D components directly as a local date to
+  // avoid the UTC round-trip entirely.
+  if (typeof d === 'string') {
+    const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  }
+  const x = new Date(d); x.setHours(0, 0, 0, 0); return x
 }
 
 // Everything the UI needs for one goal, derived from server `actual` + target + window.
