@@ -1,10 +1,10 @@
 // ═══════════════════════════════════════════════════════════════
 // /api/report-send-now — admin "send test / send now" for a report
-// definition. Auth-gated (staged AUTH_ENFORCE). Body: { reportId } or
-// an inline { def, recipients }.
+// definition. Hard admin-gated. Body: { reportId } or an inline
+// { def, recipients }.
 // ═══════════════════════════════════════════════════════════════
 'use strict'
-const { getSupabase, requireAnyAgent } = require('./_lib/phone')
+const { getSupabase, requireAdmin } = require('./_lib/phone')
 const { computeReport, renderReportHtml } = require('./_lib/reportEngine')
 const FROM = process.env.BLAST_FROM || 'Target Team <listings@targetreteam.com>'
 
@@ -14,17 +14,20 @@ async function readBody(req) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
-  const { requireUser } = require('./_lib/auth')
-  const user = await requireUser(req)
-  if (!user && String(process.env.AUTH_ENFORCE||'').toLowerCase()==='true') return res.status(401).end(JSON.stringify({ error:'unauthorized' }))
-  if (!user) console.warn('[AUTH] unauthenticated call to /api/report-send-now ALLOWED (log-only)')
-
-  // SECURITY (Sept 2026 audit, finding C2): the AUTH_ENFORCE check above
-  // is staged/log-only, so this endpoint had NO real auth yet. Without
-  // this, an anonymous caller could supply an arbitrary report
-  // definition and recipient list -- computed with the service-role
-  // client below, which bypasses RLS -- and have it emailed anywhere.
-  const authCheck = await requireAnyAgent(req)
+  // SECURITY (Oct 2026 hardening): this endpoint lets the caller hand
+  // in an arbitrary report definition (body.def -- any query shape the
+  // report engine supports) and an arbitrary recipient list, computed
+  // on the service-role Supabase client below, which bypasses RLS, then
+  // emailed to whatever addresses were given -- including addresses
+  // outside the company. It was previously gated only by the staged/
+  // log-only AUTH_ENFORCE check (effectively open to anonymous callers)
+  // and then, after a partial fix, by requireAnyAgent -- meaning ANY
+  // logged-in agent, not just admins, could pull arbitrary company-wide
+  // data and exfiltrate it to an external inbox. The only caller,
+  // ReportBuilder.jsx, is itself admin-gated client-side ("Report
+  // Builder is available to admins."), so the API now matches that and
+  // hard-requires admin.
+  const authCheck = await requireAdmin(req)
   if (!authCheck.ok) return res.status(authCheck.status).end(JSON.stringify({ error: authCheck.message }))
 
   const RESEND_KEY = process.env.RESEND_API_KEY
