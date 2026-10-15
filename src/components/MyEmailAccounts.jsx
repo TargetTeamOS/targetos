@@ -45,6 +45,21 @@ export function MyEmailAccounts() {
   }
   useEffect(() => { load() }, [agent && agent.id])
 
+  async function connect(provider) {
+    setBusy(provider)
+    try {
+      const h = await authHeaders()
+      const r = await fetch('/api/connectors', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, h),
+        body: JSON.stringify({ action: 'oauth_start_url', provider }),
+      })
+      const j = await r.json()
+      if (!r.ok || !j.url) throw new Error(j.error || 'could not start connect flow')
+      window.location.href = j.url
+    } catch (e) { setErr(e.message); setBusy('') }
+  }
+
   async function disconnect(provider) {
     setBusy(provider)
     try {
@@ -87,7 +102,7 @@ export function MyEmailAccounts() {
               <button onClick={() => disconnect(p.id)} disabled={busy === p.id}
                 style={Object.assign({}, btn, { background: '#F1F5F9', color: '#334155' })}>Disconnect</button>
             ) : (
-              <button onClick={() => { window.location.href = p.oauth + '?step=start&agent_id=' + agent.id }}
+              <button onClick={() => connect(p.id)} disabled={busy === p.id}
                 style={Object.assign({}, btn, { background: '#2563EB', color: '#fff' })}>Connect</button>
             )}
           </div>

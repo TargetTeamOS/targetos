@@ -242,3 +242,38 @@ async function mailchimpUpsert(apiKey, audienceId, member) {
 
 module.exports.notifyTeamChat = notifyTeamChat
 module.exports.mailchimpUpsert = mailchimpUpsert
+
+// ── OAuth "connect" link signing (Oct 2026 hardening) ─────────────
+// step=start on oauth-google.js/oauth-microsoft.js used to trust a
+// bare ?agent_id=... (or no agent_id at all, for the office-level
+// connect) with no proof of who was asking -- anyone who found the
+// URL could hijack any agent's Google/Outlook connection, or the
+// whole office's, by completing the OAuth flow with their own
+// account. The frontend now gets one of these short-lived signed
+// links via action:'oauth_start_url' (itself auth-gated) instead of
+// building the ?agent_id=... URL itself; oauth-google.js/
+// oauth-microsoft.js verify the signature before honoring it.
+// ORG_SCOPE is the sentinel used in place of an agent id for the
+// office-level (Admin → Connectors) connect.
+const ORG_SCOPE = '__org__'
+function oauthStartSecret() {
+  return process.env.OAUTH_START_SECRET || process.env.CRON_SECRET || 'targetos-oauth-start-fallback'
+}
+function signOauthStart(scope, provider, ts) {
+  const crypto = require('crypto')
+  return crypto.createHmac('sha256', oauthStartSecret())
+    .update(scope + '|' + provider + '|' + ts).digest('hex').slice(0, 32)
+}
+function verifyOauthStart(scope, provider, ts, sig) {
+  const crypto = require('crypto')
+  if (!scope || !provider || !ts || !sig) return false
+  const age = Date.now() - Number(ts)
+  if (!Number.isFinite(age) || age < 0 || age > 5 * 60 * 1000) return false // 5-minute window
+  const expected = signOauthStart(scope, provider, ts)
+  const a = Buffer.from(expected), b = Buffer.from(String(sig))
+  if (a.length !== b.length) return false
+  return crypto.timingSafeEqual(a, b)
+}
+module.exports.ORG_SCOPE = ORG_SCOPE
+module.exports.signOauthStart = signOauthStart
+module.exports.verifyOauthStart = verifyOauthStart

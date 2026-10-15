@@ -8,7 +8,7 @@
 // Scopes: offline_access, Mail.Send, User.Read (send as signed-in user).
 
 const crypto = require('crypto')
-const { getIntegration, patchIntegration, logEvent, baseUrl, upsertAgentAccount, findAccountByState } = require('./_lib/connectors')
+const { getIntegration, patchIntegration, logEvent, baseUrl, upsertAgentAccount, findAccountByState, ORG_SCOPE, verifyOauthStart } = require('./_lib/connectors')
 
 const SCOPE = 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read https://graph.microsoft.com/Calendars.ReadWrite'
 
@@ -26,8 +26,22 @@ module.exports = async function handler(req, res) {
         res.statusCode = 400
         return res.end('Outlook credentials missing — save Client ID + Secret in Admin → Connectors first')
       }
-      const state = crypto.randomBytes(16).toString('hex')
+      // SECURITY (Oct 2026 hardening): this used to trust a bare
+      // ?agent_id=... (or no agent_id, for the office-level connect)
+      // with no proof of who was asking — anyone who found this URL
+      // could hijack any agent's Outlook connection, or the whole
+      // office's, by completing the OAuth flow with their own
+      // Microsoft account. The frontend now gets this URL (with
+      // ts/sig) from POST /api/connectors action:'oauth_start_url',
+      // which is itself auth-gated — an invalid signature is refused.
       const agentId = url.searchParams.get('agent_id')
+      const ts = url.searchParams.get('ts')
+      const sig = url.searchParams.get('sig')
+      if (!verifyOauthStart(agentId || ORG_SCOPE, 'outlook', ts, sig)) {
+        res.statusCode = 401
+        return res.end('This connect link is invalid or expired — go back and click Connect again.')
+      }
+      const state = crypto.randomBytes(16).toString('hex')
       if (agentId) {
         // per-agent connect: state lives on the agent's account row
         await upsertAgentAccount(agentId, 'outlook', { status: 'pending', secrets: { oauth_state: state } })

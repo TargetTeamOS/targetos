@@ -159,7 +159,12 @@ export function ConnectorsPanel() {
                   >Save credentials</button>
                   {row.status !== 'not_configured' && (
                     <button
-                      onClick={() => { window.location.href = '/api/oauth-' + (row.id === 'outlook' ? 'microsoft' : 'google') + '?step=start' }}
+                      onClick={async () => {
+                        try {
+                          const j = await post({ action: 'oauth_start_url', provider: row.id === 'outlook' ? 'outlook' : 'google', scope: 'org' })
+                          if (j.url) window.location.href = j.url
+                        } catch (e) { setErr(e.message) }
+                      }}
                       style={Object.assign({}, btnStyle, { background: '#2563EB', color: '#fff' })}
                     >{row.status === 'connected' ? 'Reconnect' : 'Connect account'}</button>
                   )}

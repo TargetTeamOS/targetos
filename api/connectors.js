@@ -1,9 +1,23 @@
 'use strict'
 // api/connectors.js — the ONLY way the app touches the integrations
 // table. GET = list (secrets stripped). POST = save creds/settings,
-// disconnect, or fetch recent events. Auth-hardened (AUTH_ENFORCE).
+// disconnect, or fetch recent events.
+//
+// SECURITY (hardening pass, Oct 2026): every action below used to be
+// gated only by the soft/staged `requireUser` check (log-only unless
+// AUTH_ENFORCE=true), with no role check at all. In practice that
+// meant any logged-in agent -- and, until AUTH_ENFORCE is set, any
+// anonymous caller who finds this URL -- could reveal a third-party
+// webhook secret, overwrite office integration credentials, or read
+// and disconnect ANOTHER agent's connected Google/Outlook account
+// (my_accounts / disconnect_my_account took agent_id from the body
+// with no check it matched the caller). Every action is now hard-
+// gated by role via requireAdmin/requireAdminOrSecretary/requireAnyAgent
+// (same pattern as api/report-send-now.js), and the per-agent actions
+// use the caller's OWN verified agent id instead of trusting the body.
 
-const { sb, getIntegration, patchIntegration, baseUrl } = require('./_lib/connectors')
+const { sb, getIntegration, patchIntegration, baseUrl, ORG_SCOPE, signOauthStart } = require('./_lib/connectors')
+const { requireAdmin, requireAdminOrSecretary, requireAnyAgent } = require('./_lib/phone')
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -16,15 +30,6 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user) {
-    if (String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-      console.warn('[AUTH] BLOCKED unauthenticated call to ' + req.url)
-      res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error: 'unauthorized' }))
-    }
-    console.warn('[AUTH] unauthenticated call to ' + req.url + ' ALLOWED (log-only — set AUTH_ENFORCE=true in Vercel to block)')
-  }
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
@@ -32,6 +37,12 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
+      // Lists integration config (secrets stripped) — still manager-level
+      // info (client ids, send-as mode, audience ids), same gate as the
+      // Admin/Announcements panels that call it.
+      const authCheck = await requireAdminOrSecretary(req)
+      if (!authCheck.ok) { res.status(authCheck.status).json({ error: authCheck.message }); return }
+
       const { data, error } = await sb().from('integrations')
         .select('id, name, status, config, last_error, updated_at').order('id')
       if (error) throw new Error(error.message)
@@ -51,6 +62,87 @@ module.exports = async function handler(req, res) {
     const body = await parseBody(req)
     const action = body.action || ''
     const id = body.id || ''
+
+    // ── Mint a short-lived signed "connect" link for oauth-google.js /
+    // oauth-microsoft.js's step=start, instead of the frontend building
+    // that URL itself from a bare agent_id. body.scope:'org' (Admin →
+    // Connectors, reconnecting the shared office mailbox) requires
+    // admin; otherwise it's the caller's own agent-level connect. ────
+    if (action === 'oauth_start_url') {
+      const provider = body.provider === 'google' ? 'google' : (body.provider === 'outlook' ? 'outlook' : null)
+      if (!provider) { res.status(400).json({ error: 'provider must be google or outlook' }); return }
+      const isOrg = body.scope === 'org'
+      const authCheck = await (isOrg ? requireAdmin(req) : requireAnyAgent(req))
+      if (!authCheck.ok) { res.status(authCheck.status).json({ error: authCheck.message }); return }
+      const scopeId = isOrg ? ORG_SCOPE : authCheck.agentId
+      const ts = String(Date.now())
+      const sig = signOauthStart(scopeId, provider, ts)
+      const path = '/api/oauth-' + (provider === 'google' ? 'google' : 'microsoft') + '?step=start&ts=' + ts + '&sig=' + sig
+      res.status(200).json({ url: isOrg ? path : (path + '&agent_id=' + encodeURIComponent(scopeId)) })
+      return
+    }
+
+    // ── Per-agent actions: any authenticated agent, but only for THEIR
+    // OWN connected account -- the verified agent id from the auth
+    // check wins, a client-supplied agent_id is never trusted. ──────
+    if (action === 'my_accounts' || action === 'disconnect_my_account') {
+      const authCheck = await requireAnyAgent(req)
+      if (!authCheck.ok) { res.status(authCheck.status).json({ error: authCheck.message }); return }
+      const agentId = authCheck.agentId
+
+      if (action === 'my_accounts') {
+        const { data, error } = await sb().from('integration_accounts')
+          .select('provider, status, account_email, last_error, updated_at')
+          .eq('agent_id', agentId)
+        if (error) throw new Error(error.message)
+        res.status(200).json({ accounts: data || [] })
+        return
+      }
+
+      const provider = body.provider === 'google' ? 'google' : 'outlook'
+      const { error } = await sb().from('integration_accounts')
+        .delete().eq('agent_id', agentId).eq('provider', provider)
+      if (error) throw new Error(error.message)
+      res.status(200).json({ ok: true })
+      return
+    }
+
+    // ── 'display' TV-board actions: manager-level (matches the
+    // canManage gate on the Announcements/Admin panels that call these). ──
+    if (action === 'save_display_config' || (action === 'reveal_webhook_secret' && id === 'display')) {
+      const authCheck = await requireAdminOrSecretary(req)
+      if (!authCheck.ok) { res.status(authCheck.status).json({ error: authCheck.message }); return }
+
+      if (action === 'reveal_webhook_secret') {
+        const integ = await getIntegration('display')
+        if (!integ) { res.status(404).json({ error: 'unknown integration' }); return }
+        res.status(200).json({ webhook_secret: (integ.secrets || {}).webhook_secret || null })
+        return
+      }
+
+      const integ = await getIntegration('display')
+      if (!integ) { res.status(404).json({ error: 'run the display SQL first' }); return }
+      const config = Object.assign({}, integ.config || {})
+      if (body.mode !== undefined)           config.mode = ['dashboard','slides','images','rotate'].includes(body.mode) ? body.mode : 'dashboard'
+      if (body.slides_url !== undefined)     config.slides_url = String(body.slides_url).trim()
+      if (body.images !== undefined)         config.images = Array.isArray(body.images) ? body.images.map(u => String(u).trim()).filter(Boolean).slice(0, 30) : []
+      if (body.rotate_seconds !== undefined) config.rotate_seconds = Math.max(10, Math.min(600, Number(body.rotate_seconds) || 45))
+      if (body.popup_seconds !== undefined)  config.popup_seconds = Math.max(5, Math.min(120, Number(body.popup_seconds) || 15))
+      if (body.announce_days !== undefined)  config.announce_days = Math.max(1, Math.min(30, Number(body.announce_days) || 3))
+      if (body.board_title !== undefined)    config.board_title = String(body.board_title).slice(0, 60)
+      if (body.panels !== undefined && typeof body.panels === 'object') config.panels = body.panels
+      await patchIntegration('display', { config })
+      res.status(200).json({ ok: true, config })
+      return
+    }
+
+    // ── Everything else below here (office-wide credentials, revealing
+    // a THIRD-PARTY webhook secret, disconnecting the office account,
+    // reading the raw event log) is admin-only -- it's only ever
+    // surfaced from Admin.jsx's ConnectorsPanel, which is itself
+    // admin-gated client-side. ──────────────────────────────────────
+    const authCheck = await requireAdmin(req)
+    if (!authCheck.ok) { res.status(authCheck.status).json({ error: authCheck.message }); return }
 
     if (action === 'save_credentials') {
       // OAuth apps: client_id is config (visible), client_secret is secret
@@ -78,23 +170,6 @@ module.exports = async function handler(req, res) {
         last_error: null,
       })
       res.status(200).json({ ok: true, status: ready ? 'needs_connect' : 'not_configured' })
-      return
-    }
-
-    if (action === 'save_display_config') {
-      const integ = await getIntegration('display')
-      if (!integ) { res.status(404).json({ error: 'run the display SQL first' }); return }
-      const config = Object.assign({}, integ.config || {})
-      if (body.mode !== undefined)           config.mode = ['dashboard','slides','images','rotate'].includes(body.mode) ? body.mode : 'dashboard'
-      if (body.slides_url !== undefined)     config.slides_url = String(body.slides_url).trim()
-      if (body.images !== undefined)         config.images = Array.isArray(body.images) ? body.images.map(u => String(u).trim()).filter(Boolean).slice(0, 30) : []
-      if (body.rotate_seconds !== undefined) config.rotate_seconds = Math.max(10, Math.min(600, Number(body.rotate_seconds) || 45))
-      if (body.popup_seconds !== undefined)  config.popup_seconds = Math.max(5, Math.min(120, Number(body.popup_seconds) || 15))
-      if (body.announce_days !== undefined)  config.announce_days = Math.max(1, Math.min(30, Number(body.announce_days) || 3))
-      if (body.board_title !== undefined)    config.board_title = String(body.board_title).slice(0, 60)
-      if (body.panels !== undefined && typeof body.panels === 'object') config.panels = body.panels
-      await patchIntegration('display', { config })
-      res.status(200).json({ ok: true, config })
       return
     }
 
@@ -130,28 +205,6 @@ module.exports = async function handler(req, res) {
         .select('*').order('created_at', { ascending: false }).limit(body.limit || 25)
       if (error) throw new Error(error.message)
       res.status(200).json({ events: data || [] })
-      return
-    }
-
-    if (action === 'my_accounts') {
-      const agentId = body.agent_id
-      if (!agentId) { res.status(400).json({ error: 'agent_id required' }); return }
-      const { data, error } = await sb().from('integration_accounts')
-        .select('provider, status, account_email, last_error, updated_at')
-        .eq('agent_id', agentId)
-      if (error) throw new Error(error.message)
-      res.status(200).json({ accounts: data || [] })
-      return
-    }
-
-    if (action === 'disconnect_my_account') {
-      const agentId = body.agent_id
-      const provider = body.provider === 'google' ? 'google' : 'outlook'
-      if (!agentId) { res.status(400).json({ error: 'agent_id required' }); return }
-      const { error } = await sb().from('integration_accounts')
-        .delete().eq('agent_id', agentId).eq('provider', provider)
-      if (error) throw new Error(error.message)
-      res.status(200).json({ ok: true })
       return
     }
 
