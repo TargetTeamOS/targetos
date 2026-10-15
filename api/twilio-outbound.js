@@ -43,7 +43,7 @@ module.exports = async function handler(req, res) {
     return res.status(503).json({ error: 'Twilio credentials not configured in Vercel env vars' })
   }
 
-  // ── END CALL ─────────────────────────────────────────────────
+  // ── END CALL ──────────────────────────────────
   if (req.method === 'DELETE') {
     // Vercel doesn't always auto-parse body for DELETE — read it manually if needed
     let body = req.body
@@ -77,8 +77,16 @@ module.exports = async function handler(req, res) {
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { to, contactName, callLogId, agentId } = req.body || {}
+  const { to, contactName, callLogId } = req.body || {}
   if (!to) return res.status(400).json({ error: 'Phone number required' })
+
+  // SECURITY (Oct 2026 hardening, round 2): agentId used to come
+  // straight from the request body with no check it matched the
+  // caller -- any logged-in agent could make this ring a DIFFERENT
+  // agent's personal phone (bridge-call mode dials whatever agentId is
+  // passed, then bridges to the contact) as if it were routed to them.
+  // Always use the verified caller's own id.
+  const agentId = authCheck.agentId
 
   // Normalize contact number
   let toNum = to.replace(/[^+0-9]/g, '')

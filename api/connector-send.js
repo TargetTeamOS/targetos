@@ -54,21 +54,29 @@ module.exports = async function handler(req, res) {
   try {
     const body = await parseBody(req)
     const provider = body.provider === 'gmail' ? 'gmail' : 'outlook'
-    const to = String(body.to || '').trim()
-    const subject = String(body.subject || '').trim() || '(no subject)'
+    // SECURITY (Oct 2026 hardening, round 2): to/subject/cc/bcc/
+    // attachment filenames are hand-interpolated into a raw RFC822
+    // message for Gmail sends further down (the Outlook/Graph path is
+    // JSON-encoded and unaffected) -- a value containing \r\n could
+    // inject an extra header (e.g. a hidden Bcc:) or forge headers.
+    // Strip CR/LF before any of these reach that string.
+    const stripHeaderInjection = s => String(s || '').replace(/[\r\n]+/g, ' ').trim()
+    const to = stripHeaderInjection(body.to || '')
+    const subject = stripHeaderInjection(body.subject || '') || '(no subject)'
     const html = body.html || null
     const text = body.text || ''
     // CC/BCC: accept either an array or a comma-separated string, and
     // normalize both to a clean array of addresses.
     const parseAddrs = v => (Array.isArray(v) ? v : String(v || '').split(','))
-      .map(x => x.trim()).filter(Boolean)
+      .map(x => stripHeaderInjection(x)).filter(Boolean)
     const cc = parseAddrs(body.cc)
     const bcc = parseAddrs(body.bcc)
     // Attachments: [{ filename, contentType, base64 }] — base64 content
     // only, no data-URL prefix. Vercel serverless functions cap request
     // bodies around ~4.5MB, so this isn't suitable for large files —
     // that's a real, honest limitation, not something silently handled.
-    const attachments = Array.isArray(body.attachments) ? body.attachments.filter(a => a?.base64) : []
+    const attachments = Array.isArray(body.attachments) ? body.attachments.filter(a => a?.base64)
+      .map(a => Object.assign({}, a, { filename: stripHeaderInjection(a.filename || 'attachment') })) : []
     if (!to) { res.status(400).json({ error: 'missing "to"' }); return }
 
     let fromAccount = ''

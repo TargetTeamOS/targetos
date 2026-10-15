@@ -72,9 +72,17 @@ module.exports = async function handler(req, res) {
     ? body.additional_attachments.filter(a => a && a.url && a.name).slice(0, 5) // sane ceiling
     : []
   const provider    = body.provider === 'gmail' ? 'gmail' : 'outlook'
-  const recipients  = Array.isArray(body.recipients) ? body.recipients.filter(r => r && r.email) : []
-  const cc = Array.isArray(body.cc) ? body.cc.filter(e => typeof e === 'string' && e.includes('@')).slice(0, 10) : []
-  const subject     = String(body.subject || '').trim() || 'Offer for the Sale of Real Estate'
+  // SECURITY (Oct 2026 hardening, round 2): recipient/cc emails, names
+  // and the subject line are hand-interpolated into a raw RFC822
+  // message for Gmail sends (below) with no CRLF stripping -- a value
+  // containing \r\n could inject an extra header (e.g. a hidden Bcc:)
+  // or forge headers. Strip CR/LF before anything reaches that string.
+  const stripHeaderInjection = s => String(s || '').replace(/[\r\n]+/g, ' ').trim()
+  const recipients  = Array.isArray(body.recipients) ? body.recipients.filter(r => r && r.email)
+    .map(r => ({ ...r, email: stripHeaderInjection(r.email), name: r.name ? stripHeaderInjection(r.name) : r.name })) : []
+  const cc = Array.isArray(body.cc) ? body.cc.filter(e => typeof e === 'string' && e.includes('@'))
+    .map(stripHeaderInjection).slice(0, 10) : []
+  const subject     = stripHeaderInjection(body.subject || '') || 'Offer for the Sale of Real Estate'
   const message     = String(body.message || '')
   const idempotencyKey = String(body.idempotency_key || '').trim()
 
@@ -85,7 +93,7 @@ module.exports = async function handler(req, res) {
   const sb = getOffersServiceClient()
   if (!sb) return res.status(500).json({ error: 'Server database is not configured (SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY missing)' })
 
-  // ── OWNERSHIP ────────────────────────────────────────────────────
+  // ── OWNERSHIP ──────────────────────────────────────
   const ownership = await verifyOfferOwnership(sb, offerId, __user.id)
   if (!ownership.ok) return res.status(ownership.status).json({ error: ownership.message })
 
@@ -103,7 +111,7 @@ module.exports = async function handler(req, res) {
       })
     }
 
-    // ── LOAD THE REVISION + ITS STORED PDF ──────────────────────────
+    // ── LOAD THE REVISION + ITS STORED PDF ──────────────────
     const { data: revision, error: revErr } = await sb.from('offer_revisions')
       .select('*').eq('id', revisionId).eq('offer_id', offerId).single()
     if (revErr || !revision) return res.status(404).json({ error: 'Revision not found for this offer' })
@@ -125,7 +133,7 @@ module.exports = async function handler(req, res) {
         if (!r.ok) continue
         const buf = Buffer.from(await r.arrayBuffer())
         if (buf.length > 15 * 1024 * 1024) continue // sane per-file ceiling
-        extraAttachments.push({ name: att.name, buffer: buf, contentType: r.headers.get('content-type') || 'application/octet-stream' })
+        extraAttachments.push({ name: stripHeaderInjection(att.name), buffer: buf, contentType: r.headers.get('content-type') || 'application/octet-stream' })
       } catch (e) {
         console.warn('[send-offer] additional attachment fetch failed for ' + att.name + ':', e.message)
       }
@@ -152,7 +160,7 @@ module.exports = async function handler(req, res) {
       throw insertErr
     }
 
-    // ── EXTERNAL EFFECTS GATE (two independent layers) ──────────────
+    // ── EXTERNAL EFFECTS GATE (two independent layers) ────────────
     // Real sends require BOTH: (1) the global EXTERNAL_EFFECTS_ENABLED
     // env var, and (2) the offers_v2_send_test feature flag explicitly
     // allowing THIS agent specifically (Admin-managed, same
@@ -179,7 +187,7 @@ module.exports = async function handler(req, res) {
       })
     }
 
-    // ── RESOLVE THE AGENT'S OWN CONNECTED MAILBOX ───────────────────
+    // ── RESOLVE THE AGENT'S OWN CONNECTED MAILBOX ─────────────
     const acct = await getAgentAccount(ownership.agent.id, provider === 'gmail' ? 'google' : 'outlook')
     if (!acct || acct.status !== 'connected') {
       await sb.from('offer_sends').update({

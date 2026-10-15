@@ -2,16 +2,18 @@
 // TargetOS V2 — Duplicate Contact Detector
 // Fuzzy-matches phone and email to find potential duplicates
 // before saving a new contact. Shows a merge suggestion.
-// ═══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
 export function DuplicateDetector({ phone, email, currentId = null, onMerge, onIgnore }) {
   const [dupes, setDupes] = useState([])
   const navigate = useNavigate()
+  const { agent: me, isAdmin } = useAuth()
 
   useEffect(() => {
     const cleanPhone = (phone||'').replace(/\D/g,'').slice(-10)
@@ -33,16 +35,21 @@ export function DuplicateDetector({ phone, email, currentId = null, onMerge, onI
         if (!conditions.length) { setDupes([]); return }
 
         const { data } = await supabase.from('contacts')
-          .select('id,first_name,last_name,phone,email,status,source')
+          .select('id,first_name,last_name,phone,email,status,source,is_private,agent_id')
           .or(conditions.join(','))
           .limit(5)
 
-        const filtered = (data||[]).filter(c => c.id !== currentId)
+        // SECURITY (Oct 2026 hardening, round 2): this used to show ANY
+        // matching contact regardless of is_private/agent_id, leaking a
+        // private contact's name/phone/email to a different agent who
+        // merely typed a matching phone/email while adding a new
+        // contact. Same filter ContactSearch/ContactPicker already use.
+        const filtered = (data||[]).filter(c => c.id !== currentId && (isAdmin || !c.is_private || (me?.id && c.agent_id === me.id)))
         setDupes(filtered)
       } catch {}
     }, 600)
     return () => clearTimeout(timer)
-  }, [phone, email, currentId])
+  }, [phone, email, currentId, me?.id, isAdmin])
 
   if (!dupes.length) return null
 

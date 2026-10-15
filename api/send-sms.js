@@ -25,8 +25,14 @@ module.exports = async function handler(req, res) {
   const authCheck = await requireAnyAgent(req)
   if (!authCheck.ok) return res.status(authCheck.status).json({ error: authCheck.message })
 
-  const { to, body, contactId, agentId } = await parseBody(req)
+  const { to, body, contactId } = await parseBody(req)
   if (!to || !body) return res.status(400).json({ error:'to and body required' })
+
+  // SECURITY (Oct 2026 hardening, round 2): agentId used to be trusted
+  // from the request body with no check against the caller -- any
+  // agent could attribute a sent SMS to a different agent in the CRM's
+  // own records. Always use the verified caller's own id.
+  const agentId = authCheck.agentId
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID
   const authToken  = process.env.TWILIO_AUTH_TOKEN

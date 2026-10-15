@@ -77,6 +77,12 @@ module.exports = async function handler(req, res) {
       const scopeId = isOrg ? ORG_SCOPE : authCheck.agentId
       const ts = String(Date.now())
       const sig = signOauthStart(scopeId, provider, ts)
+      // SECURITY (Oct 2026 hardening, round 2): signOauthStart now
+      // returns null when OAUTH_START_SECRET/CRON_SECRET aren't
+      // configured (see _lib/connectors.js) -- refuse to hand back a
+      // connect link in that case rather than one with sig=null, which
+      // oauth-google.js/oauth-microsoft.js will never accept anyway.
+      if (!sig) { res.status(500).json({ error: 'OAuth connect links are not configured (OAUTH_START_SECRET missing) — set it in Vercel env vars' }); return }
       const path = '/api/oauth-' + (provider === 'google' ? 'google' : 'microsoft') + '?step=start&ts=' + ts + '&sig=' + sig
       res.status(200).json({ url: isOrg ? path : (path + '&agent_id=' + encodeURIComponent(scopeId)) })
       return
@@ -140,7 +146,7 @@ module.exports = async function handler(req, res) {
     // a THIRD-PARTY webhook secret, disconnecting the office account,
     // reading the raw event log) is admin-only -- it's only ever
     // surfaced from Admin.jsx's ConnectorsPanel, which is itself
-    // admin-gated client-side. ──────────────────────────────────────
+    // admin-gated client-side. ────────────────────────────
     const authCheck = await requireAdmin(req)
     if (!authCheck.ok) { res.status(authCheck.status).json({ error: authCheck.message }); return }
 

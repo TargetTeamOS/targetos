@@ -5,6 +5,17 @@
 const { createClient } = require('@supabase/supabase-js')
 const { requireAdmin } = require('./_lib/phone')
 
+// SECURITY (Oct 2026 hardening, round 2): 'create'/'invite' used to
+// fall back to hardcoded literal passwords ('TargetOS2024!',
+// 'Welcome2TargetOS!') visible to anyone with repo access -- any
+// account provisioned without an explicit password (or whose invite
+// email failed/bounced) was protected only by a known string until
+// someone remembered to change it. Generate a random one-time
+// password instead.
+function generateTempPassword() {
+  return require('crypto').randomBytes(12).toString('base64url')
+}
+
 async function parseBody(req) {
   return new Promise((resolve) => {
     let raw = ''
@@ -49,7 +60,7 @@ module.exports = async function handler(req, res) {
   })
 
   try {
-    // ── CREATE USER (with password) ──────────────────────────────
+    // ── CREATE USER (with password) ───────────────────
     if (action === 'create') {
       if (!email || !name) return res.status(400).json({ error: 'Email and name required' })
 
@@ -58,15 +69,17 @@ module.exports = async function handler(req, res) {
       const existing = list?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase())
 
       let authUserId
+      let generatedPassword = null
       if (existing) {
         if (password) {
           await sb.auth.admin.updateUserById(existing.id, { password })
         }
         authUserId = existing.id
       } else {
+        generatedPassword = password || generateTempPassword()
         const { data: created, error: createErr } = await sb.auth.admin.createUser({
           email,
-          password: password || 'TargetOS2024!',
+          password: generatedPassword,
           email_confirm: true,
         })
         if (createErr) return res.status(400).json({ error: createErr.message })
@@ -94,10 +107,12 @@ module.exports = async function handler(req, res) {
       }).select().single()
       if (agentErr) return res.status(400).json({ error: agentErr.message })
 
-      return res.status(200).json({ ok: true, agent })
+      // Only surface a password when we generated it ourselves (never
+      // echo back a password the admin explicitly chose).
+      return res.status(200).json({ ok: true, agent, ...(generatedPassword && !password ? { temp_password: generatedPassword } : {}) })
     }
 
-    // ── INVITE USER (email invite) ───────────────────────────────
+    // ── INVITE USER (email invite) ───────────────────
     if (action === 'invite') {
       if (!email || !name) return res.status(400).json({ error: 'Email and name required' })
 
@@ -107,6 +122,7 @@ module.exports = async function handler(req, res) {
 
       let authUserId
       let inviteLink = null
+      let fallbackPassword = null
 
       if (existing) {
         authUserId = existing.id
@@ -117,9 +133,12 @@ module.exports = async function handler(req, res) {
           redirectTo: 'https://app.targetreteam.com',
         })
         if (invErr) {
-          // If invite fails, create with temp password instead
+          // If invite fails, create with a random temp password instead
+          // -- it only ever reaches the user via the email sent below,
+          // never the source tree.
+          fallbackPassword = generateTempPassword()
           const { data: created, error: createErr } = await sb.auth.admin.createUser({
-            email, password: 'Welcome2TargetOS!', email_confirm: true,
+            email, password: fallbackPassword, email_confirm: true,
           })
           if (createErr) return res.status(400).json({ error: createErr.message })
           authUserId = created.user.id
@@ -172,7 +191,7 @@ module.exports = async function handler(req, res) {
               '<p style="color:#475569;font-size:14px">Your TargetOS account has been created. You can now log in to access the CRM.</p>',
               '<p style="color:#475569;font-size:14px"><strong>Your login email:</strong> ' + email + '</p>',
               '<p style="color:#475569;font-size:14px"><strong>Your role:</strong> ' + (role || 'agent') + '</p>',
-              '<p style="color:#94a3b8;font-size:13px">If you received an invite email from Supabase, click that link to set your password. Otherwise, use the temporary password <strong>Welcome2TargetOS!</strong> and change it after logging in.</p>',
+              '<p style="color:#94a3b8;font-size:13px">If you received an invite email from Supabase, click that link to set your password. Otherwise, use the temporary password <strong>' + (fallbackPassword || 'the one your admin shared with you') + '</strong> and change it after logging in.</p>',
               '<div style="text-align:center;margin:24px 0">',
               '<a href="' + loginUrl + '" style="display:inline-block;background:#CC2200;color:#fff;text-decoration:none;padding:12px 32px;border-radius:8px;font-size:14px;font-weight:700">',
               'Open TargetOS →</a></div>',
@@ -186,7 +205,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, agent, invited: !existing })
     }
 
-    // ── RESET PASSWORD ───────────────────────────────────────────
+    // ── RESET PASSWORD ──────────────────────────
     if (action === 'reset_password') {
       if (!userId) return res.status(400).json({ error: 'userId required' })
       const { error } = await sb.auth.admin.updateUserById(userId, { password })
@@ -213,7 +232,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, agent: data })
     }
 
-    // ── UPDATE EMAIL ─────────────────────────────────────────────
+    // ── UPDATE EMAIL ─────────────────────────
     if (action === 'update_email') {
       if (!userId) return res.status(400).json({ error: 'userId required' })
       const { error } = await sb.auth.admin.updateUserById(userId, { email })
@@ -221,7 +240,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true })
     }
 
-    // ── DELETE USER ──────────────────────────────────────────────
+    // ── DELETE USER ──────────────────────────
     if (action === 'delete') {
       if (!userId) return res.status(400).json({ error: 'userId required' })
       const { error } = await sb.auth.admin.deleteUser(userId)
@@ -229,14 +248,14 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true })
     }
 
-    // ── DEACTIVATE ───────────────────────────────────────────────
+    // ── DEACTIVATE ───────────────────────────
     if (action === 'deactivate') {
       if (!userId) return res.status(400).json({ error: 'userId required' })
       await sb.auth.admin.updateUserById(userId, { ban_duration: '876600h' }).catch(() => {})
       return res.status(200).json({ ok: true })
     }
 
-    // ── REACTIVATE ───────────────────────────────────────────────
+    // ── REACTIVATE ───────────────────────────
     if (action === 'reactivate') {
       if (!userId) return res.status(400).json({ error: 'userId required' })
       await sb.auth.admin.updateUserById(userId, { ban_duration: 'none' }).catch(() => {})

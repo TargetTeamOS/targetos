@@ -34,7 +34,7 @@ async function logEvent(integration_id, direction, event, detail, ok) {
   } catch (e) { console.warn('[connectors] event log failed: ' + e.message) }
 }
 
-// ── OAuth token refresh ───────────────────────────────────────────
+// ── OAuth token refresh ─────────────────────────────────
 // Both providers: if access token expires within 2 min, refresh it,
 // persist the new tokens, return a valid access token.
 
@@ -109,7 +109,7 @@ function baseUrl(req) {
 
 module.exports = { sb, getIntegration, patchIntegration, logEvent, freshMicrosoftToken, freshGoogleToken, baseUrl }
 
-// ── Per-agent accounts (integration_accounts) ─────────────────────
+// ── Per-agent accounts (integration_accounts) ─────────────────
 
 async function getAgentAccount(agentId, provider) {
   const { data, error } = await sb().from('integration_accounts')
@@ -191,7 +191,7 @@ module.exports.findAccountByState = findAccountByState
 module.exports.freshAccountToken = freshAccountToken
 module.exports.agentIdFromAuthUser = agentIdFromAuthUser
 
-// ── Team chat (Slack or Teams incoming webhook) ───────────────────
+// ── Team chat (Slack or Teams incoming webhook) ─────────────
 // Both platforms accept POST {"text": "..."} on incoming webhooks.
 async function notifyTeamChat(text) {
   const integ = await getIntegration('teamchat')
@@ -205,7 +205,7 @@ async function notifyTeamChat(text) {
   return { ok: r.ok }
 }
 
-// ── Mailchimp ─────────────────────────────────────────────────────
+// ── Mailchimp ────────────────────────────────────────
 function mailchimpBase(apiKey) {
   const dc = String(apiKey).split('-')[1]
   if (!dc) throw new Error('Mailchimp API key looks wrong — it should end in a datacenter like -us21')
@@ -243,7 +243,7 @@ async function mailchimpUpsert(apiKey, audienceId, member) {
 module.exports.notifyTeamChat = notifyTeamChat
 module.exports.mailchimpUpsert = mailchimpUpsert
 
-// ── OAuth "connect" link signing (Oct 2026 hardening) ─────────────
+// ── OAuth "connect" link signing (Oct 2026 hardening) ───────────
 // step=start on oauth-google.js/oauth-microsoft.js used to trust a
 // bare ?agent_id=... (or no agent_id at all, for the office-level
 // connect) with no proof of who was asking -- anyone who found the
@@ -256,12 +256,23 @@ module.exports.mailchimpUpsert = mailchimpUpsert
 // ORG_SCOPE is the sentinel used in place of an agent id for the
 // office-level (Admin → Connectors) connect.
 const ORG_SCOPE = '__org__'
+// SECURITY (Oct 2026 hardening, round 2): this used to fall back to a
+// hardcoded literal ('targetos-oauth-start-fallback') when neither env
+// var was set. That literal is visible to anyone with read access to
+// this source file, so if OAUTH_START_SECRET/CRON_SECRET were ever
+// unset in an environment, anyone could compute a valid sig themselves
+// and hijack any agent's (or the office's) OAuth connect flow -- the
+// exact attack this signing scheme exists to prevent. Returns null
+// when unconfigured; callers must fail closed on that, never sign or
+// accept anything.
 function oauthStartSecret() {
-  return process.env.OAUTH_START_SECRET || process.env.CRON_SECRET || 'targetos-oauth-start-fallback'
+  return process.env.OAUTH_START_SECRET || process.env.CRON_SECRET || null
 }
 function signOauthStart(scope, provider, ts) {
+  const secret = oauthStartSecret()
+  if (!secret) return null
   const crypto = require('crypto')
-  return crypto.createHmac('sha256', oauthStartSecret())
+  return crypto.createHmac('sha256', secret)
     .update(scope + '|' + provider + '|' + ts).digest('hex').slice(0, 32)
 }
 function verifyOauthStart(scope, provider, ts, sig) {
@@ -270,6 +281,7 @@ function verifyOauthStart(scope, provider, ts, sig) {
   const age = Date.now() - Number(ts)
   if (!Number.isFinite(age) || age < 0 || age > 5 * 60 * 1000) return false // 5-minute window
   const expected = signOauthStart(scope, provider, ts)
+  if (!expected) return false // no real secret configured -- never accept
   const a = Buffer.from(expected), b = Buffer.from(String(sig))
   if (a.length !== b.length) return false
   return crypto.timingSafeEqual(a, b)

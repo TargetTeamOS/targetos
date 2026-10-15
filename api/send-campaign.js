@@ -65,8 +65,25 @@ module.exports = async function handler(req, res) {
     if (error) throw error
 
     // Remove unsubscribes + dedupe
-    const { data: unsub } = await supabase.from('email_unsubscribes').select('email')
-    const blocked = new Set((unsub || []).map(u => u.email.toLowerCase()))
+    // SECURITY (Oct 2026 hardening, round 2): an unpaged select() here
+    // implicitly caps at PostgREST's row limit (commonly 1000) -- once
+    // the suppression list grows past that, later unsubscribes are
+    // silently missing from `blocked` and a mass blast (up to 5000
+    // recipients) could re-email people who opted out. Page through
+    // the full table instead of trusting a single response.
+    const unsub = []
+    {
+      const PAGE = 1000
+      for (let offset = 0; ; offset += PAGE) {
+        const { data: page, error: unsubErr } = await supabase.from('email_unsubscribes')
+          .select('email').range(offset, offset + PAGE - 1)
+        if (unsubErr) throw unsubErr
+        if (!page || !page.length) break
+        unsub.push(...page)
+        if (page.length < PAGE) break
+      }
+    }
+    const blocked = new Set(unsub.map(u => u.email.toLowerCase()))
     const seen = new Set()
     const recipients = []
     for (const c of (contacts || [])) {

@@ -8,7 +8,7 @@ const CACHE_TTL = 30 * 60 * 1000 // 30 min
 
 async function fetchRates() {
   const key = process.env.FRED_API_KEY
-  console.log('FRED_API_KEY present:', !!key, key ? key.slice(0,6) + '...' : 'MISSING')
+  console.log('FRED_API_KEY present:', !!key)
 
   if (!key) {
     return {
@@ -108,11 +108,15 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
-  // Debug mode
+  // Debug mode -- SECURITY (Oct 2026 hardening, round 2): this endpoint
+  // has no authentication at all (market rates/news are public-facing),
+  // so it used to leak the first 6 characters of the real
+  // FRED_API_KEY to any unauthenticated caller who added ?debug to the
+  // URL -- enough of a head start to meaningfully narrow a search for
+  // the real key. Report only whether it's configured.
   if (req.url?.includes('debug')) {
     return res.status(200).json({
       has_fred_key: !!process.env.FRED_API_KEY,
-      fred_key_prefix: process.env.FRED_API_KEY?.slice(0, 6) || 'MISSING',
       node_version: process.version,
     })
   }

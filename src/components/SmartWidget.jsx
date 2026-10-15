@@ -75,7 +75,18 @@ export function WidgetContent({ config, agentId, isAdmin }) {
         q = q.order(config.sortBy || BOARD_DATE_FIELD(config.board), { ascending: false, nullsFirst: false }).limit(500)
         const { data } = await q
         if (cancelled) return
-        setRows(data || []); setCount((data || []).length)
+        let rows = data || []
+        // SECURITY (Oct 2026 hardening, round 2): unlike every other
+        // place that reads the contacts table (ContactSearch,
+        // ContactPicker, OffersLegacy), this widget applied no
+        // is_private/agent_id filter -- any agent could build a
+        // "Whole team" contacts widget on their own dashboard and see
+        // every other agent's private contacts. Same filter those
+        // other call sites already use.
+        if (config.board === 'contacts' && !isAdmin) {
+          rows = rows.filter(r => !r.is_private || (agentId && r.agent_id === agentId))
+        }
+        setRows(rows); setCount(rows.length)
       } catch (e) { if (!cancelled) { setRows([]); setCount(0) } }
       if (!cancelled) setLoading(false)
     })()
