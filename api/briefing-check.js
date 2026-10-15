@@ -5,6 +5,7 @@
 // Body: { action: 'diagnose' | 'send_now', email? }
 
 const { createClient } = require('@supabase/supabase-js')
+const { requireAdmin } = require('./_lib/phone')
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://sgrnyvdsyahmypibjarx.supabase.co'
 function sb() {
   const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -17,12 +18,19 @@ async function parseBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  const { requireUser } = require('./_lib/auth')
-  const __user = await requireUser(req)
-  if (!__user && String(process.env.AUTH_ENFORCE || '').toLowerCase() === 'true') {
-    res.statusCode = 401; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ error:'unauthorized' }))
-  }
   res.setHeader('Content-Type','application/json')
+  // SECURITY (Oct 2026 hardening): the comment above has always said
+  // "Admin tool", and send_now can trigger a real send of the daily
+  // briefing email to every opted-in agent on demand (via the cron
+  // endpoint, using CRON_SECRET) -- but it was only ever gated by the
+  // soft, log-only requireUser/AUTH_ENFORCE check, same pattern as the
+  // other findings in this hardening pass. Any logged-in agent (or,
+  // until AUTH_ENFORCE is set, any anonymous caller who finds this URL)
+  // could force-send briefing emails, or read diagnostic detail
+  // (who's opted in, their emails, send times). Now hard-gated to
+  // admin.
+  const authCheck = await requireAdmin(req)
+  if (!authCheck.ok) { res.statusCode = authCheck.status; return res.end(JSON.stringify({ error: authCheck.message })) }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error:'POST only' })) }
 
   try {
