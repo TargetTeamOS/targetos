@@ -22,7 +22,7 @@ import { db, afterDealSaved } from '../lib/db'
 import { fmt$, fmtFull$, fmtDate, fmtDateShort, parseNum, matchSearch, getDaysUntil } from '../lib/utils'
 import {
   DEAL_STAGES, CTC_STAGES, DEAL_SIDES, SALE_TYPES, PROPERTY_TYPES,
-  BUYER_TYPES, SALES_SOURCES, COMMAND_STATUSES, REFERRAL_AGENTS
+   BUYER_TYPES, SALES_SOURCES, COMMAND_STATUSES, REFERRAL_AGENTS, stageLabel
 } from '../lib/constants'
 import { Btn, Loading, Empty, Confirm, Avatar } from '../components/UI'
 import { logRecordChange } from '../lib/recordActivity'
@@ -334,7 +334,7 @@ function StagePill({ stage, small }) {
       verticalAlign: 'middle',
       boxSizing: 'border-box',
     }}>
-      {stage || '—'}
+      {stageLabel(stage) || '—'}
     </span>
   )
 }
