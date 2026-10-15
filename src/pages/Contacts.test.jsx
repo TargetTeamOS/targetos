@@ -20,8 +20,11 @@ describe('Contacts board — "browse everyone\'s contacts" shared-directory sect
     // block (Sept 2026) added a long explanatory comment between the
     // marker and the actual ownedIds filter, pushing it past the old
     // fixed window with no functional change.
-    const block = src.slice(start, start + 1200)
-    expect(block).toMatch(/ownedIds\.has\(c\.id\)/)
+    // Window widened past 1000: the engagement-aware merge above this
+    // block (Sept 2026) added a long explanatory comment between the
+    // marker and the actual ownedIds filter, pushing it past the old
+    // fixed window with no functional change.
+    const block = src.slice(start, start + 1200)    expect(block).toMatch(/ownedIds\.has\(c\.id\)/)
   })
 
   it('the directory-only section never references selectedIds, bulk-edit, or delete — it must not be selectable or bulk-actionable', () => {
@@ -73,7 +76,7 @@ describe('Contacts board — "Start Working This Lead" claims a private engageme
     const marker = 'async function startWorkingLead(dirContact)'
     const start = src.indexOf(marker)
     expect(start).toBeGreaterThan(-1)
-    const block = src.slice(start, start + 900)
+        const block = src.slice(start, start + 900)
     expect(block).toMatch(/db\.engagements\.startWorking\(dirContact\.id,\s*agent\?\.id/)
     expect(block).toMatch(/status:\s*'New'/)
     expect(block).toMatch(/source:\s*'Shared Directory'/)
