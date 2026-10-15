@@ -43,8 +43,13 @@ module.exports = async function handler(req, res) {
     if (Array.isArray(body.headers) && body.headers.length) values.push(body.headers)
     for (const r of rows.slice(0, 5000)) values.push(Array.isArray(r) ? r : [String(r)])
 
-    let agentId = body.agent_id || null
-    if (!agentId && __user) agentId = await agentIdFromAuthUser(__user.id)
+    // SECURITY (Oct 2026 hardening): this used to trust a client-
+    // supplied body.agent_id with no check it matched the caller --
+    // nothing in the app currently even sends this field, so it only
+    // ever served as an unauthenticated way to create a Sheet (and
+    // burn API quota) under ANOTHER agent's connected Google account.
+    // Now it's always derived from the caller's own verified identity.
+    let agentId = __user ? await agentIdFromAuthUser(__user.id) : null
 
     let token = null
     if (agentId) {

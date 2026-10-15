@@ -9,6 +9,7 @@
 
 const { getIntegration, freshMicrosoftToken, freshGoogleToken, logEvent,
         getAgentAccount, freshAccountToken, agentIdFromAuthUser } = require('./_lib/connectors')
+const { requireAdminOrSecretary } = require('./_lib/phone')
 
 const TZ = 'America/New_York'
 
@@ -68,8 +69,26 @@ module.exports = async function handler(req, res) {
     if (!title) { res.status(400).json({ error: 'title required' }); return }
     const t = buildTimes(body)
 
-    let agentId = body.agent_id || null
-    if (!agentId && __user) agentId = await agentIdFromAuthUser(__user.id)
+    // SECURITY (Oct 2026 hardening): body.agent_id used to be trusted
+    // outright. Unlike connector-send.js/sheets-export.js, there IS a
+    // legitimate reason a request names a DIFFERENT agent here --
+    // Calendar.jsx lets an admin/secretary assign an event to another
+    // agent (the "Agent" dropdown, itself gated client-side by
+    // isAdmin||canManage), and that assignment is meant to sync to
+    // the assigned agent's own calendar. But nothing on the server
+    // checked the caller actually had that role, so anyone could push
+    // arbitrary events onto ANY other agent's real external calendar.
+    // Now a non-self agent_id is only honored when the caller is
+    // verified admin/secretary; otherwise it's silently ignored in
+    // favor of the caller's own id (fire-and-forget, so this degrades
+    // rather than errors).
+    const ownAgentId = __user ? await agentIdFromAuthUser(__user.id) : null
+    let agentId = ownAgentId
+    if (body.agent_id && body.agent_id !== ownAgentId) {
+      const authCheck = await requireAdminOrSecretary(req)
+      if (authCheck.ok) agentId = body.agent_id
+      else console.warn('[calendar-push] ignoring agent_id override — caller is not admin/secretary')
+    }
 
     // pick a destination: agent outlook → agent google → office outlook → office google
     let provider = null, token = null, account = ''

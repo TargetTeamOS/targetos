@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return }
   if (req.method !== 'POST')    { res.status(405).json({ error: 'Method not allowed' }); return }
 
-  // ── EXTERNAL EFFECTS GATE (added 2026-08-06) ──────────────────────
+  // ── EXTERNAL EFFECTS GATE (added 2026-08-06) ──────────────────
   // Same gate as automation-engine and api/send-email.js. This endpoint
   // sends a REAL email through the agent's own Outlook/Gmail account —
   // it had no external-effects check at all. Set
@@ -78,8 +78,19 @@ module.exports = async function handler(req, res) {
 
     // Whose mailbox? The signed-in agent's own connected account wins;
     // the org-level (office) account is the fallback.
-    let senderAgentId = body.agent_id || null
-    if (!senderAgentId && __user) senderAgentId = await agentIdFromAuthUser(__user.id)
+    //
+    // SECURITY (Oct 2026 hardening): this used to trust a client-
+    // supplied body.agent_id with no check it matched the caller --
+    // every real frontend caller (EmailComposeModal.jsx,
+    // ListingWorkspace.jsx) only ever sends the logged-in agent's own
+    // id anyway, and TCBoardPanels.jsx omits it entirely for exactly
+    // this reason, but nothing on the server enforced that. A crafted
+    // request with someone else's agent_id could send a real email
+    // AS that agent's connected Outlook/Gmail account -- impersonating
+    // them to their own contacts. Now it's always derived from the
+    // caller's own verified identity; a client-supplied agent_id is
+    // never trusted.
+    let senderAgentId = __user ? await agentIdFromAuthUser(__user.id) : null
 
     if (provider === 'outlook') {
       let token = null
