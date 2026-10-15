@@ -14,7 +14,7 @@ function getRawBody(req) {
   })
 }
 
-const { getSupabase, checkTwilioSignature, say, wrap, loadFlow } = require('./_lib/phone')
+const { getSupabase, checkTwilioSignature, say, wrap, loadFlow, play, isTwilioRecordingUrl } = require('./_lib/phone')
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'text/xml')
@@ -113,7 +113,24 @@ module.exports = async function handler(req, res) {
       if (vm.recording_url) {
         twiml += say('Message ' + (i + 1) + '.', voice)
         if (vm.contact_name) twiml += say('From ' + vm.contact_name + '.', voice)
-        twiml += '<Play>' + vm.recording_url + '</Play>'
+        // SECURITY (Oct 2026 hardening): recording_url is a DB value
+        // ultimately sourced from the inbound Twilio RecordingUrl
+        // webhook field (see twilio-voicemail.js finding C1) -- every
+        // other value spliced into TwiML in this file goes through
+        // say()/esc(), but this one was inserted raw into a <Play> tag,
+        // which is TwiML injection: a crafted recording_url containing
+        // "</Play><...>" could splice in arbitrary TwiML (e.g. <Dial>,
+        // <Redirect>) and hijack the call. Now it goes through the
+        // same esc()-backed play() helper used elsewhere in this
+        // codebase, and, like the other Twilio-recording fetch here,
+        // is confirmed to actually be a Twilio recording URL before
+        // it's trusted enough to play.
+        if (isTwilioRecordingUrl(vm.recording_url)) {
+          twiml += play(vm.recording_url)
+        } else {
+          console.warn('[twilio-voicemail-access] refusing to play non-Twilio recording_url:', vm.recording_url)
+          twiml += say('Message unavailable.', voice)
+        }
       } else if (vm.transcript) {
         twiml += say('Message ' + (i + 1) + ': ' + vm.transcript, voice)
       }
