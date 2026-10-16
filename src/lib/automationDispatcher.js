@@ -183,7 +183,13 @@ function matchesTriggerConfig(automation, record, prev) {
     case 'closing_soon': {
       if (!record.expected_close_date && !record.close_date) return false
       const date  = record.expected_close_date || record.close_date
-      const days  = Math.ceil((new Date(date) - Date.now()) / 86400000)
+      // FIX (Oct 2026 round-3 bug sweep): expected_close_date/close_date
+      // are date-only columns; a bare `new Date(date)` parses as UTC
+      // midnight, which compared against the real-time Date.now() below
+      // can make a deal look 1 day closer (or farther) than it actually
+      // is depending on the server/browser's timezone -- this directly
+      // decides whether a "closing within X days" automation fires.
+      const days  = Math.ceil((new Date(date + 'T00:00:00') - Date.now()) / 86400000)
       const limit = parseInt(cfg.days) || 7
       return days >= 0 && days <= limit
     }
@@ -229,7 +235,12 @@ export const trigger = {
   photographyScheduled: (record) => dispatch('photography_scheduled', record),
   taskUpdated: (record, prev) => {
     if (record.status === 'done' && prev?.status !== 'done') dispatch('task_completed', record, prev)
-    if (record.due_date && new Date(record.due_date) < new Date() && record.status !== 'done') dispatch('task_overdue', record, prev)
+    // FIX (Oct 2026 round-3 bug sweep): due_date is a date-only column;
+    // without the T00:00:00 anchor, new Date(record.due_date) parses as
+    // UTC midnight, which can make a task due "today" register as already
+    // overdue (or not yet overdue) depending on the viewer's timezone --
+    // this directly decides whether the task_overdue automation fires.
+    if (record.due_date && new Date(record.due_date + 'T00:00:00') < new Date() && record.status !== 'done') dispatch('task_overdue', record, prev)
     if (prev?.priority !== record.priority) dispatch('task_priority_changed', record, prev)
     if (!prev?.agent_id && record.agent_id) dispatch('task_assigned', record, prev)
   },

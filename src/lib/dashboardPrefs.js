@@ -61,18 +61,30 @@ export async function loadDashPrefs(agentId) {
 }
 
 // ── SAVE PREFS TO DB ──────────────────────────────────────────────
-export async function saveDashPrefs(agentId, widgets, layout = {}) {
+// FIX (Oct 2026 round-3 bug sweep): `layout` used to default to `{}`, and
+// both this function and its callers always wrote BOTH columns wholesale.
+// Dashboard.jsx's persistWidgets() never passes a `layout` argument at all
+// (it only ever means to change widget visibility/order), so every such
+// save was silently wiping out whatever custom grid layout
+// DashboardSmart.jsx had separately saved for the same agent moments
+// earlier, and vice versa. `widgets`/`layout` are now optional: whichever
+// one a caller doesn't pass is read fresh from the DB and preserved
+// instead of being overwritten with an empty default.
+export async function saveDashPrefs(agentId, widgets, layout) {
   // Check if a row already exists for this agent
   const { data: existing } = await supabase
     .from('briefing_prefs')
-    .select('agent_id')
+    .select('agent_id, dashboard_widgets, dashboard_layout')
     .eq('agent_id', agentId)
     .maybeSingle()
 
+  const finalWidgets = widgets !== undefined ? widgets : (existing?.dashboard_widgets || DEFAULT_WIDGETS)
+  const finalLayout  = layout  !== undefined ? layout  : (existing?.dashboard_layout  || {})
+
   const payload = {
     agent_id:          agentId,
-    dashboard_widgets: widgets,
-    dashboard_layout:  layout,
+    dashboard_widgets: finalWidgets,
+    dashboard_layout:  finalLayout,
     updated_at:        new Date().toISOString(),
   }
 
@@ -80,7 +92,7 @@ export async function saveDashPrefs(agentId, widgets, layout = {}) {
   if (existing) {
     const result = await supabase
       .from('briefing_prefs')
-      .update({ dashboard_widgets: widgets, dashboard_layout: layout, updated_at: new Date().toISOString() })
+      .update({ dashboard_widgets: finalWidgets, dashboard_layout: finalLayout, updated_at: new Date().toISOString() })
       .eq('agent_id', agentId)
       .then(r => r)
     error = result.error

@@ -26,11 +26,22 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
   const [saving, setSaving]   = useState(false)
   const [form, setForm]       = useState({ first_name: '', last_name: '', email: '', phone: '' })
   const timer = useRef(null)
+  // FIX (Oct 2026 round-3 bug sweep): the 250ms debounce only protects
+  // against a NEW keystroke firing before the timer elapses — once a
+  // query is actually in flight, typing more and pausing again starts a
+  // second overlapping query, and nothing stopped the network from
+  // resolving them out of order. A slower response for an earlier,
+  // now-stale search term could land after a newer one and silently
+  // overwrite its correct results. Use a monotonic request id (same
+  // pattern as the alive-guard fixes elsewhere in this pass) so only the
+  // most recently STARTED request is allowed to apply its results.
+  const reqId = useRef(0)
 
   useEffect(() => {
     if (!q || q.length < 2) { setResults([]); return }
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
+      const myReq = ++reqId.current
       try {
         const like = '%' + q.replace(/[%_]/g, '') + '%'
         let query = supabase
@@ -47,12 +58,13 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
             .limit(12)
           data = r.data
         }
+        if (myReq !== reqId.current) return // a newer search superseded this one
         // PRIVACY: non-admins never see other agents' private contacts
         // in pickers — they simply don't match, as if they don't exist.
         const visible = (data || []).filter(c => isAdmin || !c.is_private || (me?.id && c.agent_id === me.id))
         setResults(visible.slice(0, 8))
         setOpenList(true)
-      } catch { setResults([]) }
+      } catch { if (myReq === reqId.current) setResults([]) }
     }, 250)
     return () => clearTimeout(timer.current)
   }, [q])

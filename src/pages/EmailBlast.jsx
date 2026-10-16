@@ -19,7 +19,7 @@ const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px 
 const lb = { fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', display: 'block', margin: '10px 0 4px' }
 
 export function EmailBlast() {
-  const { agent } = useAuth()
+  const { agent, canManage } = useAuth()
   const { toast } = useApp()
   const [name, setName]       = useState('')
   const [subject, setSubject] = useState('')
@@ -93,6 +93,20 @@ export function EmailBlast() {
     (body || '<p style="color:#94A3B8">Your message preview appears here…</p>')
       .replace(/\{\{first_name\}\}/g, 'Sarah'),
   [body])
+
+  // FIX (Oct 2026 round-3 bug sweep): this component has always relied
+  // entirely on its host (Marketing.jsx's tab gate) to keep non-manager
+  // agents out, with /api/send-campaign as the only real enforcement.
+  // Add the same self-gate pattern Admin.jsx uses so this stays safe even
+  // if rendered from somewhere else later, instead of depending solely on
+  // the caller to remember to check first.
+  if (!canManage) {
+    return (
+      <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+        Email Blast is available to admins and secretaries only.
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>

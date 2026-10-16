@@ -52,7 +52,14 @@ export function fmtDateTime(d) {
 
 export function getDaysAgo(d) {
   if (!d) return null
-  const diff = Date.now() - new Date(d).getTime()
+  // FIX (Oct 2026 round-3 bug sweep): this was the one date helper in this
+  // file missing the date-only-string guard its siblings (fmtDate,
+  // getDaysUntil, isOverdue) already have -- a bare 'YYYY-MM-DD' value
+  // (e.g. the date-only last_reached written by automationEngine.js)
+  // parses as UTC midnight, which can be off by a day from local "today"
+  // depending on the viewer's timezone. A full timestamp (length !== 10)
+  // is left untouched, since appending a time there would corrupt it.
+  const diff = Date.now() - new Date(d + (String(d).length === 10 ? 'T00:00:00' : '')).getTime()
   return Math.floor(diff / 86400000)
 }
 

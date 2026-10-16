@@ -10,6 +10,19 @@ export function SmsComposeModal({ open, onClose, contact, agent, toast, onSent }
   const name = contact ? ((contact.first_name || '') + ' ' + (contact.last_name || '')).trim() : ''
   const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 13, background: 'var(--bg)', color: 'var(--text)', boxSizing: 'border-box' }
 
+  // FIX (Oct 2026 round-3 bug sweep): only a successful send() cleared
+  // the draft. Cancel, Escape, and backdrop-click all go through the
+  // Modal's own onClose prop and left `body` populated, and since this
+  // component has no `key` at its call sites in ContactDetail.jsx, the
+  // same instance (and its state) persists across a navigation to a
+  // different contact — an unsent draft written for one person could
+  // reappear, pre-filled, in the compose box for someone else entirely.
+  // Clear the draft on every close path, not just a successful send.
+  function handleClose() {
+    setBody('')
+    onClose?.()
+  }
+
   async function send() {
     if (!contact?.phone) { toast?.('This contact has no phone number', '#DC2626'); return }
     if (!body.trim()) { toast?.('Write a message first', '#DC2626'); return }
@@ -30,7 +43,7 @@ export function SmsComposeModal({ open, onClose, contact, agent, toast, onSent }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={'💬 Text ' + (name || contact?.phone || '')} width={480}>
+    <Modal open={open} onClose={handleClose} title={'💬 Text ' + (name || contact?.phone || '')} width={480}>
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
         To: <b>{contact?.phone || '— no phone on file —'}</b> · sent from the team line, logged here
       </div>
@@ -39,7 +52,7 @@ export function SmsComposeModal({ open, onClose, contact, agent, toast, onSent }
       <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'right', marginTop: 4 }}>{body.length}/1000</div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
         <Btn variant="secondary" onClick={() => window.open('sms:' + (contact?.phone || ''))}>Open phone app</Btn>
-        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn variant="secondary" onClick={handleClose}>Cancel</Btn>
         <Btn onClick={send} loading={sending} disabled={!contact?.phone}>Send Text</Btn>
       </div>
     </Modal>

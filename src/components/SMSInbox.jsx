@@ -25,7 +25,13 @@ export function SMSThread({ contactId, contactPhone, contactName }) {
     if (!contactId) return
     const ch = supabase.channel('sms_' + contactId)
       .on('postgres_changes', { event:'INSERT', schema:'public', table:'sms_messages', filter:'contact_id=eq.'+contactId },
-        payload => setMessages(p => [...p, payload.new]))
+        // FIX (Oct 2026 round-3 bug sweep): an outbound message we just
+        // sent ourselves lands here too (Postgres realtime broadcasts to
+        // every subscriber, sender included), and by the time it arrives
+        // the optimistic bubble below has usually already been renamed
+        // to this same real id — so without a dedup check it showed up a
+        // second time as a duplicate bubble. Skip any id already present.
+        payload => setMessages(p => p.some(m => m.id === payload.new.id) ? p : [...p, payload.new]))
       .subscribe()
     return () => supabase.removeChannel(ch)
   }, [contactId])
@@ -65,8 +71,14 @@ export function SMSThread({ contactId, contactPhone, contactName }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
-      // Replace optimistic with real
-      setMessages(p => p.map(m => m.id === optimistic.id ? { ...m, status:'sent', id: data.sid } : m))
+      // Replace optimistic with real. Also drop any other row that
+      // already landed with this same id via the realtime subscription
+      // above (which can arrive before this response does) so renaming
+      // the optimistic bubble doesn't create a second, duplicate-keyed
+      // entry for the same message.
+      setMessages(p => p
+        .filter(m => m.id === optimistic.id || m.id !== data.sid)
+        .map(m => m.id === optimistic.id ? { ...m, status:'sent', id: data.sid } : m))
     } catch(e) {
       setMessages(p => p.map(m => m.id?.startsWith('opt_') ? { ...m, status:'failed' } : m))
     } finally { setSending(false) }

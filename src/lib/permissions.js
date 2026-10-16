@@ -148,8 +148,16 @@ let _cachedOverrides = null
 let _cacheTime = 0
 
 export async function loadPermissionOverrides() {
-  // Cache for 5 minutes
-  if (_cachedOverrides && Date.now() - _cacheTime < 300000) return _cachedOverrides
+  // FIX (Oct 2026 round-3 bug sweep): this cache used to hold a role
+  // change for up to 5 minutes in every OTHER already-open tab/session --
+  // an admin tightening (or loosening) a role's permissions wouldn't take
+  // effect anywhere else for up to 5 minutes. There's no cross-tab
+  // invalidation mechanism here yet (would need a realtime subscription on
+  // system_settings), so as a bounded interim fix the window is shortened
+  // from 5 minutes to 20 seconds. The admin's OWN tab that makes the
+  // change gets it instantly regardless, via the immediate cache update in
+  // savePermissionOverrides below plus Admin.jsx calling refreshPermissions().
+  if (_cachedOverrides && Date.now() - _cacheTime < 20000) return _cachedOverrides
   try {
     const { data } = await supabase.from('system_settings').select('value').eq('key', 'permission_overrides').maybeSingle()
     _cachedOverrides = data?.value || {}

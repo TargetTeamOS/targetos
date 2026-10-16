@@ -4,7 +4,7 @@
 // both "generate marketing material" tools. Both existing pages are
 // reused as-is (imported, not rewritten) to avoid any regression risk
 // in either one.
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { PageHeader, Tabs } from '../components/UI'
 import { SocialCards } from './SocialCards'
 import { DesignStudio } from './DesignStudio'
@@ -13,6 +13,7 @@ import { WeeklyAd } from './WeeklyAd'
 import { MarketUpdateCard } from './MarketUpdateCard'
 import { TestimonialCard } from './TestimonialCard'
 import { usePageView, LastVisited } from '../components/PageViewTracking'
+import { useAuth } from '../context/AuthContext'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
@@ -36,11 +37,25 @@ export function Marketing() {
   const [tab, setTab] = useState('social')
   usePageView('marketing')
   const inCreate = CREATE_TAB_IDS.includes(tab)
+  // FIX (Oct 2026 round-3 bug sweep): the Marketing nav item is rightly
+  // open to every role — Property Cards/Design Studio/Weekly Ad/etc. are
+  // just graphic generators — but Email Blast sends real, irreversible
+  // mass email to the contact list and is gated admin/secretary-only
+  // server-side in api/send-campaign.js. The UI here had no matching
+  // gate, so an agent could still open the tab and hit a confusing
+  // server rejection on send. Hide the tab itself for consistency and
+  // to avoid that dead-end UX.
+  const { canManage } = useAuth()
+  const visibleTabs = canManage ? TABS : TABS.filter(t => t.id !== 'blast')
+
+  useEffect(() => {
+    if (!canManage && tab === 'blast') setTab('social')
+  }, [canManage, tab])
 
   return (
     <div style={{ fontFamily: ff }}>
       <div style={{ display:'flex', alignItems:'center', borderBottom:'2px solid var(--border)', marginBottom: inCreate ? 0 : 20, gap:0 }}>
-        {TABS.map(t => {
+        {visibleTabs.map(t => {
           const active = tab === t.id || (t.id === 'create' && inCreate)
           return (
             <button key={t.id} onClick={() => setTab(t.id === 'create' ? 'social' : t.id)}
@@ -67,7 +82,7 @@ export function Marketing() {
       )}
 
       {tab === 'studio' && <DesignStudio />}
-      {tab === 'blast'  && <EmailBlast />}
+      {canManage && tab === 'blast'  && <EmailBlast />}
       {tab === 'social' && <SocialCards />}
       {tab === 'weekly'  && <WeeklyAd />}
       {tab === 'market'  && <MarketUpdateCard />}
