@@ -54,7 +54,7 @@ function priorityStyle(p) {
   return s[p||'normal'] || s.normal
 }
 
-// ── MAIN BUILD FUNCTION ───────────────────────────────────────
+// ── MAIN BUILD FUNCTION ───────────────────────────────
 export function buildDailyEmail({
   agentName, tasks=[], overdueTasks=[], appointments=[],
   agentColor='#CC2200', showQuote=true,
@@ -77,10 +77,15 @@ export function buildDailyEmail({
   const fmt$ = n => '$' + Number(n||0).toLocaleString()
   const pct = (a,g) => Math.min(Math.round((a||0)/(g||1)*100),100)
 
-  // ── TASK ROW — deep links to exact task ──────────────────────
+  // ── TASK ROW — deep links to exact task ──────────────────
   function taskRow(t, isOverdue=false) {
     const ps = priorityStyle(isOverdue ? 'urgent' : t.priority)
-    const daysOverdue = isOverdue && t.due_date ? Math.floor((Date.now()-new Date(t.due_date))/86400000) : 0
+    // FIX (Oct 2026 round-3 bug sweep): due_date is a date-only column;
+    // new Date('2026-03-15') parses as UTC midnight, which can read as
+    // one day earlier than intended once compared against local "now" or
+    // formatted in a non-UTC timezone. Anchor it to local midnight.
+    const dueDateLocal = t.due_date ? new Date(t.due_date + 'T00:00:00') : null
+    const daysOverdue = isOverdue && dueDateLocal ? Math.floor((Date.now()-dueDateLocal)/86400000) : 0
     // Deep link: open tasks page with this task highlighted
     const link = `${APP}/?page=tasks&task=${t.id||''}`
     return `
@@ -96,7 +101,7 @@ export function buildDailyEmail({
                     <div style="font-size:14px;font-weight:700;color:${isOverdue?'#DC2626':'#1E293B'};line-height:1.4;margin-bottom:4px;">${isOverdue?'⚠️ ':''}${t.title}</div>
                     <div style="font-size:11px;color:${ps.text};font-weight:600;">
                       ${isOverdue
-                        ? `${daysOverdue} day${daysOverdue>1?'s':''} overdue · Was due ${new Date(t.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`
+                        ? `${daysOverdue} day${daysOverdue>1?'s':''} overdue · Was due ${dueDateLocal ? dueDateLocal.toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}`
                         : `${(t.priority||'normal').toUpperCase()}${t.due_date?' · Due today':''}`
                       }
                     </div>
@@ -116,7 +121,7 @@ export function buildDailyEmail({
     </tr>`
   }
 
-  // ── APPOINTMENT ROW — deep links to calendar ─────────────────
+  // ── APPOINTMENT ROW — deep links to calendar ─────────────
   function apptRow(a) {
     const link = `${APP}/?page=calendar`
     return `
@@ -149,7 +154,7 @@ export function buildDailyEmail({
     </tr>`
   }
 
-  // ── SECTION HEADER ────────────────────────────────────────────
+  // ── SECTION HEADER ───────────────────────────────────
   function sectionHeader(label, count, linkPage, bgColor, textColor) {
     return `
     <tr>
@@ -164,7 +169,7 @@ export function buildDailyEmail({
     </tr>`
   }
 
-  // ── PROGRESS BARS ─────────────────────────────────────────────
+  // ── PROGRESS BARS ────────────────────────────────────
   function progressSection(p) {
     if(!p) return ''
     const metrics = [

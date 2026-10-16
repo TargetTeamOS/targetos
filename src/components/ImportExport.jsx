@@ -13,7 +13,7 @@ import * as XLSX from 'xlsx'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-// ── CSV HELPERS ───────────────────────────────────────────────────
+// ── CSV HELPERS ────────────────────────────────────────────
 
 // Converts common date formats (M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD, etc.)
 // into a clean YYYY-MM-DD string for Postgres. Returns null if unparseable.
@@ -87,7 +87,7 @@ function parseLine(line) {
 
 function parseCSV(text) {
   // Strip BOM and normalize line endings
-  const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const clean = text.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const rawLines = clean.split('\n')
 
   // Find the real header row: first row with 3+ non-empty quoted/unquoted cells
@@ -115,6 +115,15 @@ function parseCSV(text) {
 
   const rows = []
   let skippedCount = 0
+  // FIX (Oct 2026 round-3 bug sweep): "only 1 filled cell with no 3+
+  // digit number = probably a Monday.com group label" is just a guess —
+  // a legitimate single-field row (e.g. a contact imported with only a
+  // first name, or a listing with only a street name and no number) hits
+  // the exact same condition and was silently folded into the generic
+  // skippedCount, indistinguishable from an actual blank row. Track
+  // these separately so the preview banner can call them out by name
+  // instead of hiding them inside a generic "blank/header rows" count.
+  let groupHeaderGuessCount = 0
 
   for (let i = headerIdx + 1; i < rawLines.length; i++) {
     const line = rawLines[i]
@@ -132,13 +141,13 @@ function parseCSV(text) {
     if (filledCount === 1) {
       const onlyVal = Object.values(obj).find(v => v.length > 0) || ''
       const isGroupHeader = !/\d{3,}/.test(onlyVal) // no 3+ digit numbers = probably a label
-      if (isGroupHeader) { skippedCount++; continue }
+      if (isGroupHeader) { skippedCount++; groupHeaderGuessCount++; continue }
     }
 
     rows.push(obj)
   }
 
-  return { headers, rows, rawCount: rawLines.length - headerIdx - 1, skippedCount }
+  return { headers, rows, rawCount: rawLines.length - headerIdx - 1, skippedCount, groupHeaderGuessCount }
 }
 
 
@@ -155,7 +164,7 @@ function downloadFile(content, filename, type = 'text/csv;charset=utf-8;') {
   URL.revokeObjectURL(url)
 }
 
-// ── MAIN COMPONENT ────────────────────────────────────────────────
+// ── MAIN COMPONENT ──────────────────────────────────────────────
 export function ImportExport({ table, data = [], columns = [], onImport, label = 'Records', exportOnly = false }) {
   const { toast } = useApp()
   const [open,        setOpen]        = useState(false)
@@ -168,7 +177,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
   const [importDone,  setImportDone]  = useState(null)    // { inserted, skipped, updated, errors }
   const fileRef = useRef(null)
 
-  // ── EXPORT ─────────────────────────────────────────────────────
+  // ── EXPORT ───────────────────────────────────────────────
   function doExport() {
     if (!data.length) { toast('No data to export', '#F5A623'); return }
     const csv  = toCSV(data, columns)
@@ -186,7 +195,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     toast('✅ Template downloaded')
   }
 
-  // ── IMPORT: file pick ─────────────────────────────────────────
+  // ── IMPORT: file pick ────────────────────────────────────
   function onFileChange(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -288,7 +297,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
         if (lower === 'a/o date' || lower === 'a/o') { autoMap[h] = 'ao_date' }
       })
       setMapping(autoMap)
-      setPreview({ headers, rows: rows.slice(0, 5), allRows: rows, rawCount: allParsed.rawCount || rows.length, skippedCount: allParsed.skippedCount || 0 })
+      setPreview({ headers, rows: rows.slice(0, 5), allRows: rows, rawCount: allParsed.rawCount || rows.length, skippedCount: allParsed.skippedCount || 0, groupHeaderGuessCount: allParsed.groupHeaderGuessCount || 0 })
       setImportDone(null)
     }
     reader.readAsText(file)
@@ -302,7 +311,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     const { allRows } = preview
     let inserted = 0, updated = 0, skipped = 0, errors = []
 
-    // ── Step 1: Load agents ───────────────────────────────────────
+    // ── Step 1: Load agents ──────────────────────────────
     let agentCache = []
     try {
       const { data } = await supabase.from('agents').select('id, name').eq('active', true)
@@ -311,7 +320,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
 
     setImportProgress('Reading ' + allRows.length + ' rows...')
 
-    // ── Step 2: Build records from CSV ────────────────────────────
+    // ── Step 2: Build records from CSV ──────────────────────────
     const records = []
     for (let ri = 0; ri < allRows.length; ri++) {
       const row = allRows[ri]
@@ -410,10 +419,18 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       })
       if (filledFields.length < 2) {
         // Only 1 field filled (just the addr/name) — likely a group header row
-        // Skip silently unless it has a meaningful identifier
         const addrVal = String(record[idField] || '')
         const looksLikeGroupHeader = addrVal.length < 4 || /^[A-Za-z\s]+$/.test(addrVal)
         if (looksLikeGroupHeader) {
+          // FIX (Oct 2026 round-3 bug sweep): this heuristic matches any
+          // short or purely-alphabetic single-field value, which also
+          // matches a perfectly legitimate sparse row (a contact with
+          // just a first name, a listing with just a one-word street
+          // name) — previously `continue`d with no trace at all, unlike
+          // the blank-row case just above which logs a minor warning.
+          // Surface it the same way so a real record isn't dropped
+          // without the user ever knowing.
+          errors.push('Row ' + (ri+1) + ': skipped as a likely group-header row (only "' + addrVal + '" was filled in) — if this was a real record, add another column value and re-import')
           continue  // skip group headers
         }
       }
@@ -434,7 +451,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
       return
     }
 
-    // ── FORCE MODE: skip all dup detection, insert everything ──────
+    // ── FORCE MODE: skip all dup detection, insert everything ──────────
     if (dupMode === 'force') {
       setImportProgress('Inserting all ' + records.length + ' rows (force mode)...')
       console.log('FORCE IMPORT: records to insert:', records.length)
@@ -474,7 +491,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     }
 
     setImportProgress('Checking for duplicates (' + records.length + ' rows)...')
-    // ── Step 3: Smart duplicate detection ─────────────────────────
+    // ── Step 3: Smart duplicate detection ────────────────────────
     // For contacts: match on normalized phone number (most reliable)
     //   fallback to first_name+last_name if no phone
     // For deals: match on addr+side
@@ -580,7 +597,7 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
     }
 
     setImportProgress('Inserting ' + toInsert.length + ' new records...')
-    // ── Step 5: Batch INSERT (up to 50 per call) ──────────────────
+    // ── Step 5: Batch INSERT (up to 50 per call) ────────────────
     for (let i = 0; i < toInsert.length; i += BATCH) {
       const chunk = toInsert.slice(i, i + BATCH).map(r => ({
         ...r,
@@ -732,6 +749,16 @@ export function ImportExport({ table, data = [], columns = [], onImport, label =
                 <strong style={{ color: 'var(--text)', fontSize: 14 }}>{preview.allRows.length} data rows</strong> ready to import.
                 {preview.skippedCount > 0 && <span style={{ color: '#F5A623' }}> ({preview.skippedCount} blank/header rows auto-skipped from your CSV)</span>}
               </div>
+              {/* FIX (Oct 2026 round-3 bug sweep): the "group header"
+                  guess (a row with only 1 filled cell and no 3+ digit
+                  number) can misfire on a legitimate sparse row — flag it
+                  explicitly instead of letting it disappear into the
+                  generic blank/header count above with no way to notice. */}
+              {preview.groupHeaderGuessCount > 0 && (
+                <div style={{ fontSize: 12, color: '#B45309', background: 'rgba(245,166,35,.1)', border: '1px solid #F5A623', borderRadius: 7, padding: '7px 10px', marginBottom: 10 }}>
+                  ⚠️ {preview.groupHeaderGuessCount} row{preview.groupHeaderGuessCount === 1 ? '' : 's'} with only one filled column {preview.groupHeaderGuessCount === 1 ? 'was' : 'were'} guessed to be a group-label row (common in Monday.com exports) and skipped. If any of those were real single-field records, add another column value to that row in your source file and re-upload.
+                </div>
+              )}
               {preview.allRows.length < 200 && preview.rawCount > preview.allRows.length + preview.skippedCount && (
                 <div style={{ padding: '8px 12px', background: '#FEF2F2', borderRadius: 8, border: '1px solid #FECACA', fontSize: 12, color: '#DC2626', marginBottom: 10 }}>
                   ⚠️ Only {preview.allRows.length} of {preview.rawCount} raw CSV rows were parsed.
