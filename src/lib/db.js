@@ -638,12 +638,31 @@ tasks: {
     // Auto-create the next task if this was a recurring task
     if (result.recur_interval && result.recur_unit) {
       try {
-        const base = new Date(result.due_date || new Date())
+        // FIX (Oct 2026 round-3 bug sweep), two bugs in the same block:
+        // (1) due_date is a date-only column ('YYYY-MM-DD'); parsing it
+        // with a bare `new Date(result.due_date)` reads it as UTC
+        // midnight, so the local getDate()/getMonth() below could be off
+        // by a day depending on the server/browser's timezone. Anchor it
+        // to local midnight instead, same fix already applied to fmtDate/
+        // getDaysUntil/isOverdue in utils.js.
+        // (2) `next.setMonth(base.getMonth() + n)` on a date still holding
+        // the original day-of-month overflows into a LATER month when the
+        // target month is shorter (e.g. Jan 31 + 1 month silently becomes
+        // Mar 3, skipping February's occurrence entirely for any task due
+        // on the 29th-31st). Clamp to the target month's actual last day.
+        const base = new Date((result.due_date || new Date().toISOString().slice(0, 10)) + 'T00:00:00')
         const next = new Date(base)
         const n = parseInt(result.recur_interval) || 1
         if (result.recur_unit === 'day')   next.setDate(base.getDate() + n)
         if (result.recur_unit === 'week')  next.setDate(base.getDate() + n * 7)
-        if (result.recur_unit === 'month') next.setMonth(base.getMonth() + n)
+        if (result.recur_unit === 'month') {
+          const targetMonth = base.getMonth() + n
+          const lastDayOfTargetMonth = new Date(base.getFullYear(), targetMonth + 1, 0).getDate()
+          next.setFullYear(base.getFullYear())
+          next.setDate(1) // avoid overflow while the month is still mid-update
+          next.setMonth(targetMonth)
+          next.setDate(Math.min(base.getDate(), lastDayOfTargetMonth))
+        }
         if (result.recur_unit === 'year')  next.setFullYear(base.getFullYear() + n)
 
         const { recur_interval:ri, recur_unit:ru, id:_id, status:_s, completed_at:_c, created_at:_ca, updated_at:_ua, ...rest } = result

@@ -41,7 +41,7 @@ const COLORS = ['#CC2200','#0EA5E9','#10B981','#F5A623','#8B5CF6','#EC4899','#14
 const BLANK  = { name:'', email:'', phone:'', color:'#CC2200', role:'agent', active:true }
 
 export function Admin() {
-  const { agent: me, isAdmin } = useAuth()
+  const { agent: me, isAdmin, refreshPermissions } = useAuth()
   const { toast, setCustom, setOrgSettings, resetCustom, state, setTheme } = useApp()
   const { agents, loading, refetch } = useAgents()
 
@@ -76,6 +76,12 @@ export function Admin() {
     setSavingPerms(true)
     try {
       await savePermissionOverrides(permOverrides)
+      // FIX (Oct 2026 round-3 bug sweep): refreshPermissions() existed on
+      // AuthContext but was never actually called anywhere -- saving a
+      // permission change here never updated the admin's OWN live `can()`
+      // checks in this same session (e.g. revoking a permission for your
+      // own role would silently keep working until your next full reload).
+      await refreshPermissions?.()
       toast('✅ Permissions saved')
     } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
     finally { setSavingPerms(false) }
@@ -411,7 +417,7 @@ export function Admin() {
                   </button>
                   {a.id !== me?.id && (
                     <button onClick={() => setConfirmDel(a)}
-                      style={{padding:'4px 9px',borderRadius:6,border:'1px solid #DC262444',background:'#FEF2F2',color:'#DC2626',fontSize:11,cursor:'pointer',fontFamily:ff}}>
+                      style={{padding:'4px 9px',borderRadius:6,border:'1px solid #DC262644',background:'#FEF2F2',color:'#DC2626',fontSize:11,cursor:'pointer',fontFamily:ff}}>
                       Deactivate
                     </button>
                   )}
