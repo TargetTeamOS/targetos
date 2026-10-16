@@ -59,7 +59,14 @@ const FEEDBACK_OPTS = ['Loved it','Price is right','Too expensive','Too small','
 
 function daysOnMarket(listDate) {
   if (!listDate) return null
-  return Math.floor((Date.now() - new Date(listDate)) / 86400000)
+  // FIX (Oct 2026 round-3 bug sweep): callers pass either a date-only
+  // column (listed_date/list_date, 'YYYY-MM-DD') or a timestamptz
+  // (created_at). Parsing the date-only form as bare UTC midnight and
+  // diffing against Date.now() (local "now") can undercount/overcount a
+  // day depending on the viewer's timezone. Anchor only the date-only
+  // form to local midnight; a full timestamp is left untouched.
+  const anchored = String(listDate).length === 10 ? listDate + 'T00:00:00' : listDate
+  return Math.floor((Date.now() - new Date(anchored)) / 86400000)
 }
 
 function DOMBadge({ days }) {

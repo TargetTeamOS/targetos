@@ -419,6 +419,11 @@ function extractDateTime(text) {
   else if(/\bwednesday\b/.test(t)) { result.date = toDateStr(nextWeekday(today,3)); result.dateLabel = 'Wednesday' }
   else if(/\bthursday\b/.test(t)) { result.date = toDateStr(nextWeekday(today,4)); result.dateLabel = 'Thursday' }
   else if(/\bfriday\b/.test(t)) { result.date = toDateStr(nextWeekday(today,5)); result.dateLabel = 'Friday' }
+  // FIX (Oct 2026 round-3 bug sweep): "Saturday" was missing from this
+  // weekday chain -- SCHEDULE_PATTERNS still matches it for isSchedule
+  // detection, so a command like "schedule for Saturday" was flagged as
+  // a schedule request but silently never got a date/dateLabel resolved.
+  else if(/\bsaturday\b/.test(t)) { result.date = toDateStr(nextWeekday(today,6)); result.dateLabel = 'Saturday' }
   else if(/\bsunday\b/.test(t)) { result.date = toDateStr(nextWeekday(today,0)); result.dateLabel = 'Sunday' }
 
   // Numeric date: "6/25", "6/25/2026"

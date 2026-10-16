@@ -18,7 +18,18 @@ const ff = 'Inter, system-ui, sans-serif'
 const parseNum = v => { const n = parseFloat(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n }
 const isOverdue = d => d && d < new Date().toISOString().slice(0,10)
 const isDueToday = d => d && d === new Date().toISOString().slice(0,10)
-const getDaysUntil = d => d ? Math.ceil((new Date(d) - new Date()) / 86400000) : null
+// FIX (Oct 2026 round-3 bug sweep): this local reimplementation shadowed
+// the already-fixed src/lib/utils.js getDaysUntil but lacked its
+// date-only anchor. expected_close_date/close_date are 'YYYY-MM-DD'
+// columns; parsing them as bare UTC midnight and diffing against
+// `new Date()` (local "now") can be off by a day depending on the
+// viewer's timezone, which here flips deals in/out of the 0-30 day
+// "upcoming" window right at the boundary.
+const getDaysUntil = d => {
+  if (!d) return null
+  const anchored = String(d).length === 10 ? d + 'T00:00:00' : d
+  return Math.ceil((new Date(anchored) - new Date()) / 86400000)
+}
 const money = n => { const v = parseNum(n); if (v>=1e6) return '$'+(v/1e6).toFixed(1)+'M'; if (v>=1e3) return '$'+Math.round(v/1e3)+'K'; return '$'+Math.round(v) }
 
 // ── App-style metric tile ────────────────────────────────────────

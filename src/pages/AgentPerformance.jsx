@@ -77,11 +77,20 @@ function AgentCard({ agent, stats, rank, maxGCI, year }) {
   const closeRate     = stats.deals.length ? Math.round((closedDeals.length / stats.deals.length) * 100) : 0
 
   // Monthly breakdown
+  // FIX (Oct 2026 round-3 bug sweep): close_date/ao_date are date-only
+  // columns; new Date(date).getMonth()/getFullYear() read it as UTC
+  // midnight and then ask for the LOCAL month/year, which for a deal
+  // dated on the 1st of a month can bucket it into the previous month
+  // (or, near year's end, the previous year) depending on the viewer's
+  // timezone -- this corrupts the monthly GCI chart, not just a display
+  // label. Anchor to local midnight before reading month/year.
   const monthlyGCI = Array.from({ length: 12 }, (_, m) => ({
     value: closedDeals
       .filter(d => {
         const date = d.close_date || d.ao_date
-        return date && new Date(date).getMonth() === m && new Date(date).getFullYear() === parseInt(year)
+        if (!date) return false
+        const local = new Date(date + 'T00:00:00')
+        return local.getMonth() === m && local.getFullYear() === parseInt(year)
       })
       .reduce((s, d) => s + (parseFloat(d.gci) || 0), 0)
   }))
@@ -273,7 +282,7 @@ function GoalsTab({ agents, year, goals, setGoals, agentStats, contacts, savingG
       // Update local state so it shows immediately without refresh
       setGoals(prev => ({ ...prev, [agentId + '_' + year]: goalData }))
       setEditing(null)
-      toast('\u2705 Goal saved for ' + (agents.find(a => a.id === agentId)?.name || 'agent'))
+      toast('✅ Goal saved for ' + (agents.find(a => a.id === agentId)?.name || 'agent'))
     } catch(e) {
       console.error('saveGoal exception:', e)
       toast('Save failed: ' + e.message, '#DC2626')
@@ -430,17 +439,26 @@ export function AgentPerformance() {
   const [listings,  setListings]  = useState([])
   const [calls,     setCalls]     = useState([])
   const [tasks,     setTasks]     = useState([])
+  const [dealsTruncated, setDealsTruncated] = useState(false)
 
   useEffect(() => { load() }, [year])
 
   async function load() {
     setLoading(true)
     try {
-      const [dealsRes, agentsRes, offersRes, listingsRes, callsRes, tasksRes] = await Promise.all([
+      const [dealsRes, dealsCountRes, agentsRes, offersRes, listingsRes, callsRes, tasksRes] = await Promise.all([
         supabase.from('deals')
           .select('id, addr, agent_id, stage, side, production, gci, ao_date, close_date, expected_close_date, created_at')
           .order('ao_date', { ascending: false })
           .range(0, 2999), // 3000 max — enough for years of data
+        // FIX (Oct 2026 round-3 bug sweep): the query above silently
+        // dropped any deals past the 3000-row cap (oldest by ao_date
+        // first), with nothing telling the viewer data was cut off -- the
+        // Year dropdown goes back to 2020, so an old year could render an
+        // incomplete or empty report with no indication why. Get the real
+        // total separately (head:true avoids fetching the rows twice) and
+        // show a banner when the cap was actually hit.
+        supabase.from('deals').select('id', { count: 'exact', head: true }),
         supabase.from('agents').select('id, name, color, role').eq('active', true).order('name'),
         supabase.from('offers').select('agent_id, status'),
         supabase.from('listings').select('agent_id, status'),
@@ -449,6 +467,7 @@ export function AgentPerformance() {
       ])
       if (dealsRes.error) throw dealsRes.error
       if (agentsRes.error) throw agentsRes.error
+      setDealsTruncated(!dealsCountRes.error && (dealsCountRes.count || 0) > 3000)
       setDeals(dealsRes.data || [])
       setAgents(agentsRes.data || [])
       setOffers(offersRes.data || [])
@@ -603,7 +622,12 @@ export function AgentPerformance() {
       )}
 
       {activeTab === 'overview' && (
-        <FullPictureTab agents={agents} deals={deals} offers={offers} listings={listings} calls={calls} contacts={contacts} tasks={tasks} />
+        // FIX (Oct 2026 round-3 bug sweep): this used to pass the raw,
+        // all-time `deals` array -- Full Picture's Closed GCI/Pipeline
+        // GCI/Deals/Active columns ignored the Year selector entirely
+        // while Leaderboard and Goals (which use yearDeals) correctly
+        // respected it. Pass the same year-filtered set everywhere.
+        <FullPictureTab agents={agents} deals={yearDeals} offers={offers} listings={listings} calls={calls} contacts={contacts} tasks={tasks} />
       )}
     </div>
   )

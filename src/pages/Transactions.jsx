@@ -116,6 +116,18 @@ export function Transactions() {
 
   const active   = transactions.filter(t => t.status === 'Active').length
   const totalGCI = transactions.reduce((s, t) => s + parseNum(t.gci), 0)
+  // FIX (Oct 2026 round-3 bug sweep): this stat was labeled "Total This
+  // Year" but rendered transactions.length with no date filtering at
+  // all — for an admin/manager that's every transaction ever recorded,
+  // not this year's. Scope it the same way AgentPerformance.jsx's
+  // yearDeals does (close_date, falling back to ao_date, then
+  // created_at), comparing by year prefix so no UTC-midnight anchoring
+  // is needed for this coarse a comparison.
+  const thisYearStr = String(new Date().getFullYear())
+  const totalThisYear = transactions.filter(t => {
+    const dateStr = t.close_date || t.ao_date || t.created_at || ''
+    return dateStr.slice(0, 4) === thisYearStr
+  }).length
   const ctcColor = (c) => CTC_STAGES.find(x => x.value === c)?.hex || '#c4c4c4'
 
   return (
@@ -128,7 +140,7 @@ export function Transactions() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
         <StatCard label="Active Transactions" value={active} accent="#007eb5" icon="💼" />
-        <StatCard label="Total This Year" value={transactions.length} accent="#9d50dd" icon="📊" />
+        <StatCard label="Total This Year" value={totalThisYear} accent="#9d50dd" icon="📊" />
         <StatCard label="Total GCI" value={fmt$(totalGCI)} accent="#10B981" icon="💰" />
       </div>
 
