@@ -7,11 +7,12 @@ import { useAuth } from '../context/AuthContext'
 import { useApp }  from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import { fmt$, fmtDate, isDueToday, isOverdue, getDaysUntil } from '../lib/utils'
+import { stageLabel } from '../lib/constants'
 import { Btn, Loading } from '../components/UI'
 
 const ff = 'Inter, system-ui, -apple-system, sans-serif'
 
-// ── KW / GARY KELLER QUOTES ──────────────────────────────────────
+// ── KW / GARY KELLER QUOTES ─────────────────────────────────
 const KW_QUOTES = [
   { text: 'Your job is not to be a great salesperson. Your job is to be a great human being who happens to sell real estate.', author: 'Gary Keller' },
   { text: 'Success is actually a short race — a sprint fueled by discipline just long enough for habit to kick in and take over.', author: 'Gary Keller' },
@@ -90,7 +91,7 @@ function buildEmailHTML(agentName, data, prefs, quote, customMsg, style) {
   const dealRows = (prefs.showDeals && data.activeDeals && data.activeDeals.length > 0)
     ? data.activeDeals.slice(0, 8).map(d => row(
         (d.addr || '') + (d.client_legal_name ? '<br/><span style="font-size:11px;color:' + mutedColor + '">' + d.client_legal_name + '</span>' : ''),
-        '<span style="color:#16A34A;font-weight:bold">' + fmt$(d.gci) + '</span><br/><span style="font-size:11px">' + (d.stage || '') + '</span>',
+        '<span style="color:#16A34A;font-weight:bold">' + fmt$(d.gci) + '</span><br/><span style="font-size:11px">' + stageLabel(d.stage) + '</span>',
         false
       )).join('')
     : (prefs.showDeals ? row('No active deals right now.', '', false) : '')
@@ -193,7 +194,7 @@ function buildEmailHTML(agentName, data, prefs, quote, customMsg, style) {
   '</body></html>'
 }
 
-// ── DEFAULT PREFS & STYLE ────────────────────────────────────────
+// ── DEFAULT PREFS & STYLE ──────────────────────────────────
 const DEFAULT_PREFS = {
   showTasks:true, showCalendar:true, showDeals:true,
   showClosings:true, showLeads:true, showListings:true,
@@ -210,7 +211,7 @@ const DEFAULT_STYLE = {
   fontFamily:  'Arial, Helvetica, sans-serif',
 }
 
-// ── MAIN COMPONENT ───────────────────────────────────────────────
+// ── MAIN COMPONENT ─────────────────────────────────────
 export function DailyBriefing() {
   const { agent, isAdmin, canManage } = useAuth()
   const { toast } = useApp()
@@ -234,7 +235,7 @@ export function DailyBriefing() {
 
   const viewAgent = previewFor || agent
 
-  // ── LOAD DATA ──────────────────────────────────────────────────
+  // ── LOAD DATA ──────────────────────────────────────────────
   const load = useCallback(async () => {
     if (!viewAgent) return
     setLoading(true)
@@ -288,7 +289,7 @@ export function DailyBriefing() {
     finally { setLoading(false) }
   }, [viewAgent?.id])
 
-  // ── LOAD PREFS ─────────────────────────────────────────────────
+  // ── LOAD PREFS ───────────────────────────────────────────
   const loadPrefs = useCallback(async () => {
     if (!agent) return
     try {
@@ -316,7 +317,7 @@ export function DailyBriefing() {
   useEffect(() => { load() },      [load])
   useEffect(() => { loadPrefs() }, [loadPrefs])
 
-  // ── SAVE PREFS ─────────────────────────────────────────────────
+  // ── SAVE PREFS ───────────────────────────────────────────
   async function saveMyPrefs() {
     if (!agent) return
     setSavingPrefs(true)
@@ -351,7 +352,7 @@ export function DailyBriefing() {
     finally { setSavingPrefs(false) }
   }
 
-  // ── SEND MY EMAIL ──────────────────────────────────────────────
+  // ── SEND MY EMAIL ──────────────────────────────────────────
   async function sendMyEmail() {
     if (!agent?.email || !data) return
     setSending(true)
@@ -378,7 +379,7 @@ export function DailyBriefing() {
     finally { setSending(false) }
   }
 
-  // ── SEND ALL ───────────────────────────────────────────────────
+  // ── SEND ALL ───────────────────────────────────────────────
   async function sendAllBriefings() {
     if (!isAdmin && !canManage) return
     setSendingAll(true)
@@ -428,7 +429,7 @@ export function DailyBriefing() {
     finally { setSendingAll(false) }
   }
 
-  // ── ADD QUOTE ──────────────────────────────────────────────────
+  // ── ADD QUOTE ───────────────────────────────────────────
   async function addQuote() {
     if (!newQuote.text.trim()) { toast('Enter quote text', '#F5A623'); return }
     setAddingQuote(true)
@@ -612,7 +613,7 @@ export function DailyBriefing() {
                         </div>
                         <div style={{ textAlign:'right' }}>
                           <div style={{ fontSize:12, fontWeight:700, color:'#10B981' }}>{fmt$(d.gci)}</div>
-                          <div style={{ fontSize:10, color:'var(--muted)' }}>{d.stage}</div>
+                          <div style={{ fontSize:10, color:'var(--muted)' }}>{stageLabel(d.stage)}</div>
                         </div>
                       </AppRow>
                     ))}
@@ -927,4 +928,3 @@ function AppRow({ children }) {
 function AppEmpty({ children }) {
   return <div style={{ fontSize:12, color:'var(--muted)', padding:'8px 0', fontStyle:'italic' }}>{children}</div>
 }
-
