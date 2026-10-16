@@ -200,7 +200,11 @@ function AppShell() {
           <Route path="/settings"            element={<Settings />} />
           <Route path="/admin"               element={<Admin />} />
           <Route path="/activitylog"         element={<ActivityLog />} />
-          <Route path="/call-diagnostics"    element={<CallDiagnostics />} />
+          {/* FIX (Oct 2026 round-3 bug sweep): this standalone route had
+              no role gate at all — reusing calls.flow_edit, the existing
+              admin-only permission that already covers the equivalent
+              Phone System config tabs inside Calls.jsx. */}
+          <Route path="/call-diagnostics"    element={<RequirePermission perm="calls.flow_edit"><CallDiagnostics /></RequirePermission>} />
           <Route path="/mortgage"            element={<Mortgage />} />
           <Route path="/website"             element={<WebsiteBuilder />} />
           <Route path="/segments"           element={<Segments />} />
@@ -209,7 +213,18 @@ function AppShell() {
           <Route path="/tc-settings"        element={<RequirePermission perm="admin.customize"><TCSettings /></RequirePermission>} />
           <Route path="/my-listings"          element={<MyListings />} />
           <Route path="/reports"            element={<RequirePermission perm="reports.view"><Analytics /></RequirePermission>} />
-          <Route path="/reportbuilder"      element={<Analytics />} />
+          {/* FIX (Oct 2026 round-3 bug sweep): this route served <Analytics />
+              instead of the actual ReportBuilder component — ReportBuilder
+              was imported above but never referenced anywhere, a dead
+              import pointing at a fully-built, already-wired feature
+              (sql/report_builder.sql's report_definitions table,
+              api/report-send-now.js, api/report-cron.js all exist) that
+              was simply never hooked up to its own route. The page's own
+              header comment marks it admin-only; admin.system is the
+              closest existing admin-only (non-secretary) permission, so
+              it's gated the same way other admin-only routes are here
+              rather than left completely open. */}
+          <Route path="/reportbuilder"      element={<RequirePermission perm="admin.system"><ReportBuilder /></RequirePermission>} />
           <Route path="/notepad"            element={<Notepad />} />
           {/* Catch-all redirect */}
           <Route path="*"                    element={<Navigate to="/" replace />} />

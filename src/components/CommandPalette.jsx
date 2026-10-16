@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { stageLabel } from '../lib/constants'
 
 const ff  = 'Inter, system-ui, -apple-system, sans-serif'
 const ICON = { contact:'👤', deal:'🏠', listing:'🏡', task:'✅', agent:'👔', action:'⚡' }
@@ -85,7 +86,11 @@ export function CommandPalette({ open, onClose }) {
           .ilike('addr', like).limit(5).then(r => (r.data||[]).map(d => ({
             type:'deal', id:'d_'+d.id, raw:d.id,
             label: d.addr || 'Deal',
-            sub: [d.stage, d.client_name, d.gci ? ('$'+(Number(d.gci)/1000).toFixed(0)+'K GCI') : null].filter(Boolean).join(' · '),
+            // FIX (Oct 2026 round-3 bug sweep): was rendering the raw
+            // stored stage value (e.g. "Offer Accapted") instead of the
+            // display label -- route through the canonical stageLabel()
+            // helper, same as every other place stage is shown to users.
+            sub: [stageLabel(d.stage), d.client_name, d.gci ? ('$'+(Number(d.gci)/1000).toFixed(0)+'K GCI') : null].filter(Boolean).join(' · '),
             path: '/production', icon:'🏠',
           }))),
         supabase.from('listings').select('id,addr,city,status,list_price,agent_id')

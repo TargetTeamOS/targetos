@@ -12,7 +12,14 @@ function extractPhone(text) {
   const m = clean.match(/(\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}|\d{10,11})/g)
   if(!m) return null
   const digits = m[0].replace(/\D/g,'')
-  if(digits.length === 10) return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}"\n  if(digits.length === 11 && digits[0]==='1') return "(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`
+  // FIX (Oct 2026 round-3 bug sweep): a corrupted template literal here
+  // merged these two return statements into one string containing a
+  // literal "\n" and stray quote characters, so a 10-digit number came
+  // back as garbled text (e.g. '(555) 123-4567"\n  if(digits.length...')
+  // instead of a formatted number, and an 11-digit number with a leading
+  // '1' never hit its branch at all and fell through to the raw digits.
+  if(digits.length === 10) return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`
+  if(digits.length === 11 && digits[0]==='1') return `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`
   return m[0]
 }
 

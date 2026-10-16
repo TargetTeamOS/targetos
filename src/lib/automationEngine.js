@@ -39,10 +39,23 @@ export async function runAutomation(automation, triggerData, agents) {
     }) } catch(logErr) { console.warn('[AutomationEngine] Could not write run log:', logErr.message) }
 
     // Update fire count
-    await supabase.from('automations').update({
-      fire_count: (automation.fire_count || 0) + 1,
-      last_fired: new Date().toISOString(),
-    }).eq('id', automation.id)
+    // FIX (Oct 2026 round-3 bug sweep): this used to be a plain
+    // read-then-write (`(automation.fire_count || 0) + 1`), which races
+    // whenever two records satisfy the same rule's trigger near-
+    // simultaneously -- both calls compute "+1" off the same in-memory
+    // base and the second write clobbers the first. Try the atomic
+    // Postgres-side increment first (see sql/automation_fire_count.sql);
+    // fall back to the old behavior if that migration hasn't been run
+    // yet in this environment, so fire-count tracking keeps working
+    // either way, just without the race-safety until the SQL is applied.
+    const { error: incErr } = await supabase.rpc('increment_automation_fire_count', { p_automation_id: automation.id })
+    if (incErr) {
+      console.warn('[AutomationEngine] increment_automation_fire_count RPC unavailable (run sql/automation_fire_count.sql), falling back:', incErr.message)
+      await supabase.from('automations').update({
+        fire_count: (automation.fire_count || 0) + 1,
+        last_fired: new Date().toISOString(),
+      }).eq('id', automation.id)
+    }
 
     return { success: true }
   } catch(e) {

@@ -171,9 +171,29 @@ function QuickDrop({ def, value, onChange }) {
 }
 
 // ── ADVANCED FILTER BUILDER ───────────────────────────────────────
-// AND/OR multi-condition builder
+// AND-only multi-condition builder.
+//
+// FIX (Oct 2026 round-3 bug sweep): this used to also offer an "ANY
+// condition" (OR) toggle, but it was a complete no-op — applyAdvanced()
+// below flattens every rule into the same flat { [key]: value } filters
+// object regardless of which mode was selected, and every page that
+// consumes `filters` (Contacts, Production, Deals, etc.) ANDs those
+// fields together with no OR-capable path at all. So picking "ANY
+// condition" silently kept ANDing, which is worse than not offering it —
+// a user building an OR search would get a smaller, wrong result set
+// with no indication anything was off.
+//
+// Properly supporting OR means changing the shape of `filters` itself
+// (from a flat AND-merge to something that can express a predicate
+// tree) and updating every consuming page's filter-application logic to
+// match — a cross-cutting change far riskier than a targeted bug fix.
+// Following the same safe-removal-over-risky-half-fix pattern used
+// elsewhere in this pass (the dead automation triggers), the toggle is
+// removed here rather than left pretending to work; the mode is kept
+// internally (not just always 'AND') so a real OR engine can be added
+// later without another shape change.
 function AdvancedBuilder({ definitions, rules, onChange }) {
-  const [mode, setMode] = useState('AND') // AND | OR
+  const mode = 'AND'
 
   function addRule() {
     onChange({ mode, rules: [...rules, { key: definitions[0]?.key || '', op:'is', value:'' }] })
@@ -189,18 +209,12 @@ function AdvancedBuilder({ definitions, rules, onChange }) {
 
   return (
     <div style={{ padding:'12px 14px', minWidth:340 }}>
-      {/* AND / OR toggle */}
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
         <span style={{ fontSize:11, fontWeight:700, color:'var(--muted)' }}>Match</span>
-        {['AND','OR'].map(m => (
-          <button key={m} onClick={() => { setMode(m); onChange({ mode:m, rules }) }}
-            style={{ padding:'4px 12px', borderRadius:7, border:'1.5px solid ' + (mode===m?'#CC2200':'var(--border)'),
-              background: mode===m ? 'rgba(204,34,0,.08)' : 'transparent',
-              color: mode===m ? '#CC2200' : 'var(--muted)',
-              fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:ff }}>
-            {m === 'AND' ? 'ALL conditions' : 'ANY condition'}
-          </button>
-        ))}
+        <span style={{ padding:'4px 12px', borderRadius:7, border:'1.5px solid #CC2200',
+          background:'rgba(204,34,0,.08)', color:'#CC2200', fontSize:11, fontWeight:700, fontFamily:ff }}>
+          ALL conditions
+        </span>
       </div>
 
       {/* Rules */}

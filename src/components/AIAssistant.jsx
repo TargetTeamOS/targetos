@@ -123,8 +123,16 @@ export function AIAssistant() {
     } catch(e) { console.warn('AI context load failed:', e.message) }
   }
 
-  async function send() {
-    const text = input.trim()
+  // FIX (Oct 2026 round-3 bug sweep): suggested-question buttons used to
+  // call setInput(s) then setTimeout(() => send(), 50) — but send() reads
+  // `input` from this render's closure, and setInput(s) hasn't re-rendered
+  // yet when the click handler finishes, so the setTimeout captured the
+  // OLD send() closure (still seeing the previous, usually empty, input
+  // value) rather than the newly-set suggestion text. Accept an optional
+  // override so a caller can hand text straight to send() instead of
+  // round-tripping it through state first.
+  async function send(overrideText) {
+    const text = (overrideText ?? input).trim()
     if (!text || loading) return
     setInput('')
 
@@ -280,7 +288,7 @@ Keep responses concise and practical. Use bullet points for lists. Be direct and
                 <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Suggestions</div>
                 <div style={{display:'flex',flexDirection:'column',gap:5}}>
                   {STARTERS.slice(0,4).map(s => (
-                    <button key={s} onClick={() => { setInput(s); setTimeout(() => send(), 50) }}
+                    <button key={s} onClick={() => send(s)}
                       style={{textAlign:'left',padding:'6px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--dim)',color:'var(--muted)',fontSize:11,cursor:'pointer',fontFamily:ff}}>
                       {s}
                     </button>

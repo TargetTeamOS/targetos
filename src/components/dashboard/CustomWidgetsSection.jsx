@@ -150,7 +150,14 @@ export function CustomWidgetsSection() {
         )}
       </WidgetCard>
 
-      <WidgetBuilder open={!!builder} initial={builder} engineReady={engineReady === true}
+      {/* FIX (Oct 2026 round-3 bug sweep): WidgetBuilder's `f` state is a
+          lazy useState(() => initial || newWidgetForm(0)) initializer,
+          which only runs once per mount — without a key here, clicking
+          Edit on widget B right after editing (or creating) widget A
+          reused the same instance and kept showing A's stale form data
+          instead of resetting to B's. Keying by the widget being edited
+          (or 'new' when none) forces a fresh instance each time. */}
+      <WidgetBuilder key={builder?.id || 'new'} open={!!builder} initial={builder} engineReady={engineReady === true}
         boardFrom={from} boardTo={to} onCancel={() => setBuilder(null)} onSave={onSave} />
 
       <DrillDown open={!!drill} onClose={() => setDrill(null)} title={drill?.title || 'Widget'}
