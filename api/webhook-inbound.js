@@ -1,16 +1,37 @@
 'use strict'
 // api/webhook-inbound.js — receives events FROM Zapier / API Nation
 // (Brivity syncs travel through API Nation to here).
-// Security: shared secret in the X-Webhook-Secret header (or ?secret=),
-// checked against integrations.secrets.webhook_secret. Always enforced —
-// this endpoint is NOT behind AUTH_ENFORCE because callers are machines.
+// Security: shared secret in the X-Webhook-Secret header, checked
+// against integrations.secrets.webhook_secret using a constant-time
+// comparison. Always enforced — this endpoint is NOT behind
+// AUTH_ENFORCE because callers are machines.
+//
+// SECURITY (Oct 2026 audit): this used to also accept the secret via
+// ?secret=... in the URL. Query strings routinely end up in proxy/
+// server access logs, browser history, and Referer headers -- all
+// places a header never goes -- so a URL-borne secret is far more
+// likely to leak. The header-only inbound_url this project hands to
+// Zapier/API Nation (see api/connectors.js) never relied on the query
+// param anyway. Comparison also now uses crypto.timingSafeEqual on
+// fixed-length buffers instead of plain !==, so a mismatch can't be
+// timed to recover the secret byte-by-byte.
 //
 // Supported events (body.event):
 //   contact.create — { first_name|name, last_name, email, phone, source, tags }
 //   note.add       — { contact_email|contact_phone, text }
 // Everything is logged to integration_events either way.
 
+const crypto = require('crypto')
 const { sb, getIntegration, logEvent } = require('./_lib/connectors')
+
+function secretsMatch(expected, provided) {
+  const a = Buffer.from(String(expected))
+  const b = Buffer.from(String(provided))
+  // timingSafeEqual throws on a length mismatch -- check first and
+  // treat that as "not equal" without ever calling it on unequal input.
+  if (a.length !== b.length) return false
+  return crypto.timingSafeEqual(a, b)
+}
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) return req.body
@@ -40,8 +61,8 @@ module.exports = async function handler(req, res) {
     if (!integ) { res.statusCode = 503; return res.end(JSON.stringify({ error: 'run sql/connectors.sql first' })) }
 
     const expected = (integ.secrets || {}).webhook_secret || ''
-    const provided = req.headers['x-webhook-secret'] || url.searchParams.get('secret') || ''
-    if (!expected || provided !== expected) {
+    const provided = req.headers['x-webhook-secret'] || ''
+    if (!expected || !provided || !secretsMatch(expected, provided)) {
       console.warn('[webhook-inbound] BLOCKED bad secret from ' + source)
       res.statusCode = 401; return res.end(JSON.stringify({ error: 'bad secret' }))
     }

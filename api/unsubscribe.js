@@ -9,9 +9,23 @@
 const crypto = require('crypto')
 const { getSupabase } = require('./_lib/phone')
 
+// SECURITY (Oct 2026 audit): this used to fall back to a hardcoded
+// literal ('targetos-unsub') when neither UNSUB_SECRET nor CRON_SECRET
+// was set. That literal is visible to anyone with read access to this
+// source file, so in an environment where both env vars were unset,
+// anyone could compute a valid token themselves and unsubscribe
+// arbitrary contacts' emails -- the exact abuse this signing scheme
+// exists to prevent (see file banner above). Matches the fail-closed
+// pattern already used by api/_lib/connectors.js's oauthStartSecret():
+// throw instead of signing/verifying with a known-to-everyone secret.
+function unsubSecret() {
+  const secret = process.env.UNSUB_SECRET || process.env.CRON_SECRET
+  if (!secret) throw new Error('UNSUB_SECRET (or CRON_SECRET) is not configured — refusing to sign/verify unsubscribe tokens with a hardcoded fallback')
+  return secret
+}
+
 function sign(email) {
-  const secret = process.env.UNSUB_SECRET || process.env.CRON_SECRET || 'targetos-unsub'
-  return crypto.createHmac('sha256', secret).update(email.toLowerCase()).digest('hex').slice(0, 16)
+  return crypto.createHmac('sha256', unsubSecret()).update(email.toLowerCase()).digest('hex').slice(0, 16)
 }
 
 // Exported so the blast sender can build matching links

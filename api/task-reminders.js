@@ -9,21 +9,23 @@ const { getSupabase } = require('./_lib/phone')
 const { notifyAgent, loadAgentNotificationPrefs } = require('./_lib/notify')
 
 module.exports = async function handler(req, res) {
-  // Vercel automatically sends 'Authorization: Bearer <CRON_SECRET>' when
-  // calling this on its schedule, IF a CRON_SECRET env var is set in
-  // Vercel. Until that's set, this stays open to anyone who finds the
-  // URL (they could trigger unwanted reminder emails to your whole team
-  // repeatedly, using your Resend credits) -- add CRON_SECRET in Vercel
-  // env vars to close this. Logs a warning rather than hard-blocking
-  // until it's configured, so the actual cron schedule doesn't break.
+  // SECURITY (Oct 2026 audit, finding C3 — same class already fixed in
+  // api/report-cron.js and api/daily-briefing-cron.js): this used to
+  // WARN and fall through (run unauthenticated) when CRON_SECRET wasn't
+  // set -- fail OPEN, not closed. Anyone who found this URL could
+  // trigger unwanted reminder emails to the whole team repeatedly,
+  // using the Resend credits. Now refuses to run at all until
+  // CRON_SECRET is actually configured in Vercel, matching the other
+  // two cron endpoints exactly.
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const authHeader = req.headers['authorization'] || ''
-    if (authHeader !== 'Bearer ' + cronSecret) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
-  } else {
-    console.warn('[task-reminders] CRON_SECRET not set — endpoint is unauthenticated. Add CRON_SECRET to Vercel env vars.')
+  if (!cronSecret) {
+    console.error('[task-reminders] CRON_SECRET is not set — refusing to run rather than allow unauthenticated invocations')
+    return res.status(503).json({ error: 'CRON_SECRET not configured' })
+  }
+  const authHeader = req.headers['authorization'] || ''
+  if (authHeader !== 'Bearer ' + cronSecret) {
+    console.warn('[task-reminders] BLOCKED unauthorized invocation')
+    return res.status(401).json({ error: 'Unauthorized' })
   }
 
   // Allow GET (cron) or POST (manual trigger)
