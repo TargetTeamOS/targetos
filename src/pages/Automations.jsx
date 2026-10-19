@@ -31,7 +31,10 @@ const TRIGGER_GROUPS = [
       { id: 'deal_stage_change',     label: 'Deal stage changes',            icon: '📊', sentence: 'a deal stage changes' },
       { id: 'task_overdue',          label: 'Task becomes overdue',          icon: '⚠️', sentence: 'a task becomes overdue' },
       { id: 'closing_soon',          label: 'Deal closing within X days',    icon: '📅', sentence: 'a deal is closing within {days} days', hasDays: true },
-      { id: 'no_activity',           label: 'No contact activity for X days',icon: '💤', sentence: 'a contact has no activity for {days} days', hasDays: true },
+      // FIX (Oct 2026 round-3 bug sweep): 'no_activity' removed from this
+      // picker (see the 'Contacts' group below for the full explanation --
+      // it's a genuinely time-based trigger with no daily sweep to ever
+      // fire it, so every automation built on it silently never ran).
       { id: 'contact_status_change', label: 'Contact status changes',        icon: '🔄', sentence: 'a contact status changes to {status}', hasStatus: true },
       { id: 'deal_closed',           label: 'Deal closes',                   icon: '🏁', sentence: 'a deal is closed' },
       { id: 'offer_accepted',        label: 'Offer accepted (AO)',           icon: '🤝', sentence: 'an offer is accepted' },
@@ -42,11 +45,22 @@ const TRIGGER_GROUPS = [
     items: [
       { id: 'new_contact',           label: 'New contact added',             icon: '👤', sentence: 'a new contact is added' },
       { id: 'contact_status_change', label: 'Contact status changes',        icon: '🔄', sentence: 'a contact status changes to {status}', hasStatus: true },
-      { id: 'no_activity',           label: 'No activity for X days',        icon: '💤', sentence: 'a contact has no activity for {days} days', hasDays: true },
+      // FIX (Oct 2026 round-3 bug sweep): 'no_activity', 'birthday_today'
+      // and 'followup_date_reached' are all removed from this picker. All
+      // three are purely time-based (nothing about creating/updating a
+      // record makes "it's your birthday today" or "14 days of silence"
+      // true at that moment) and, unlike closing_soon/task_overdue (which
+      // piggyback on an existing update event and re-check their date
+      // condition then), nothing anywhere -- no cron, no scheduled sweep --
+      // ever calls dispatch() for these three. automationDispatcher.js's
+      // matchesTriggerConfig() still has matching logic for 'no_activity'
+      // (dead code, kept in case a future scheduled job wants it), but any
+      // automation a user built on any of these three triggers would
+      // silently never run. Hiding them here stops new ones from being
+      // created broken; a real fix needs a server-side daily cron that
+      // queries eligible records and calls dispatch() for each.
       { id: 'contact_assigned',      label: 'Contact assigned to agent',     icon: '👤', sentence: 'a contact is assigned to an agent' },
-      { id: 'birthday_today',        label: 'Contact birthday today',        icon: '🎂', sentence: "it is a contact's birthday" },
       { id: 'pre_approval_received', label: 'Contact gets pre-approved',     icon: '✅', sentence: 'a contact receives pre-approval' },
-      { id: 'followup_date_reached', label: 'Follow-up date arrives',        icon: '📅', sentence: 'a follow-up date arrives for a contact' },
       { id: 'contact_source_added',  label: 'Contact source set',            icon: '📌', sentence: 'a contact source is set' },
       { id: 'new_buyer',             label: 'New buyer added',               icon: '🏠', sentence: 'a new buyer contact is added' },
     ],
