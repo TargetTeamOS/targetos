@@ -22,7 +22,7 @@ import { ScoreBadge }       from '../lib/leadScoring.jsx'
 import { RecordActivityFeed as RecordActivity } from '../components/RecordActivityFeed'
 import { AddressAutocomplete } from '../components/AddressAutocomplete'
 import { fmt$, fmtDate, fmtPhone, initials, matchSearch } from '../lib/utils'
-import { CONTACT_TYPES, CONTACT_TYPE_COLORS, CONTACT_STATUSES, CONTACT_SOURCES } from '../lib/constants'
+import { CONTACT_TYPES, CONTACT_TYPE_COLORS, CONTACT_STATUSES, CONTACT_SOURCES, stageLabel } from '../lib/constants'
 import {
   PageHeader, Btn, Modal, Field, Input, Select, Textarea, Pill,
   SearchInput, Avatar, ModalActions, Loading, Empty, Tabs, SectionTitle,
@@ -80,7 +80,7 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
   const ff2 = 'Inter,system-ui,sans-serif'
   // Self-load richer detail so the popup is complete: past deals +
   // offers, and last interaction — regardless of what parent passed.
-  const [history, setHistory]   = React.useState(deals.length ? deals.map(d => ({ label: d.addr, sub: d.stage })) : null)
+  const [history, setHistory]   = React.useState(deals.length ? deals.map(d => ({ label: d.addr, sub: stageLabel(d.stage) })) : null)
   const [lastSeen, setLastSeen] = React.useState(null)
   React.useEffect(() => {
     let alive = true
@@ -98,7 +98,7 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
           let dq = supabase.from('deals').select('addr, stage, close_date').limit(5)
           dq = c.email ? dq.eq('client_email', c.email) : dq.eq('client_phone', c.phone)
           const { data: dls } = await dq
-          ;(dls || []).forEach(d => items.push({ label: d.addr, sub: 'Deal · ' + (d.stage || ''), date: d.close_date }))
+          ;(dls || []).forEach(d => items.push({ label: d.addr, sub: 'Deal · ' + stageLabel(d.stage), date: d.close_date }))
         }
       } catch {}
       if (alive) setHistory(items)
@@ -222,7 +222,11 @@ function ContactPopup({ contact: c, deals = [], fields, onEdit, onOpenFull, onCl
             : history.slice(0,5).map((h,i) => (
               <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0', borderBottom:'1px solid var(--border)' }}>
                 <span style={{ fontSize:'12px', color:'var(--text)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:190 }}>{h.label || '—'}</span>
-                <span style={{ fontSize:'10.5px', color:'var(--muted)', flexShrink:0, marginLeft:8 }}>{h.sub}{h.date ? ' · ' + new Date(h.date).toLocaleDateString() : ''}</span>
+                {/* FIX (Oct 2026 round-3 bug sweep): h.date comes from
+                    offer_date/close_date, both date-only columns -- a bare
+                    new Date(h.date) parses as UTC midnight and can display
+                    one day early depending on the viewer's timezone. */}
+                <span style={{ fontSize:'10.5px', color:'var(--muted)', flexShrink:0, marginLeft:8 }}>{h.sub}{h.date ? ' · ' + fmtDate(h.date) : ''}</span>
               </div>
             ))}
         </div>
@@ -271,9 +275,17 @@ export function Contacts() {
     const params = new URLSearchParams(location.search)
     const segId = params.get('segment')
     if (!segId) { setActiveSegment(null); setSegmentContactIds(null); return }
+    // FIX (Oct 2026 round-3 bug sweep): this had no guard against a race
+    // between two segment loads -- switching segments quickly (new
+    // location.search before the previous async chain resolves) could
+    // let the slower, stale chain's setState calls land last, leaving the
+    // segment label/chip showing segment B while segmentContactIds (used
+    // below to actually filter the list) still held segment A's matching
+    // ids. Ignore a resolution if this effect has since been superseded.
+    let alive = true
     supabase.from('contact_segments').select('*').eq('id', segId).maybeSingle()
       .then(async ({ data: seg }) => {
-        if (!seg) return
+        if (!alive || !seg) return
         setActiveSegment(seg)
         // Load the field catalog (built-in + custom) so a segment
         // condition on a custom field actually filters here too --
@@ -282,12 +294,15 @@ export function Contacts() {
         // own count badge. See src/lib/fieldCatalog.js and Phase 3 of
         // UNIVERSAL_FIELD_SYSTEM_PROPOSAL.md.
         const fieldDefs = await getFieldCatalog('contacts')
+        if (!alive) return
         let q = supabase.from('contacts').select('id')
         ;(seg.conditions || []).forEach(c => { q = applySegmentCondition(q, c, fieldDefs) })
         const { data: rows } = await q
+        if (!alive) return
         setSegmentContactIds((rows || []).map(r => r.id))
       })
       .catch(e => console.warn('segment load:', e.message))
+    return () => { alive = false }
   }, [location.search])
 
   // Paginated loading — 100 at a time, load more on scroll
@@ -821,10 +836,17 @@ export function Contacts() {
         allIds={filtered.map(c => c.id)} onSelectAll={ids => setSelectedIds(ids)}
         fields={[
           { key:'type',   label:'Role (Buyer/Seller/Attorney…)', type:'select', options:CONTACT_TYPES.map(t=>({value:t,label:t})) },
-       { key:'stage',    label:'Stage',  type:'select', options:['SOI','Nurture','Active','Offer Accapted','Under Contract'].map(v=>({value:v,label:v==='Offer Accapted'?'Offer Accepted':v})) },
+          // FIX (Oct 2026 round-3 bug sweep): this was key:'stage' with a
+          // hardcoded, stale option list ('SOI'/'Nurture'/'Offer Accapted'
+          // aren't real contact statuses) -- contacts has no `stage`
+          // column at all (that's a deals-table concept), so picking
+          // "Stage" here issued `update({ stage: value })` against
+          // contacts, which fails outright; it was also duplicated
+          // verbatim below. The real column, used everywhere else in this
+          // file, is `status`, with CONTACT_STATUSES as its source of truth.
+          { key:'status',   label:'Status', type:'select', options:CONTACT_STATUSES.map(s=>({value:s.value,label:s.label})) },
           { key:'agent_id', label:'Assigned Agent', type:'agent' },
           { key:'source',   label:'Source', type:'select', options:(CONTACT_SOURCES||[]).map(s=>({value:s,label:s})) },
-          { key:'stage',    label:'Stage',  type:'select', options:['SOI','Nurture','Active','Offer Accapted','Under Contract'].map(v=>({value:v,label:v==='Offer Accapted'?'Offer Accepted':v})) },
         ]}
         onDone={() => { setSelectedIds([]); refetch() }}
         onClear={() => setSelectedIds([])}
