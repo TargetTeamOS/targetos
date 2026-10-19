@@ -33,7 +33,7 @@ import {
   fmt$, fmtDate, parseNum, pct, initials,
   isOverdue, isDueToday, getDaysUntil
 } from '../lib/utils'
-import { DEAL_STAGES } from '../lib/constants'
+import { DEAL_STAGES, stageLabel } from '../lib/constants'
 import { Avatar, Pill, Btn, Loading, Spinner, Field, Input, Confirm } from '../components/UI'
 import { usePageView } from '../components/PageViewTracking'
 import { getFieldCatalog } from '../lib/fieldCatalog'
@@ -217,13 +217,24 @@ async function loadAvailableYears(supabaseClient) {
   }
 }
 
+function monthsAgo(base, n) {
+  const originalDay = base.getDate()
+  const d = new Date(base)
+  const targetMonth = d.getMonth() - n
+  d.setDate(1) // avoid native month-overflow while we compute the target month
+  d.setMonth(targetMonth)
+  const lastDayOfTargetMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  d.setDate(Math.min(originalDay, lastDayOfTargetMonth))
+  return d
+}
+
 function getDateRange(rangeId) {
   const now = new Date()
   const today = now.toISOString().slice(0,10)
   if (rangeId === 'today')   return { from: today, to: today }
   if (rangeId === 'week')    { const d = new Date(now); d.setDate(d.getDate() - 7); return { from: d.toISOString().slice(0,10), to: today } }
-  if (rangeId === 'month')   { const d = new Date(now); d.setMonth(d.getMonth() - 1); return { from: d.toISOString().slice(0,10), to: today } }
-  if (rangeId === 'quarter') { const d = new Date(now); d.setMonth(d.getMonth() - 3); return { from: d.toISOString().slice(0,10), to: today } }
+  if (rangeId === 'month')   { const d = monthsAgo(now, 1); return { from: d.toISOString().slice(0,10), to: today } }
+  if (rangeId === 'quarter') { const d = monthsAgo(now, 3); return { from: d.toISOString().slice(0,10), to: today } }
   if (rangeId === 'year')    return { from: now.getFullYear() + '-01-01', to: today }
   if (/^\d{4}$/.test(rangeId)) return { from: rangeId + '-01-01', to: rangeId + '-12-31' }
   // Custom range: "custom:YYYY-MM-DD:YYYY-MM-DD"
@@ -2156,7 +2167,7 @@ export function Dashboard() {
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '11px', fontWeight: 700, color: '#10B981' }}>{fmt$(d.gci)}</div>
-              <Pill label={d.stage} color={stageHex(d.stage)} />
+              <Pill label={stageLabel(d.stage)} color={stageHex(d.stage)} />
             </div>
           </div>
         ))}
@@ -2665,7 +2676,7 @@ export function Dashboard() {
         <div style={{ marginBottom: '10px', fontSize: '12px', color: 'var(--muted)' }}>{data.activeDeals?.length} deals · {fmt$(data.pipelineGCI)} pipeline GCI</div>
         {data.activeDeals?.map(d => (
           <DetailRow key={d.id} left={d.addr} sub={(d.client_name || '—') + ' · ' + (d.side || '')}
-            right={fmt$(d.gci)} badge={<Pill label={d.stage} color={stageHex(d.stage)} />}
+            right={fmt$(d.gci)} badge={<Pill label={stageLabel(d.stage)} color={stageHex(d.stage)} />}
             onClick={() => { navigate('/production/' + d.id); setPopup(null) }} />
         ))}
         {!data.activeDeals?.length && <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>No active deals</div>}
