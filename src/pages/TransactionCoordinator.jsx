@@ -326,8 +326,8 @@ function DealCard({ deal, tasks, roleSet, agents, onPhaseChange, onCheckTask, on
   const carryover    = tasks.filter(isCarryover)
   const doneTasks    = tasks.filter(t => t.status === 'done')
 
-  const overdueTasks = currentOpen.filter(t => t.due_date && new Date(t.due_date) < startOfToday)
-  const dueTodayTasks = currentOpen.filter(t => t.due_date && new Date(t.due_date) >= startOfToday && new Date(t.due_date) <= endOfToday)
+  const overdueTasks = currentOpen.filter(t => t.due_date && dueDateAnchor(t.due_date) < startOfToday)
+  const dueTodayTasks = currentOpen.filter(t => t.due_date && dueDateAnchor(t.due_date) >= startOfToday && dueDateAnchor(t.due_date) <= endOfToday)
   const otherCurrent = currentOpen.filter(t => !overdueTasks.includes(t) && !dueTodayTasks.includes(t))
 
   const overdue  = overdueTasks.length
