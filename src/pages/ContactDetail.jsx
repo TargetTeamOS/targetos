@@ -28,7 +28,7 @@ import {
   fmtDate, fmtDateTime, fmtPhone, fmt$, initials,
   phoneHref, getDaysAgo, getDaysUntil, parseNum, today
 } from '../lib/utils'
-import { CONTACT_TYPES, CONTACT_TYPE_COLORS, CONTACT_STATUSES, CONTACT_SOURCES, PROPERTY_TYPES, LOCAL_CITIES } from '../lib/constants'
+import { CONTACT_TYPES, CONTACT_TYPE_COLORS, CONTACT_STATUSES, CONTACT_SOURCES, PROPERTY_TYPES, LOCAL_CITIES, stageLabel } from '../lib/constants'
 import { FileAttachments } from '../components/FileAttachments'
 import { uploadFile, listFiles, deleteFile, fmtFileSize, fileIcon } from '../lib/storage'
 import { SignedAudio } from '../components/SignedAudio'
@@ -924,7 +924,7 @@ function RightPanel({ contact: f, contactId, navigate, relDeals, relListings = [
             <div style={{ fontSize:'12px', fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.addr}</div>
             <div style={{ display:'flex', justifyContent:'space-between', marginTop:'3px' }}>
               <span style={{ fontSize:'11px', fontWeight:700, color:'#10B981' }}>{fmt$(d.gci)}</span>
-              <Pill label={d.stage} color="#9aadbd" />
+              <Pill label={stageLabel(d.stage)} color="#9aadbd" />
             </div>
           </div>
         ))}
