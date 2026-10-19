@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useAgents } from '../lib/hooks'
-import { fmt$, parseNum } from '../lib/utils'
+import { fmt$, parseNum, isOverdue } from '../lib/utils'
 import { Loading } from '../components/UI'
 import { stageLabel } from '../lib/constants'
 import {
@@ -278,9 +278,15 @@ export function Analytics() {
     const missingInfo = active.filter(t => !t.attorney_name || !t.mortgage_broker).map(t => ({
       ...t, missing: [!t.attorney_name && 'attorney', !t.mortgage_broker && 'mortgage broker'].filter(Boolean).join(', ')
     }))
-    const overdueTasks = (tasks || []).filter(t => t.status !== 'done' && !t.completed && t.due_date && new Date(t.due_date).getTime() < now)
+    // FIX (Oct 2026 review): due_date / follow_up_date are date-only
+    // ('YYYY-MM-DD') columns -- a bare `new Date(...)` parses that as
+    // UTC midnight, several hours before local midnight, which made
+    // "due/follow-up today" register as overdue for most of the
+    // business day. Reuse the already-fixed isOverdue() helper from
+    // utils.js, which anchors to local midnight before comparing.
+    const overdueTasks = (tasks || []).filter(t => t.status !== 'done' && !t.completed && t.due_date && isOverdue(t.due_date))
     const uncontacted = (contacts || []).filter(c => c.status === 'New' && c.contacted !== true)
-    const overdueFollowUps = (interactionsData || []).filter(x => x.follow_up && x.follow_up_date && new Date(x.follow_up_date).getTime() < now)
+    const overdueFollowUps = (interactionsData || []).filter(x => x.follow_up && x.follow_up_date && isOverdue(x.follow_up_date))
     return { closingSoon: soon, stuck: stale, missingInfo, overdueTasks, uncontacted, overdueFollowUps }
   }, [deals, tcDeals, tasks, contacts, interactionsData])
 
