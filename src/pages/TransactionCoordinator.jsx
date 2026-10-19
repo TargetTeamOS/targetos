@@ -74,14 +74,25 @@ function rolePresent(deal, roleSet, role) {
   if (role === 'inspector') return !!deal.inspector
   return false
 }
+// FIX (Oct 2026 review): due_date (and close_date) are date-only
+// ('YYYY-MM-DD') columns. A bare `new Date(t.due_date)` parses that as
+// UTC midnight, which is several hours before LOCAL midnight -- so a
+// task due "today" could read as overdue for most of the business day
+// depending on the viewer's timezone. Anchor to local midnight first,
+// same idiom already used by src/lib/utils.js's getDaysUntil/isOverdue/
+// fmtDate (`d + 'T00:00:00'`).
+function dueDateAnchor(d) {
+  return new Date(d + (String(d).length === 10 ? 'T00:00:00' : ''))
+}
+
 // Returns { level, chips[] } where level ∈ red|amber|blue|gray
 function deriveCardSignals(deal, tasks, roleSet, photo) {
   const now = new Date()
   const startToday = new Date(); startToday.setHours(0,0,0,0)
   const endToday   = new Date(); endToday.setHours(23,59,59,999)
   const open = tasks.filter(t => t.status !== 'done')
-  const overdue = open.filter(t => t.due_date && new Date(t.due_date) < startToday).length
-  const dueToday = open.filter(t => t.due_date && new Date(t.due_date) >= startToday && new Date(t.due_date) <= endToday).length
+  const overdue = open.filter(t => t.due_date && dueDateAnchor(t.due_date) < startToday).length
+  const dueToday = open.filter(t => t.due_date && dueDateAnchor(t.due_date) >= startToday && dueDateAnchor(t.due_date) <= endToday).length
 
   const chips = []
   // Missing critical parties for the stage
@@ -209,7 +220,7 @@ function TaskRow({ task, agents, onCheck, onEdit, onSetWaitReason }) {
   }
 
   const done    = task.status === 'done'
-  const overdue = !done && task.due_date && new Date(task.due_date) < new Date()
+  const overdue = !done && task.due_date && dueDateAnchor(task.due_date) < new Date()
   const agent   = agents.find(a => a.id === task.agent_id)
   const pc      = PC[task.priority] || '#94A3B8'
   const waitDef = WAIT_REASONS.find(w => w.id === task.wait_reason)
@@ -944,7 +955,7 @@ export function TransactionCoordinator() {
   async function generateC2CTasks(deal) {
     try {
       const start = new Date(Math.max(Date.now(), deal.ao_date ? new Date(deal.ao_date).getTime() : 0))
-      const end   = deal.close_date ? new Date(deal.close_date) : new Date(Date.now() + 84*86400000)
+      const end   = deal.close_date ? dueDateAnchor(deal.close_date) : new Date(Date.now() + 84*86400000)
       const rows = []
       const d = new Date(start)
       d.setDate(d.getDate() + 7)
@@ -1281,7 +1292,7 @@ export function TransactionCoordinator() {
 
   const stats = useMemo(() => ({
     total:   deals.length,
-    overdue: tasks.filter(t => t.due_date && new Date(t.due_date)<new Date() && t.status!=='done').length,
+    overdue: tasks.filter(t => t.due_date && dueDateAnchor(t.due_date)<new Date() && t.status!=='done').length,
     pre:     deals.filter(d => d.tc_phase==='pre_listing').length,
     uc:      deals.filter(d => d.tc_phase==='under_contract').length,
     closing: deals.filter(d => d.tc_phase==='under_contract' && d.close_date && new Date(d.close_date)<=new Date(Date.now()+14*86400000)).length,
