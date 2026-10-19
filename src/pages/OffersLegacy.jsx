@@ -72,7 +72,7 @@ const BLANK = {
   side:'Buyer', production:'', gci:'',
 }
 
-// ── CONTACT SEARCH DROPDOWN ────────────────────────────────────────────────────────
+// ── CONTACT SEARCH DROPDOWN ──────────────────────────────────────────────────────────────────────
 function ContactSearch({ value, onChange, onSelect, placeholder, filter }) {
   const [q,       setQ]       = useState(value || '')
   const [results, setResults] = useState([])
@@ -457,4 +457,822 @@ export function OffersLegacy() {
   }
 
   // ── SELLER ATTORNEY SELECT ───────────────────────────────────
-function selectSellerAttorney2_unused() {} // placeholder guard (not part of original); removed below
+  function selectSellerAttorney(contact) {
+    if (!contact) return
+    setForm(f => ({
+      ...f,
+      seller_attorney_contact_id: contact.id,
+      seller_attorney_name:       [contact.first_name, contact.last_name].filter(Boolean).join(' '),
+      seller_attorney_tel:        contact.phone || f.seller_attorney_tel,
+      seller_attorney_email:      contact.email || f.seller_attorney_email,
+      seller_attorney_address:    contact.address || f.seller_attorney_address,
+    }))
+  }
+
+  // ── DOWNLOAD PDF ──────────────────────────────────────────
+  async function downloadPDF() {
+    setDownloading(true)
+    try {
+      // Build the full offer data including agent name
+      const buyersAgent = agents.find(a => a.id === (form.buyers_agent_id || form.agent_id))
+      const payload = {
+        ...form,
+        buyers_agent_name:       buyersAgent?.name || agent?.name || '',
+        offer_date:              form.offer_date || new Date().toISOString().slice(0, 10),
+        deposit_type:            form.deposit_type || 'dollar',
+        sellers_agent_commission:form.sellers_agent_commission || '',
+        seller_agent_company:    form.seller_agent_company || '',
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await authFetch('/api/generate-offer-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': 'Bearer ' + session.access_token } : {}),
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'PDF generation failed')
+      }
+
+      // Trigger download
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      const addr = (form.listing_addr || 'offer').replace(/[^a-z0-9]/gi, '_').slice(0, 40)
+      a.download = 'Offer_' + addr + '.pdf'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast('✅ PDF downloaded')
+    } catch(e) {
+      toast('❌ PDF failed: ' + e.message, '#DC2626')
+    } finally { setDownloading(false) }
+  }
+
+  // ── SAVE OFFER ────────────────────────────────────────────
+  async function saveOffer() {
+    if (!form.listing_addr?.trim()) { toast('Listing address is required', '#DC2626'); return }
+    if (!form.buyer_name?.trim())   { toast('Buyer name is required', '#DC2626'); return }
+    if (!form.purchase_price)       { toast('Purchase price is required', '#DC2626'); return }
+
+    const buyersAgent = agents.find(a => a.id === (form.buyers_agent_id || form.agent_id))
+
+    setSaving(true)
+    try {
+      // Build explicit payload — only include columns that exist in the DB
+      const payload = {
+        listing_addr:        form.listing_addr        || null,
+        mls_number:          form.mls_number          || null,
+        off_market:          !!form.off_market,
+        buyer_name:          form.buyer_name          || null,
+        co_buyer_name:       form.co_buyer_name       || null,
+        buyer_contact_id:    form.buyer_contact_id    || null,
+        buyer_phone:         form.buyer_phone         || null,
+        buyer_email:         form.buyer_email         || null,
+        buyer_address:       form.buyer_address       || null,
+        seller_name:         form.seller_name         || null,
+        seller_contact_id:   form.seller_contact_id   || null,
+        co_buyer_contact_id: form.co_buyer_contact_id || null,
+        co_seller_contact_id: form.co_seller_contact_id || null,
+        co_seller_name:      form.co_seller_name      || null,
+        sellers_agent_name:  form.sellers_agent_name  || null,
+        seller_agent_company:form.seller_agent_company|| null,
+        purchase_price:      form.purchase_price ? parseFloat(String(form.purchase_price).replace(/[$,]/g,'')) : null,
+        deposit:             form.deposit             || null,
+        deposit_type:        form.deposit_type        || 'dollar',
+        sellers_concession:  form.sellers_concession  || null,
+        net_to_seller:       form.net_to_seller       || null,
+        mortgage_amount:     form.mortgage_amount     || null,
+        mortgage_pct:        form.mortgage_pct        || null,
+        balance_at_closing:  form.balance_at_closing  || null,
+        balance_type:        form.balance_type        || 'dollar',
+        closing_days:        form.closing_days        || null,
+        subject_attorney:    !!form.subject_attorney,
+        subject_clear_title: !!form.subject_clear_title,
+        subject_mortgage:    !!form.subject_mortgage,
+        subject_cash:        !!form.subject_cash,
+        subject_standard_inspection: !!form.subject_standard_inspection,
+        subject_structural:  !!form.subject_structural,
+        buyers_agent_id:     form.buyers_agent_id || form.agent_id || agent?.id,
+        commission_pct:      form.commission_pct      || null,
+        additional_terms:    form.additional_terms    || null,
+        offer_date:          form.offer_date          || null,
+        purchaser_attorney_name:    form.purchaser_attorney_name    || null,
+        purchaser_attorney_address: form.purchaser_attorney_address || null,
+        purchaser_attorney_tel:     form.purchaser_attorney_tel     || null,
+        purchaser_attorney_email:   form.purchaser_attorney_email   || null,
+        purchaser_attorney_contact_id: form.purchaser_attorney_contact_id || null,
+        seller_attorney_name:    form.seller_attorney_name    || null,
+        seller_attorney_address: form.seller_attorney_address || null,
+        seller_attorney_tel:     form.seller_attorney_tel     || null,
+        seller_attorney_email:   form.seller_attorney_email   || null,
+        seller_attorney_contact_id: form.seller_attorney_contact_id || null,
+        is_inhouse:          !!form.is_inhouse,
+        inhouse_listing_id:  form.inhouse_listing_id  || null,
+        notes:               form.notes               || null,
+        status:              form.status              || 'Sent',
+        agent_id:            form.buyers_agent_id || form.agent_id || agent?.id,
+        production:          form.purchase_price      || null,
+        side:                'Buyer',
+        submitted_at:        form.offer_date          || null,
+      }
+
+      if (selected) {
+        const updated = await update(selected.id, payload, agent?.id)
+        setSelected(updated)
+        toast('✅ Offer saved')
+      } else {
+        const newOffer = await add(payload)
+
+        // Save buyer to contacts if not already saved
+        if (!form.buyer_contact_id && form.buyer_name?.trim()) {
+          await selectBuyer(null)
+        }
+
+        // If in-house listing → save to that listing's showings/offers
+        if (form.inhouse_listing_id) {
+          try {
+            const { error: showingErr } = await supabase.from('listing_showings').insert({
+              listing_id:   form.inhouse_listing_id,
+              listing_addr: form.listing_addr,
+              agent_id:     form.buyers_agent_id || agent?.id,
+              buyer_name:   form.buyer_name,
+              showing_date: form.offer_date,
+              interest_level: 5,
+              feedback:    'Offer submitted: $' + Number(form.purchase_price).toLocaleString(),
+              notes:       'Offer for $' + Number(form.purchase_price).toLocaleString(),
+              created_at:  new Date().toISOString(),
+            })
+            if (showingErr) throw showingErr
+          } catch(e) { console.warn('listing_showings insert failed:', e.message) }
+          toast('✅ Offer saved · Linked to listing · Buyer saved to contacts')
+        } else {
+          toast('✅ Offer saved')
+        }
+        closePanel()
+      }
+
+      // ── ACCEPTED OFFER → PRODUCTION DEAL (July 2026) ─────────────
+      // The moment an offer reaches AO/Accepted, a linked deal appears
+      // on the Production board automatically — no re-typing. Runs on
+      // both create and update; guarded against duplicates via
+      // offers.deal_id (and a same-address open-deal check as backup).
+      // FIX (Oct 2026 round-3 bug sweep): nowAccepted used to exclude
+      // 'Closed' while wasAccepted (right below) included it -- hand-rolled
+      // arrays that drifted out of sync with each other and with the
+      // canonical OFFER_ACCEPTED_VALUES list. The practical effect: an
+      // offer whose status was set straight to 'Closed' (skipping
+      // AO/Accepted first) would never trigger the auto-create-Production-
+      // deal logic below, since nowAccepted came back false. Use the same
+      // canonical list for both checks.
+      const nowAccepted = OFFER_ACCEPTED_VALUES.includes(form.status)
+      const wasAccepted = selected && OFFER_ACCEPTED_VALUES.includes(selected.status)
+      if (nowAccepted && !wasAccepted && !selected?.deal_id) {
+        try {
+          const { data: dupe } = await supabase.from('deals').select('id')
+            .eq('addr', form.listing_addr).not('stage', 'in', '("Closed","Deal Fell Through")').limit(1)
+          if (!dupe?.length) {
+            const { data: newDeal, error: dealErr } = await supabase.from('deals').insert({
+              addr:        form.listing_addr,
+              side:        form.inhouse_listing_id ? 'Listing' : 'Buyer',
+              stage:       'Offer Accapted',   // house spelling — matches DEAL_STAGES
+              production:  form.purchase_price || null,
+              client_name: form.inhouse_listing_id ? (form.seller_name || form.buyer_name) : form.buyer_name,
+              agent_id:    form.buyers_agent_id || agent?.id || null,
+              ao_date:     form.offer_date || new Date().toISOString().slice(0, 10),
+              listing_id:  form.inhouse_listing_id || null,
+              created_at:  new Date().toISOString(),
+            }).select().single()
+            if (dealErr) throw dealErr
+            // Link back (column may not exist pre-migration — non-fatal)
+            const offerId = selected?.id
+            if (offerId && newDeal) await supabase.from('offers').update({ deal_id: newDeal.id }).eq('id', offerId).then(() => {}).catch(() => {})
+            // In-house listing flips to Accepted Offer everywhere
+            if (form.inhouse_listing_id) {
+              await supabase.from('listings').update({ status: 'Accepted offer', updated_at: new Date().toISOString() }).eq('id', form.inhouse_listing_id)
+            }
+            toast('🎉 Accepted! Deal created on the Production board' + (form.inhouse_listing_id ? ' · listing marked Accepted Offer' : ''), '#10B981')
+          }
+        } catch(e) { toast('Offer saved, but auto-creating the Production deal failed: ' + e.message, '#F5A623') }
+      }
+    } catch(e) { toast('Save failed: ' + e.message, '#DC2626') }
+    finally { setSaving(false) }
+  }
+
+  async function deleteOffer() {
+    try { await remove(selected.id); toast('Offer deleted'); closePanel() }
+    catch(e) { toast('Delete failed: ' + e.message, '#DC2626') }
+    finally { setConfirmDel(false) }
+  }
+
+  // Leaderboards for the Reports section — counts by name across all
+  // offers. Simple frequency count, not a fuzzy match to deals: the
+  // per-agent conversion rate (offers that reached AO status) already
+  // exists in AgentStatsCard, which is a much more reliable signal
+  // than trying to match an offer to a deal by address.
+  const topAttorneys = useMemo(() => {
+    const counts = {}
+    offers.forEach(o => {
+      ;[o.purchaser_attorney_name, o.seller_attorney_name].forEach(name => {
+        if (!name?.trim()) return
+        counts[name] = (counts[name] || 0) + 1
+      })
+    })
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  }, [offers])
+
+  const topSellerAgents = useMemo(() => {
+    const counts = {}
+    offers.forEach(o => {
+      const name = o.sellers_agent_name?.trim()
+      if (!name) return
+      counts[name] = (counts[name] || 0) + 1
+    })
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  }, [offers])
+
+  const filtered = offers.filter(o => {
+    if (statusF && o.status !== statusF) return false
+    if (agentF === 'none' && o.agent_id) return false
+    if (agentF && agentF !== 'none' && o.agent_id !== agentF) return false
+    if (search && !matchSearch(o, search, ['listing_addr','buyer_name','mls_number','seller_name'])) return false
+    return true
+  })
+
+  const statusColor = s => OFFER_STATUSES.find(x=>x.value===s)?.hex || '#c4c4c4'
+  const totalOffers = offers.length
+  const totalAO     = offers.filter(o=>OFFER_ACCEPTED_VALUES.includes(o.status)).length
+  const totalVol    = offers.reduce((s,o)=>s+(parseFloat(o.purchase_price||o.production)||0),0)
+
+  // ── RENDER ─────────────────────────────────────────────────────
+  return (
+    <div style={{ fontFamily:ff }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:10 }}>
+        <div>
+          <div style={{ fontSize:22, fontWeight:900, color:'var(--text)' }}>📝 Offers</div>
+          <div style={{ fontSize:13, color:'var(--muted)', marginTop:2 }}>
+            {totalOffers} total · {totalAO} accepted · {fmt$(totalVol)} volume
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <LastVisited page="offers" />
+          <div style={{ display:'flex', background:'var(--dim)', borderRadius:8, padding:2, gap:2 }}>
+            {[['agents','👥 By Agent'],['table','📋 Table']].map(([v,l])=>(
+              <button key={v} onClick={()=>setView(v)}
+                style={{ padding:'6px 12px', borderRadius:6, border:'none', background:view===v?'var(--panel)':'transparent', color:view===v?'var(--text)':'var(--muted)', fontSize:12, fontWeight:view===v?700:400, cursor:'pointer', fontFamily:ff }}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <Btn onClick={openAdd}>+ New Offer</Btn>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search address, buyer, MLS#..." style={{ flex:1, minWidth:200 }} />
+        <select value={statusF} onChange={e=>setStatusF(e.target.value)}
+          style={{ padding:'9px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
+          <option value="">All Statuses</option>
+          {OFFER_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+        {(isAdmin||canManage) && (
+          <select value={agentF} onChange={e=>setAgentF(e.target.value)}
+            style={{ padding:'9px 12px', borderRadius:8, border:'1px solid var(--border)', background:'var(--inp)', color:'var(--text)', fontSize:13, fontFamily:ff }}>
+            <option value="">All Agents</option>
+            {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        )}
+      </div>
+
+      {loading && <Loading />}
+
+      {!loading && (
+        <>
+          {/* Agent stats */}
+          {view === 'agents' && (isAdmin||canManage) && (
+            <div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:12, marginBottom:24 }}>
+                {agents.map(ag=>(
+                  <AgentStatsCard key={ag.id} ag={ag}
+                    agentOffers={offers.filter(o=>o.agent_id===ag.id)}
+                    onFilter={id=>setAgentF(agentF===id?'':id)}
+                    isActive={agentF===ag.id} />
+                ))}
+              </div>
+
+              {/* Leaderboards */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:24 }}>
+                {[
+                  { title: '⚖️ Most Active Attorneys', data: topAttorneys },
+                  { title: '🏠 Most Frequent Seller\'s Agents', data: topSellerAgents },
+                ].map(board => (
+                  <div key={board.title} style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', padding:16 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:'var(--text)', marginBottom:10 }}>{board.title}</div>
+                    {board.data.length === 0 && <div style={{ fontSize:12, color:'var(--muted)' }}>No data yet.</div>}
+                    {board.data.map(([name, count], i) => (
+                      <div key={name} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 0', borderBottom: i < board.data.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        <span style={{ fontSize:12, color:'var(--text)', fontWeight:600 }}>{i+1}. {name}</span>
+                        <span style={{ fontSize:11, color:'var(--muted)', fontWeight:700, background:'var(--dim)', padding:'2px 8px', borderRadius:10 }}>{count} offer{count!==1?'s':''}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              {filtered.length > 0 && (
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:10 }}>
+                    {agentF ? agents.find(a=>a.id===agentF)?.name+"'s Offers" : 'All Offers'} ({filtered.length})
+                  </div>
+                  <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} onBulkIdsChange={setBulkIds} onBulkDone={refetch} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {(view === 'table' || !(isAdmin||canManage)) && (
+            filtered.length === 0
+              ? <Empty icon="📝" title="No offers" sub="Track submitted offers here." action={<Btn onClick={openAdd}>+ New Offer</Btn>} />
+              : <OfferTable offers={filtered} agents={agents} onOpen={openOffer} statusColor={statusColor} canBulkEdit={canBulkEdit} bulkIds={bulkIds} onToggleBulk={toggleBulk} onBulkIdsChange={setBulkIds} onBulkDone={refetch} />
+          )}
+        </>
+      )}
+
+      {/* ── OFFER MODAL ── */}
+      <Modal open={!!(selected || urlId==='new')} onClose={closePanel}
+        title={selected ? 'Offer — ' + selected.listing_addr : 'New Offer for Sale of Real Estate'} width={680}>
+
+        {/* Mode selector — two ways to create an offer */}
+        {!selected && (
+          <div style={{ display:'flex', gap:10, padding:'12px 0', marginBottom:12 }}>
+            <div style={{ flex:1, padding:'12px 14px', borderRadius:10, border:'2px solid '+(tab==='offer'?'#CC2200':'var(--border)'), cursor:'pointer', background:tab==='offer'?'rgba(204,34,0,.04)':'var(--dim)' }}
+              onClick={()=>setTab('offer')}>
+              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>📋 Fill Out Form</div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>Fill out fields → saves to CRM + option to download PDF</div>
+            </div>
+            <div style={{ flex:1, padding:'12px 14px', borderRadius:10, border:'2px solid '+(tab==='pdf_only'?'#3B82F6':'var(--border)'), cursor:'pointer', background:tab==='pdf_only'?'rgba(59,130,246,.04)':'var(--dim)' }}
+              onClick={()=>setTab('pdf_only')}>
+              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>💾 Quick Save to CRM</div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>Enter key info only → saves deal to CRM without PDF</div>
+            </div>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div style={{ display:'flex', borderBottom:'1px solid var(--border)', marginBottom:16, gap:0 }}>
+          {(selected ? [['offer','📋 Offer Form'],['docs','📎 Documents'],['activity','📋 Activity']] : [['offer','📋 Offer Form'],['docs','📎 Documents']]).map(([id,label])=>(
+            <button key={id} onClick={()=>setTab(id)}
+              style={{ padding:'7px 14px', border:'none', background:'none', cursor:'pointer', borderBottom:tab===id?'2px solid #CC2200':'2px solid transparent', marginBottom:'-1px', fontSize:12, fontWeight:tab===id?700:400, color:tab===id?'#CC2200':'var(--muted)', fontFamily:ff }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── OFFER FORM TAB ── */}
+        {tab === 'offer' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
+
+            {/* Header: Date + Status */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:8 }}>
+              <div>
+                <span style={SL}>Date</span>
+                <input type="date" value={form.offer_date} onChange={e=>set('offer_date',e.target.value)} style={S} />
+              </div>
+              <div>
+                <span style={SL}>Status</span>
+                <select value={form.status} onChange={e=>set('status',e.target.value)} style={S}>
+                  {OFFER_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <span style={SL}>Commission %</span>
+                <input value={form.commission_pct} onChange={e=>set('commission_pct',e.target.value)} placeholder="e.g. 2.5" style={S} />
+              </div>
+            </div>
+
+            {/* PROPERTY INFORMATION — MLS Search auto-fills everything */}
+            <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12, marginBottom:10 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em' }}>
+                  🏠 Property Information
+                  {form.is_inhouse && <span style={{ color:'#10B981', background:'rgba(16,185,129,.12)', padding:'1px 7px', borderRadius:99, marginLeft:6, fontSize:10 }}>🏡 In-House</span>}
+                  {form.inhouse_listing_id ? <div style={{ marginTop:6 }}><BoardLinks listingId={form.inhouse_listing_id} /></div> : null}
+                </div>
+                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--text)', cursor:'pointer' }}>
+                  <input type="checkbox" checked={!!form.off_market} onChange={e=>set('off_market',e.target.checked)} style={{ accentColor:'var(--brand)' }} />
+                  Off Market
+                </label>
+              </div>
+
+              <span style={SL}>Address {form.off_market ? '' : '— start typing for real address suggestions'}</span>
+              <div ref={mlsRef} style={{ position:'relative' }}>
+                <div style={{ display:'flex', gap:8, marginBottom:6 }}>
+                  <div style={{ flex:1, position:'relative' }}>
+                    <AddressAutocomplete
+                      value={form.listing_addr || ''}
+                      onChange={v => set('listing_addr', v)}
+                      onSelect={s => set('listing_addr', s.full || s.street || '')}
+                      placeholder={form.off_market ? 'Enter address manually...' : 'Start typing an address...'}
+                      style={S}
+                    />
+                  </div>
+                  <input value={form.mls_number||''} onChange={e=>set('mls_number',e.target.value)}
+                    placeholder="MLS # (if known)" style={{ ...S, width:130, flexShrink:0 }} />
+                </div>
+              </div>
+            </div>
+
+            {/* BUYER | SELLER */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:10 }}>
+              {/* BUYER */}
+              <div style={{ background:'rgba(59,130,246,.05)', borderRadius:10, border:'1px solid rgba(59,130,246,.2)', padding:12 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'#3B82F6', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>BUYER</div>
+                <span style={SL}>Buyer Name</span>
+                <ContactSearch
+                  value={form.buyer_name||''}
+                  onChange={v=>set('buyer_name',v)}
+                  onSelect={selectBuyer}
+                  placeholder="Search contacts or enter name..."
+                />
+                {form.buyer_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:3 }}>✓ Linked to contact record</div>}
+                <span style={SL}>Co-Buyer (optional)</span>
+                <ContactSearch value={form.co_buyer_name||''} onChange={v=>set('co_buyer_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,co_buyer_name:[c.first_name,c.last_name].filter(Boolean).join(' '),co_buyer_contact_id:c.id})) }}
+                  placeholder="Search contacts or enter co-buyer name..." />
+                <span style={SL}>Buyer Phone</span>
+                <input value={form.buyer_phone||''} onChange={e=>set('buyer_phone',e.target.value)} placeholder="(845) 555-1234" style={S} />
+                <span style={SL}>Buyer Email</span>
+                <input value={form.buyer_email||''} onChange={e=>set('buyer_email',e.target.value)} placeholder="buyer@email.com" style={S} />
+                <span style={SL}>Buyer Address</span>
+                <AddressAutocomplete value={form.buyer_address||''} onChange={v=>set('buyer_address',v)} onSelect={sel=>set('buyer_address', sel.full || sel.street)} placeholder="Home address" />
+              </div>
+
+              {/* SELLER */}
+              <div style={{ background:'rgba(16,185,129,.05)', borderRadius:10, border:'1px solid rgba(16,185,129,.2)', padding:12 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'#10B981', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>SELLER</div>
+                <span style={SL}>Seller Name</span>
+                <ContactSearch value={form.seller_name||''} onChange={v=>set('seller_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),seller_contact_id:c.id})) }}
+                  placeholder="Search contacts or enter name..." />
+                <span style={SL}>Co-Seller (optional)</span>
+                <ContactSearch value={form.co_seller_name||''} onChange={v=>set('co_seller_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,co_seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),co_seller_contact_id:c.id})) }}
+                  placeholder="Co-seller name" />
+                <span style={SL}>Seller's Agent Name</span>
+                <input value={form.sellers_agent_name||''} onChange={e=>set('sellers_agent_name',e.target.value)} placeholder="Auto-filled from MLS or enter" style={S} />
+                <span style={SL}>Seller Agent Commission %</span>
+                <input value={form.sellers_agent_commission||''} onChange={e=>set('sellers_agent_commission',e.target.value)} placeholder="e.g. 2.5" style={S} />
+                <span style={SL}>Seller Agent's Broker Company</span>
+                <input value={form.seller_agent_company||''} onChange={e=>set('seller_agent_company',e.target.value)} placeholder="Auto-filled from MLS or enter" style={S} />
+              </div>
+            </div>
+
+            {/* FINANCIALS + SUBJECT TO */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:10 }}>
+              {/* Purchase Price & Breakdown */}
+              <div style={{ background:'rgba(245,166,35,.05)', borderRadius:10, border:'1px solid rgba(245,166,35,.2)', padding:12 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'#B45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>💰 Purchase Price & Breakdown</div>
+                {[
+                  { label:'Purchase Price', key:'purchase_price', bold:true, prefix:'$' },
+                  { label:'Deposit upon contract', key:'deposit', isDeposit:true },
+                  { label:"Seller's Concession", key:'sellers_concession', prefix:'$' },
+                  { label:'Net to Seller', key:'net_to_seller', calc:true, prefix:'$' },
+                  { label:'Mortgage Amount', key:'mortgage_amount', prefix:'$' },
+                  { label:'Mortgage Amount', key:'mortgage_pct', prefix:'%' },
+                  { label:'Balance at Closing', key:'balance_at_closing', isBalance:true },
+                ].map(row => (
+                  <div key={row.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                    <label style={{ fontSize:11, color:row.bold?'var(--text)':'var(--muted)', fontWeight:row.bold?700:400, flex:1 }}>{row.label}</label>
+                    <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                      {row.calc && <span style={{ fontSize:9, color:'#10B981', fontWeight:700 }}>auto</span>}
+                      {row.isDeposit ? (
+                        <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                          {/* $ / % toggle for deposit */}
+                          <div style={{ display:'flex', borderRadius:6, border:'1px solid var(--border)', overflow:'hidden' }}>
+                            {['dollar','percent'].map(t=>(
+                              <button key={t} onClick={()=>set('deposit_type',t)}
+                                style={{ padding:'2px 7px', fontSize:10, fontWeight:700, border:'none', cursor:'pointer', fontFamily:ff, background:form.deposit_type===t?'var(--brand)':'transparent', color:form.deposit_type===t?'#fff':'var(--muted)' }}>
+                                {t==='dollar'?'$':'%'}
+                              </button>
+                            ))}
+                          </div>
+                          <input value={form.deposit||''} onChange={e=>recalc({deposit:e.target.value})}
+                            placeholder={form.deposit_type==='percent'?'%':'$0'}
+                            style={{ ...S, width:90, textAlign:'right', fontSize:11 }} />
+                        </div>
+                      ) : row.isBalance ? (
+                        <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                          <div style={{ display:'flex', borderRadius:6, border:'1px solid var(--border)', overflow:'hidden' }}>
+                            {['dollar','percent'].map(t=>(
+                              <button key={t} onClick={()=>set('balance_type',t)}
+                                style={{ padding:'2px 7px', fontSize:10, fontWeight:700, border:'none', cursor:'pointer', fontFamily:ff, background:form.balance_type===t?'var(--brand)':'transparent', color:form.balance_type===t?'#fff':'var(--muted)' }}>
+                                {t==='dollar'?'$':'%'}
+                              </button>
+                            ))}
+                          </div>
+                          <input value={form.balance_at_closing||''} onChange={e=>recalc({balance_at_closing:e.target.value})}
+                            placeholder={form.balance_type==='percent'?'%':'$0'}
+                            style={{ ...S, width:90, textAlign:'right', fontSize:11 }} />
+                        </div>
+                      ) : (
+                        <>
+                          <span style={{ fontSize:11, color:'var(--muted)', minWidth:10 }}>{row.prefix}</span>
+                          <input value={form[row.key]||''} onChange={e=>recalc({[row.key]:e.target.value})}
+                            placeholder={row.prefix==='%'?'0':'0'}
+                            style={{ ...S, width:100, textAlign:'right', fontWeight:row.bold?800:400, fontSize:row.bold?13:11, borderColor:row.bold?'#F5A623':'var(--border)' }} />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
+                  <label style={{ fontSize:11, color:'var(--muted)' }}>Closing time frame</label>
+                  <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    <input value={form.closing_days||'30'} onChange={e=>set('closing_days',e.target.value)} style={{ ...S, width:60, textAlign:'right' }} />
+                    <span style={{ fontSize:11, color:'var(--muted)' }}>days</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Subject to + Agents */}
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
+                  <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Subject to:</div>
+                  {[
+                    { key:'subject_attorney',           label:'Attorney Approval',      bold:true },
+                    { key:'subject_clear_title',        label:'Clear Title',             bold:true },
+                    { key:'subject_mortgage',           label:'Mortgage' },
+                    { key:'subject_cash',               label:'Cash Deal' },
+                    { key:'subject_standard_inspection',label:'Standard home inspections' },
+                    { key:'subject_structural',         label:'Structural issues only' },
+                  ].map(cb => (
+                    <label key={cb.key} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', marginBottom:5, fontSize:12, fontWeight:cb.bold?700:400, color:'var(--text)' }}>
+                      <input type="checkbox" checked={!!form[cb.key]} onChange={e=>set(cb.key,e.target.checked)} style={{ accentColor:'var(--brand)', width:14, height:14 }} />
+                      {cb.label}
+                    </label>
+                  ))}
+                </div>
+
+                {/* Agents */}
+                <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
+                  <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>Agents</div>
+                  <span style={SL}>Sellers Agent</span>
+                  <input value={form.sellers_agent_name||''} onChange={e=>set('sellers_agent_name',e.target.value)} placeholder="Seller's agent name" style={S} />
+                  <span style={SL}>Buyers Agent Commission %</span>
+                  <input value={form.buyers_agent_commission||''} onChange={e=>set('buyers_agent_commission',e.target.value)} placeholder="e.g. 1.5" style={S} />
+                  <span style={SL}>Buyers Agent</span>
+                  {canManage || isAdmin ? (
+                    // Secretary/Admin: dropdown of our agents
+                    <select value={form.buyers_agent_id||''} onChange={e=>{
+                      const ag = agents.find(a=>a.id===e.target.value)
+                      setForm(f=>({ ...f, buyers_agent_id:e.target.value, agent_id:e.target.value }))
+                    }} style={S}>
+                      <option value="">— Select our agent —</option>
+                      {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  ) : (
+                    // Agent: auto-filled with their name (read-only)
+                    <input value={agent?.name||''} readOnly style={{ ...S, background:'var(--dim)', color:'var(--muted)' }} />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Additional Terms */}
+            <div style={{ marginBottom:10 }}>
+              <span style={SL}>Additional Terms</span>
+              <textarea value={form.additional_terms||''} onChange={e=>set('additional_terms',e.target.value)}
+                placeholder="Additional terms and conditions..." rows={2}
+                style={{ ...S, resize:'vertical' }} />
+            </div>
+
+            {/* ATTORNEYS */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:10 }}>
+              {/* Purchaser's Attorney */}
+              <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>PURCHASER'S ATTORNEY</div>
+                <span style={SL}>Name</span>
+                <ContactSearch
+                  value={form.purchaser_attorney_name||''}
+                  onChange={v=>set('purchaser_attorney_name',v)}
+                  onSelect={selectPurchaserAttorney}
+                  placeholder="Search attorneys in contacts..."
+                  filter="Attorney"
+                />
+                {form.purchaser_attorney_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2 }}>✓ Linked to contact</div>}
+                <span style={SL}>Address</span>
+                <AddressAutocomplete value={form.purchaser_attorney_address||''} onChange={v=>set('purchaser_attorney_address',v)} onSelect={sel=>set('purchaser_attorney_address', sel.full || sel.street)} placeholder="Attorney address" />
+                <span style={SL}>Tel</span>
+                <input value={form.purchaser_attorney_tel||''} onChange={e=>set('purchaser_attorney_tel',e.target.value)} placeholder="(845) 555-1234" style={S} />
+                <span style={SL}>Email</span>
+                <input value={form.purchaser_attorney_email||''} onChange={e=>set('purchaser_attorney_email',e.target.value)} placeholder="attorney@firm.com" style={S} />
+              </div>
+
+              {/* Seller's Attorney */}
+              <div style={{ background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', padding:12 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>SELLER'S ATTORNEY</div>
+                <span style={SL}>Name</span>
+                <ContactSearch
+                  value={form.seller_attorney_name||''}
+                  onChange={v=>set('seller_attorney_name',v)}
+                  onSelect={selectSellerAttorney}
+                  placeholder="Search attorneys in contacts..."
+                  filter="Attorney"
+                />
+                {form.seller_attorney_contact_id && <div style={{ fontSize:10, color:'#10B981', fontWeight:700, marginTop:2 }}>✓ Linked to contact</div>}
+                <span style={SL}>Address</span>
+                <AddressAutocomplete value={form.seller_attorney_address||''} onChange={v=>set('seller_attorney_address',v)} onSelect={sel=>set('seller_attorney_address', sel.full || sel.street)} placeholder="Attorney address" />
+                <span style={SL}>Tel</span>
+                <input value={form.seller_attorney_tel||''} onChange={e=>set('seller_attorney_tel',e.target.value)} placeholder="(845) 555-1234" style={S} />
+                <span style={SL}>Email</span>
+                <input value={form.seller_attorney_email||''} onChange={e=>set('seller_attorney_email',e.target.value)} placeholder="attorney@firm.com" style={S} />
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <span style={SL}>Internal Notes (not on the form)</span>
+              <textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)} rows={2}
+                placeholder="Internal notes only — not visible on the printed offer..." style={{ ...S, resize:'vertical' }} />
+            </div>
+          </div>
+        )}
+
+        {/* DOCUMENTS TAB */}
+        {tab === 'docs' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            <div style={{ padding:'12px 14px', background:'var(--dim)', borderRadius:10, border:'1px solid var(--border)', fontSize:12, color:'var(--muted)' }}>
+              Upload the signed offer and proof of funds. Create a bucket named <code style={{ color:'#CC2200' }}>offer-docs</code> in Supabase Storage (set to Public).
+            </div>
+            <FileUploader label="📄 Signed Offer Document (PDF)" fileUrl={form.offer_url} onUploaded={url=>set('offer_url',url)} folder="offers" />
+            <FileUploader label="💰 Proof of Funds (PDF / Image)" fileUrl={form.pof_url}  onUploaded={url=>set('pof_url',url)}  folder="pof" />
+          </div>
+        )}
+
+        {/* ACTIVITY TAB */}
+        {tab === 'activity' && selected?.id && (
+          <RecordActivityFeed table="offers" recordId={selected.id} />
+        )}
+
+        {/* QUICK SAVE TAB — minimal fields, no PDF */}
+        {tab === 'pdf_only' && !selected && (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            <div style={{ padding:'10px 12px', background:'rgba(59,130,246,.06)', borderRadius:8, fontSize:11, color:'var(--muted)' }}>
+              Enter key deal information to track in CRM. No PDF generated.
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              <div style={{ gridColumn:'span 2' }}>
+                <span style={SL}>Property Address *</span>
+                <AddressAutocomplete
+                  value={form.listing_addr || ''}
+                  onChange={v => set('listing_addr', v)}
+                  onSelect={s => set('listing_addr', s.full || s.street || '')}
+                  placeholder="Start typing an address..."
+                  style={S}
+                />
+              </div>
+              <div>
+                <span style={SL}>Buyer Name *</span>
+                <ContactSearch value={form.buyer_name||''} onChange={v=>set('buyer_name',v)} onSelect={selectBuyer} placeholder="Search or enter buyer..." />
+              </div>
+              <div>
+                <span style={SL}>Seller Name</span>
+                <ContactSearch value={form.seller_name||''} onChange={v=>set('seller_name',v)}
+                  onSelect={c=>{ if(c) setForm(f=>({...f,seller_name:[c.first_name,c.last_name].filter(Boolean).join(' '),seller_contact_id:c.id})) }}
+                  placeholder="Search or enter seller..." />
+              </div>
+              <div>
+                <span style={SL}>Purchase Price</span>
+                <input value={form.purchase_price||''} onChange={e=>recalc({purchase_price:e.target.value})} placeholder="$0" style={S} />
+              </div>
+              <div>
+                <span style={SL}>Status</span>
+                <select value={form.status} onChange={e=>set('status',e.target.value)} style={S}>
+                  {OFFER_STATUSES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <span style={SL}>Date</span>
+                <input type="date" value={form.offer_date} onChange={e=>set('offer_date',e.target.value)} style={S} />
+              </div>
+              <div>
+                <span style={SL}>Buyers Agent</span>
+                {canManage||isAdmin ? (
+                  <select value={form.buyers_agent_id||''} onChange={e=>setForm(f=>({...f,buyers_agent_id:e.target.value,agent_id:e.target.value}))} style={S}>
+                    <option value="">— Select agent —</option>
+                    {agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                ) : (
+                  <input value={agent?.name||''} readOnly style={{...S,background:'var(--dim)',color:'var(--muted)'}} />
+                )}
+              </div>
+              <div style={{ gridColumn:'span 2' }}>
+                <span style={SL}>Notes</span>
+                <textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)} rows={2} style={{...S,resize:'vertical'}} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <ModalActions>
+          {selected && <Btn variant="ghost" style={{ marginRight:'auto', color:'#DC2626' }} onClick={()=>setConfirmDel(true)}>Delete</Btn>}
+          <Btn variant="secondary" onClick={closePanel}>Cancel</Btn>
+          {tab !== 'pdf_only' && (
+            <Btn variant="secondary" onClick={downloadPDF} loading={downloading}>
+              📄 {downloading ? 'Generating...' : 'Download PDF'}
+            </Btn>
+          )}
+          <Btn onClick={saveOffer} loading={saving}>
+            {selected ? 'Save Changes' : tab === 'pdf_only' ? 'Save to CRM' : 'Save + Download PDF'}
+          </Btn>
+        </ModalActions>
+      </Modal>
+
+      <Confirm open={confirmDel} message="Delete this offer?" onConfirm={deleteOffer} onCancel={()=>setConfirmDel(false)} />
+    </div>
+  )
+}
+
+// ── OFFER TABLE ───────────────────────────────────────────────────────────────
+function OfferTable({ offers, agents, onOpen, statusColor, canBulkEdit, bulkIds = [], onToggleBulk, onBulkIdsChange, onBulkDone }) {
+  return (
+    <div style={{ background:'var(--panel)', borderRadius:12, border:'1px solid var(--border)', overflow:'hidden' }}>
+      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+        <thead>
+          <tr style={{ background:'var(--dim)' }}>
+            {(canBulkEdit ? [' '] : []).concat(['Address','MLS#','Buyer','Agent','Status','Purchase Price','Date','In-House','Files']).map(h=>(
+              <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {offers.map(o=>{
+            const ag = agents.find(a=>a.id===(o.buyers_agent_id||o.agent_id))
+            return (
+              <tr key={o.id} onClick={()=>onOpen(o)}
+                style={{ borderBottom:'1px solid var(--border)', cursor:'pointer' }}
+                onMouseEnter={e=>e.currentTarget.style.background='var(--dim)'}
+                onMouseLeave={e=>e.currentTarget.style.background=''}>
+                {canBulkEdit && (
+                  <td style={{ padding:'10px 8px', width:30 }} onClick={e=>e.stopPropagation()}>
+                    <input type="checkbox" checked={bulkIds.includes(o.id)} onChange={()=>onToggleBulk(o.id)}
+                      style={{ width:15, height:15, cursor:'pointer', accentColor:'#CC2200' }} />
+                  </td>
+                )}
+                <td style={{ padding:'10px 12px', fontWeight:600, color:'var(--text)' }}>{o.listing_addr}</td>
+                <td style={{ padding:'10px 12px', color:'var(--muted)', fontSize:11 }}>{o.mls_number||'—'}</td>
+                <td style={{ padding:'10px 12px', color:'var(--muted)' }}>{o.buyer_name||'—'}</td>
+                <td style={{ padding:'10px 12px' }}>
+                  {ag ? (
+                    <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                      <div style={{ width:20, height:20, borderRadius:'50%', background:ag.color||'#CC2200', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:800, color:'#fff' }}>
+                        {(ag.name||'').split(' ').map(n=>n[0]).join('').slice(0,2)}
+                      </div>
+                      <span style={{ fontSize:11, color:'var(--muted)' }}>{ag.name?.split(' ')[0]}</span>
+                    </div>
+                  ) : '—'}
+                </td>
+                <td style={{ padding:'10px 12px' }}><Pill label={o.status} color={statusColor(o.status)} /></td>
+                <td style={{ padding:'10px 12px', fontWeight:700 }}>{fmt$(o.purchase_price||o.production)}</td>
+                <td style={{ padding:'10px 12px', color:'var(--muted)', fontSize:11 }}>{fmtDate(o.offer_date||o.submitted_at)}</td>
+                <td style={{ padding:'10px 12px' }}>
+                  {o.is_inhouse ? <span style={{ fontSize:10, padding:'2px 7px', borderRadius:99, background:'rgba(16,185,129,.1)', color:'#10B981', fontWeight:700 }}>🏡 In-House</span> : '—'}
+                </td>
+                <td style={{ padding:'10px 12px' }}>
+                  <div style={{ display:'flex', gap:4 }}>
+                    {o.offer_url && <a href={o.offer_url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{ textDecoration:'none' }} title="Offer">📄</a>}
+                    {o.pof_url   && <a href={o.pof_url}   target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{ textDecoration:'none' }} title="POF">💰</a>}
+                  </div>
+                </td>
+              </tr>
+            )
+          })}</tbody>
+      </table>
+      {canBulkEdit && (
+        // FIX (ESLint no-undef, Sept 2026 audit follow-up): this block
+        // referenced `filtered`, `setBulkIds` and `refetch`, none of which
+        // exist in OfferTable's own scope -- those all belong to the
+        // parent component. `offers` (this component's own prop) is the
+        // exact same list the parent calls `filtered`, so it's used
+        // directly here; the setter and refetch are threaded down as new
+        // callback props instead. Previously this crashed OfferTable's
+        // render outright for any agent with bulk-edit permission.
+        <BulkEditBar selectedIds={bulkIds} table="offers" agents={agents}
+          allIds={offers.map(o => o.id)} onSelectAll={ids => onBulkIdsChange?.(ids)}
+          fields={[
+            { key:'status',          label:'Status', type:'select', options:(OFFER_STATUSES||[]).map(x=>({value:x.value||x,label:x.label||x})) },
+            { key:'buyers_agent_id', label:'Buyer\'s Agent', type:'agent' },
+          ]}
+          onDone={() => { onBulkIdsChange?.([]); onBulkDone?.() }} onClear={() => onBulkIdsChange?.([])} />
+      )}
+    </div>
+  )
+}
