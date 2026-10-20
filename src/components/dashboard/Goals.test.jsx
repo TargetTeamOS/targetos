@@ -12,11 +12,26 @@ import { DashboardDataProvider } from '../../lib/useDashboardData'
 import { GoalWidget } from './GoalWidget.jsx'
 import { GoalsSection } from './GoalsSection.jsx'
 
-// a fully-elapsed window so pace/status are deterministic regardless of "today"
+// a fully-elapsed window (its period is over, regardless of "today") -- for
+// asserting the 'expired' status, distinct from a goal that's merely behind
 const elapsedGoal = (actual, target = 10, extra = {}) => ({
   id: 'g1', title: 'Team accepted offers', goal_basis: 'accepted_offers', period: 'monthly',
   target, actual, start_date: '2026-01-01', end_date: '2026-06-30', scope: 'team', ...extra,
 })
+
+// a window still running right now (10 days in, 10 days left of a 20-day
+// span), computed relative to the real clock so it stays "in progress"
+// regardless of when the test runs -- for asserting pace status
+const iso = (d) => d.toISOString().slice(0, 10)
+const ongoingGoal = (actual, target = 10, extra = {}) => {
+  const now = new Date()
+  const start = new Date(now); start.setDate(start.getDate() - 10)
+  const end = new Date(now); end.setDate(end.getDate() + 10)
+  return {
+    id: 'g1', title: 'Team accepted offers', goal_basis: 'accepted_offers', period: 'monthly',
+    target, actual, start_date: iso(start), end_date: iso(end), scope: 'team', ...extra,
+  }
+}
 
 const router = (ui) => render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{ui}</MemoryRouter>)
 const withProvider = (ui) => router(<DashboardDataProvider>{ui}</DashboardDataProvider>)
@@ -25,10 +40,20 @@ afterEach(() => { cleanup(); rpc.mockReset(); authState.current = { user: { id: 
 
 describe('GoalWidget', () => {
   it('shows the authoritative actual, percentage and a worded status', () => {
-    router(<GoalWidget goal={elapsedGoal(4, 10)} />)
+    router(<GoalWidget goal={ongoingGoal(4, 10)} />)
     expect(screen.getByText('4')).toBeTruthy()
     expect(screen.getByText('40% complete')).toBeTruthy()
     expect(screen.getByText(/Behind pace/)).toBeTruthy()
+  })
+
+  it('marks a goal whose window has fully elapsed as ended, not behind', () => {
+    // FIX (Oct 2026 design review): this used to also read "Behind pace" --
+    // confusing for a goal whose period ended long ago (e.g. last month's
+    // team goal, still shown because no one made a new one yet) and reads
+    // as a live, actionable shortfall instead of a closed-out period.
+    router(<GoalWidget goal={elapsedGoal(4, 10)} />)
+    expect(screen.getByText(/Period ended/)).toBeTruthy()
+    expect(screen.queryByText(/Behind pace/)).toBeNull()
   })
 
   it('marks a met goal complete', () => {
