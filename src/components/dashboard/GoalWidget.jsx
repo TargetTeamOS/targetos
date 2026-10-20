@@ -84,7 +84,13 @@ export function GoalWidget({ goal }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 14 }}>
           <Figure label="Remaining" value={formatGoalValue(p.remaining, goal.goal_basis)} />
           <Figure label="Days left" value={p.daysRemaining != null ? p.daysRemaining : '—'} />
-          <Figure label="Pace needed" value={isYearly ? perMonth : perDay} />
+          {/* FIX (Oct 2026 design review): this used to show perMonth for a
+              yearly goal -- the exact same value as "Required / month"
+              in the section just below, rendered twice under two labels.
+              perDay is a distinct, always-meaningful figure (remaining /
+              days left) regardless of goal period, and matches what a
+              monthly goal already shows here. */}
+          <Figure label="Pace needed" value={perDay} />
         </div>
 
         {isYearly && (
