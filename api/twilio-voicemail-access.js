@@ -79,8 +79,14 @@ module.exports = async function handler(req, res) {
       // (raw digits alone can never match a punctuated stored value)
       var { phoneVariants } = require('./_lib/phone')
       var variants = phoneVariants(from)
+      // FIX (Oct 2026 design review): same unquoted-.or() bug as
+      // lookupContact() in _lib/phone.js -- the "(845) 424-1014"-style
+      // variant's parentheses corrupt the whole OR clause's grouping
+      // grammar unless each value is quoted, silently matching 0 rows
+      // instead of erroring. See _lib/phone.js lookupContact for the
+      // live-confirmed root cause.
       var agentRes = variants.length
-        ? await supabase.from('agents').select('id, name').or(variants.map(function(v){ return 'phone.ilike.%' + v + '%' }).join(',')).maybeSingle()
+        ? await supabase.from('agents').select('id, name').or(variants.map(function(v){ return 'phone.ilike."%' + v + '%"' }).join(',')).maybeSingle()
         : { data: null }
       var agentId = agentRes.data ? agentRes.data.id : null
 
