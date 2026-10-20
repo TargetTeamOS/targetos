@@ -113,7 +113,12 @@ export function Gifts() {
 
   const statusColor = (s) => GIFT_STATUSES.find(x => x.value === s)?.hex || '#c4c4c4'
 
-  const pending   = gifts.filter(g => !['Delivered'].includes(g.status)).length
+  // FIX (Oct 2026 design review): "Pending Delivery" only excluded
+  // 'Delivered', so a gift that's dead-ended ("Couldn't Deliver", "Too
+  // Late", "Don't send" -- see GIFT_STATUSES) still counted as pending,
+  // even though none of those will ever become delivered.
+  const DEAD_END = ["Couldn't Deliver", 'Too Late', "Don't send"]
+  const pending   = gifts.filter(g => !['Delivered', ...DEAD_END].includes(g.status)).length
   const delivered = gifts.filter(g => g.status === 'Delivered').length
 
   return (

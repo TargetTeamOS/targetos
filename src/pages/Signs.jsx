@@ -629,7 +629,12 @@ export function Signs() {
             { label: 'On Property',   value: onProperty,                       color: '#10B981' },
             { label: 'Order Sent',    value: orderSent,                        color: '#F5A623' },
             { label: 'Missing',       value: missing,                          color: '#DC2626' },
-            { label: 'Removed',       value: signs.filter(s => ['Took Away','Removal Order Sent'].includes(s.order_status)).length, color: '#8B5CF6' },
+            // FIX (Oct 2026 design review): this counted only 2 of the 3
+            // statuses the REMOVED constant (used by the map filter and by
+            // this same tile's own click-through groupFilter==='removed'
+            // list below) treats as removed -- missing 'Auto Remove Order'
+            // meant the tile's number didn't match what clicking it showed.
+            { label: 'Removed',       value: signs.filter(s => REMOVED.includes(s.order_status)).length, color: '#8B5CF6' },
           ].map(s => (
             <div key={s.label} onClick={() => setGroupFilter(s.label.toLowerCase().replace(' ','_').replace('order_sent', 'order_sent'))}
               style={{ background: 'var(--panel)', borderRadius: '8px', border: '1px solid var(--border)', padding: '10px 12px', borderLeft: "3px solid " + (s.color), cursor: 'pointer' }}>

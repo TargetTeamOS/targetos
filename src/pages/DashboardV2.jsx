@@ -16,8 +16,16 @@ import { PageHeader } from '../components/UI'
 
 const ff = 'Inter, system-ui, sans-serif'
 const parseNum = v => { const n = parseFloat(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n }
-const isOverdue = d => d && d < new Date().toISOString().slice(0,10)
-const isDueToday = d => d && d === new Date().toISOString().slice(0,10)
+// FIX (Oct 2026 design review): toISOString() is always UTC, so in this
+// Eastern-time CRM this silently rolled "today" over to tomorrow every
+// evening (~7pm EST/8pm EDT onward) -- same root cause already fixed in
+// src/lib/utils.js's today(). Local year/month/day components instead.
+const localToday = () => {
+  const d = new Date()
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+}
+const isOverdue = d => d && d < localToday()
+const isDueToday = d => d && d === localToday()
 // FIX (Oct 2026 round-3 bug sweep): this local reimplementation shadowed
 // the already-fixed src/lib/utils.js getDaysUntil but lacked its
 // date-only anchor. expected_close_date/close_date are 'YYYY-MM-DD'

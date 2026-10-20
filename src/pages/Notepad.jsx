@@ -69,7 +69,9 @@ export function Notepad() {
 
   return (
     <div style={{ maxWidth:720, margin:'0 auto' }}>
-      <PageHeader title="Notepad" subtitle="Quick notes — type or record. Voice notes keep the audio + transcript." />
+      {/* FIX (Oct 2026 design review): PageHeader only destructures `sub`,
+          not `subtitle` -- this text was silently dropped, never rendered. */}
+      <PageHeader title="Notepad" sub="Quick notes — type or record. Voice notes keep the audio + transcript." />
 
       <div style={card}>
         <input style={{ ...inp, fontWeight:700, marginBottom:8 }} placeholder="Title (optional)" value={title} onChange={e=>setTitle(e.target.value)} />

@@ -259,7 +259,14 @@ function ListingDrawer({ listing, agents, onClose, onSave, onDelete, onAddShowin
                     <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0', fontSize:12 }}>
                       <span style={{ color: t.status==='done' ? '#10B981' : 'var(--muted)', fontWeight:900, flexShrink:0 }}>{t.status==='done' ? '✓' : '○'}</span>
                       <span style={{ flex:1, color:'var(--text)', textDecoration: t.status==='done' ? 'line-through' : 'none', opacity: t.status==='done' ? .6 : 1 }}>{t.title}</span>
-                      {t.due_date && <span style={{ color:'var(--muted)', fontSize:10, flexShrink:0 }}>{new Date(t.due_date).toLocaleDateString()}</span>}
+                      {/* FIX (Oct 2026 design review): due_date is a date-only
+                          'YYYY-MM-DD' column -- without a T00:00:00 anchor it
+                          parses as UTC midnight, showing one day earlier than
+                          actual in any timezone behind UTC (every real user
+                          here). Same bug already fixed elsewhere in this file
+                          (see the showing_date anchor below) and in db.js /
+                          automationDispatcher.js / dailyBriefing.js. */}
+                      {t.due_date && <span style={{ color:'var(--muted)', fontSize:10, flexShrink:0 }}>{new Date(t.due_date+'T00:00:00').toLocaleDateString()}</span>}
                     </div>
                   ))}
                 </div>
