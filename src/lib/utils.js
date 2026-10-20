@@ -71,13 +71,22 @@ export function getDaysUntil(d) {
 
 export function isOverdue(d) {
   if (!d) return false
-  return new Date(d + 'T00:00:00').getTime() < Date.now()
+  // FIX (Oct 2026 design review): this compared the due date's local
+  // MIDNIGHT timestamp against Date.now() -- true from the instant the
+  // due day starts, i.e. for the task's/follow-up's entire due day, not
+  // just after that day has actually passed. Every call site's own
+  // ternary ("isOverdue(d) ? 'Overdue' : 'Due today'" -- Dashboard.jsx,
+  // Tasks.jsx, DailyBriefing.jsx) only makes sense if isOverdue is still
+  // false while something is due today, so "Due today" was dead code all
+  // day, every day, for anything due today. Plain date-string comparison
+  // against today() means it only goes true once the due date is
+  // actually behind today's date.
+  return String(d).slice(0, 10) < today()
 }
 
 export function isDueToday(d) {
   if (!d) return false
-  const today = new Date().toISOString().slice(0, 10)
-  return d === today
+  return String(d).slice(0, 10) === today()
 }
 
 export function isDueSoon(d, days = 3) {
@@ -95,7 +104,19 @@ export function toISODate(d) {
 }
 
 export function today() {
-  return new Date().toISOString().slice(0, 10)
+  // FIX (Oct 2026 design review): toISOString() is always UTC. This is
+  // an Eastern-time CRM (see isBusinessHours), so from ~7pm EST / 8pm
+  // EDT onward every evening, this silently returned TOMORROW's date --
+  // wrong "today" highlighted on the Calendar, new tasks/events
+  // defaulting a day ahead, and (via isOverdue/isDueToday above) the
+  // wrong day used for every overdue/due-today check in the app during
+  // those hours. Build the date from LOCAL year/month/day components
+  // instead (same reasoning as goalMath.js's startOfDay).
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return y + '-' + m + '-' + day
 }
 
 // ── NAMES & INITIALS ─────────────────────────────────────────────
