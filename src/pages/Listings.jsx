@@ -108,7 +108,14 @@ function ListingCard({ listing, selected, onSelect, onToggleIvr, agents, onShowi
         📞
       </div>
 
-      <div style={{ paddingRight:30 }}>
+      {/* FIX (Oct 2026 design review): the select-checkbox above is
+          absolute-positioned at left:10 (16x16), relative to this card's
+          own top-left corner -- so its right edge (26) landed 10px past
+          where the card's own 16px padding put the address text,
+          clipping the address's first character(s) under the checkbox
+          for anyone with bulk-edit (canBulkEdit). Mirrors the existing
+          paddingRight:30 reserved for the IVR icon on the other corner. */}
+      <div style={{ paddingRight:30, paddingLeft: onCheck ? 14 : 0 }}>
         <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:4, lineHeight:1.3 }}>{listing.addr}</div>
         {listing.city && <div style={{ fontSize:11, color:'var(--muted)', marginBottom:6 }}>{listing.city}</div>}
       </div>
