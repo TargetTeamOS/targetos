@@ -70,15 +70,26 @@ export function goalProgress(goal, now = new Date()) {
   // simple run-rate projection to the end of the window
   const projection = elapsedFrac && elapsedFrac > 0.02 ? actual / elapsedFrac : null
 
+  // FIX (Oct 2026 design review): a goal whose window has fully elapsed
+  // (e.g. a "Monthly team goal" still pointing at last Aug 1-31 because no
+  // one has created a September/October one yet) was falling straight into
+  // the 'behind' branch below -- elapsedFrac pins at 1 once today is past
+  // end, so expectedByNow == target and an unmet goal reads as "Behind
+  // pace" forever, with 0 days left, as if it were still live and
+  // actionable. That's confusing: the goal isn't behind, its period is
+  // just over. Distinguish the two so the UI can say so instead.
+  const expired = !complete && daysTotal != null && daysElapsed >= daysTotal
+
   let status = 'on-pace'
   if (complete) status = 'complete'
+  else if (expired) status = 'expired'
   else if (expectedByNow == null) status = 'on-pace'
   else if (actual >= expectedByNow * 1.02) status = 'ahead'
   else if (actual < expectedByNow * 0.92) status = 'behind'
   else status = 'on-pace'
 
   return {
-    target, actual, remaining, pct, complete,
+    target, actual, remaining, pct, complete, expired,
     daysTotal, daysElapsed, daysRemaining, elapsedFrac,
     expectedByNow, requiredPerDay, requiredPerMonth, monthsRemaining, projection, status,
   }
@@ -89,6 +100,7 @@ export function statusMeta(status) {
     case 'ahead': return { word: 'Ahead of pace', glyph: '▲', color: '#037f4c' }
     case 'behind': return { word: 'Behind pace', glyph: '▼', color: '#b42318' }
     case 'complete': return { word: 'Goal reached', glyph: '✓', color: '#037f4c' }
+    case 'expired': return { word: 'Period ended', glyph: '⏱', color: '#64748b' }
     default: return { word: 'On pace', glyph: '—', color: '#0073EA' }
   }
 }
