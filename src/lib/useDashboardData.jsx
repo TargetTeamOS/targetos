@@ -9,7 +9,7 @@
 // from anything the browser could forge. Fetchers should call security-definer
 // RPCs (e.g. app_dashboard_summary) that re-check permissions server-side.
 
-import { createContext, useContext, useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useMemo, useRef, useState, useEffect, useCallback, useId } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { createRequestCoordinator, createCache, makeCacheKey, rangeFor } from './dashboardData'
 
@@ -74,12 +74,29 @@ export function useMetric(key, fetcher, { params = {}, ttlMs } = {}) {
     scope: scope.mode, agentId: scope.agentId, token,
   }), [key, JSON.stringify(params), dateRange.from, dateRange.to, scope.mode, scope.agentId, token])
 
+  // FIX (Oct 2026 design review): coordinator.issue()/isFresh() guard
+  // staleness against a SHARED sequence counter keyed only by cacheKey.
+  // That's right for de-duping the actual network fetch (coordinator.run
+  // below, still keyed by the plain cacheKey), but wrong for the
+  // per-caller freshness check -- when sibling components mount with the
+  // same metric key (e.g. MonthlyGoalCard + YearlyGoalCard + GoalsSection
+  // all using 'goals.dashboard'), each issue() bumps the one shared
+  // counter, so only the LAST sibling's seq ever matches by the time the
+  // de-duped promise resolves. Every earlier sibling's isFresh() comes
+  // back false, its setState is skipped, and its card is stuck in
+  // `loading: true` forever ("Monthly team goal" never finishing). Scoping
+  // the issue/isFresh pair to a per-instance key (cacheKey + this hook
+  // instance's id) gives each caller its own freshness check while still
+  // sharing one in-flight fetch per cacheKey.
+  const instanceId = useId()
+  const instanceKey = cacheKey + '::inst:' + instanceId
+
   const [state, setState] = useState({ loading: true, error: null, data: null, meta: null })
 
   useEffect(() => {
     let active = true
     const controller = new AbortController()
-    const seq = coordinator.issue(cacheKey)
+    const seq = coordinator.issue(instanceKey)
 
     const cached = ttlMs != null ? cache.get(cacheKey, ttlMs) : undefined
     if (cached) {
@@ -91,19 +108,19 @@ export function useMetric(key, fetcher, { params = {}, ttlMs } = {}) {
     setState((s) => ({ ...s, loading: true, error: null }))
     coordinator.run(cacheKey, () => fetcher({ ctx, dateRange, scope, signal: controller.signal }))
       .then((result) => {
-        if (!active || !coordinator.isFresh(cacheKey, seq)) return // stale — drop it
+        if (!active || !coordinator.isFresh(instanceKey, seq)) return // stale — drop it
         const at = cache.set(cacheKey, result)
         setState({ loading: false, error: null, data: result,
           meta: { lastUpdated: at, dateRange, source: key, filters: result?.filters ?? params } })
       })
       .catch((err) => {
-        if (!active || controller.signal.aborted || !coordinator.isFresh(cacheKey, seq)) return
+        if (!active || controller.signal.aborted || !coordinator.isFresh(instanceKey, seq)) return
         setState({ loading: false, error: err, data: null, meta: { dateRange, source: key } })
       })
 
     return () => { active = false; controller.abort() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cacheKey])
+  }, [cacheKey, instanceKey])
 
   return { ...state, refresh: useCallback(() => refresh(key), [refresh, key]) }
 }
