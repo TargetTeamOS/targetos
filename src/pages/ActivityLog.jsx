@@ -52,10 +52,24 @@ const ACTION_LABELS = {
 }
 
 // ── FETCH LOGS ───────────────────────────────────────────────────
+// FIX (Oct 2026 design review): audit_log also carries page-view rows
+// (table_name = 'page:' + pageName, see recordActivity.js's logPageView)
+// -- written purely so a separate "who visited, when" widget could reuse
+// this same table, never meant to show up here. Page views fire on every
+// navigation, far more often than real record changes, so without this
+// filter they fill up the most-recent LIMIT window on their own and push
+// every genuine created/updated/deleted row (not just off today's list,
+// but entirely out of the fetched page) -- this page's own "Updated"
+// stat read 0 while 66 real 'updated' rows sat further back, unseen.
+// Page views aren't a record type a person can even pick in "All Record
+// Types" below (TABLE_LABELS has no 'page:*' entry), so there's no mode
+// where showing them here was intentional -- always excluding them is
+// safe and matches what the filters already imply.
 async function fetchLogs({ agentId, tableFilter, actionFilter, search, limit = 100, isAdmin }) {
   let q = supabase
     .from('audit_log')
     .select('*, agents(id, name, color, role)')
+    .not('table_name', 'like', 'page:%')
     .order('created_at', { ascending: false })
     .limit(limit)
 
