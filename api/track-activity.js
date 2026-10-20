@@ -39,7 +39,13 @@ module.exports = async function handler(req, res) {
       else {
         const variants = phoneVariants(phone)
         if (!variants.length) skip = true
-        else q = q.or(variants.map(v => 'phone.ilike.%' + v + '%').join(','))
+        // FIX (Oct 2026 design review): same unquoted-.or() bug as
+        // lookupContact() in _lib/phone.js -- the "(845) 424-1014"-style
+        // variant's parentheses corrupt the whole OR clause's grouping
+        // grammar unless each value is quoted, silently matching 0 rows
+        // instead of erroring. See _lib/phone.js lookupContact for the
+        // live-confirmed root cause.
+        else q = q.or(variants.map(v => 'phone.ilike."%' + v + '%"').join(','))
       }
       if (!skip) {
         const { data } = await q.maybeSingle()
