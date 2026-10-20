@@ -252,7 +252,25 @@ export function Calendar() {
 
               return (
                 <div key={day}
-                  style={{ minHeight: SZ.cell, borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: SZ.cellPad, cursor: 'pointer', background: isToday ? 'rgba(204,34,0,.04)' : '' }}
+                  // FIX (Oct 2026 design review): a day cell is a CSS Grid
+                  // item inside `repeat(7, 1fr)` -- grid items default to
+                  // `min-width: auto`, meaning a column WON'T shrink below
+                  // the intrinsic (min-content) width of whatever's inside
+                  // it, no matter how narrow its 1fr share should be. An
+                  // event title with no spaces for the browser to break on
+                  // (any long unbroken run of characters -- a run-together
+                  // string is the common real-world case) has an enormous
+                  // min-content width, so that one cell's column -- and the
+                  // whole row, since all 7 share the same track sizes --
+                  // got stretched disproportionately wide, even though the
+                  // event div below already has overflow/ellipsis styling.
+                  // That per-event styling never got a chance to clip,
+                  // because the GRID TRACK grew to fit it first. minWidth:0
+                  // (the standard fix for this exact grid/flexbox gotcha)
+                  // plus overflow:hidden on the cell itself lets the track
+                  // stay at its proper 1/7 share and pushes the clipping
+                  // down to each event's own ellipsis.
+                  style={{ minHeight: SZ.cell, minWidth: 0, overflow: 'hidden', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: SZ.cellPad, cursor: 'pointer', background: isToday ? 'rgba(204,34,0,.04)' : '' }}
                   onClick={() => {
                     setSelected(null)
                     setForm({ ...BLANK, start_date: dateStr, agent_id: agent?.id })
