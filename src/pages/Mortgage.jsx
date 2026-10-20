@@ -440,8 +440,15 @@ function MortgageCalc() {
           <Row label="Purchase Price"    value={fmt$(calc.p)} />
           <Row label="Down Payment"      value={fmt$(Math.round(calc.dp)) + ' (' + num(down) + '%)'} />
           <Row label="Loan Amount"       value={fmt$(Math.round(calc.loan))} bold />
-          <Row label="Total Interest Paid" value={fmt$(Math.round(calc.totalInt * calc.n/12))} color="#DC2626" muted />
-          <Row label="Total Cost of Loan"  value={fmt$(Math.round(calc.loan + calc.totalInt * calc.n/12))} muted />
+          {/* FIX (Oct 2026 design review): this used to be calc.totalInt * calc.n/12
+              -- Year 1's interest (correctly front-loaded, since the balance is
+              highest then) multiplied flat across all 30 years, as if every later
+              year charged just as much interest as the first. On this loan that
+              overstated "Total Interest Paid" by ~$426K and "Total Cost of Loan"
+              by the same amount. The correct lifetime total is just every P&I
+              payment summed up, minus the principal that was borrowed. */}
+          <Row label="Total Interest Paid" value={fmt$(Math.round(calc.pi * calc.n - calc.loan))} color="#DC2626" muted />
+          <Row label="Total Cost of Loan"  value={fmt$(Math.round(calc.pi * calc.n))} muted />
           <Row label="Year 1 Interest"   value={fmt$(Math.round(calc.totalInt))} muted />
           <Row label="Year 1 Principal"  value={fmt$(Math.round(calc.totalPrin))} color="#10B981" muted />
         </Section>
