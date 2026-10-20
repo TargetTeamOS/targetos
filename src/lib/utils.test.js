@@ -4,7 +4,7 @@ import {
   initials, fullName, pct, fmtPct, fmtPhone, phoneHref,
   truncate, titleCase, slugify, sortBy, matchSearch, groupBy,
   totalGCI, totalProduction, dealsInStage, closedDeals, activeDeals,
-  isOverdue, isDueSoon, toISODate, dedupeCanonicalAgents,
+  isOverdue, isDueSoon, isDueToday, today, toISODate, dedupeCanonicalAgents,
 } from './utils.js'
 
 describe('fmt$ (abbreviated currency)', () => {
@@ -214,6 +214,19 @@ describe('date helpers', () => {
   })
   it('isOverdue returns true for a past date', () => {
     expect(isOverdue('2020-01-01')).toBe(true)
+  })
+  // FIX (Oct 2026 design review): isOverdue used to compare the due
+  // date's local-midnight timestamp against Date.now(), which was true
+  // for a date's ENTIRE due day, not just once it had passed -- so a
+  // task due "today" always read as "Overdue", never "Due today".
+  it('isOverdue returns false for a date due today (not yet overdue)', () => {
+    expect(isOverdue(today())).toBe(false)
+  })
+  it('isDueToday returns true for today and false for a past or future date', () => {
+    expect(isDueToday(today())).toBe(true)
+    expect(isDueToday('2020-01-01')).toBe(false)
+    const future = new Date(Date.now() + 86400000 * 30).toISOString().slice(0, 10)
+    expect(isDueToday(future)).toBe(false)
   })
   it('isDueSoon returns false for a date far in the future', () => {
     const farFuture = new Date(Date.now() + 86400000 * 30).toISOString().slice(0, 10)
