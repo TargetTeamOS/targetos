@@ -291,7 +291,19 @@ async function lookupContact(supabase, fromNumber) {
   try {
     const variants = phoneVariants(fromNumber)
     if (!variants.length) return null
-    const orClause = variants.map(v => 'phone.ilike.%' + v + '%').join(',')
+    // FIX (Oct 2026 design review): the "(845) 424-1014"-style variant's
+    // parentheses are PostgREST grouping syntax, not literal characters --
+    // unquoted inside .or(), they corrupt the WHOLE multi-clause filter's
+    // grammar, not just that one variant. The result isn't an error, it's
+    // a silent "no rows" for the entire OR, every single time, for every
+    // caller whose number is stored in that format. That made
+    // lookupContact() always return null, so every repeat call from an
+    // already-known number created a brand-new "Unknown Caller" duplicate
+    // contact instead of finding the existing one (confirmed live: 6-8
+    // duplicate contacts per repeat caller). Quoting each value (PostgREST's
+    // documented escape for reserved characters in a filter value) fixes
+    // the grouping and was confirmed live to find the existing contact.
+    const orClause = variants.map(v => 'phone.ilike."%' + v + '%"').join(',')
     const { data } = await supabase
       .from('contacts')
       .select('id, first_name, last_name, phone, agent_id, status, type')
