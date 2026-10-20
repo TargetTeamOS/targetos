@@ -59,7 +59,13 @@ export function AIAssistant() {
   const [messages, setMessages] = useState([])
   const [loading,  setLoading]  = useState(false)
   const [context,  setContext]  = useState(null)
-  const [pos,      setPos]      = useState({ x: 84, y: null }) // null y = bottom-anchored, offset from mic
+  // FIX (Oct 2026 design review): x:84 sat inside the sidebar's own width
+  // (60px collapsed / 220px expanded in Layout.jsx), so this button
+  // permanently covered the agent name + Sign out button in the sidebar
+  // footer on every page it renders on (every page except Dashboard).
+  // 244 clears the sidebar's widest (expanded) state with a 24px margin —
+  // the same free spot a user would end up at dragging it themselves.
+  const [pos,      setPos]      = useState({ x: 244, y: null }) // null y = bottom-anchored, offset from mic
   const [dragging, setDragging] = useState(false)
   const dragStart = useRef(null)
   const endRef  = useRef(null)
