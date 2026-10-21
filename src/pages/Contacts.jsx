@@ -888,12 +888,13 @@ export function Contacts() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <span onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail', { state: { ids: contacts.map(x => x.id) } }) }}
+                      title={c.first_name + ' ' + (c.last_name || '')}
                       style={{ fontWeight: 700, fontSize: '14px', color: 'var(--brand)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
                       {c.first_name} {c.last_name}
                     </span>
                     {c.type && <span style={{ display:'inline-block', fontSize:'9.5px', padding:'1px 7px', borderRadius:'10px', background:(CONTACT_TYPE_COLORS[c.type]||'#94A3B8')+'22', color:CONTACT_TYPE_COLORS[c.type]||'#94A3B8', fontWeight:800, textTransform:'uppercase', letterSpacing:'.03em', marginTop:'3px' }}>{c.type}</span>}
                     {c.phone && <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px', userSelect:'none' }} data-nolink='1'>{fmtPhone(c.phone)}</div>}
-                    {c.email && <div style={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>}
+                    {c.email && <div title={c.email} style={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>}
                   </div>
                   <Pill label={c.status} color={statusColor(c.status)} />
                   {c.phone && (
@@ -958,10 +959,11 @@ export function Contacts() {
                   </div>
                   <div style={{ minWidth:0 }}>
                     <span onClick={e => { e.stopPropagation(); navigate('/contacts/' + c.id + '/detail', { state: { ids: contacts.map(x => x.id) } }) }}
+                      title={c.first_name + ' ' + (c.last_name || '')}
                       style={{ fontWeight:700, fontSize:'13px', color:'var(--brand)', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', cursor:'pointer' }}>
                       {c.first_name} {c.last_name}
                     </span>
-                    {c.address && <div style={{ fontSize:'11px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.address}</div>}
+                    {c.address && <div title={c.address} style={{ fontSize:'11px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.address}</div>}
                   </div>
                 </div>
                 {/* Phone */}
@@ -971,7 +973,7 @@ export function Contacts() {
                   ) : '—'}
                 </div>
                 {/* Email */}
-                <div style={{ padding:'0 6px', fontSize:'12px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                <div title={c.email || ''} style={{ padding:'0 6px', fontSize:'12px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                   {c.email ? (
                     <a href={'mailto:' + c.email} onClick={e=>e.stopPropagation()} style={{ color:'var(--brand)', textDecoration:'none' }}>{c.email}</a>
                   ) : '—'}
@@ -981,13 +983,13 @@ export function Contacts() {
                   {c.status ? <span style={{ fontSize:'11px', padding:'2px 8px', borderRadius:'12px', background:sc+'22', color:sc, fontWeight:700, whiteSpace:'nowrap' }}>{c.status}</span> : '—'}
                 </div>
                 {/* Source */}
-                <div style={{ padding:'0 6px', fontSize:'12px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.source || '—'}</div>
+                <div title={c.source || ''} style={{ padding:'0 6px', fontSize:'12px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.source || '—'}</div>
                 {/* Agent */}
                 <div style={{ padding:'0 6px', display:'flex', alignItems:'center', gap:'5px' }}>
                   {c.agents ? (
                     <>
                       <Avatar agent={c.agents} size={18} />
-                      <span style={{ fontSize:'11px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.agents.name.split(' ')[0]}</span>
+                      <span title={c.agents.name} style={{ fontSize:'11px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.agents.name.split(' ')[0]}</span>
                     </>
                   ) : '—'}
                 </div>
