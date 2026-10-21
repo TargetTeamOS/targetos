@@ -106,10 +106,10 @@ export default function TCWorkQueueDrawer({
                         )}
                       </td>
                       {/* property */}
-                      <td style={{ ...td, fontWeight:700, maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{deal?.addr || '—'}</td>
+                      <td title={deal?.addr || ''} style={{ ...td, fontWeight:700, maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{deal?.addr || '—'}</td>
                       {/* action / task title (editable note tooltip) */}
                       <td style={{ ...td, maxWidth:220 }}>
-                        <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{isTask ? task.title : (r.actionLabel || '—')}</div>
+                        <div title={isTask ? task.title : (r.actionLabel || '')} style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{isTask ? task.title : (r.actionLabel || '—')}</div>
                         {isTask && (
                           <input defaultValue={task.notes || ''} placeholder="+ note / next step"
                             onBlur={e => { if (e.target.value !== (task.notes || '')) onUpdateTask?.(task.id, { notes: e.target.value }) }}
