@@ -231,7 +231,7 @@ export function Email() {
                   Clear
                 </button>
                 <button onClick={sendEmail} disabled={sending||!selContact?.email}
-                  style={{ padding:'8px 24px', borderRadius:8, border:'none', background:selContact?.email?'var(--brand)':'var(--dim)', color:'#fff', fontSize:13, fontWeight:700, cursor:selContact?.email?'pointer':'not-allowed', fontFamily:ff, opacity:sending?.7:1 }}>
+                  style={{ padding:'8px 24px', borderRadius:8, border:'none', background:selContact?.email?'var(--brand)':'var(--dim)', color:selContact?.email?'#fff':'var(--muted)', fontSize:13, fontWeight:700, cursor:selContact?.email?'pointer':'not-allowed', fontFamily:ff, opacity:sending?.7:1 }}>
                   {sending ? '⏳ Sending...' : '📤 Send Email'}
                 </button>
               </div>
