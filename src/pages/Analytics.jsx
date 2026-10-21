@@ -587,7 +587,7 @@ export function Analytics() {
               {alerts.closingSoon.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Nothing closing this week.</div>
                 : alerts.closingSoon.slice(0,8).map(d => (
                   <div key={d.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}>
-                    <span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{d.addr}</span>
+                    <span title={d.addr || ''} style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{d.addr}</span>
                     <span style={{ color:'#DC2626', fontWeight:700, flexShrink:0 }}>{new Date(d.close_date).toLocaleDateString()}</span>
                   </div>
                 ))}
@@ -596,7 +596,7 @@ export function Analytics() {
               {alerts.stuck.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>No stuck deals.</div>
                 : alerts.stuck.slice(0,8).map(d => (
                   <div key={d.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}>
-                    <span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{d.addr}</span>
+                    <span title={d.addr || ''} style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{d.addr}</span>
 <span style={{ color:'var(--muted)', flexShrink:0 }}>{stageLabel(d.stage)}</span>                  </div>
                 ))}
             </Panel>
@@ -738,7 +738,7 @@ export function Analytics() {
                 const r = group.render(it)
                 return (
                   <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'9px 16px', borderBottom:'1px solid var(--border)', fontSize:12.5 }}>
-                    <span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'60%' }}>{r.main || '—'}</span>
+                    <span title={r.main || ''} style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'60%' }}>{r.main || '—'}</span>
                     <span style={{ color:r.col, fontWeight:700, flexShrink:0 }}>{r.sub}</span>
                   </div>
                 )
@@ -788,7 +788,7 @@ export function Analytics() {
                       const staleU = !l.seller_updated_at || (now - new Date(l.seller_updated_at).getTime() > 14*86400000)
                       return (
                         <tr key={l.id} style={{ borderBottom:'1px solid var(--border)' }}>
-                          <td style={{ padding:'9px 12px', fontWeight:600, color:'var(--text)', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.addr}</td>
+                          <td title={l.addr || ''} style={{ padding:'9px 12px', fontWeight:600, color:'var(--text)', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.addr}</td>
                           <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12, color:'var(--muted)' }}>{agentName(l.agent_id)}</td>
                           <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12.5, fontWeight:600, color: isReduced?'#DC2626':'var(--text)' }}>{fmt$(parseNum(l.list_price))}</td>
                           <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12, color:'var(--muted)' }}>{l.original_price?fmt$(parseNum(l.original_price)):'—'}</td>
@@ -806,11 +806,11 @@ export function Analytics() {
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:16 }}>
               <Panel title={'⏳ Sitting 90+ days (' + sittingLong.length + ')'} height="auto">
                 {sittingLong.length===0 ? <div style={{ fontSize:12.5, color:'var(--muted)' }}>None sitting long.</div>
-                  : sittingLong.slice(0,10).map(l => <div key={l.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}><span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{l.addr}</span><span style={{ color:'#DC2626', fontWeight:700 }}>{dom(l)}d</span></div>)}
+                  : sittingLong.slice(0,10).map(l => <div key={l.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}><span title={l.addr || ''} style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{l.addr}</span><span style={{ color:'#DC2626', fontWeight:700 }}>{dom(l)}d</span></div>)}
               </Panel>
               <Panel title={'📢 No seller update in 14+ days (' + staleUpdate.length + ')'} height="auto">
                 {staleUpdate.length===0 ? <div style={{ fontSize:12.5, color:'var(--muted)' }}>All sellers recently updated.</div>
-                  : staleUpdate.slice(0,10).map(l => <div key={l.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}><span style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{l.addr}</span><span style={{ color:'var(--muted)' }}>{l.seller_updated_at?new Date(l.seller_updated_at).toLocaleDateString():'never'}</span></div>)}
+                  : staleUpdate.slice(0,10).map(l => <div key={l.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:12.5 }}><span title={l.addr || ''} style={{ fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{l.addr}</span><span style={{ color:'var(--muted)' }}>{l.seller_updated_at?new Date(l.seller_updated_at).toLocaleDateString():'never'}</span></div>)}
               </Panel>
             </div>
           </div>
@@ -1032,7 +1032,7 @@ export function Analytics() {
                             <div style={{ fontWeight:600, color:'var(--text)', fontSize:12.5 }}>{r.contactName}</div>
                             <div style={{ fontSize:11, color:'var(--muted)' }}>{r.phone||r.email||''}</div>
                           </td>
-                          <td style={{ padding:'8px 12px', fontSize:12, color:'var(--text)', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.addr}</td>
+                          <td title={r.addr || ''} style={{ padding:'8px 12px', fontSize:12, color:'var(--text)', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.addr}</td>
                           <td style={{ padding:'8px 12px', fontSize:12, color:'var(--muted)' }}>{r.status}</td>
                           <td style={{ padding:'8px 12px', fontSize:12, color:'var(--muted)' }}>{agentName(r.agent_id)}</td>
                           <td style={{ padding:'8px 12px', fontSize:12, color: r.seller_updated_at?'var(--text)':'#DC2626', fontWeight: r.seller_updated_at?400:700 }}>{r.seller_updated_at?fmtD(r.seller_updated_at):'never'}</td>
