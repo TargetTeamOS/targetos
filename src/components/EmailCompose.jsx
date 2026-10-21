@@ -245,7 +245,7 @@ export function EmailCompose({ contact, contactId, onSent, onCancel }) {
           <button
             onClick={send}
             disabled={sending || !contact?.email}
-            style={{ padding:'8px 20px', borderRadius:8, border:'none', background:contact?.email?'var(--brand)':'var(--dim)', color:'#fff', fontSize:13, fontWeight:700, cursor:contact?.email?'pointer':'not-allowed', fontFamily:ff, opacity:sending?.7:1 }}>
+            style={{ padding:'8px 20px', borderRadius:8, border:'none', background:contact?.email?'var(--brand)':'var(--dim)', color:contact?.email?'#fff':'var(--muted)', fontSize:13, fontWeight:700, cursor:contact?.email?'pointer':'not-allowed', fontFamily:ff, opacity:sending?.7:1 }}>
             {sending ? '⏳ Sending...' : '📤 Send Email'}
           </button>
         </div>
