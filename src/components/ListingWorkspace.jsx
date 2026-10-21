@@ -663,8 +663,12 @@ export default function ListingWorkspace({
 
   return (
     <>
-    {/* Full-screen breakout: escape Layout's 1400px padded container */}
-    <div style={{ fontFamily:ff, position:'relative', left:'50%', right:'50%', marginLeft:'-50vw', marginRight:'-50vw', width:'100vw', minHeight:'100vh', marginTop:-28, background:'var(--bg)' }}>
+    {/* Full-bleed breakout: escape main-content's 20px padding (not the
+        viewport — main-content sits right of the 220px sidebar, so a
+        vw-relative breakout bled left under the sidebar, hiding and
+        stealing clicks from content near the top of this panel, and
+        overflowed past the browser's right edge). */}
+    <div style={{ fontFamily:ff, margin:'-28px -20px 0', width:'calc(100% + 40px)', minHeight:'100vh', background:'var(--bg)' }}>
 
       {/* ══ FULL PROPERTY HEADER ══ */}
       <div style={{ background:'linear-gradient(180deg, var(--panel), var(--bg))', borderBottom:'1px solid var(--border)', borderTop:'4px solid '+sc }}>
@@ -1636,12 +1640,12 @@ function ShowingRow({ showing, onUpdate }) {
   return (
     <div style={{ borderTop:'1px solid var(--border)' }}>
       <div onClick={()=>setOpen(p=>!p)} style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 12px', cursor:'pointer' }}>
-        <span style={{ fontSize:12.5, fontWeight:700, color:'var(--text)', minWidth:88, flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{showing.buyer_name || 'Buyer'}</span>
+        <span title={showing.buyer_name || 'Buyer'} style={{ fontSize:12.5, fontWeight:700, color:'var(--text)', minWidth:88, flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{showing.buyer_name || 'Buyer'}</span>
         <span style={{ fontSize:11, color:'var(--muted)', minWidth:58, flexShrink:0 }}>{showing.showing_date ? fmtDate(showing.showing_date) : '—'}</span>
         <span style={{ fontSize:9.5, color:'var(--muted)', flexShrink:0 }}>Status:</span>
         <span style={{ fontSize:10, fontWeight:700, color:interestColor(showing.interest_level||3), background:interestColor(showing.interest_level||3)+'18', padding:'2px 7px', borderRadius:99, flexShrink:0, whiteSpace:'nowrap' }}>{interestLbl}</span>
         {mainTheme && <span style={{ fontSize:10, fontWeight:600, color:'#B45309', background:'rgba(245,166,35,.14)', padding:'2px 7px', borderRadius:99, flexShrink:0, whiteSpace:'nowrap' }}>{themeLabel(mainTheme)}</span>}
-        <span style={{ fontSize:11.5, color:hasFeedback?'var(--muted)':'#DC2626', fontStyle:hasFeedback?'normal':'italic', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+        <span title={hasFeedback ? preview : ''} style={{ fontSize:11.5, color:hasFeedback?'var(--muted)':'#DC2626', fontStyle:hasFeedback?'normal':'italic', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
           {hasFeedback ? preview : 'No feedback yet'}
         </span>
         <span style={{ fontSize:11.5, color:'var(--brand)', fontWeight:700, flexShrink:0 }}>{open ? '▴ Close' : '✎ Edit'}</span>
