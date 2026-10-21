@@ -29,7 +29,7 @@ export function WidgetCard({
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <span aria-hidden style={{ width: 10, height: 10, borderRadius: 3, background: accent, flexShrink: 0 }} />
-      <h3 style={{ margin: 0, fontSize: TYPE.cardTitle, fontWeight: 700, color: INK.title, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
+      <h3 title={title} style={{ margin: 0, fontSize: TYPE.cardTitle, fontWeight: 700, color: INK.title, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
         {headerRight}
         {onRefresh && (
