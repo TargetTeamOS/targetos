@@ -145,7 +145,7 @@ export function DialPad({ onCall }) {
 
       {/* Call button */}
       <button onClick={dial} disabled={!num.trim()}
-        style={{ width:'100%', padding:'14px', borderRadius:12, border:'none', background: num.trim()?'#10B981':'var(--dim)', color:'#fff', fontSize:16, fontWeight:800, cursor: num.trim()?'pointer':'default', fontFamily:ff }}>
+        style={{ width:'100%', padding:'14px', borderRadius:12, border:'none', background: num.trim()?'#10B981':'var(--dim)', color: num.trim()?'#fff':'var(--muted)', fontSize:16, fontWeight:800, cursor: num.trim()?'pointer':'default', fontFamily:ff }}>
         📞 Call
       </button>
     </div>
