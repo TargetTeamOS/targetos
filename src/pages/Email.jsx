@@ -62,9 +62,13 @@ export function Email() {
     // Search contacts as user types
     const t = setTimeout(() => {
       if (contactQ.length < 2) { setContacts([]); return }
+      // FIX (same class as api/_lib/phone.js lookupContact): quote the
+      // value so a comma or parenthesis in the search term can't
+      // corrupt the OR clause's grouping and silently return 0 matches.
+      const qq = `"%${contactQ}%"`
       supabase.from('contacts')
         .select('id,first_name,last_name,email,phone')
-        .or(`first_name.ilike.%${contactQ}%,last_name.ilike.%${contactQ}%,email.ilike.%${contactQ}%`)
+        .or(`first_name.ilike.${qq},last_name.ilike.${qq},email.ilike.${qq}`)
         .limit(8)
         .then(r => setContacts(r.data || []))
     }, 300)
