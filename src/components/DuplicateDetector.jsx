@@ -26,12 +26,17 @@ export function DuplicateDetector({ phone, email, currentId = null, onMerge, onI
         if (cleanPhone.length >= 10) {
           // Same bug as lookupContact in api/_lib/phone.js: contacts
           // are stored formatted like "(845) 424-1014", so searching
-          // only the raw digit string can never match.
+          // only the raw digit string can never match. FIX: that file's
+          // diagnosis was copied here but the actual fix (quoting each
+          // value) never was — the "(845) 424-1014" variant's
+          // parentheses are PostgREST grouping syntax and corrupt the
+          // whole OR clause unless quoted, silently returning 0 dupes
+          // for any phone stored in that format.
           const area = cleanPhone.slice(0,3), mid = cleanPhone.slice(3,6), last = cleanPhone.slice(6)
           ;[cleanPhone, '(' + area + ') ' + mid + '-' + last, area + '-' + mid + '-' + last, area + '.' + mid + '.' + last, area + ' ' + mid + ' ' + last]
-            .forEach(v => conditions.push('phone.ilike.%' + v + '%'))
+            .forEach(v => conditions.push('phone.ilike."%' + v + '%"'))
         }
-        if (cleanEmail.includes('@'))  conditions.push('email.ilike.'+cleanEmail)
+        if (cleanEmail.includes('@'))  conditions.push('email.ilike."'+cleanEmail+'"')
         if (!conditions.length) { setDupes([]); return }
 
         const { data } = await supabase.from('contacts')
