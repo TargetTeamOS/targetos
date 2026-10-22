@@ -44,17 +44,22 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
       const myReq = ++reqId.current
       try {
         const like = '%' + q.replace(/[%_]/g, '') + '%'
+        // FIX (same class as api/_lib/phone.js lookupContact): quote the
+        // value so a comma or parenthesis (e.g. a phone number pasted in
+        // as "(845) 424-1014") can't corrupt the OR clause's grouping
+        // and silently return 0 matches.
+        const qlike = '"' + like + '"'
         let query = supabase
           .from('contacts')
           .select('id, first_name, last_name, email, phone, type, is_private, agent_id')
-          .or('first_name.ilike.' + like + ',last_name.ilike.' + like + ',email.ilike.' + like + ',phone.ilike.' + like)
+          .or('first_name.ilike.' + qlike + ',last_name.ilike.' + qlike + ',email.ilike.' + qlike + ',phone.ilike.' + qlike)
           .limit(12)
         let { data, error } = await query
         if (error && /is_private|column/i.test(error.message || '')) {
           // sql/private_contacts.sql not run yet — search without the flag
           const r = await supabase.from('contacts')
             .select('id, first_name, last_name, email, phone, type, agent_id')
-            .or('first_name.ilike.' + like + ',last_name.ilike.' + like + ',email.ilike.' + like + ',phone.ilike.' + like)
+            .or('first_name.ilike.' + qlike + ',last_name.ilike.' + qlike + ',email.ilike.' + qlike + ',phone.ilike.' + qlike)
             .limit(12)
           data = r.data
         }
@@ -89,9 +94,12 @@ export default function ContactPicker({ onSelect, placeholder = 'Search contacts
     if (!email && !phone) { setDupeCheck(null); return }
     setCheckingDupe(true)
     try {
+      // FIX (same class as above): quote each value — a phone typed as
+      // "(845) 424-1014" otherwise corrupts the OR clause and this
+      // duplicate warning silently never fires for it.
       const conditions = []
-      if (email) conditions.push('email.eq.' + email)
-      if (phone) conditions.push('phone.eq.' + phone)
+      if (email) conditions.push('email.eq."' + email + '"')
+      if (phone) conditions.push('phone.eq."' + phone + '"')
       const { data } = await supabase.from('contacts')
         .select('id, first_name, last_name, email, phone')
         .or(conditions.join(','))
