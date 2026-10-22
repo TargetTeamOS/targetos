@@ -1077,9 +1077,13 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
   async function searchContacts(q) {
     if (!q.trim()) { setResults([]); return }
     setSearching(true)
+    // FIX (same class as api/_lib/phone.js lookupContact): quote the
+    // value so a comma or parenthesis in the search term can't
+    // corrupt the OR clause's grouping and silently return 0 matches.
+    const qq = '"%' + q + '%"'
     const { data } = await supabase.from('contacts')
       .select('id, first_name, last_name, phone, email, status')
-      .or('first_name.ilike.%' + q + '%,last_name.ilike.%' + q + '%,phone.ilike.%' + q + '%,email.ilike.%' + q + '%')
+      .or('first_name.ilike.' + qq + ',last_name.ilike.' + qq + ',phone.ilike.' + qq + ',email.ilike.' + qq)
       .limit(8)
     setResults(data || [])
     setSearching(false)
@@ -1111,7 +1115,10 @@ function DealContactsPanel({ dealId, agentId, onChange }) {
           // only the raw digit string can never match.
           const area = d10.slice(0,3), mid = d10.slice(3,6), last = d10.slice(6)
           const variants = [d10, '(' + area + ') ' + mid + '-' + last, area + '-' + mid + '-' + last, area + '.' + mid + '.' + last, area + ' ' + mid + ' ' + last]
-          const orClause = variants.map(v => 'phone.ilike.%' + v + '%').join(',')
+          // FIX: quote each variant — the "(845) 424-1014" form's
+          // parentheses are PostgREST grouping syntax and corrupt the
+          // whole OR clause unless quoted, silently returning 0 matches.
+          const orClause = variants.map(v => 'phone.ilike."%' + v + '%"').join(',')
           const { data: existing } = await supabase.from('contacts')
             .select('id, first_name, last_name').or(orClause).limit(1).maybeSingle()
           if (existing) {
