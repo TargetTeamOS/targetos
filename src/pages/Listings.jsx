@@ -560,7 +560,7 @@ function RoutePlanner({ listings, onClose }) {
                 {selected.includes(l.id) && <span style={{ color:'#fff', fontSize:10, fontWeight:900 }}>✓</span>}
               </div>
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.addr}</div>
+                <div title={l.addr || ''} style={{ fontSize:12, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.addr}</div>
                 <div style={{ fontSize:10, color:'var(--muted)' }}>{fmt$(l.list_price)} · {l.beds}bd {l.baths}ba</div>
               </div>
               {selected.includes(l.id) && (
