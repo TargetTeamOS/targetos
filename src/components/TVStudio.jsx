@@ -179,7 +179,7 @@ export function TVStudio() {
               <button onClick={() => remove(item.id)} style={Object.assign({}, btn, { background: '#FEE2E2', color: '#991B1B', padding: '5px 10px' })}>✕</button>
             </div>
             {item.type !== 'dashboard' && (
-              <div style={{ fontSize: '12px', color: '#94A3B8', fontFamily: ff, marginTop: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.src}</div>
+              <div title={item.src || ''} style={{ fontSize: '12px', color: '#94A3B8', fontFamily: ff, marginTop: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.src}</div>
             )}
             {/* schedule */}
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
