@@ -349,7 +349,12 @@ export function Contacts() {
       if (typeF)       q = q.eq('type', typeF)
       if (agentF)      q = q.eq('agent_id', agentF)
       if (search && search.length >= 2) {
-        q = q.or('first_name.ilike.%'+search+'%,last_name.ilike.%'+search+'%,phone.ilike.%'+search+'%,email.ilike.%'+search+'%')
+        // FIX (same class as api/_lib/phone.js lookupContact): quote the
+        // value so a comma or parenthesis (e.g. a phone pasted in as
+        // "(845) 424-1014") can't corrupt the OR clause's grouping and
+        // silently return 0/wrong rows.
+        const qs = '"%'+search+'%"'
+        q = q.or('first_name.ilike.'+qs+',last_name.ilike.'+qs+',phone.ilike.'+qs+',email.ilike.'+qs)
       }
       q = q.order('last_activity', { ascending:false, nullsFirst:false })
            .order('created_at',    { ascending:false })
@@ -444,7 +449,8 @@ export function Contacts() {
         let dq = supabase.from('contacts_directory').select('id,first_name,last_name,phone,email,type,custom_data,deals').limit(500)
         if (typeF) dq = dq.eq('type', typeF)
         if (search && search.length >= 2) {
-          dq = dq.or('first_name.ilike.%'+search+'%,last_name.ilike.%'+search+'%,phone.ilike.%'+search+'%,email.ilike.%'+search+'%')
+          const qs = '"%'+search+'%"'
+          dq = dq.or('first_name.ilike.'+qs+',last_name.ilike.'+qs+',phone.ilike.'+qs+',email.ilike.'+qs)
         }
         const { data: dirRows, error: dirErr } = await dq
         if (dirErr) {
