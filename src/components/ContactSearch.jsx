@@ -58,9 +58,14 @@ export function ContactSearch({ value, onChange, onSelect, placeholder, filter, 
       // phone, and email, nothing more." No client-side privacy
       // filtering is needed anymore -- the database enforces this now,
       // not the frontend.
+      // FIX (same class as api/_lib/phone.js lookupContact): quote the
+      // value so a comma or parenthesis (e.g. a phone pasted in as
+      // "(845) 424-1014") can't corrupt the OR clause's grouping and
+      // silently return 0 matches.
+      const qq = `"%${q}%"`
       let query = supabase.from('contacts_directory')
         .select('id,first_name,last_name,phone,email,type')
-        .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
+        .or(`first_name.ilike.${qq},last_name.ilike.${qq},phone.ilike.${qq},email.ilike.${qq}`)
         .limit(12)
       if (filter) query = query.eq('type', filter)
       let { data, error } = await query
@@ -73,7 +78,7 @@ export function ContactSearch({ value, onChange, onSelect, placeholder, filter, 
         // reachable once that migration is applied everywhere.
         let q2 = supabase.from('contacts')
           .select('id,first_name,last_name,phone,email,type,is_private,agent_id')
-          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
+          .or(`first_name.ilike.${qq},last_name.ilike.${qq},phone.ilike.${qq},email.ilike.${qq}`)
           .limit(12)
         if (filter) q2 = q2.eq('type', filter)
         const fallback = await q2
