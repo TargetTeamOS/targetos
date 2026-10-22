@@ -86,9 +86,13 @@ function ContactSearch({ value, onChange, onSelect, placeholder, filter }) {
   useEffect(() => {
     if (q.length < 2) { setResults([]); return }
     const t = setTimeout(async () => {
+      // FIX (same class as api/_lib/phone.js lookupContact): quote the
+      // value so a comma or parenthesis in the search term can't
+      // corrupt the OR clause's grouping and silently return 0 matches.
+      const qq = `"%${q}%"`
       let query = supabase.from('contacts')
         .select('id,first_name,last_name,phone,email,company,address,type,is_private,agent_id')
-        .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`)
+        .or(`first_name.ilike.${qq},last_name.ilike.${qq},phone.ilike.${qq},email.ilike.${qq},company.ilike.${qq}`)
         .limit(12)
       if (filter) query = query.eq('type', filter)
       let { data, error } = await query
@@ -96,7 +100,7 @@ function ContactSearch({ value, onChange, onSelect, placeholder, filter }) {
         // sql/private_contacts.sql not run yet — search without the flag
         let q2 = supabase.from('contacts')
           .select('id,first_name,last_name,phone,email,company,address,type,agent_id')
-          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,company.ilike.%${q}%`)
+          .or(`first_name.ilike.${qq},last_name.ilike.${qq},phone.ilike.${qq},email.ilike.${qq},company.ilike.${qq}`)
           .limit(12)
         if (filter) q2 = q2.eq('type', filter)
         data = (await q2).data
