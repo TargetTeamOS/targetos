@@ -21,6 +21,23 @@ const lb = { fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform
 
 const SIGN_STATUSES = ['On Property', 'Order Sent In', 'Missing - broken', 'Took Away', 'Removal Order Sent', 'Auto Remove Order']
 
+// SECURITY (stored XSS fix, same class as src/lib/reportEngine.js): the
+// commission bill auto-fills seller/buyer from the deal's linked contact
+// names and renders them with dangerouslySetInnerHTML before the agent
+// has reviewed anything — contact names can arrive unsanitized from the
+// public-facing Zapier/API Nation lead webhook (api/webhook-inbound.js),
+// so a contact named e.g. '<img src=x onerror=...>' would execute in the
+// agent's browser the instant this modal opens. Escape every dynamic
+// value before it enters the bill's HTML.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 // ── SIGN PANEL ─────────────────────────────────────────────────────
 export function TCSignPanel({ deal, onLinked, toast }) {
   const [sign, setSign] = useState(null)
@@ -156,16 +173,16 @@ export function CommissionBillModal({ open, onClose, deal, participants = [], co
         '<div style="font-size:20px;font-weight:800">Commission Bill</div>' +
         '<div style="font-size:13px;opacity:.8">Target Team — Keller Williams</div></div>' +
       '<table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #E2E8F0">' +
-        row('Property', form.address) +
-        row('Seller', form.seller) +
-        row('Buyer', form.buyer) +
-        row('Sale price', money(form.sale_price)) +
-        row('Commission rate', form.rate + '%') +
-        row('<b>Commission due</b>', '<b>' + money(form.amount) + '</b>') +
-        row('Expected closing', form.close_date) +
+        row('Property', escapeHtml(form.address)) +
+        row('Seller', escapeHtml(form.seller)) +
+        row('Buyer', escapeHtml(form.buyer)) +
+        row('Sale price', escapeHtml(money(form.sale_price))) +
+        row('Commission rate', escapeHtml(form.rate) + '%') +
+        row('<b>Commission due</b>', '<b>' + escapeHtml(money(form.amount)) + '</b>') +
+        row('Expected closing', escapeHtml(form.close_date)) +
       '</table>' +
-      (form.notes ? '<div style="padding:12px;background:#F8FAFC;border:1px solid #E2E8F0;border-top:0;font-size:13px;color:#334155">' + form.notes + '</div>' : '') +
-      '<div style="padding:12px 4px;font-size:12px;color:#64748B">Questions: ' + (agent?.name || 'Target Team') + (agent?.email ? ' · ' + agent.email : '') + '</div></div>'
+      (form.notes ? '<div style="padding:12px;background:#F8FAFC;border:1px solid #E2E8F0;border-top:0;font-size:13px;color:#334155">' + escapeHtml(form.notes) + '</div>' : '') +
+      '<div style="padding:12px 4px;font-size:12px;color:#64748B">Questions: ' + escapeHtml(agent?.name || 'Target Team') + (agent?.email ? ' · ' + escapeHtml(agent.email) : '') + '</div></div>'
   }
 
   async function send() {
