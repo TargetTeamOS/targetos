@@ -102,6 +102,20 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.7; }
 select { cursor: pointer; }
 textarea { resize: vertical; line-height: 1.6; }
 
+/* Checkboxes/radios must NOT inherit the text-input width:100% rule
+   above — without this, any checkbox/radio with no explicit inline
+   width (most of them, across many pages) stretches to the full width
+   of its flex/label container (seen as wide as ~400px in production),
+   leaving a huge invisible-but-clickable gap between the checkbox and
+   its label text. Native box size + no inherited padding/border/bg. */
+input[type="checkbox"], input[type="radio"] {
+  width: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  flex-shrink: 0;
+}
+
 /* ── BUTTONS ─────────────────────────────────────────────────── */
 button { font-family: 'Inter', system-ui, sans-serif; cursor: pointer; }
 
