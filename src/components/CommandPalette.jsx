@@ -70,12 +70,23 @@ export function CommandPalette({ open, onClose }) {
 
   async function search(q) {
     const like = '%' + q + '%'
+    // FIX (same class as api/_lib/phone.js lookupContact): a raw value
+    // inside .or() is parsed as PostgREST filter syntax, not a literal
+    // string -- a comma or parenthesis in the search term (very common
+    // here: "123 Main St, Monsey", or a phone number pasted in as
+    // "(845) 424-1014") silently corrupts the whole OR clause's grammar.
+    // That isn't an error, it's a silent empty/wrong result set for
+    // every search containing one of those characters -- in Cmd+K, the
+    // app's single most-used search. Quoting each value (PostgREST's
+    // documented escape for reserved characters in a filter value) fixes
+    // the grouping, same fix already applied in phone.js/track-activity.js.
+    const qlike = '"' + like + '"'
     const agentFilter = (isAdmin || canManage) ? {} : { agent_id: agent?.id }
 
     try {
       const [contacts, deals, listings, tasks] = await Promise.all([
         supabase.from('contacts').select('id,first_name,last_name,phone,email,status,agent_id')
-          .or('first_name.ilike.' + like + ',last_name.ilike.' + like + ',phone.ilike.' + like + ',email.ilike.' + like)
+          .or('first_name.ilike.' + qlike + ',last_name.ilike.' + qlike + ',phone.ilike.' + qlike + ',email.ilike.' + qlike)
           .limit(5).then(r => (r.data||[]).map(c => ({
             type:'contact', id:'c_'+c.id, raw:c.id,
             label: [c.first_name,c.last_name].filter(Boolean).join(' ') || c.phone,
@@ -94,7 +105,7 @@ export function CommandPalette({ open, onClose }) {
             path: '/production', icon:'🏠',
           }))),
         supabase.from('listings').select('id,addr,city,status,list_price,agent_id')
-          .or('addr.ilike.' + like + ',city.ilike.' + like)
+          .or('addr.ilike.' + qlike + ',city.ilike.' + qlike)
           .limit(5).then(r => (r.data||[]).map(l => ({
             type:'listing', id:'l_'+l.id, raw:l.id,
             label: [l.addr, l.city].filter(Boolean).join(', '),
