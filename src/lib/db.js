@@ -194,7 +194,12 @@ contacts: {
     if (filters.type)     q = q.eq('type', filters.type)
     if (filters.search) {
       // Server-side search — efficient with DB index
-      q = q.or('first_name.ilike.%' + filters.search + '%,last_name.ilike.%' + filters.search + '%,phone.ilike.%' + filters.search + '%,email.ilike.%' + filters.search + '%')
+      // FIX (same class as api/_lib/phone.js lookupContact): quote the
+      // value so a comma or parenthesis in the search term (an address
+      // fragment, or a phone number pasted as "(845) 424-1014") can't
+      // corrupt the OR clause's grouping and silently return 0 rows.
+      const qs = '"%' + filters.search + '%"'
+      q = q.or('first_name.ilike.' + qs + ',last_name.ilike.' + qs + ',phone.ilike.' + qs + ',email.ilike.' + qs)
     }
     const limit  = filters.limit  || 100
     const offset = filters.offset || 0
@@ -208,7 +213,10 @@ contacts: {
     let q = supabase.from('contacts').select('id', { count: 'exact', head: true })
     if (filters.agent_id) q = q.eq('agent_id', filters.agent_id)
     if (filters.status)   q = q.eq('status', filters.status)
-    if (filters.search)   q = q.or('first_name.ilike.%' + filters.search + '%,last_name.ilike.%' + filters.search + '%,phone.ilike.%' + filters.search + '%,email.ilike.%' + filters.search + '%')
+    if (filters.search) {
+      const qs = '"%' + filters.search + '%"'
+      q = q.or('first_name.ilike.' + qs + ',last_name.ilike.' + qs + ',phone.ilike.' + qs + ',email.ilike.' + qs)
+    }
     const { count } = await q
     return count || 0
   },
@@ -231,7 +239,15 @@ contacts: {
         // variant a phone might actually be stored in.
         const area = d10.slice(0,3), mid = d10.slice(3,6), last = d10.slice(6)
         const variants = [d10, '(' + area + ') ' + mid + '-' + last, area + '-' + mid + '-' + last, area + '.' + mid + '.' + last, area + ' ' + mid + ' ' + last]
-        const orClause = variants.map(v => 'phone.ilike.%' + v + '%').join(',')
+        // FIX: this is the exact same unquoted-.or() bug fixed in
+        // lookupContact() (api/_lib/phone.js) -- the "(845) 424-1014"
+        // variant's parentheses are PostgREST grouping syntax and
+        // corrupt the whole OR clause unless each value is quoted. That
+        // bug was never ported here, so this duplicate-phone check (the
+        // thing that's supposed to stop "already exists as X" duplicate
+        // contacts) silently found nothing for a huge share of stored
+        // phone formats, letting duplicates through.
+        const orClause = variants.map(v => 'phone.ilike."%' + v + '%"').join(',')
         const { data: existing } = await supabase.from('contacts')
           .select('id, first_name, last_name, phone, agent_id, notes').or(orClause).limit(1).maybeSingle()
         if (existing) {
