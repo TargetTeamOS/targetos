@@ -1235,9 +1235,12 @@ export function ContactDetail() {
       // never sees this: only their own contact and the shared
       // name/phone/email directory exist for them.
       if ((isAdmin || canManage) && (c.phone || c.email)) {
+        // FIX (same class as api/_lib/phone.js lookupContact): quote the
+        // value so a stored phone like "(845) 424-1014" can't corrupt
+        // the OR clause's grouping and silently return 0 siblings.
         const orParts = []
-        if (c.phone) orParts.push('phone.eq.' + c.phone)
-        if (c.email) orParts.push('email.eq.' + c.email)
+        if (c.phone) orParts.push('phone.eq."' + c.phone + '"')
+        if (c.email) orParts.push('email.eq."' + c.email + '"')
         const { data: siblings } = await supabase.from('contacts')
           .select('id,first_name,last_name,agent_id,agents(id,name,color)')
           .or(orParts.join(','))
