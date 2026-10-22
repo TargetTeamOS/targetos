@@ -124,8 +124,8 @@ function ListingRow({ listing, agent, showings, openHouses, onOpen, connected })
       {agent ? <Avatar agent={agent} size={34} showHover={false} /> : <div style={{ width:34, height:34, borderRadius:'50%', background:'var(--dim)', flexShrink:0 }} />}
       {/* Address + agent/city/status */}
       <div style={{ minWidth:150, maxWidth:200, flexShrink:0 }}>
-        <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{listing.addr || '—'}</div>
-        <div style={{ fontSize:11, color:'var(--muted)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+        <div title={listing.addr || ''} style={{ fontSize:14, fontWeight:800, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{listing.addr || '—'}</div>
+        <div title={(agent?.name ? agent.name.split(' ')[0] + ' · ' : '') + (listing.city ? listing.city + ' · ' : '') + status} style={{ fontSize:11, color:'var(--muted)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
           {agent?.name ? agent.name.split(' ')[0] + ' · ' : ''}{listing.city ? listing.city + ' · ' : ''}<span style={{ color:sc, fontWeight:700 }}>{status}</span>
         </div>
       </div>
