@@ -51,6 +51,14 @@ export function CommandPalette({ open, onClose }) {
   const inputRef  = useRef(null)
   const listRef   = useRef(null)
   const debounce  = useRef(null)
+  // FIX (same class as ContactPicker.jsx/ContactSearch.jsx's reqId
+  // guard): search() is fire-and-forget with no cancellation. Typing a
+  // second query while the first's Promise.all is still pending starts
+  // an overlapping search, and whichever resolves last wins -- a user
+  // who types "deal" then "contact" can briefly see "deal" results
+  // re-appear after "contact" results already rendered. A monotonic
+  // request id keeps only the most recently STARTED search's results.
+  const reqId     = useRef(0)
 
   useEffect(() => {
     if (open) {
@@ -69,6 +77,7 @@ export function CommandPalette({ open, onClose }) {
   }, [query])
 
   async function search(q) {
+    const myReq = ++reqId.current
     const like = '%' + q + '%'
     // FIX (same class as api/_lib/phone.js lookupContact): a raw value
     // inside .or() is parsed as PostgREST filter syntax, not a literal
@@ -133,12 +142,13 @@ export function CommandPalette({ open, onClose }) {
       // Also match actions
       const matchedActions = QUICK_ACTIONS.filter(a => a.label.toLowerCase().includes(q.toLowerCase()))
 
+      if (myReq !== reqId.current) return // a newer search superseded this one
       setResults([...all, ...matchedActions])
       setCursor(0)
     } catch(e) {
       console.warn('[CommandPalette]', e.message)
     } finally {
-      setLoading(false)
+      if (myReq === reqId.current) setLoading(false)
     }
   }
 
