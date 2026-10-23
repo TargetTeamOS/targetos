@@ -3,7 +3,7 @@
 // Fuzzy-matches phone and email to find potential duplicates
 // before saving a new contact. Shows a merge suggestion.
 // ════════════════════════════════════════════════════════════
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -14,6 +14,14 @@ export function DuplicateDetector({ phone, email, currentId = null, onMerge, onI
   const [dupes, setDupes] = useState([])
   const navigate = useNavigate()
   const { agent: me, isAdmin } = useAuth()
+  // FIX (same class as ContactPicker.jsx/ContactSearch.jsx's reqId
+  // guard): clearing the debounce timer only stops a lookup that
+  // hasn't started yet. If phone/email keep changing while typing, an
+  // earlier, now-stale lookup can resolve after a newer one and
+  // silently show/hide the wrong duplicate warning for what's
+  // currently on screen. A monotonic request id keeps only the most
+  // recently STARTED lookup's result.
+  const reqId = useRef(0)
 
   useEffect(() => {
     const cleanPhone = (phone||'').replace(/\D/g,'').slice(-10)
@@ -21,6 +29,7 @@ export function DuplicateDetector({ phone, email, currentId = null, onMerge, onI
     if (!cleanPhone && !cleanEmail) { setDupes([]); return }
 
     const timer = setTimeout(async () => {
+      const myReq = ++reqId.current
       try {
         const conditions = []
         if (cleanPhone.length >= 10) {
@@ -50,6 +59,7 @@ export function DuplicateDetector({ phone, email, currentId = null, onMerge, onI
         // merely typed a matching phone/email while adding a new
         // contact. Same filter ContactSearch/ContactPicker already use.
         const filtered = (data||[]).filter(c => c.id !== currentId && (isAdmin || !c.is_private || (me?.id && c.agent_id === me.id)))
+        if (myReq !== reqId.current) return // a newer lookup superseded this one
         setDupes(filtered)
       } catch {}
     }, 600)
