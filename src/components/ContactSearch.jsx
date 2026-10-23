@@ -41,6 +41,14 @@ export function ContactSearch({ value, onChange, onSelect, placeholder, filter, 
   const [creating, setCreating] = useState(false)
   const ref = useRef(null)
   const { agent: me, isAdmin } = useAuth()
+  // FIX (same class as ContactPicker.jsx's reqId guard): the debounce
+  // timer being cleared only stops a request that hasn't started yet.
+  // Once a query is in flight, typing more and pausing again starts a
+  // second overlapping query, and nothing stopped a slower response for
+  // an earlier, now-stale term from landing after a newer one and
+  // silently overwriting its correct results. A monotonic request id
+  // ensures only the most recently STARTED request can apply results.
+  const reqId = useRef(0)
 
   useEffect(() => { setQ(value || '') }, [value])
 
@@ -48,6 +56,7 @@ export function ContactSearch({ value, onChange, onSelect, placeholder, filter, 
     if (q.length < 2) { setResults([]); setSearching(false); return }
     setSearching(true)
     const t = setTimeout(async () => {
+      const myReq = ++reqId.current
       // Queries the shared directory view (sql/offers_v2/H_shared_contact_directory.sql),
       // NOT the base contacts table directly. The view only ever
       // returns id/first_name/last_name/phone/email/type, regardless
@@ -84,6 +93,7 @@ export function ContactSearch({ value, onChange, onSelect, placeholder, filter, 
         const fallback = await q2
         data = (fallback.data || []).filter(c => isAdmin || !c.is_private || (me?.id && c.agent_id === me.id))
       }
+      if (myReq !== reqId.current) return // a newer search superseded this one
       setResults((data || []).slice(0, 6))
       setSearching(false)
       setOpen(true)
